@@ -23,8 +23,9 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/model/pdata"
 	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 )
 
@@ -54,9 +55,9 @@ type storage struct {
 }
 
 func makeJaegerProtoReferences(
-	links pdata.SpanLinkSlice,
-	parentSpanID pdata.SpanID,
-	traceID pdata.TraceID,
+	links ptrace.SpanLinkSlice,
+	parentSpanID pcommon.SpanID,
+	traceID pcommon.TraceID,
 ) ([]OtelSpanRef, error) {
 
 	parentSpanIDSet := len(parentSpanID.Bytes()) != 0
@@ -101,7 +102,7 @@ func makeJaegerProtoReferences(
 
 // ServiceNameForResource gets the service name for a specified Resource.
 // TODO: Find a better package for this function.
-func ServiceNameForResource(resource pdata.Resource) string {
+func ServiceNameForResource(resource pcommon.Resource) string {
 	// if resource.IsNil() {
 	// 	return "<nil-resource>"
 	// }
@@ -114,9 +115,9 @@ func ServiceNameForResource(resource pdata.Resource) string {
 	return service.StringVal()
 }
 
-func populateOtherDimensions(attributes pdata.AttributeMap, span *Span) {
+func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
-	attributes.Range(func(k string, v pdata.AttributeValue) bool {
+	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" {
 			if v.IntVal() >= 400 {
 				span.HasError = true
@@ -168,14 +169,14 @@ func populateOtherDimensions(attributes pdata.AttributeMap, span *Span) {
 
 }
 
-func populateEvents(events pdata.SpanEventSlice, span *Span) {
+func populateEvents(events ptrace.SpanEventSlice, span *Span) {
 	for i := 0; i < events.Len(); i++ {
 		event := Event{}
 		event.Name = events.At(i).Name()
 		event.TimeUnixNano = uint64(events.At(i).Timestamp())
 		event.AttributeMap = map[string]string{}
 		event.IsError = false
-		events.At(i).Attributes().Range(func(k string, v pdata.AttributeValue) bool {
+		events.At(i).Attributes().Range(func(k string, v pcommon.Value) bool {
 			if v.Type().String() == "INT" {
 				event.AttributeMap[k] = strconv.FormatInt(v.IntVal(), 10)
 			} else {
@@ -200,7 +201,7 @@ func populateTraceModel(span *Span) {
 	span.TraceModel.HasError = span.HasError
 }
 
-func newStructuredSpan(otelSpan pdata.Span, ServiceName string, resource pdata.Resource) *Span {
+func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource) *Span {
 
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
@@ -208,7 +209,7 @@ func newStructuredSpan(otelSpan pdata.Span, ServiceName string, resource pdata.R
 	resourceAttributes := resource.Attributes()
 	tagMap := map[string]string{}
 
-	attributes.Range(func(k string, v pdata.AttributeValue) bool {
+	attributes.Range(func(k string, v pcommon.Value) bool {
 		v.StringVal()
 		if v.Type().String() == "INT" {
 			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
@@ -219,7 +220,7 @@ func newStructuredSpan(otelSpan pdata.Span, ServiceName string, resource pdata.R
 
 	})
 
-	resourceAttributes.Range(func(k string, v pdata.AttributeValue) bool {
+	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
 		v.StringVal()
 		if v.Type().String() == "INT" {
 			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
@@ -269,7 +270,7 @@ func newStructuredSpan(otelSpan pdata.Span, ServiceName string, resource pdata.R
 }
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
-func (s *storage) pushTraceData(ctx context.Context, td pdata.Traces) error {
+func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
@@ -278,9 +279,9 @@ func (s *storage) pushTraceData(ctx context.Context, td pdata.Traces) error {
 
 		serviceName := ServiceNameForResource(rs.Resource())
 
-		ilss := rs.InstrumentationLibrarySpans()
+		ilss := rs.ScopeSpans()
 		for j := 0; j < ilss.Len(); j++ {
-			// fmt.Printf("InstrumentationLibrarySpans #%d\n", j)
+			// fmt.Printf("ScopeSpans #%d\n", j)
 			ils := ilss.At(j)
 
 			spans := ils.Spans()

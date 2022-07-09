@@ -85,13 +85,13 @@ import (
 )
 
 func components() (component.Factories, error) {
-	errs := []error{}
+	var errs []error
 	factories, err := CoreComponents()
 	if err != nil {
 		return component.Factories{}, err
 	}
 
-	extensions := []component.ExtensionFactory{}
+	var extensions []component.ExtensionFactory
 	for _, ext := range factories.Extensions {
 		extensions = append(extensions, ext)
 	}

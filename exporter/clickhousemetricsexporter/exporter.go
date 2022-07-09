@@ -34,7 +34,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer/consumererror"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
 const maxBatchByteSize = 3000000
@@ -112,7 +113,7 @@ func (prwe *PrwExporter) Shutdown(context.Context) error {
 // PushMetrics converts metrics to Prometheus remote write TimeSeries and send to remote endpoint. It maintain a map of
 // TimeSeries, validates and handles each individual metric, adding the converted TimeSeries to the map, and finally
 // exports the map.
-func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pdata.Metrics) error {
+func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
@@ -127,13 +128,13 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pdata.Metrics) erro
 		for i := 0; i < resourceMetricsSlice.Len(); i++ {
 			resourceMetrics := resourceMetricsSlice.At(i)
 			resource := resourceMetrics.Resource()
-			instrumentationLibraryMetricsSlice := resourceMetrics.InstrumentationLibraryMetrics()
+			scopeMetricsSlice := resourceMetrics.ScopeMetrics()
 			// TODO: add resource attributes as labels, probably in next PR
-			for j := 0; j < instrumentationLibraryMetricsSlice.Len(); j++ {
-				instrumentationLibraryMetrics := instrumentationLibraryMetricsSlice.At(j)
-				metricSlice := instrumentationLibraryMetrics.Metrics()
+			for j := 0; j < scopeMetricsSlice.Len(); j++ {
+				scopeMetrics := scopeMetricsSlice.At(j)
+				metricSlice := scopeMetrics.Metrics()
 
-				// TODO: decide if instrumentation library information should be exported as labels
+				// TODO: decide if scope information should be exported as labels
 				for k := 0; k < metricSlice.Len(); k++ {
 					metric := metricSlice.At(k)
 
@@ -144,17 +145,17 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pdata.Metrics) erro
 						serviceName, _ := resource.Attributes().Get("service.name")
 						metricType := metric.DataType()
 						var numDataPoints int
-						var temporality pdata.MetricAggregationTemporality
+						var temporality pmetric.MetricAggregationTemporality
 						switch metricType {
-						case pdata.MetricDataTypeGauge:
+						case pmetric.MetricDataTypeGauge:
 							numDataPoints = metric.Gauge().DataPoints().Len()
-						case pdata.MetricDataTypeSum:
+						case pmetric.MetricDataTypeSum:
 							numDataPoints = metric.Sum().DataPoints().Len()
 							temporality = metric.Sum().AggregationTemporality()
-						case pdata.MetricDataTypeHistogram:
+						case pmetric.MetricDataTypeHistogram:
 							numDataPoints = metric.Histogram().DataPoints().Len()
 							temporality = metric.Histogram().AggregationTemporality()
-						case pdata.MetricDataTypeSummary:
+						case pmetric.MetricDataTypeSummary:
 							numDataPoints = metric.Summary().DataPoints().Len()
 						default:
 						}
@@ -164,19 +165,19 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pdata.Metrics) erro
 
 					// handle individual metric based on type
 					switch metric.DataType() {
-					case pdata.MetricDataTypeGauge:
+					case pmetric.MetricDataTypeGauge:
 						dataPoints := metric.Gauge().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
-					case pdata.MetricDataTypeSum:
+					case pmetric.MetricDataTypeSum:
 						dataPoints := metric.Sum().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
-					case pdata.MetricDataTypeHistogram:
+					case pmetric.MetricDataTypeHistogram:
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
@@ -185,7 +186,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pdata.Metrics) erro
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
-					case pdata.MetricDataTypeSummary:
+					case pmetric.MetricDataTypeSummary:
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
@@ -234,7 +235,7 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 	return sanitizedLabels, nil
 }
 
-func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pdata.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pdata.Resource, metric pdata.Metric) error {
+func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
 	if dataPoints.Len() == 0 {
 		return consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 	}
@@ -273,7 +274,6 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 			defer wg.Done()
 
 			for request := range input {
-				fmt.Println(prwe.ch)
 				err := prwe.ch.Write(ctx, request)
 				if err != nil {
 					mu.Lock()

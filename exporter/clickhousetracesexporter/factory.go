@@ -40,10 +40,10 @@ func createDefaultConfig() config.Exporter {
 
 // NewFactory creates a factory for Logging exporter
 func NewFactory() component.ExporterFactory {
-	return exporterhelper.NewFactory(
+	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
-		exporterhelper.WithTraces(createTracesExporter),
+		component.WithTracesExporter(createTracesExporter),
 	)
 }
 

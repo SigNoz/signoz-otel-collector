@@ -22,7 +22,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
 // Test_validateMetrics checks validateMetrics return true if a type and temporality combination is valid, false
@@ -32,7 +33,7 @@ func Test_validateMetrics(t *testing.T) {
 	// define a single test
 	type combTest struct {
 		name   string
-		metric pdata.Metric
+		metric pmetric.Metric
 		want   bool
 	}
 
@@ -74,7 +75,7 @@ func Test_validateMetrics(t *testing.T) {
 // case.
 func Test_addSample(t *testing.T) {
 	type testCase struct {
-		metric pdata.Metric
+		metric pmetric.Metric
 		sample prompb.Sample
 		labels []prompb.Label
 	}
@@ -119,7 +120,7 @@ func Test_addSample(t *testing.T) {
 	}
 	t.Run("empty_case", func(t *testing.T) {
 		tsMap := map[string]*prompb.TimeSeries{}
-		addSample(tsMap, nil, nil, pdata.NewMetric())
+		addSample(tsMap, nil, nil, pmetric.NewMetric())
 		assert.Exactly(t, tsMap, map[string]*prompb.TimeSeries{})
 	})
 	// run tests
@@ -138,7 +139,7 @@ func Test_timeSeriesSignature(t *testing.T) {
 	tests := []struct {
 		name   string
 		lbs    []prompb.Label
-		metric pdata.Metric
+		metric pmetric.Metric
 		want   string
 	}{
 		{
@@ -181,8 +182,8 @@ func Test_timeSeriesSignature(t *testing.T) {
 func Test_createLabelSet(t *testing.T) {
 	tests := []struct {
 		name           string
-		resource       pdata.Resource
-		orig           pdata.AttributeMap
+		resource       pcommon.Resource
+		orig           pcommon.Map
 		externalLabels map[string]string
 		extras         []string
 		want           []prompb.Label
@@ -222,7 +223,7 @@ func Test_createLabelSet(t *testing.T) {
 		{
 			"no_original_case",
 			getResource(),
-			pdata.NewAttributeMap(),
+			pcommon.NewMap(),
 			nil,
 			[]string{label31, value31, label32, value32},
 			getPromLabels(label31, value31, label32, value32),
@@ -274,7 +275,7 @@ func Test_createLabelSet(t *testing.T) {
 func Test_getPromMetricName(t *testing.T) {
 	tests := []struct {
 		name   string
-		metric pdata.Metric
+		metric pmetric.Metric
 		ns     string
 		want   string
 	}{
@@ -568,7 +569,7 @@ func Test_getPromExemplars(t *testing.T) {
 	tnow := time.Now()
 	tests := []struct {
 		name      string
-		histogram *pdata.HistogramDataPoint
+		histogram *pmetric.HistogramDataPoint
 		expected  []prompb.Exemplar
 	}{
 		{

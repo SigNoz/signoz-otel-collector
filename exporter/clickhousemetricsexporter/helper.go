@@ -28,7 +28,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
-	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
 const (
@@ -63,15 +64,15 @@ func (a ByLabelName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // validateMetrics returns a bool representing whether the metric has a valid type and temporality combination and a
 // matching metric type and field
-func validateMetrics(metric pdata.Metric) bool {
+func validateMetrics(metric pmetric.Metric) bool {
 	switch metric.DataType() {
-	case pdata.MetricDataTypeGauge:
+	case pmetric.MetricDataTypeGauge:
 		return metric.Gauge().DataPoints().Len() != 0
-	case pdata.MetricDataTypeSum:
-		return metric.Sum().DataPoints().Len() != 0 && metric.Sum().AggregationTemporality() == pdata.MetricAggregationTemporalityCumulative
-	case pdata.MetricDataTypeHistogram:
-		return metric.Histogram().DataPoints().Len() != 0 && metric.Histogram().AggregationTemporality() == pdata.MetricAggregationTemporalityCumulative
-	case pdata.MetricDataTypeSummary:
+	case pmetric.MetricDataTypeSum:
+		return metric.Sum().DataPoints().Len() != 0 && metric.Sum().AggregationTemporality() == pmetric.MetricAggregationTemporalityCumulative
+	case pmetric.MetricDataTypeHistogram:
+		return metric.Histogram().DataPoints().Len() != 0 && metric.Histogram().AggregationTemporality() == pmetric.MetricAggregationTemporalityCumulative
+	case pmetric.MetricDataTypeSummary:
 		return metric.Summary().DataPoints().Len() != 0
 	}
 	return false
@@ -81,7 +82,7 @@ func validateMetrics(metric pdata.Metric) bool {
 // creates a new TimeSeries in the map if not found and returns the time series signature.
 // tsMap will be unmodified if either labels or sample is nil, but can still be modified if the exemplar is nil.
 func addSample(tsMap map[string]*prompb.TimeSeries, sample *prompb.Sample, labels []prompb.Label,
-	metric pdata.Metric) string {
+	metric pmetric.Metric) string {
 
 	if sample == nil || labels == nil || tsMap == nil {
 		return ""
@@ -143,7 +144,7 @@ func addExemplar(tsMap map[string]*prompb.TimeSeries, bucketBounds []bucketBound
 // 		TYPE-label1-value1- ...  -labelN-valueN
 // the label slice should not contain duplicate label names; this method sorts the slice by label name before creating
 // the signature.
-func timeSeriesSignature(metric pdata.Metric, labels *[]prompb.Label) string {
+func timeSeriesSignature(metric pmetric.Metric, labels *[]prompb.Label) string {
 	b := strings.Builder{}
 	b.WriteString(metric.DataType().String())
 
@@ -162,7 +163,7 @@ func timeSeriesSignature(metric pdata.Metric, labels *[]prompb.Label) string {
 // createAttributes creates a slice of Cortex Label with OTLP attributes and pairs of string values.
 // Unpaired string value is ignored. String pairs overwrites OTLP labels if collision happens, and the overwrite is
 // logged. Resultant label names are sanitized.
-func createAttributes(resource pdata.Resource, attributes pdata.AttributeMap, externalLabels map[string]string, extras ...string) []prompb.Label {
+func createAttributes(resource pcommon.Resource, attributes pcommon.Map, externalLabels map[string]string, extras ...string) []prompb.Label {
 	// map ensures no duplicate label name
 	l := map[string]prompb.Label{}
 
@@ -174,7 +175,7 @@ func createAttributes(resource pdata.Resource, attributes pdata.AttributeMap, ex
 		}
 	}
 
-	resource.Attributes().Range(func(key string, value pdata.AttributeValue) bool {
+	resource.Attributes().Range(func(key string, value pcommon.Value) bool {
 		if isUsefulResourceAttribute(key) {
 			l[key] = prompb.Label{
 				Name:  sanitize(key),
@@ -185,7 +186,7 @@ func createAttributes(resource pdata.Resource, attributes pdata.AttributeMap, ex
 		return true
 	})
 
-	attributes.Range(func(key string, value pdata.AttributeValue) bool {
+	attributes.Range(func(key string, value pcommon.Value) bool {
 		l[key] = prompb.Label{
 			Name:  sanitize(key),
 			Value: value.AsString(),
@@ -236,7 +237,7 @@ func isUsefulResourceAttribute(key string) bool {
 }
 
 // getPromMetricName creates a Prometheus metric name by attaching namespace prefix for Monotonic metrics.
-func getPromMetricName(metric pdata.Metric, ns string) string {
+func getPromMetricName(metric pmetric.Metric, ns string) string {
 	name := metric.Name()
 	if len(ns) > 0 {
 		name = ns + "_" + name
@@ -279,7 +280,7 @@ func batchTimeSeries(tsMap map[string]*prompb.TimeSeries, maxBatchByteSize int) 
 }
 
 // convertTimeStamp converts OTLP timestamp in ns to timestamp in ms
-func convertTimeStamp(timestamp pdata.Timestamp) int64 {
+func convertTimeStamp(timestamp pcommon.Timestamp) int64 {
 	return timestamp.AsTime().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
@@ -315,7 +316,7 @@ func sanitizeRune(r rune) rune {
 
 // addSingleNumberDataPoint converts the metric value stored in pt to a Prometheus sample, and add the sample
 // to its corresponding time series in tsMap
-func addSingleNumberDataPoint(pt pdata.NumberDataPoint, resource pdata.Resource, metric pdata.Metric, namespace string,
+func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
 	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
 	// create parameters for addSample
 	name := getPromMetricName(metric, namespace)
@@ -325,12 +326,12 @@ func addSingleNumberDataPoint(pt pdata.NumberDataPoint, resource pdata.Resource,
 		Timestamp: convertTimeStamp(pt.Timestamp()),
 	}
 	switch pt.ValueType() {
-	case pdata.MetricValueTypeInt:
+	case pmetric.NumberDataPointValueTypeInt:
 		sample.Value = float64(pt.IntVal())
-	case pdata.MetricValueTypeDouble:
+	case pmetric.NumberDataPointValueTypeDouble:
 		sample.Value = pt.DoubleVal()
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		sample.Value = math.Float64frombits(value.StaleNaN)
 	}
 	addSample(tsMap, sample, labels, metric)
@@ -338,7 +339,7 @@ func addSingleNumberDataPoint(pt pdata.NumberDataPoint, resource pdata.Resource,
 
 // addSingleHistogramDataPoint converts pt to 2 + min(len(ExplicitBounds), len(BucketCount)) + 1 samples. It
 // ignore extra buckets if len(ExplicitBounds) > len(BucketCounts)
-func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Resource, metric pdata.Metric, namespace string,
+func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
 	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
 	time := convertTimeStamp(pt.Timestamp())
 	// sum, count, and buckets of the histogram should append suffix to baseName
@@ -348,7 +349,7 @@ func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Res
 		Value:     pt.Sum(),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
 
@@ -360,7 +361,7 @@ func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Res
 		Value:     float64(pt.Count()),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
 
@@ -375,16 +376,16 @@ func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Res
 	bucketBounds := make([]bucketBoundsData, 0)
 
 	// process each bound, based on histograms proto definition, # of buckets = # of explicit bounds + 1
-	for index, bound := range pt.ExplicitBounds() {
-		if index >= len(pt.BucketCounts()) {
+	for index, bound := range pt.ExplicitBounds().AsRaw() {
+		if index >= pt.BucketCounts().Len() {
 			break
 		}
-		cumulativeCount += pt.BucketCounts()[index]
+		cumulativeCount += pt.BucketCounts().At(index)
 		bucket := &prompb.Sample{
 			Value:     float64(cumulativeCount),
 			Timestamp: time,
 		}
-		if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+		if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 			bucket.Value = math.Float64frombits(value.StaleNaN)
 		}
 		boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
@@ -397,10 +398,10 @@ func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Res
 	infBucket := &prompb.Sample{
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		infBucket.Value = math.Float64frombits(value.StaleNaN)
 	} else {
-		cumulativeCount += pt.BucketCounts()[len(pt.BucketCounts())-1]
+
 		infBucket.Value = float64(cumulativeCount)
 	}
 	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, pInfStr)
@@ -410,7 +411,7 @@ func addSingleHistogramDataPoint(pt pdata.HistogramDataPoint, resource pdata.Res
 	addExemplars(tsMap, promExemplars, bucketBounds)
 }
 
-func getPromExemplars(pt pdata.HistogramDataPoint) []prompb.Exemplar {
+func getPromExemplars(pt pmetric.HistogramDataPoint) []prompb.Exemplar {
 	var promExemplars []prompb.Exemplar
 
 	for i := 0; i < pt.Exemplars().Len(); i++ {
@@ -421,7 +422,7 @@ func getPromExemplars(pt pdata.HistogramDataPoint) []prompb.Exemplar {
 			Timestamp: timestamp.FromTime(exemplar.Timestamp().AsTime()),
 		}
 
-		exemplar.FilteredAttributes().Range(func(key string, value pdata.AttributeValue) bool {
+		exemplar.FilteredAttributes().Range(func(key string, value pcommon.Value) bool {
 			promLabel := prompb.Label{
 				Name:  key,
 				Value: value.AsString(),
@@ -439,7 +440,7 @@ func getPromExemplars(pt pdata.HistogramDataPoint) []prompb.Exemplar {
 }
 
 // addSingleSummaryDataPoint converts pt to len(QuantileValues) + 2 samples.
-func addSingleSummaryDataPoint(pt pdata.SummaryDataPoint, resource pdata.Resource, metric pdata.Metric, namespace string,
+func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
 	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
 	time := convertTimeStamp(pt.Timestamp())
 	// sum and count of the summary should append suffix to baseName
@@ -449,7 +450,7 @@ func addSingleSummaryDataPoint(pt pdata.SummaryDataPoint, resource pdata.Resourc
 		Value:     pt.Sum(),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
 	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+sumStr)
@@ -460,7 +461,7 @@ func addSingleSummaryDataPoint(pt pdata.SummaryDataPoint, resource pdata.Resourc
 		Value:     float64(pt.Count()),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
 	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+countStr)
@@ -473,7 +474,7 @@ func addSingleSummaryDataPoint(pt pdata.SummaryDataPoint, resource pdata.Resourc
 			Value:     qt.Value(),
 			Timestamp: time,
 		}
-		if pt.Flags().HasFlag(pdata.MetricDataPointFlagNoRecordedValue) {
+		if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 			quantile.Value = math.Float64frombits(value.StaleNaN)
 		}
 		percentileStr := strconv.FormatFloat(qt.Quantile(), 'f', -1, 64)

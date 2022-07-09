@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package clickhouse provides ClickHouse storage.
+// Package clickhousemetricsexporter provides writer for ClickHouse storage.
 package clickhousemetricsexporter
 
 import (
