@@ -1,6 +1,6 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
-IMAGE_NAME ?= "signoz/collector"
+IMAGE_NAME ?= "otel-collector"
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
@@ -28,7 +28,7 @@ test:
 
 .PHONY: build
 build:
-	$(if $(GOOS),GOOS=${GOOS},) go build ./cmd/signozcollector
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build ./cmd/signozcollector
 
 .PHONY: run
 run:
@@ -44,8 +44,8 @@ build-push-signozcollector:
 	@echo "------------------"
 	@echo "--> Building and pushing otelcontribcol docker image"
 	@echo "------------------"
-	docker buildx build --platform linux/amd64,linux/arm64 --progress plane \
-		--no-cache --push -f cmd/signozcollector/Dockerfile \
+	docker buildx build --progress plane \
+		--no-cache -f cmd/signozcollector/Dockerfile \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
 .PHONY: lint

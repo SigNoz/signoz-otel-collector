@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerthrifthttpexporter"
@@ -149,7 +148,6 @@ func components() (component.Factories, error) {
 
 	exporters := []component.ExporterFactory{
 		carbonexporter.NewFactory(),
-		clickhouseexporter.NewFactory(),
 		clickhousemetricsexporter.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
 		fileexporter.NewFactory(),
