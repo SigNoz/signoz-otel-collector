@@ -1204,8 +1204,12 @@ github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusrem
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.55.0/go.mod h1:fAruF2824yDHnnShjJ3NvbD7GhiedfnQgvtzVdmm6ZM=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v0.55.0 h1:TUCHnzhcuRDBDgXiseeiFI1HmE56Jd7krmNuEgnOHMA=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v0.55.0/go.mod h1:E2uJLBvavaILt7jmtDNZHCJe0SqZtRuHgtQxvYsQOCs=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.55.0 h1:IaXFRZSn+Kck++yvJWcNQjTV6ASL7Em3ePphmwDWxI0=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.55.0/go.mod h1:AL7Gro0hm+fXo5/rzTUBwpFUbAu1B+g3bi4iCxEW8Is=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.55.0 h1:TcTNN0CmmMuFvqAe7QoIfITUoCKSGyX/GpiqEBhN4BU=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.55.0/go.mod h1:gzTz2WVKAQkNaGq1nFQ+C1fFnrTW5ElkmaIae9taKqk=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.55.0 h1:DPKADqgQ3QR4wi7xg0JnBGrCQH1DjJ5ZXi0X638yedQ=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.55.0/go.mod h1:x1yTwPLT3TbrVuAGZbXBHQZQbQD8iNTbaIUE2QR8rA8=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage v0.55.0 h1:YOL/BMGo5yPI90Nlce1WCgg44/dDPu6e8M3w/tcTLY0=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.55.0 h1:GUvCAwAOzGY42UVI8w7WwLs+TGJb7bQ2XWSyCXNXyh0=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.55.0/go.mod h1:jR8qO34l3q845KDRiOBByD9sTy6vPY2je6zlCuqiAoU=
@@ -1326,6 +1330,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mysqlreceiver
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.55.0 h1:V64b/zc52Ub1NengfUHFZNpgWxu8WHZwQFM5Baf3WTs=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.55.0/go.mod h1:UFa1V/1gy4FAmdPyWNQozx5OQA1fzy+uCsz0wxRdcrg=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/opencensusreceiver v0.55.0 h1:RdQnebxBFJA6EiXq50sciyJzAmKDxqlQZYcjq8Ue+BM=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/opencensusreceiver v0.55.0/go.mod h1:b+zLC7TUP6uXbuz2OHqnupZxp3Lb3Nboc6w5VcfKG5U=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/podmanreceiver v0.55.0 h1:5bMVMb5C8ySVjNxW05VhJnNMxdUA4apw1saJ4Fij/rA=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/podmanreceiver v0.55.0/go.mod h1:OPl3rZlQrUDI8dNikQdU8uMgKXUCbp0VRsrlTc3/V7M=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver v0.55.0 h1:I17LWhURSyeczlWwXAQOlt14ANuyL5sZWU7n+6tbc0E=
@@ -1560,6 +1565,7 @@ github.com/smartystreets/goconvey v1.6.4/go.mod h1:syvi0/a8iFYH4r/RixwvyeAJjdLS9
 github.com/snowflakedb/gosnowflake v1.6.3/go.mod h1:6hLajn6yxuJ4xUHZegMekpq9rnQbGJ7TMwXjgTmA6lg=
 github.com/soheilhy/cmux v0.1.4/go.mod h1:IM3LyeVVIOuxMH7sFAkER9+bJ4dT7Ms6E4xg4kGIyLM=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
+github.com/soheilhy/cmux v0.1.5/go.mod h1:T7TcVDs9LWfQgPlPsdngu6I6QIoyIFZDDC6sNE1GqG0=
 github.com/sony/gobreaker v0.4.1/go.mod h1:ZKptC7FHNvhBz7dN2LGjPVBz2sZJmc0/PkyDJOjmxWY=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
@@ -1909,6 +1915,7 @@ golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0/go.mod h1:sp8m0HH+o8qH0wwXwY
 golang.org/x/net v0.0.0-20201021035429-f5854403a974/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/net v0.0.0-20201031054903-ff519b6c9102/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/net v0.0.0-20201110031124-69a78807bb2b/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
+golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/net v0.0.0-20201209123823-ac852fbbde11/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
 golang.org/x/net v0.0.0-20201224014010-6772e930b67b/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
 golang.org/x/net v0.0.0-20210119194325-5f4716e94777/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=

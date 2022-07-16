@@ -31,7 +31,7 @@ const (
 	defaultMigrations        string        = "/migrations"
 	defaultOperationsTable   string        = "signoz_operations"
 	defaultIndexTable        string        = "signoz_index_v2"
-	defaultErrorTable        string        = "signoz_error_index"
+	defaultErrorTable        string        = "signoz_error_index_v2"
 	defaultSpansTable        string        = "signoz_spans"
 	defaultArchiveSpansTable string        = "signoz_archive_spans"
 	defaultWriteBatchDelay   time.Duration = 5 * time.Second

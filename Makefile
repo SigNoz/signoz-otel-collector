@@ -28,7 +28,7 @@ test:
 
 .PHONY: build
 build:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build ./cmd/signozcollector
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o signoz-collector ./cmd/signozcollector
 
 .PHONY: run
 run:
@@ -39,10 +39,10 @@ fmt:
 	@echo Running go fmt on query service ...
 	@$(GOFMT) -e -s -l -w .
 
-.PHONY: build-push-signozcollector
-build-push-signozcollector:
+.PHONY: build-signoz-collector
+build-signoz-collector:
 	@echo "------------------"
-	@echo "--> Building and pushing otelcontribcol docker image"
+	@echo "--> Building signoz collector docker image"
 	@echo "------------------"
 	docker buildx build --progress plane \
 		--no-cache -f cmd/signozcollector/Dockerfile \

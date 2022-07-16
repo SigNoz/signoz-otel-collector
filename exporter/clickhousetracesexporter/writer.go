@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,6 +172,10 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 			span.TagMap,
 			span.GRPCMethod,
 			span.GRPCCode,
+			span.RPCSystem,
+			span.RPCService,
+			span.RPCMethod,
+			span.ResponseStatusCode,
 		)
 		if err != nil {
 			return err
@@ -195,14 +200,14 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 		err = statement.Append(
 			time.Unix(0, int64(span.ErrorEvent.TimeUnixNano)),
 			span.ErrorID,
+			span.ErrorGroupID,
 			span.TraceId,
 			span.SpanId,
-			span.ParentSpanId,
 			span.ServiceName,
 			span.ErrorEvent.AttributeMap["exception.type"],
 			span.ErrorEvent.AttributeMap["exception.message"],
 			span.ErrorEvent.AttributeMap["exception.stacktrace"],
-			span.ErrorEvent.AttributeMap["exception.escaped"],
+			stringToBool(span.ErrorEvent.AttributeMap["exception.escaped"]),
 		)
 		if err != nil {
 			return err
@@ -210,6 +215,13 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 	}
 
 	return statement.Send()
+}
+
+func stringToBool(s string) bool {
+	if strings.ToLower(s) == "true" {
+		return true
+	}
+	return false
 }
 
 func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {

@@ -17,7 +17,6 @@ package clickhousemetricsexporter
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/url"
 	"runtime/pprof"
@@ -25,8 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/pkg/errors"
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
@@ -43,13 +41,16 @@ const (
 
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
-	db                   *sql.DB
+	conn                 clickhouse.Conn
 	l                    *logrus.Entry
 	database             string
 	maxTimeSeriesInQuery int
 
 	timeSeriesRW sync.RWMutex
-	timeSeries   map[uint64][]*prompb.Label
+	// Maintains the lookup map for fingerprints that are
+	// written to time series table. This map is used to eliminate the
+	// unnecessary writes to table for the records that already exist.
+	timeSeries map[uint64]struct{}
 
 	mWrittenTimeSeries prometheus.Counter
 }
@@ -81,25 +82,33 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, database))
 
 	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.time_series (
-			date Date Codec(DoubleDelta, LZ4),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY date
-			ORDER BY fingerprint`, database))
-
-	// change sampleRowSize is you change this table
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.samples (
+		CREATE TABLE IF NOT EXISTS %s.samples_v2 (
+			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			value Float64 Codec(Gorilla, LZ4)
 		)
 		ENGINE = MergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (fingerprint, timestamp_ms)`, database))
+			ORDER BY (metric_name, fingerprint, timestamp_ms)`, database))
+
+	queries = append(queries, `SET allow_experimental_object_type = 1`)
+
+	// reading and writing of JSON object are not yet supported
+	// in clickhouse-go. We workaround this limitation for now by
+	// using the DEFAULT expression. However, we can use labels_object
+	// in the querying for faster results.
+	queries = append(queries, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s.time_series_v2 (
+			metric_name LowCardinality(String),
+			fingerprint UInt64 Codec(DoubleDelta, LZ4),
+			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
+			labels String Codec(ZSTD(5)),
+			labels_object JSON DEFAULT labels CODEC(ZSTD(5))
+		)
+		ENGINE = ReplacingMergeTree
+			PARTITION BY toDate(timestamp_ms / 1000)
+			ORDER BY (metric_name, fingerprint)`, database))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
@@ -113,9 +122,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 		options.Auth = auth
 	}
-	initDB := clickhouse.OpenDB(options)
-	initDB.SetMaxOpenConns(params.MaxOpenConns)
-	initDB.SetConnMaxLifetime(1 * time.Hour)
+	conn, err := clickhouse.Open(options)
 
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
@@ -123,20 +130,19 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	for _, q := range queries {
 		q = strings.TrimSpace(q)
-		l.Infof("Executing:\n%s", q)
-		if _, err = initDB.Exec(q); err != nil {
+		l.Infof("Executing:\n%s\n", q)
+		if err = conn.Exec(context.Background(), q); err != nil {
 			return nil, err
 		}
-
 	}
 
 	ch := &clickHouse{
-		db:                   initDB,
+		conn:                 conn,
 		l:                    l,
 		database:             database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 
-		timeSeries: make(map[uint64][]*prompb.Label, 8192),
+		timeSeries: make(map[uint64]struct{}, 8192),
 
 		mWrittenTimeSeries: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -155,33 +161,37 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	return ch, nil
 }
 
+// runTimeSeriesReloader periodically queries the time series table
+// and updates the timeSeries lookup map with new fingerprints.
+// One might wonder why is there a need to reload the data from clickhouse
+// when it just suffices to keep track of the fingerprint for the incoming
+// write requests. This is because there could be multiple instance of
+// metric exporters and they would only contain partial info with latter
+// approach.
 func (ch *clickHouse) runTimeSeriesReloader(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	q := fmt.Sprintf(`SELECT DISTINCT fingerprint, labels FROM %s.time_series`, ch.database)
+	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.time_series_v2`, ch.database)
 	for {
 		ch.timeSeriesRW.RLock()
-		timeSeries := make(map[uint64][]*prompb.Label, len(ch.timeSeries))
+		timeSeries := make(map[uint64]struct{}, len(ch.timeSeries))
 		ch.timeSeriesRW.RUnlock()
 
 		err := func() error {
 			ch.l.Debug(q)
-			rows, err := ch.db.Query(q)
+			rows, err := ch.conn.Query(ctx, q)
 			if err != nil {
 				return err
 			}
 			defer rows.Close()
 
 			var f uint64
-			var b []byte
 			for rows.Next() {
-				if err = rows.Scan(&f, &b); err != nil {
+				if err = rows.Scan(&f); err != nil {
 					return err
 				}
-				if timeSeries[f], err = unmarshalLabels(b); err != nil {
-					return err
-				}
+				timeSeries[f] = struct{}{}
 			}
 			return rows.Err()
 		}()
@@ -214,117 +224,104 @@ func (ch *clickHouse) Collect(c chan<- prometheus.Metric) {
 	ch.mWrittenTimeSeries.Collect(c)
 }
 
-type beginTxer interface {
-	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-}
-
-func inTransaction(ctx context.Context, txer beginTxer, f func(*sql.Tx) error) (err error) {
-	var tx *sql.Tx
-	if tx, err = txer.BeginTx(ctx, nil); err != nil {
-		err = errors.WithStack(err)
-		return
-	}
-	defer func() {
-		if err == nil {
-			err = errors.WithStack(tx.Commit())
-		} else {
-			tx.Rollback()
-		}
-	}()
-	err = f(tx)
-	return
-}
-
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
+	fingerprintToName := make(map[uint64]string)
 
 	for i, ts := range data.Timeseries {
+		var metricName string
 		labels := make([]*prompb.Label, len(ts.Labels))
 		for j, label := range ts.Labels {
 			labels[j] = &prompb.Label{
 				Name:  label.Name,
 				Value: label.Value,
 			}
-
+			if label.Name == "__name__" {
+				metricName = label.Value
+			}
 		}
 		timeseries.SortLabels(labels)
 		f := timeseries.Fingerprint(labels)
 		fingerprints[i] = f
 		timeSeries[f] = labels
+		fingerprintToName[f] = metricName
 	}
 	if len(fingerprints) != len(timeSeries) {
 		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
 	}
 
 	// find new time series
-	var newTimeSeries []uint64
+	newTimeSeries := make(map[uint64][]*prompb.Label)
 	ch.timeSeriesRW.Lock()
 	for f, m := range timeSeries {
 		_, ok := ch.timeSeries[f]
 		if !ok {
-			newTimeSeries = append(newTimeSeries, f)
-			ch.timeSeries[f] = m
+			ch.timeSeries[f] = struct{}{}
+			newTimeSeries[f] = m
 		}
 	}
 	ch.timeSeriesRW.Unlock()
 
-	// write new time series
-	if len(newTimeSeries) > 0 {
-		err := inTransaction(ctx, ch.db, func(tx *sql.Tx) error {
-			query := fmt.Sprintf(`INSERT INTO %s.time_series (date, fingerprint, labels) VALUES (?, ?, ?)`, ch.database)
-			var stmt *sql.Stmt
-			var err error
-			if stmt, err = tx.PrepareContext(ctx, query); err != nil {
-				return errors.WithStack(err)
-			}
-
-			args := make([]interface{}, 3)
-			args[0] = model.Now().Time()
-			for _, f := range newTimeSeries {
-				args[1] = f
-				args[2] = string(marshalLabels(timeSeries[f], make([]byte, 0, 128)))
-
-				// ch.l.Infof("%s %v", query, args)
-
-				if _, err := stmt.ExecContext(ctx, args...); err != nil {
-					return errors.WithStack(err)
-				}
-			}
-
-			return errors.WithStack(stmt.Close())
-		})
+	err := func() error {
+		ctx := context.Background()
+		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
 		if err != nil {
 			return err
 		}
-	}
 
-	// write samples
-	err := inTransaction(ctx, ch.db, func(tx *sql.Tx) error {
-		query := fmt.Sprintf(`INSERT INTO %s.samples (fingerprint, timestamp_ms, value) VALUES (?, ?, ?)`, ch.database)
-		var stmt *sql.Stmt
-		var err error
-		if stmt, err = tx.PrepareContext(ctx, query); err != nil {
-			return errors.WithStack(err)
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.time_series_v2 (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database))
+		if err != nil {
+			return err
+		}
+		timestamp := model.Now().Time().UnixMilli()
+		for fingerprint, labels := range newTimeSeries {
+			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+			err = statement.Append(
+				fingerprintToName[fingerprint],
+				timestamp,
+				fingerprint,
+				encodedLabels,
+			)
+			if err != nil {
+				return err
+			}
 		}
 
-		args := make([]interface{}, 3)
-		for i, ts := range data.Timeseries {
-			args[0] = fingerprints[i]
+		return statement.Send()
 
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	err = func() error {
+		ctx := context.Background()
+
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.samples_v2", ch.database))
+		if err != nil {
+			return err
+		}
+		for i, ts := range data.Timeseries {
+			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
-				args[1] = s.Timestamp
-				args[2] = s.Value
-				// ch.l.Debugf("%s %v", query, args)
-				if _, err := stmt.ExecContext(ctx, args...); err != nil {
-					return errors.WithStack(err)
+				err = statement.Append(
+					fingerprintToName[fingerprint],
+					fingerprint,
+					s.Timestamp,
+					s.Value,
+				)
+				if err != nil {
+					return err
 				}
 			}
 		}
 
-		return errors.WithStack(stmt.Close())
-	})
+		return statement.Send()
+
+	}()
 	if err != nil {
 		return err
 	}

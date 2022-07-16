@@ -16,7 +16,9 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -123,6 +125,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 				span.HasError = true
 			}
 			span.HttpCode = strconv.FormatInt(v.IntVal(), 10)
+			span.ResponseStatusCode = span.HttpCode
 		} else if k == "http.url" && span.Kind == 3 {
 			value := v.StringVal()
 			valueUrl, err := url.Parse(value)
@@ -155,14 +158,30 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 		} else if k == "peer.service" {
 			span.PeerService = v.StringVal()
 		} else if k == "rpc.grpc.status_code" {
-			if v.IntVal() >= 2 {
+			// Handle both string/int status code in GRPC spans.
+			statusString, err := strconv.Atoi(v.StringVal())
+			statusInt := v.IntVal()
+			if err == nil && statusString != 0 {
+				statusInt = int64(statusString)
+			}
+			if statusInt >= 2 {
 				span.HasError = true
 			}
-			span.GRPCCode = strconv.FormatInt(v.IntVal(), 10)
+			span.GRPCCode = strconv.FormatInt(statusInt, 10)
+			span.ResponseStatusCode = span.GRPCCode
 		} else if k == "rpc.method" {
-			span.GRPCMethod = v.StringVal()
+			span.RPCMethod = v.StringVal()
+			system, found := attributes.Get("rpc.system")
+			if found && system.StringVal() == "grpc" {
+				span.GRPCMethod = v.StringVal()
+			}
+		} else if k == "rpc.service" {
+			span.RPCService = v.StringVal()
+		} else if k == "rpc.system" {
+			span.RPCSystem = v.StringVal()
+		} else if k == "rpc.jsonrpc.error_code" {
+			span.ResponseStatusCode = v.StringVal()
 		}
-
 		return true
 
 	})
@@ -190,6 +209,8 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span) {
 			uuidWithHyphen := uuid.New()
 			uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
 			span.ErrorID = uuid
+			hmd5 := md5.Sum([]byte(span.ServiceName + span.ErrorEvent.AttributeMap["exception.type"] + span.ErrorEvent.AttributeMap["exception.message"]))
+			span.ErrorGroupID = fmt.Sprintf("%x", hmd5)
 		}
 		stringEvent, _ := json.Marshal(event)
 		span.Events = append(span.Events, string(stringEvent))
@@ -281,7 +302,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 		ilss := rs.ScopeSpans()
 		for j := 0; j < ilss.Len(); j++ {
-			// fmt.Printf("ScopeSpans #%d\n", j)
+			// fmt.Printf("InstrumentationLibrarySpans #%d\n", j)
 			ils := ilss.At(j)
 
 			spans := ils.Spans()

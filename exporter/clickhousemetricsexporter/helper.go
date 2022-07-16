@@ -401,7 +401,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		infBucket.Value = math.Float64frombits(value.StaleNaN)
 	} else {
-
+		cumulativeCount += pt.BucketCounts().At(pt.BucketCounts().Len() - 1)
 		infBucket.Value = float64(cumulativeCount)
 	}
 	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, pInfStr)

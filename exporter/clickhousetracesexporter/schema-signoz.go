@@ -63,11 +63,16 @@ type Span struct {
 	Events             []string          `json:"event,omitempty"`
 	ErrorEvent         Event             `json:"errorEvent,omitempty"`
 	ErrorID            string            `json:"errorID,omitempty"`
+	ErrorGroupID       string            `json:"errorGroupID,omitempty"`
 	TagMap             map[string]string `json:"tagMap,omitempty"`
 	HasError           bool              `json:"hasError,omitempty"`
 	TraceModel         TraceModel        `json:"traceModel,omitempty"`
 	GRPCCode           string            `json:"gRPCCode,omitempty"`
 	GRPCMethod         string            `json:"gRPCMethod,omitempty"`
+	RPCSystem          string            `json:"rpcSystem,omitempty"`
+	RPCService         string            `json:"rpcService,omitempty"`
+	RPCMethod          string            `json:"rpcMethod,omitempty"`
+	ResponseStatusCode string            `json:"responseStatusCode,omitempty"`
 }
 
 type OtelSpanRef struct {

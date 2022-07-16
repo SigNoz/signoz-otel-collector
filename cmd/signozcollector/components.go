@@ -12,6 +12,8 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatorateprocessor"
@@ -53,6 +55,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mysqlreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/opencensusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/podmanreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver"
@@ -123,6 +126,7 @@ func components() (component.Factories, error) {
 		mongodbreceiver.NewFactory(),
 		mysqlreceiver.NewFactory(),
 		nginxreceiver.NewFactory(),
+		opencensusreceiver.NewFactory(),
 		podmanreceiver.NewFactory(),
 		postgresqlreceiver.NewFactory(),
 		prometheusexecreceiver.NewFactory(),
@@ -209,6 +213,8 @@ func CoreComponents() (
 
 	extensions, err := component.MakeExtensionFactoryMap(
 		ballastextension.NewFactory(),
+		healthcheckextension.NewFactory(),
+		pprofextension.NewFactory(),
 		zpagesextension.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)

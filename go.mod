@@ -20,6 +20,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v0.55.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.55.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor v0.55.0
@@ -62,6 +64,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbreceiver v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mysqlreceiver v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.55.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/opencensusreceiver v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/podmanreceiver v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver v0.55.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver v0.55.0
@@ -264,6 +267,7 @@ require (
 	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.9 // indirect
 	github.com/shirou/gopsutil/v3 v3.22.6 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
+	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/cobra v1.5.0 // indirect
