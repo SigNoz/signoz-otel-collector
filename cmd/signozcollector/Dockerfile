@@ -24,6 +24,7 @@ USER ${USER_UID}
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/signoz-collector /
 COPY --from=build /src/exporter/clickhousetracesexporter/migrations /migrations
+COPY --from=build /src/exporter/clickhouselogsexporter/migrations /logsmigrations
 
 EXPOSE 4317 4318
 ENTRYPOINT ["/signoz-collector"]

@@ -49,7 +49,7 @@ func createDefaultConfig() config.Exporter {
 		RetrySettings:    exporterhelper.NewDefaultRetrySettings(),
 		DatabaseName:     databaseName,
 		LogsTableName:    tableName,
-		Migrations:       "../../exporter/clickhouselogsexporter/migrations/",
+		Migrations:       "/logsmigrations/",
 	}
 }
 
