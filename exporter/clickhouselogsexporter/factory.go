@@ -37,7 +37,7 @@ func NewFactory() component.ExporterFactory {
 	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithLogsExporter(createLogsExporter),
+		component.WithLogsExporterAndStabilityLevel(createLogsExporter, component.StabilityLevelAlpha),
 	)
 }
 
@@ -49,7 +49,7 @@ func createDefaultConfig() config.Exporter {
 		RetrySettings:    exporterhelper.NewDefaultRetrySettings(),
 		DatabaseName:     databaseName,
 		LogsTableName:    tableName,
-		Migrations:       "/logsmigrations/",
+		Migrations:       "./migrations/",
 	}
 }
 

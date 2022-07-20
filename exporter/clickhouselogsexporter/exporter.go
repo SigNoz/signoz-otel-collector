@@ -117,7 +117,6 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 						return fmt.Errorf("ExecContext:%w", err)
 					}
 				}
-				time.Sleep(2 * time.Second)
 			}
 		}
 		return nil
