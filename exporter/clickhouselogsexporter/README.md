@@ -50,7 +50,6 @@ processors:
 exporters:
   clickhouselogsexporter:
     dsn: tcp://127.0.0.1:9000
-    ttl_days: 3
     timeout: 5s
     retry_on_failure:
       enabled: true

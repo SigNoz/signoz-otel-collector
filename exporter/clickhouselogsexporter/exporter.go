@@ -220,15 +220,15 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (*sql.DB, error) {
 	logger.Info("Running migrations from path: ", zap.Any("test", cfg.Migrations))
 	clickhouseUrl, err := buildClickhouseMigrateURL(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
+		return nil, fmt.Errorf("failed to build Clickhouse migrate URL, error: %s", err)
 	}
 	m, err := migrate.New("file://"+cfg.Migrations, clickhouseUrl)
 	if err != nil {
-		return nil, fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
+		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
 	}
 	err = m.Up()
 	if err != nil && !strings.HasSuffix(err.Error(), "no change") {
-		return nil, fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
+		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
 	}
 
 	logger.Info("Clickhouse Migrate finished")
@@ -245,7 +245,7 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	}
 	host := parsedURL.Host
 	if host == "" {
-		return "", fmt.Errorf("Unable to parse host")
+		return "", fmt.Errorf("unable to parse host")
 
 	}
 	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
