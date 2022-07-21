@@ -15,7 +15,7 @@ ENV GOARCH=$TARGETARCH
 RUN cd cmd/signozcollector && go build -o /out/signoz-collector
 
 # Final stage
-FROM scratch
+FROM alpine:3.15
 
 ARG USER_UID=10001
 

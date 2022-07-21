@@ -16,13 +16,12 @@ package clickhouselogsexporter // import "github.com/open-telemetry/opentelemetr
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
-	_ "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -33,12 +32,11 @@ import (
 )
 
 type clickhouseLogsExporter struct {
-	client        *sql.DB
+	db            clickhouse.Conn
 	insertLogsSQL string
 
 	logger *zap.Logger
 	cfg    *Config
-	ksuid  ksuid.KSUID
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -54,7 +52,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	insertLogsSQL := renderInsertLogsSQL(cfg)
 
 	return &clickhouseLogsExporter{
-		client:        client,
+		db:            client,
 		insertLogsSQL: insertLogsSQL,
 		logger:        logger,
 		cfg:           cfg,
@@ -63,64 +61,66 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
-	if e.client != nil {
-		return e.client.Close()
+	if e.db != nil {
+		return e.db.Close()
 	}
 	return nil
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	start := time.Now()
-	err := doWithTx(ctx, e.client, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, e.insertLogsSQL)
-		if err != nil {
-			return fmt.Errorf("PrepareContext:%w", err)
-		}
-		defer func() {
-			_ = statement.Close()
-		}()
-		for i := 0; i < ld.ResourceLogs().Len(); i++ {
-			logs := ld.ResourceLogs().At(i)
-			res := logs.Resource()
-			resources := attributesToSlice(res.Attributes())
-			for j := 0; j < logs.ScopeLogs().Len(); j++ {
-				rs := logs.ScopeLogs().At(j).LogRecords()
-				for k := 0; k < rs.Len(); k++ {
-					r := rs.At(k)
+	statement, err := e.db.PrepareBatch(ctx, e.insertLogsSQL)
+	if err != nil {
+		return fmt.Errorf("PrepareBatch:%w", err)
+	}
+	defer func() {
+		_ = statement.Abort()
+	}()
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		logs := ld.ResourceLogs().At(i)
+		res := logs.Resource()
+		resources := attributesToSlice(res.Attributes())
+		for j := 0; j < logs.ScopeLogs().Len(); j++ {
+			rs := logs.ScopeLogs().At(j).LogRecords()
+			for k := 0; k < rs.Len(); k++ {
+				r := rs.At(k)
 
-					id, err := ksuid.NewRandomWithTime(r.Timestamp().AsTime())
-					if err != nil {
-						return fmt.Errorf("Error creating id: %w", err)
-					}
-
-					attributes := attributesToSlice(r.Attributes())
-					_, err = statement.ExecContext(ctx,
-						uint64(r.Timestamp()),
-						uint64(r.ObservedTimestamp()),
-						id.String(),
-						r.TraceID().HexString(),
-						r.SpanID().HexString(),
-						r.Flags(),
-						r.SeverityText(),
-						int32(r.SeverityNumber()),
-						r.Body().AsString(),
-						resources.StringKeys,
-						resources.StringValues,
-						attributes.StringKeys,
-						attributes.StringValues,
-						attributes.IntKeys,
-						attributes.IntValues,
-						attributes.FloatKeys,
-						attributes.FloatValues,
-					)
-					if err != nil {
-						return fmt.Errorf("ExecContext:%w", err)
-					}
+				id, err := ksuid.NewRandomWithTime(r.Timestamp().AsTime())
+				if err != nil {
+					return fmt.Errorf("error creating id: %w", err)
 				}
+
+				attributes := attributesToSlice(r.Attributes())
+				err = statement.Append(
+					uint64(r.Timestamp()),
+					uint64(r.ObservedTimestamp()),
+					id.String(),
+					r.TraceID().HexString(),
+					r.SpanID().HexString(),
+					r.Flags(),
+					r.SeverityText(),
+					int32(r.SeverityNumber()),
+					r.Body().AsString(),
+					resources.StringKeys,
+					resources.StringValues,
+					attributes.StringKeys,
+					attributes.StringValues,
+					attributes.IntKeys,
+					attributes.IntValues,
+					attributes.FloatKeys,
+					attributes.FloatValues,
+				)
+				if err != nil {
+					return fmt.Errorf("StatementAppend:%w", err)
+				}
+
 			}
 		}
-		return nil
-	})
+	}
+	err = statement.Send()
+	if err != nil {
+		return fmt.Errorf("StatementSend:%w", err)
+	}
 	duration := time.Since(start)
 	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 		zap.String("cost", duration.String()))
@@ -199,18 +199,35 @@ const (
 								)`
 )
 
-var driverName = "clickhouse" // for testing
-
 // newClickhouseClient create a clickhouse client.
-func newClickhouseClient(logger *zap.Logger, cfg *Config) (*sql.DB, error) {
+func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	// use empty database to create database
-	db, err := sql.Open(driverName, cfg.DSN)
+	ctx := context.Background()
+	dsnURL, err := url.Parse(cfg.DSN)
 	if err != nil {
-		return nil, fmt.Errorf("sql.Open:%w", err)
+		return nil, err
+	}
+	options := &clickhouse.Options{
+		Addr: []string{dsnURL.Host},
+	}
+	if dsnURL.Query().Get("username") != "" {
+		auth := clickhouse.Auth{
+			Username: dsnURL.Query().Get("username"),
+			Password: dsnURL.Query().Get("password"),
+		}
+		options.Auth = auth
+	}
+	db, err := clickhouse.Open(options)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(ctx); err != nil {
+		return nil, err
 	}
 
 	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", cfg.DatabaseName)
-	_, err = db.Exec(q)
+	err = db.Exec(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
 	}
@@ -264,18 +281,4 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 
 func renderInsertLogsSQL(cfg *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplate, cfg.DatabaseName, cfg.LogsTableName)
-}
-
-func doWithTx(_ context.Context, db *sql.DB, fn func(tx *sql.Tx) error) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("db.Begin: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-	if err := fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
