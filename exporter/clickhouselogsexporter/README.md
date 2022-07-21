@@ -43,7 +43,7 @@ The following settings can be optionally configured:
 
 ```yaml
 receivers:
-  examplereceiver:
+  nop:
 processors:
   batch:
     timeout: 10s
@@ -59,7 +59,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [examplereceiver]
+      receivers: [nop]
       processors: [batch]
       exporters: [clickhouselogsexporter]
 ```

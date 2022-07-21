@@ -161,42 +161,42 @@ func formatKey(k string) string {
 const (
 	// language=ClickHouse SQL
 	insertLogsSQLTemplate = `INSERT INTO %s.%s (
-                        timestamp,
-						observed_timestamp,
-						id,
-                        trace_id,
-                        span_id,
-                        trace_flags,
-                        severity_text,
-                        severity_number,
-                        body,
-                        resources_string_key,
-						resources_string_value,
-						attributes_string_key, 
-						attributes_string_value,
-						attributes_int64_key,
-						attributes_int64_value,
-						attributes_float64_key,
-						attributes_float64_value
-                        ) VALUES (
-                                  ?,
-								  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-                                  ?,
-								  ?,
-								  ?,
-								  ?,
-								  ?,
-								  ?,
-								  ?,
-								  ?
-                                  )`
+							timestamp,
+							observed_timestamp,
+							id,
+							trace_id,
+							span_id,
+							trace_flags,
+							severity_text,
+							severity_number,
+							body,
+							resources_string_key,
+							resources_string_value,
+							attributes_string_key, 
+							attributes_string_value,
+							attributes_int64_key,
+							attributes_int64_value,
+							attributes_float64_key,
+							attributes_float64_value
+							) VALUES (
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?
+								)`
 )
 
 var driverName = "clickhouse" // for testing
