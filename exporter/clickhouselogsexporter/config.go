@@ -22,7 +22,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// Config defines configuration for Elastic exporter.
+// Config defines configuration for ClickHouse exporter.
 type Config struct {
 	config.ExporterSettings        `mapstructure:",squash"`
 	exporterhelper.TimeoutSettings `mapstructure:",squash"`
