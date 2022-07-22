@@ -34,6 +34,7 @@ import (
 type clickhouseLogsExporter struct {
 	db            clickhouse.Conn
 	insertLogsSQL string
+	ksuid         ksuid.KSUID
 
 	logger *zap.Logger
 	cfg    *Config
@@ -56,6 +57,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		insertLogsSQL: insertLogsSQL,
 		logger:        logger,
 		cfg:           cfg,
+		ksuid:         ksuid.New(),
 	}, nil
 }
 
@@ -85,16 +87,11 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			for k := 0; k < rs.Len(); k++ {
 				r := rs.At(k)
 
-				id, err := ksuid.NewRandomWithTime(r.Timestamp().AsTime())
-				if err != nil {
-					return fmt.Errorf("error creating id: %w", err)
-				}
-
 				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(
 					uint64(r.Timestamp()),
 					uint64(r.ObservedTimestamp()),
-					id.String(),
+					e.ksuid.String(),
 					r.TraceID().HexString(),
 					r.SpanID().HexString(),
 					r.Flags(),
@@ -113,7 +110,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 				if err != nil {
 					return fmt.Errorf("StatementAppend:%w", err)
 				}
-
+				e.ksuid = e.ksuid.Next()
 			}
 		}
 	}
