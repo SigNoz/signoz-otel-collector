@@ -79,7 +79,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
-		resources := attributesToSlice(res.Attributes())
+		resources := attributesToSlice(res.Attributes(), true)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
 			rs := logs.ScopeLogs().At(j).LogRecords()
 			for k := 0; k < rs.Len(); k++ {
@@ -90,7 +90,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					return fmt.Errorf("error creating id: %w", err)
 				}
 
-				attributes := attributesToSlice(r.Attributes())
+				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(
 					uint64(r.Timestamp()),
 					uint64(r.ObservedTimestamp()),
@@ -136,18 +136,24 @@ type attributesToSliceResponse struct {
 	FloatValues  []float64
 }
 
-func attributesToSlice(attributes pcommon.Map) (response attributesToSliceResponse) {
+func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		switch v.Type().String() {
-		case "INT":
-			response.IntKeys = append(response.IntKeys, formatKey(k))
-			response.IntValues = append(response.IntValues, v.IntVal())
-		case "DOUBLE":
-			response.FloatKeys = append(response.FloatKeys, formatKey(k))
-			response.FloatValues = append(response.FloatValues, v.DoubleVal())
-		default: // store it as string
+		if forceStringValues {
+			// store everything as string
 			response.StringKeys = append(response.StringKeys, formatKey(k))
 			response.StringValues = append(response.StringValues, v.AsString())
+		} else {
+			switch v.Type().String() {
+			case "INT":
+				response.IntKeys = append(response.IntKeys, formatKey(k))
+				response.IntValues = append(response.IntValues, v.IntVal())
+			case "DOUBLE":
+				response.FloatKeys = append(response.FloatKeys, formatKey(k))
+				response.FloatValues = append(response.FloatValues, v.DoubleVal())
+			default: // store it as string
+				response.StringKeys = append(response.StringKeys, formatKey(k))
+				response.StringValues = append(response.StringValues, v.AsString())
+			}
 		}
 		return true
 	})
