@@ -1,14 +1,6 @@
-# ClickHouse Exporter
+# ClickHouse Logs Exporter
 
-**Status: experimental**
-
-| Status                   |           |
-| ------------------------ |-----------|
-| Stability                | [beta]    |
-| Supported pipeline types | logs      |
-| Distributions            | [contrib] |
-
-This exporter supports sending OpenTelemetry logs to [ClickHouse](https://clickhouse.com/). It will also support spans and metrics in the future.
+This exporter supports sending OpenTelemetry logs to [ClickHouse](https://clickhouse.com/).
 > ClickHouse is an open-source, high performance columnar OLAP database management system for real-time analytics using SQL.
 > Throughput can be measured in rows per second or megabytes per second. 
 > If the data is placed in the page cache, a query that is not too complex is processed on modern hardware at a speed of approximately 2-10 GB/s of uncompressed data on a single server.
