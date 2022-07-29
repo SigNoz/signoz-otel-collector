@@ -9,7 +9,7 @@ TO signoz_traces.top_level_operations
 AS SELECT DISTINCT
     name,
     serviceName
-FROM signoz_index_v2 AS A, signoz_index_v2 AS B
+FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
 WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.root_operations
@@ -17,5 +17,5 @@ TO signoz_traces.top_level_operations
 AS SELECT DISTINCT
     name,
     serviceName
-FROM signoz_index_v2
+FROM signoz_traces.signoz_index_v2
 WHERE parentSpanID = '';
