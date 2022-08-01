@@ -21,7 +21,6 @@ The following settings are required:
 The following settings can be optionally configured:
 
 - `ttl_days` (defaul t= 0): The data time-to-live in days, 0 means no ttl.
-- `logs_table_name` (default = otel_logs): The table name for logs.
 - `timeout` (default = 5s): The timeout for every attempt to send data to the backend.
 - `sending_queue`
   - `queue_size` (default = 5000): Maximum number of batches kept in memory before dropping data.
