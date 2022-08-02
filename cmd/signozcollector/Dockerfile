@@ -12,7 +12,7 @@ ENV CGO_ENABLED=0
 ENV GOOS=$TARGETOS
 ENV GOARCH=$TARGETARCH
 
-RUN cd cmd/signozcollector && go build -o /out/signoz-collector
+RUN cd cmd/signozcollector && go build -tags timetzdata -o /out/signoz-collector
 
 # Final stage
 FROM scratch
@@ -28,3 +28,4 @@ COPY --from=build /src/exporter/clickhousetracesexporter/migrations /migrations
 EXPOSE 4317 4318
 ENTRYPOINT ["/signoz-collector"]
 CMD ["--config", "/etc/otel/config.yaml"]
+
