@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	attributes_int64_key Array(String) CODEC(ZSTD(1)),
 	attributes_int64_value Array(Int64) CODEC(ZSTD(1)),
 	attributes_float64_key Array(String) CODEC(ZSTD(1)),
-	attributes_float64_value Array(Float64) CODEC(ZSTD(1))
+	attributes_float64_value Array(Float64) CODEC(ZSTD(1)),
+	INDEX body_idx body TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
 ) ENGINE MergeTree()
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id);
