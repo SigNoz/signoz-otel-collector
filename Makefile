@@ -12,6 +12,9 @@ GOFMT=gofmt
 FMT_LOG=.fmt.log
 IMPORT_LOG=.import.log
 
+CLICKHOUSE_HOST ?= localhost
+CLICKHOUSE_PORT ?= 9000
+
 
 .PHONY: install-tools
 install-tools:
@@ -58,3 +61,12 @@ install-ci: install-tools
 
 .PHONY: test-ci
 test-ci: lint
+
+
+.PHONY: migrate-logs
+migrate-logs: 
+	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" up
+
+.PHONY: migrate-logs-down
+migrate-logs-down: 
+	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" down
