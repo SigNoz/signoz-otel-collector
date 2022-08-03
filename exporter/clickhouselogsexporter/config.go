@@ -38,8 +38,6 @@ type Config struct {
 	DatabaseName string // `mapstructure:"database_name"` // dont read from config
 
 	LogsTableName string // `mapstructure:"logs_table_name"` // dont read from config
-	// TTLDays is The data time-to-live in days, 0 means no ttl.
-	TTLDays uint `mapstructure:"ttl_days"`
 
 	Migrations string `mapstructure:"migrations"`
 }

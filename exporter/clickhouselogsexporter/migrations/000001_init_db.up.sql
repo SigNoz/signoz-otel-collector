@@ -1,13 +1,14 @@
+-- https://altinity.com/blog/2019/7/new-encodings-to-improve-clickhouse
 CREATE TABLE IF NOT EXISTS logs (
-	timestamp UInt64 CODEC(Delta, ZSTD(1)),
-	observed_timestamp UInt64 CODEC(Delta, ZSTD(1)),
+	timestamp UInt64 CODEC(DoubleDelta, LZ4),
+	observed_timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	id String CODEC(ZSTD(1)),
 	trace_id String CODEC(ZSTD(1)),
 	span_id String CODEC(ZSTD(1)),
 	trace_flags UInt32,
 	severity_text LowCardinality(String) CODEC(ZSTD(1)),
-	severity_number Int32,
-	body String CODEC(ZSTD(1)),
+	severity_number UInt8,
+	body String CODEC(ZSTD(2)),
 	resources_string_key Array(String) CODEC(ZSTD(1)),
 	resources_string_value Array(String) CODEC(ZSTD(1)),
 	attributes_string_key Array(String) CODEC(ZSTD(1)),

@@ -96,7 +96,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					r.SpanID().HexString(),
 					r.Flags(),
 					r.SeverityText(),
-					int32(r.SeverityNumber()),
+					uint8(r.SeverityNumber()),
 					r.Body().AsString(),
 					resources.StringKeys,
 					resources.StringValues,
