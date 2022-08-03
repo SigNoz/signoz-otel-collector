@@ -13,12 +13,12 @@ ALTER TABLE signoz_traces.durationSort
     ADD COLUMN IF NOT EXISTS `responseStatusCode` LowCardinality(String) CODEC(ZSTD(1));
 
 ALTER TABLE signoz_traces.signoz_index_v2
-    ADD INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
-    ADD INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1;
+    ADD INDEX IF NOT EXISTS idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
+    ADD INDEX IF NOT EXISTS idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1;
 
 ALTER TABLE signoz_traces.durationSort
-    ADD INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
-    ADD INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1;
+    ADD INDEX IF NOT EXISTS idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
+    ADD INDEX IF NOT EXISTS idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1;
 
 CREATE MATERIALIZED VIEW signoz_traces.durationSortMV
 TO signoz_traces.durationSort
