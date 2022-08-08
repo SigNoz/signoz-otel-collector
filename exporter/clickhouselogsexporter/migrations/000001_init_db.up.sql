@@ -26,13 +26,13 @@ ORDER BY (timestamp, id);
 CREATE TABLE IF NOT EXISTS logs_atrribute_keys (
 name String,
 datatype String
-)ENGINE = AggregatingMergeTree
+)ENGINE = ReplacingMergeTree
 ORDER BY (name);
 
 CREATE TABLE IF NOT EXISTS logs_resource_keys (
 name String,
 datatype String
-)ENGINE = AggregatingMergeTree
+)ENGINE = ReplacingMergeTree
 ORDER BY (name);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv TO logs_atrribute_keys AS
