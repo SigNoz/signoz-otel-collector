@@ -66,7 +66,6 @@ processors:
 exporters:
   clickhouselogsexporter:
     dsn: tcp://host.docker.internal:9000
-    ttl_days: 0 # no ttl for testing
     timeout: 10s
     sending_queue:
       queue_size: 150

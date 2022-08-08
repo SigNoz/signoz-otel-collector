@@ -26,6 +26,8 @@ COPY --from=build /out/signoz-collector /
 COPY --from=build /src/exporter/clickhousetracesexporter/migrations /migrations
 COPY --from=build /src/exporter/clickhouselogsexporter/migrations /logsmigrations
 
+ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
+
 EXPOSE 4317 4318
 ENTRYPOINT ["/signoz-collector"]
 CMD ["--config", "/etc/otel/config.yaml"]

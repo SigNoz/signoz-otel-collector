@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -229,19 +230,26 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", cfg.DatabaseName)
+	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
 	err = db.Exec(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
 	}
 
 	// do the migration here
-	logger.Info("Running migrations from path: ", zap.Any("test", cfg.Migrations))
+
+	// get the migrations folder
+	mgsFolder := os.Getenv("LOG_MIGRATIONS_FOLDER")
+	if mgsFolder == "" {
+		mgsFolder = migrationsFolder
+	}
+
+	logger.Info("Running migrations from path: ", zap.Any("test", mgsFolder))
 	clickhouseUrl, err := buildClickhouseMigrateURL(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build Clickhouse migrate URL, error: %s", err)
 	}
-	m, err := migrate.New("file://"+cfg.Migrations, clickhouseUrl)
+	m, err := migrate.New("file://"+mgsFolder, clickhouseUrl)
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
 	}
@@ -257,7 +265,6 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	// return fmt.Sprintf("clickhouse://localhost:9000?database=default&x-multi-statement=true"), nil
 	var clickhouseUrl string
-	database := cfg.DatabaseName
 	parsedURL, err := url.Parse(cfg.DSN)
 	if err != nil {
 		return "", err
@@ -275,13 +282,13 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true", username[0], password[0], host, database)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true", username[0], password[0], host, databaseName)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true", host, database)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true", host, databaseName)
 	}
 	return clickhouseUrl, nil
 }
 
 func renderInsertLogsSQL(cfg *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplate, cfg.DatabaseName, cfg.LogsTableName)
+	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, tableName)
 }

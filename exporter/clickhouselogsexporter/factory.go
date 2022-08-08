@@ -30,6 +30,7 @@ const (
 	archiveNamespace = "clickhouselogs-archive"
 	databaseName     = "signoz_logs"
 	tableName        = "logs"
+	migrationsFolder = "./migrations"
 )
 
 // NewFactory creates a factory for Elastic exporter.
@@ -47,9 +48,6 @@ func createDefaultConfig() config.Exporter {
 		TimeoutSettings:  exporterhelper.NewDefaultTimeoutSettings(),
 		QueueSettings:    QueueSettings{QueueSize: exporterhelper.NewDefaultQueueSettings().QueueSize},
 		RetrySettings:    exporterhelper.NewDefaultRetrySettings(),
-		DatabaseName:     databaseName,
-		LogsTableName:    tableName,
-		Migrations:       "/logsmigrations/",
 	}
 }
 
