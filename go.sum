@@ -106,9 +106,8 @@ github.com/Azure/go-autorest/tracing v0.6.0/go.mod h1:+vhtPC754Xsa23ID7GlGsrdKBp
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/ClickHouse/clickhouse-go v1.4.3/go.mod h1:EaI/sW7Azgz9UATzd5ZdZHRUhHgv5+JMS9NSr2smCJI=
+github.com/ClickHouse/clickhouse-go v1.5.3 h1:Vok8zUb/wlqc9u8oEqQzBMBRDoFd8NxPRqgYEqMnV88=
 github.com/ClickHouse/clickhouse-go v1.5.3/go.mod h1:EaI/sW7Azgz9UATzd5ZdZHRUhHgv5+JMS9NSr2smCJI=
-github.com/ClickHouse/clickhouse-go v1.5.4 h1:cKjXeYLNWVJIx2J1K6H2CqyRmfwVJVY1OV1coaaFcI0=
-github.com/ClickHouse/clickhouse-go v1.5.4/go.mod h1:EaI/sW7Azgz9UATzd5ZdZHRUhHgv5+JMS9NSr2smCJI=
 github.com/ClickHouse/clickhouse-go/v2 v2.0.12 h1:Nbl/NZwoM6LGJm7smNBgvtdr/rxjlIssSW3eG/Nmb9E=
 github.com/ClickHouse/clickhouse-go/v2 v2.0.12/go.mod h1:u4RoNQLLM2W6hNSPYrIESLJqaWSInZVmfM+MlaAhXcg=
 github.com/DATA-DOG/go-sqlmock v1.3.3/go.mod h1:f/Ixk793poVmq4qj/V1dPUg2JEAKC73Q5eFN3EC/SaM=
@@ -1261,6 +1260,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbytrace
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/groupbytraceprocessor v0.55.0/go.mod h1:gOdfVPw1qsVBrP6nzE1pLpwQA8qc3pNDCG9rgjYVKNE=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.55.0 h1:kPpS2Ey3WJGx+IoDfW33e7tC8wRa5x/PwQ/dWJnhkpU=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.55.0/go.mod h1:qZ5V3hxEl2nwBsvAfG4pT6LBn00GGVozjI1hHPmiF5A=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/logstransformprocessor v0.55.0 h1:af1iIKP+egT6C1gbbW27fYvrAG3W+n96ka4JV2HoKBA=
+github.com/open-telemetry/opentelemetry-collector-contrib/processor/logstransformprocessor v0.55.0/go.mod h1:4lz3nkgX/321jmin6ThCU9Xn3Kqd6gGHHXmAi8poCXE=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricsgenerationprocessor v0.55.0 h1:cl5VXtWclnundIJkGCuizQCQz2h738tPQFFz23ARZK8=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricsgenerationprocessor v0.55.0/go.mod h1:elBd+OfTB486u5AWNpiRxmRcLdPMh6EoqDfAulXfDfY=
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/metricstransformprocessor v0.55.0 h1:Xm9jEbah2s65Hy4KBqHEWkVyKoAxLNJPwA5D1hW/nKU=
@@ -1537,6 +1538,8 @@ github.com/schollz/progressbar/v2 v2.13.2/go.mod h1:6YZjqdthH6SCZKv2rqGryrxPtfmR
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUtVbo7ada43DJhG55ua/hjS5I=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/seccomp/libseccomp-golang v0.9.1/go.mod h1:GbW5+tmTXfcxTToHLXlScSlAvWlF4P2Ca7zGrPiEpWo=
+github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c=
+github.com/segmentio/ksuid v1.0.4/go.mod h1:/XUiZBD3kVx5SmUOl55voK5yeAbBNNIed+2O73XgrPE=
 github.com/sergey-telpuk/migrate/v4 v4.15.3-0.20220303065225-d5ae59d12ff7 h1:oAMuQOlrIBBwDqxyPo+pZAf829w6zKfcB7qGI9l91og=
 github.com/sergey-telpuk/migrate/v4 v4.15.3-0.20220303065225-d5ae59d12ff7/go.mod h1:m0OsHoAhCA9OlUH4aSxzM7k9cLmhvXjLyCsxfvC9WHU=
 github.com/shirou/gopsutil v2.19.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=
