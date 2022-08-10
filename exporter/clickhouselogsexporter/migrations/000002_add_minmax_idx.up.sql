@@ -1,0 +1,1 @@
+alter table signoz_logs.logs add index id_minmax id TYPE minmax GRANULARITY 1
