@@ -51,6 +51,15 @@ build-and-push-signoz-collector:
 		--no-cache --push -f cmd/signozcollector/Dockerfile \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
+.PHONY: build-signoz-collector
+build-signoz-collector:
+	@echo "------------------"
+	@echo  "--> Build signoz collector docker image"
+	@echo "------------------"
+	docker build --build-arg TARGETPLATFORM="linux/amd64" \
+		--no-cache -f cmd/signozcollector/Dockerfile --progress plane \
+		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
+
 .PHONY: lint
 lint:
 	@echo "Running linters..."

@@ -9,7 +9,7 @@ on:
       - v*
 
 jobs:
-  image-build-and-push-query-service:
+  image-build-and-push-signoz-collector:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

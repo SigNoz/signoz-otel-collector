@@ -1,16 +1,17 @@
 # Builder stage
-FROM --platform=$BUILDPLATFORM golang:1.17-alpine as build
+FROM golang:1.17-alpine as build
 RUN apk --update add ca-certificates
 
 WORKDIR /src
 COPY . .
 
-ARG TARGETOS TARGETARCH
+ARG TARGETPLATFORM
+
+RUN export GOOS=$(echo ${TARGETPLATFORM} | cut -d / -f1) && \
+    export GOARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
 
 ENV OS111MODULE=on
 ENV CGO_ENABLED=0
-ENV GOOS=$TARGETOS
-ENV GOARCH=$TARGETARCH
 
 RUN cd cmd/signozcollector && go build -tags timetzdata -o /out/signoz-collector
 
@@ -31,4 +32,3 @@ ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
 EXPOSE 4317 4318
 ENTRYPOINT ["/signoz-collector"]
 CMD ["--config", "/etc/otel/config.yaml"]
-
