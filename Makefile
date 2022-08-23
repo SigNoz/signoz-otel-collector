@@ -1,6 +1,6 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
-IMAGE_NAME ?= "otel-collector"
+IMAGE_NAME ?= "signoz-otel-collector"
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
@@ -42,13 +42,22 @@ fmt:
 	@echo Running go fmt on query service ...
 	@$(GOFMT) -e -s -l -w .
 
+.PHONY: build-and-push-signoz-collector
+build-and-push-signoz-collector:
+	@echo "------------------"
+	@echo  "--> Build and push signoz collector docker image"
+	@echo "------------------"
+	docker buildx build --platform linux/amd64,linux/arm64 --progress plane \
+		--no-cache --push -f cmd/signozcollector/Dockerfile \
+		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
+
 .PHONY: build-signoz-collector
 build-signoz-collector:
 	@echo "------------------"
-	@echo "--> Building signoz collector docker image"
+	@echo  "--> Build signoz collector docker image"
 	@echo "------------------"
-	docker buildx build --progress plane \
-		--no-cache -f cmd/signozcollector/Dockerfile \
+	docker build --build-arg TARGETPLATFORM="linux/amd64" \
+		--no-cache -f cmd/signozcollector/Dockerfile --progress plane \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
 .PHONY: lint
