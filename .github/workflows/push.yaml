@@ -34,7 +34,7 @@ jobs:
         run: |
           if [ '${{ steps.branch-name.outputs.is_tag }}' == 'true' ]; then
             tag="${{ steps.branch-name.outputs.tag }}"
-            tag="${tag:8}"
+            tag="${tag:1}"
             echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
           else
             echo "DOCKER_TAG=${{ steps.branch-name.outputs.current_branch }}" >> $GITHUB_ENV
