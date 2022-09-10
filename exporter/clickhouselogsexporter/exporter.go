@@ -282,9 +282,9 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true", username[0], password[0], host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table-engine=MergeTree", username[0], password[0], host, databaseName)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true", host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table-engine=MergeTree", host, databaseName)
 	}
 	return clickhouseUrl, nil
 }
