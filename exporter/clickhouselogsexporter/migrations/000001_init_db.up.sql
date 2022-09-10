@@ -24,7 +24,7 @@ ORDER BY (timestamp, id);
 
 
 CREATE TABLE distributed_logs ON CLUSTER signoz AS logs
-ENGINE = Distributed("signoz", currentDatabase(), logs);
+ENGINE = Distributed("signoz", currentDatabase(), logs, cityHash64(id));
 
 
 CREATE TABLE IF NOT EXISTS logs_atrribute_keys ON CLUSTER signoz (
@@ -34,7 +34,7 @@ datatype String
 ORDER BY (name, datatype);
 
 CREATE TABLE distributed_logs_atrribute_keys ON CLUSTER signoz AS logs_atrribute_keys
-ENGINE = Distributed("signoz", currentDatabase(), logs_atrribute_keys);
+ENGINE = Distributed("signoz", currentDatabase(), logs_atrribute_keys, cityHash64(datatype));
 
 
 CREATE TABLE IF NOT EXISTS logs_resource_keys ON CLUSTER signoz (
@@ -44,7 +44,7 @@ datatype String
 ORDER BY (name, datatype);
 
 CREATE TABLE distributed_logs_resource_keys ON CLUSTER signoz AS logs_resource_keys
-ENGINE = Distributed("signoz", currentDatabase(), logs_resource_keys);
+ENGINE = Distributed("signoz", currentDatabase(), logs_resource_keys, cityHash64(datatype));
 
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv ON CLUSTER signoz TO logs_atrribute_keys AS
