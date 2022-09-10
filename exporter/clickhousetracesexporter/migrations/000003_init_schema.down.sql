@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS signoz_error_index
+DROP TABLE IF EXISTS signoz_error_index ON CLUSTER signoz sync;

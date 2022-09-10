@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_error_index (
+CREATE TABLE IF NOT EXISTS signoz_error_index on cluster signoz (
   timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
   errorID String CODEC(ZSTD(1)),
   traceID String CODEC(ZSTD(1)),
@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS signoz_error_index (
   INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
   INDEX idx_message exceptionMessage TYPE bloom_filter GRANULARITY 4,
   INDEX idx_type exceptionType TYPE bloom_filter GRANULARITY 4
-) ENGINE MergeTree()
+) ENGINE ReplicatedMergeTree()
 PARTITION BY toDate(timestamp)
-ORDER BY (exceptionType, exceptionMessage, serviceName, -toUnixTimestamp(timestamp))
+ORDER BY (exceptionType, exceptionMessage, serviceName, -toUnixTimestamp(timestamp));
+
+CREATE TABLE distributed_signoz_error_index ON CLUSTER signoz AS signoz_error_index
+ENGINE = Distributed("signoz", currentDatabase(), signoz_error_index);
