@@ -290,5 +290,5 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 }
 
 func renderInsertLogsSQL(cfg *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, tableName)
+	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, "distributed_logs")
 }
