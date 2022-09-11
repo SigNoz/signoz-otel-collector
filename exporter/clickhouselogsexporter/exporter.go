@@ -230,7 +230,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
+	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER signoz;", databaseName)
 	err = db.Exec(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
@@ -282,9 +282,9 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table-engine=MergeTree", username[0], password[0], host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, databaseName)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table-engine=MergeTree", host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", host, databaseName)
 	}
 	return clickhouseUrl, nil
 }

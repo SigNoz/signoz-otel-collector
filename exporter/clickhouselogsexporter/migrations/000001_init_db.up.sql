@@ -18,10 +18,20 @@ CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER signoz (
 	attributes_float64_key Array(String) CODEC(ZSTD(1)),
 	attributes_float64_value Array(Float64) CODEC(ZSTD(1)),
 	INDEX body_idx body TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
-) ENGINE ReplicatedMergeTree()
+) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_logs/logs', '{replica}')
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id);
 
 
-CREATE TABLE signoz_logs.distributed_logs IF NOT EXISTS ON CLUSTER signoz AS logs
+CREATE TABLE IF NOT EXISTS signoz_logs.distributed_logs  ON CLUSTER signoz AS signoz_logs.logs
 ENGINE = Distributed("signoz", "signoz_logs", logs, cityHash64(id));
+
+CREATE TABLE IF NOT EXISTS signoz_logs.schema_migrations ON CLUSTER signoz (
+  version Int64,
+  dirty UInt8,
+  sequence UInt64
+) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_logs/schema_migrations', '{replica}')
+ORDER BY version;
+
+CREATE TABLE IF NOT EXISTS signoz_logs.distributed_schema_migrations  ON CLUSTER signoz AS signoz_logs.schema_migrations
+ENGINE = Distributed("signoz", "signoz_logs", schema_migrations, rand());
