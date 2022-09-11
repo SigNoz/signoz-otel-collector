@@ -178,7 +178,7 @@ func (ch *clickHouse) runTimeSeriesReloader(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.time_series_v2`, ch.database)
+	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.distributed_time_series_v2`, ch.database)
 	for {
 		ch.timeSeriesRW.RLock()
 		timeSeries := make(map[uint64]struct{}, len(ch.timeSeries))
@@ -277,7 +277,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.time_series_v2 (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.distributed_time_series_v2 (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database))
 		if err != nil {
 			return err
 		}
@@ -306,7 +306,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 	err = func() error {
 		ctx := context.Background()
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.samples_v2", ch.database))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.distributed_samples_v2", ch.database))
 		if err != nil {
 			return err
 		}
