@@ -23,5 +23,5 @@ PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id);
 
 
-CREATE TABLE distributed_logs ON CLUSTER signoz AS logs
+CREATE TABLE distributed_logs IF NOT EXISTS ON CLUSTER signoz AS logs
 ENGINE = Distributed("signoz", currentDatabase(), logs, cityHash64(id));
