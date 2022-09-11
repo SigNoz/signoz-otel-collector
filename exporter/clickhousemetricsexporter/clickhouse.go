@@ -106,7 +106,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5)),
+			labels String Codec(ZSTD(5))
 			// labels_object JSON DEFAULT labels CODEC(ZSTD(5))
 		)
 		ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/samples_v2', '{replica}')
