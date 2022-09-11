@@ -77,20 +77,23 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	var queries []string
 	if params.DropDatabase {
-		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s`, database))
+		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s ON CLUSTER signoz;`, database))
 	}
-	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, database))
+	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER signoz`, database))
 
 	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.samples_v2 (
+		CREATE TABLE IF NOT EXISTS %s.samples_v2 ON CLUSTER signoz (
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			value Float64 Codec(Gorilla, LZ4)
 		)
-		ENGINE = MergeTree
+		ENGINE = ReplicatedMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms)`, database))
+			ORDER BY (metric_name, fingerprint, timestamp_ms);`, database))
+
+	queries = append(queries, fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s.distributed_samples_v2 ON CLUSTER signoz AS %s.samples_v2 ENGINE = Distributed("signoz", "%s", samples_v2, cityHash64(metric_name));`, database, database, database))
 
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
@@ -106,9 +109,12 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			labels String Codec(ZSTD(5)),
 			labels_object JSON DEFAULT labels CODEC(ZSTD(5))
 		)
-		ENGINE = ReplacingMergeTree
+		ENGINE = ReplicatedReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database))
+
+	queries = append(queries, fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s.distributed_time_series_v2 ON CLUSTER signoz AS %s.time_series_v2 ENGINE = Distributed("signoz", %s, samples_v2, cityHash64(metric_name));`, database, database, database))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
