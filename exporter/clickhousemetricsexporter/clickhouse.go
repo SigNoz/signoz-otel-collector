@@ -108,7 +108,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			labels String Codec(ZSTD(5))
 		)
-		ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/samples_v2', '{replica}')
+		ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/time_series_v2', '{replica}')
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database))
 
