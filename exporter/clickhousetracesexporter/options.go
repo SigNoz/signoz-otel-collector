@@ -29,10 +29,10 @@ const (
 	defaultDatasource        string        = "tcp://127.0.0.1:9000/?database=signoz_traces"
 	defaultTraceDatabase     string        = "signoz_traces"
 	defaultMigrations        string        = "/migrations"
-	defaultOperationsTable   string        = "signoz_operations"
-	defaultIndexTable        string        = "signoz_index_v2"
-	defaultErrorTable        string        = "signoz_error_index_v2"
-	defaultSpansTable        string        = "signoz_spans"
+	defaultOperationsTable   string        = "distributed_signoz_operations"
+	defaultIndexTable        string        = "distributed_signoz_index_v2"
+	defaultErrorTable        string        = "distributed_signoz_error_index_v2"
+	defaultSpansTable        string        = "distributed_signoz_spans"
 	defaultArchiveSpansTable string        = "signoz_archive_spans"
 	defaultWriteBatchDelay   time.Duration = 5 * time.Second
 	defaultWriteBatchSize    int           = 10000
