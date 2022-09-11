@@ -114,7 +114,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			ORDER BY (metric_name, fingerprint)`, database))
 
 	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.distributed_time_series_v2 ON CLUSTER signoz AS %s.time_series_v2 ENGINE = Distributed("signoz", %s, samples_v2, cityHash64(metric_name));`, database, database, database))
+			CREATE TABLE IF NOT EXISTS %s.distributed_time_series_v2 ON CLUSTER signoz AS %s.time_series_v2 ENGINE = Distributed("signoz", %s, time_series_v2, cityHash64(metric_name));`, database, database, database))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
