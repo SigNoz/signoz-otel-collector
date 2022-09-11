@@ -94,7 +94,7 @@ func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, dsnURL.Query().Get("database"))
+	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER signoz`, dsnURL.Query().Get("database"))
 	if err := db.Exec(ctx, query); err != nil {
 		return nil, err
 	}

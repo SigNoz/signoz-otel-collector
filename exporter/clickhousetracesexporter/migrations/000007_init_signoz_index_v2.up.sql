@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v2 ON CLUSTER signoz(
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v2 ON CLUSTER signoz (
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   traceID FixedString(32) CODEC(ZSTD(1)),
   spanID String CODEC(ZSTD(1)),
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v2 ON CLUSTER signoz(
   INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
   INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
   INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
-) ENGINE ReplicatedMergeTree()
+) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/signoz_index_v2', '{replica}')
 PARTITION BY toDate(timestamp)
 PRIMARY KEY (serviceName, hasError, toStartOfHour(timestamp), name)
 ORDER BY (serviceName, hasError, toStartOfHour(timestamp), name, timestamp)
@@ -47,5 +47,5 @@ SETTINGS index_granularity = 8192;
 
 SET allow_experimental_projection_optimization = 1;
 
-CREATE TABLE distributed_signoz_index_v2 ON CLUSTER signoz AS signoz_index_v2
-ENGINE = Distributed("signoz", currentDatabase(), signoz_index_v2);
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_index_v2 ON CLUSTER signoz AS signoz_traces.signoz_index_v2
+ENGINE = Distributed("signoz", "signoz_traces", signoz_index_v2, cityHash64(serviceName));

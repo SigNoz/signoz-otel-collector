@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_error_index on cluster signoz (
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index ON CLUSTER signoz (
   timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
   errorID String CODEC(ZSTD(1)),
   traceID String CODEC(ZSTD(1)),
@@ -13,9 +13,9 @@ CREATE TABLE IF NOT EXISTS signoz_error_index on cluster signoz (
   INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
   INDEX idx_message exceptionMessage TYPE bloom_filter GRANULARITY 4,
   INDEX idx_type exceptionType TYPE bloom_filter GRANULARITY 4
-) ENGINE ReplicatedMergeTree()
+) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/signoz_error_index', '{replica}')
 PARTITION BY toDate(timestamp)
 ORDER BY (exceptionType, exceptionMessage, serviceName, -toUnixTimestamp(timestamp));
 
-CREATE TABLE distributed_signoz_error_index ON CLUSTER signoz AS signoz_error_index
-ENGINE = Distributed("signoz", currentDatabase(), signoz_error_index);
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_error_index ON CLUSTER signoz AS signoz_traces.signoz_error_index
+ENGINE = Distributed("signoz", "signoz_traces", signoz_error_index, cityHash64(serviceName));
