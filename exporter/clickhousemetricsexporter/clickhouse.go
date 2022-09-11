@@ -88,7 +88,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			value Float64 Codec(Gorilla, LZ4)
 		)
-		ENGINE = ReplicatedMergeTree
+		ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/samples_v2', '{replica}')
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint, timestamp_ms);`, database))
 
@@ -102,14 +102,14 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	// using the DEFAULT expression. However, we can use labels_object
 	// in the querying for faster results.
 	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.time_series_v2 (
+		CREATE TABLE IF NOT EXISTS %s.time_series_v2 ON CLUSTER signoz(
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			labels String Codec(ZSTD(5)),
 			labels_object JSON DEFAULT labels CODEC(ZSTD(5))
 		)
-		ENGINE = ReplicatedReplacingMergeTree
+		ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/samples_v2', '{replica}')
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database))
 
