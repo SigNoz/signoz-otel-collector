@@ -107,7 +107,6 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			labels String Codec(ZSTD(5))
-			// labels_object JSON DEFAULT labels CODEC(ZSTD(5))
 		)
 		ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_metrics/samples_v2', '{replica}')
 			PARTITION BY toDate(timestamp_ms / 1000)
