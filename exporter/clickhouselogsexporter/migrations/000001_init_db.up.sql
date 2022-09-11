@@ -1,5 +1,5 @@
 -- https://altinity.com/blog/2019/7/new-encodings-to-improve-clickhouse
-CREATE TABLE IF NOT EXISTS logs ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER signoz (
 	timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	observed_timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	id String CODEC(ZSTD(1)),
@@ -23,5 +23,5 @@ PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id);
 
 
-CREATE TABLE distributed_logs IF NOT EXISTS ON CLUSTER signoz AS logs
-ENGINE = Distributed("signoz", currentDatabase(), logs, cityHash64(id));
+CREATE TABLE signoz_logs.distributed_logs IF NOT EXISTS ON CLUSTER signoz AS logs
+ENGINE = Distributed("signoz", "signoz_logs", logs, cityHash64(id));
