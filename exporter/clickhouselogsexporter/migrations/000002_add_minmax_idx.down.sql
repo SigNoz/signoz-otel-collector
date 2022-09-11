@@ -1,0 +1,1 @@
+alter table signoz_logs.logs ON CLUSTER signoz drop index id_minmax;
