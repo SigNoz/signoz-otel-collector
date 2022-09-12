@@ -34,7 +34,7 @@ ALTER TABLE signoz_traces.durationSort ON CLUSTER signoz
     ADD INDEX IF NOT EXISTS idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1;
 
 
-CREATE MATERIALIZED VIEW signoz_traces.durationSortMV ON CLUSTER signoz
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER signoz
 TO signoz_traces.durationSort
 AS SELECT
   timestamp,
