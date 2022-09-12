@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.usage_explorer ON CLUSTER signoz (
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, service_name);
 
-CREATE TABLE signoz_traces.distributed_usage_explorer ON CLUSTER signoz AS signoz_traces.usage_explorer
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_usage_explorer ON CLUSTER signoz AS signoz_traces.usage_explorer
 ENGINE = Distributed("signoz", "signoz_traces", usage_explorer, cityHash64(service_name));
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.usage_explorer_mv ON CLUSTER signoz

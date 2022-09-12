@@ -14,5 +14,5 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER signoz
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, groupID);
 
-CREATE TABLE signoz_traces.distributed_signoz_error_index_v2 ON CLUSTER signoz AS signoz_traces.signoz_error_index_v2
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_error_index_v2 ON CLUSTER signoz AS signoz_traces.signoz_error_index_v2
 ENGINE = Distributed("signoz", "signoz_traces", signoz_error_index_v2, cityHash64(groupID));
