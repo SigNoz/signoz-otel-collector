@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes ON CLUSTER sig
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest);
 
-CREATE TABLE signoz_traces.distributed_dependency_graph_minutes ON CLUSTER signoz AS signoz_traces.dependency_graph_minutes
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_dependency_graph_minutes ON CLUSTER signoz AS signoz_traces.dependency_graph_minutes
 ENGINE = Distributed("signoz", "signoz_traces", dependency_graph_minutes, cityHash64(src, dest));
 
 

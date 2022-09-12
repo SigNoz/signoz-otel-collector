@@ -18,5 +18,5 @@ PARTITION BY toDate(timestamp)
 ORDER BY (serviceName, exceptionType, exceptionMessage, timestamp);
 
 
-CREATE TABLE signoz_traces.distributed_signoz_error_index ON CLUSTER signoz AS signoz_traces.signoz_error_index
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_error_index ON CLUSTER signoz AS signoz_traces.signoz_error_index
 ENGINE = Distributed("signoz", "signoz_traces", signoz_error_index, cityHash64(serviceName));

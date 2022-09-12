@@ -7,5 +7,5 @@ PARTITION BY toDate(timestamp)
 ORDER BY traceID
 SETTINGS index_granularity=1024;
 
-CREATE TABLE signoz_traces.distributed_signoz_spans ON CLUSTER signoz AS signoz_traces.signoz_spans
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_spans ON CLUSTER signoz AS signoz_traces.signoz_spans
 ENGINE = Distributed("signoz", "signoz_traces", signoz_spans, cityHash64(traceID));
