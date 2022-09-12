@@ -62,5 +62,5 @@ FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;
 
 
-CREATE TABLE signoz_traces.distributed_durationSort ON CLUSTER signoz AS signoz_traces.durationSort
+CREATE TABLE IF NOT EXISTS signoz_traces.distributed_durationSort ON CLUSTER signoz AS signoz_traces.durationSort
 ENGINE = Distributed("signoz", "signoz_traces", durationSort, cityHash64(serviceName));
