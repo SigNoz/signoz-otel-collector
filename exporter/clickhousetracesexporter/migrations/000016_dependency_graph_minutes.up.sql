@@ -24,7 +24,7 @@ SELECT
     toStartOfMinute(B.timestamp) as timestamp
 FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
 WHERE (A.serviceName != B.serviceName) AND (A.spanID = B.parentSpanID)
-GROUP BY (timestamp, src, dest);
+GROUP BY timestamp, src, dest;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.dependency_graph_minutes_db_calls_mv ON CLUSTER signoz
 TO signoz_traces.dependency_graph_minutes AS
