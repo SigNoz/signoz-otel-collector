@@ -56,25 +56,25 @@ CREATE TABLE IF NOT EXISTS signoz_logs.distributed_logs_resource_keys  ON CLUSTE
 ENGINE = Distributed("signoz", "signoz_logs", logs_resource_keys, cityHash64(datatype));
 
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv ON CLUSTER signoz TO logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_string_key) as name, 'String' datatype
 FROM signoz_logs.logs
 ORDER BY name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_int64_final_mv ON CLUSTER signoz TO logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_int64_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_int64_key) as name, 'Int64' datatype
 FROM signoz_logs.logs
 ORDER BY  name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_float64_final_mv ON CLUSTER signoz TO logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_float64_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_float64_key) as name, 'Float64' datatype
 FROM signoz_logs.logs
 ORDER BY  name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  resource_keys_string_final_mv  ON CLUSTER signoz TO logs_resource_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  resource_keys_string_final_mv  ON CLUSTER signoz TO signoz_logs.logs_resource_keys AS
 SELECT
 distinct arrayJoin(resources_string_key) as name, 'String' datatype
 FROM signoz_logs.logs
