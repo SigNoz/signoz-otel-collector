@@ -48,4 +48,4 @@ SETTINGS index_granularity = 8192;
 SET allow_experimental_projection_optimization = 1;
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_index_v2 ON CLUSTER signoz AS signoz_traces.signoz_index_v2
-ENGINE = Distributed("signoz", "signoz_traces", signoz_index_v2, cityHash64(serviceName));
+ENGINE = Distributed("signoz", "signoz_traces", signoz_index_v2, cityHash64(traceID));
