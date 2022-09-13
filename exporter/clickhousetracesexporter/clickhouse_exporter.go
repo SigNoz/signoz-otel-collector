@@ -196,11 +196,7 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span) {
 		event.AttributeMap = map[string]string{}
 		event.IsError = false
 		events.At(i).Attributes().Range(func(k string, v pcommon.Value) bool {
-			if v.Type().String() == "INT" {
-				event.AttributeMap[k] = strconv.FormatInt(v.IntVal(), 10)
-			} else {
-				event.AttributeMap[k] = v.StringVal()
-			}
+			event.AttributeMap[k] = v.AsString()
 			return true
 		})
 		if event.Name == "exception" {
@@ -231,23 +227,13 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	tagMap := map[string]string{}
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		v.StringVal()
-		if v.Type().String() == "INT" {
-			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
-		} else if v.StringVal() != "" {
-			tagMap[k] = v.StringVal()
-		}
+		tagMap[k] = v.AsString()
 		return true
 
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		v.StringVal()
-		if v.Type().String() == "INT" {
-			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
-		} else if v.StringVal() != "" {
-			tagMap[k] = v.StringVal()
-		}
+		tagMap[k] = v.AsString()
 		return true
 
 	})
