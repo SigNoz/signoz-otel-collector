@@ -233,12 +233,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		v.StringVal()
-		if v.Type().String() == "INT" {
-			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
-		} else if v.StringVal() != "" {
-			tagMap[k] = v.StringVal()
-		}
+		tagMap[k] = v.AsString()
 		return true
 
 	})
