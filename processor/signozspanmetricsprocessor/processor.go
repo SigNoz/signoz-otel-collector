@@ -591,6 +591,13 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 }
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
+
+	// Ideally shouldn't happen but if for some reason span end time is before start time,
+	// ignore the span. We don't want to count negative latency.
+	if span.EndTimestamp() < span.StartTimestamp() {
+		return
+	}
+
 	latencyInMilliseconds := float64(span.EndTimestamp()-span.StartTimestamp()) / float64(time.Millisecond.Nanoseconds())
 
 	// Binary search to find the latencyInMilliseconds bucket index.
