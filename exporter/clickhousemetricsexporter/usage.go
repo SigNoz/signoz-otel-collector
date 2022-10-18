@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -93,16 +94,39 @@ func (e *ClickhouseMetricsUsageExporter) Close() {
 
 }
 
-// ExportMetrics exports to log.
+// ExportMetrics exports to clickhouse.
 func (e *ClickhouseMetricsUsageExporter) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
+	var count, size int64
 	for _, metric := range metrics {
-		if strings.Contains(metric.Descriptor.Name, "signoz_metric") {
-			for _, ts := range metric.TimeSeries {
-				for _, point := range ts.Points {
-					fmt.Println(e.id, metric.Descriptor.Name, point.Value)
-				}
-			}
+		if strings.Contains(metric.Descriptor.Name, "signoz_metric_points_count") && len(metric.TimeSeries) == 1 && len(metric.TimeSeries[0].Points) == 1 {
+			count = metric.TimeSeries[0].Points[0].Value.(int64)
+		} else if strings.Contains(metric.Descriptor.Name, "signoz_metric_points_bytes") && len(metric.TimeSeries) == 1 && len(metric.TimeSeries[0].Points) == 1 {
+			size = metric.TimeSeries[0].Points[0].Value.(int64)
 		}
 	}
+
+	if count == 0 && size == 0 {
+		return nil
+	}
+
+	usages := []usage.Usage{}
+	err := e.db.Select(ctx, &usages, fmt.Sprintf("SELECT * FROM signoz_metrics.usage where id='%s'", e.id))
+	if err != nil {
+		return err
+	}
+
+	if len(usages) > 0 {
+		// already exist then update
+		err := e.db.Exec(ctx, "alter table signoz_metrics.usage update datetime = $1, count = $2, size = $3 where id = $4", time.Now(), count, size, e.id)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := e.db.Exec(ctx, "insert into signoz_metrics.usage values ($1, $2, $3, $4)", e.id, time.Now(), count, size)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
