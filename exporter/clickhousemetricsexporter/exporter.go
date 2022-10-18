@@ -18,19 +18,25 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/pkg/errors"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/prometheus/prometheus/prompb"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer/consumererror"
@@ -82,6 +88,19 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		zap.S().Error("couldn't create instance of clickhouse")
 	}
 
+	exporter, err := NewExporter(ch.GetDBConn().(clickhouse.Conn), usage.Options{
+		ReportingInterval: 10 * time.Second,
+	})
+	if err != nil {
+		log.Fatalf("Error creating log exporter: %v", err)
+	}
+
+	exporter.Start()
+
+	if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
+		return nil, err
+	}
+
 	return &PrwExporter{
 		namespace:       cfg.Namespace,
 		externalLabels:  sanitizedLabels,
@@ -117,6 +136,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
+	count := 0
+	bytes := 0
 	select {
 	case <-prwe.closeChan:
 		return errors.New("shutdown has been called")
@@ -137,6 +158,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 				// TODO: decide if scope information should be exported as labels
 				for k := 0; k < metricSlice.Len(); k++ {
 					metric := metricSlice.At(k)
+
+					count += 1
+					// TODO(nitya): check size of metric data points
+					// bytes += len(serialized)
 
 					// check for valid type and temporality combination and for matching data field and type
 					if ok := validateMetrics(metric); !ok {
@@ -214,6 +239,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 		if dropped != 0 {
 			return errs
 		}
+
+		stats.Record(ctx, ExporterSigNozSentMetricPoints.M(int64(count)), ExporterSigNozSentMetricPointsBytes.M(int64(bytes)))
 
 		return nil
 	}

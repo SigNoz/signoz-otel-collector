@@ -19,11 +19,15 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/config"
 	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -47,13 +51,25 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	storage := storage{Writer: spanWriter}
+
+	exporter, err := NewExporter(f.db, usage.Options{ReportingInterval: 10 * time.Second})
+	if err != nil {
+		log.Fatalf("Error creating log exporter: %v", err)
+	}
+	exporter.Start()
+
+	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
+		return nil, err
+	}
+
+	storage := storage{Writer: spanWriter, usageExporter: exporter}
 
 	return &storage, nil
 }
 
 type storage struct {
-	Writer Writer
+	Writer        Writer
+	usageExporter *ClickhouseSpansUsageExporter
 }
 
 func makeJaegerProtoReferences(

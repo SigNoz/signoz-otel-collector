@@ -36,6 +36,9 @@ type Storage interface {
 	// Write puts data into storage.
 	Write(context.Context, *prompb.WriteRequest) error
 
+	// Returns the DB conn.
+	GetDBConn() interface{}
+
 	prometheus.Collector
 }
 

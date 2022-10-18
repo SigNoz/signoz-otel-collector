@@ -224,6 +224,10 @@ func (ch *clickHouse) Collect(c chan<- prometheus.Metric) {
 	ch.mWrittenTimeSeries.Collect(c)
 }
 
+func (ch *clickHouse) GetDBConn() interface{} {
+	return ch.conn
+}
+
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))

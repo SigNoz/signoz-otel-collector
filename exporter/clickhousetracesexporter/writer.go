@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
 	"go.uber.org/zap"
 )
 
@@ -53,6 +55,9 @@ type SpanWriter struct {
 
 // NewSpanWriter returns a SpanWriter for the database
 func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
+	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
+		return nil
+	}
 	writer := &SpanWriter{
 		logger:        logger,
 		db:            db,
@@ -231,6 +236,9 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 
+	count := 0
+	bytes := 0
+
 	for _, span := range batchSpans {
 		var serialized []byte
 
@@ -244,9 +252,19 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		if err != nil {
 			return err
 		}
+
+		count += 1
+		bytes += len(serialized)
 	}
 
-	return statement.Send()
+	err = statement.Send()
+	if err != nil {
+		return err
+	}
+
+	stats.Record(ctx, ExporterSigNozSentSpans.M(int64(count)), ExporterSigNozSentSpansBytes.M(int64(bytes)))
+
+	return nil
 }
 
 // WriteSpan writes the encoded span

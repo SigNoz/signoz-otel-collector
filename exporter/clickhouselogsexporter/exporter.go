@@ -17,16 +17,20 @@ package clickhouselogsexporter
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/segmentio/ksuid"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
@@ -39,6 +43,8 @@ type clickhouseLogsExporter struct {
 
 	logger *zap.Logger
 	cfg    *Config
+
+	usageExporter *ClickhouseLogsUsageExporter
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -53,19 +59,41 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
 
+	exporter, err := NewExporter(client, usage.Options{
+		ReportingInterval: 5 * time.Second,
+	})
+	if err != nil {
+		log.Fatalf("Error creating exporter: %v", err)
+	}
+
+	exporter.Start()
+
+	// view should be registered after exporter is initialized
+	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
+		return nil, err
+	}
+
 	return &clickhouseLogsExporter{
 		db:            client,
 		insertLogsSQL: insertLogsSQL,
 		logger:        logger,
 		cfg:           cfg,
 		ksuid:         ksuid.New(),
+		usageExporter: exporter,
 	}, nil
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
+	if e.usageExporter != nil {
+		e.usageExporter.Stop()
+		e.usageExporter.Close()
+	}
 	if e.db != nil {
-		return e.db.Close()
+		err := e.db.Close()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -79,6 +107,8 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	defer func() {
 		_ = statement.Abort()
 	}()
+	count := 0
+	size := 0
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
@@ -87,7 +117,9 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			rs := logs.ScopeLogs().At(j).LogRecords()
 			for k := 0; k < rs.Len(); k++ {
 				r := rs.At(k)
-
+				count += 1
+				// TODO(nitya): Should size also count the size of attributes extracted by the config
+				size += len(r.Body().AsString())
 				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(
 					uint64(r.Timestamp()),
@@ -122,6 +154,9 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	duration := time.Since(start)
 	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 		zap.String("cost", duration.String()))
+
+	stats.Record(ctx, ExporterSigNozSentLogRecords.M(int64(count)), ExporterSigNozSentLogRecordsBytes.M(int64(size)))
+
 	return err
 }
 
