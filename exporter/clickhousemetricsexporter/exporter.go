@@ -88,9 +88,14 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		zap.S().Error("couldn't create instance of clickhouse")
 	}
 
-	exporter, err := NewExporter(ch.GetDBConn().(clickhouse.Conn), usage.Options{
-		ReportingInterval: 10 * time.Second,
-	})
+	exporter := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
+		usage.Options{
+			ReportingInterval: 5 * time.Second,
+		},
+		"signoz_metrics",
+		"usage",
+		UsageExporter,
+	)
 	if err != nil {
 		log.Fatalf("Error creating log exporter: %v", err)
 	}

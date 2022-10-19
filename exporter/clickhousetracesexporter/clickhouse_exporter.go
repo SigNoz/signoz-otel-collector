@@ -52,7 +52,13 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
-	exporter, err := NewExporter(f.db, usage.Options{ReportingInterval: 10 * time.Second})
+	exporter := usage.NewUsageCollector(
+		f.db,
+		usage.Options{ReportingInterval: 10 * time.Second},
+		"signoz_traces",
+		"usage",
+		UsageExporter,
+	)
 	if err != nil {
 		log.Fatalf("Error creating log exporter: %v", err)
 	}
@@ -69,7 +75,7 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 
 type storage struct {
 	Writer        Writer
-	usageExporter *ClickhouseSpansUsageExporter
+	usageExporter *usage.UsageCollector
 }
 
 func makeJaegerProtoReferences(

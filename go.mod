@@ -103,6 +103,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.11.0
 	github.com/stretchr/testify v1.8.0
+	go.opencensus.io v0.23.0
 	go.opentelemetry.io/collector v0.55.0
 	go.opentelemetry.io/collector/model v0.50.0
 	go.opentelemetry.io/collector/pdata v0.55.0
@@ -339,7 +340,6 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.mongodb.org/atlas v0.16.0 // indirect
 	go.mongodb.org/mongo-driver v1.9.1 // indirect
-	go.opencensus.io v0.23.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.55.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.32.0 // indirect

@@ -44,7 +44,7 @@ type clickhouseLogsExporter struct {
 	logger *zap.Logger
 	cfg    *Config
 
-	usageExporter *ClickhouseLogsUsageExporter
+	usageExporter *usage.UsageCollector
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -59,9 +59,15 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
 
-	exporter, err := NewExporter(client, usage.Options{
-		ReportingInterval: 5 * time.Second,
-	})
+	exporter := usage.NewUsageCollector(
+		client,
+		usage.Options{
+			ReportingInterval: 5 * time.Second,
+		},
+		"signoz_logs",
+		"usage",
+		UsageExporter,
+	)
 	if err != nil {
 		log.Fatalf("Error creating exporter: %v", err)
 	}
@@ -87,7 +93,6 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	if e.usageExporter != nil {
 		e.usageExporter.Stop()
-		e.usageExporter.Close()
 	}
 	if e.db != nil {
 		err := e.db.Close()
