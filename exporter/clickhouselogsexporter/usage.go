@@ -7,6 +7,7 @@ import (
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 )
 
 const (
@@ -31,23 +32,45 @@ var (
 		Measure:     ExporterSigNozSentLogRecords,
 		Description: "The number of logs exported to signoz",
 		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{usage.TagTenantKey},
 	}
 	LogsSizeView = &view.View{
 		Name:        "signoz_logs_bytes",
 		Measure:     ExporterSigNozSentLogRecordsBytes,
 		Description: "The size of logs exported to signoz",
 		Aggregation: view.Sum(),
+		TagKeys:     []tag.Key{usage.TagTenantKey},
 	}
 )
 
-func UsageExporter(metrics []*metricdata.Metric) (usage.Usage, error) {
-	var u usage.Usage
+func UsageExporter(metrics []*metricdata.Metric) (map[string]usage.Usage, error) {
+	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
-		if strings.Contains(metric.Descriptor.Name, "signoz_logs_count") && len(metric.TimeSeries) == 1 && len(metric.TimeSeries[0].Points) == 1 {
-			u.Count = metric.TimeSeries[0].Points[0].Value.(int64)
-		} else if strings.Contains(metric.Descriptor.Name, "signoz_logs_bytes") && len(metric.TimeSeries) == 1 && len(metric.TimeSeries[0].Points) == 1 {
-			u.Size = metric.TimeSeries[0].Points[0].Value.(int64)
+		if strings.Contains(metric.Descriptor.Name, "signoz_logs_count") {
+			for _, v := range metric.TimeSeries {
+				tenant := v.LabelValues[0].Value
+				if d, ok := data[tenant]; ok {
+					d.Count = v.Points[0].Value.(int64)
+					data[tenant] = d
+				} else {
+					data[tenant] = usage.Usage{
+						Count: v.Points[0].Value.(int64),
+					}
+				}
+			}
+		} else if strings.Contains(metric.Descriptor.Name, "signoz_logs_bytes") {
+			for _, v := range metric.TimeSeries {
+				tenant := v.LabelValues[0].Value
+				if d, ok := data[tenant]; ok {
+					d.Size = v.Points[0].Value.(int64)
+					data[tenant] = d
+				} else {
+					data[tenant] = usage.Usage{
+						Size: v.Points[0].Value.(int64),
+					}
+				}
+			}
 		}
 	}
-	return u, nil
+	return data, nil
 }

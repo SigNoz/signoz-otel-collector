@@ -73,6 +73,7 @@ type Span struct {
 	RPCService         string            `json:"rpcService,omitempty"`
 	RPCMethod          string            `json:"rpcMethod,omitempty"`
 	ResponseStatusCode string            `json:"responseStatusCode,omitempty"`
+	Tenant             *string           `json:"-"`
 }
 
 type OtelSpanRef struct {

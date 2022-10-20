@@ -23,8 +23,10 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.uber.org/zap"
 )
 
@@ -236,9 +238,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 
-	count := 0
-	bytes := 0
-
+	metrics := map[string]usage.Metric{}
 	for _, span := range batchSpans {
 		var serialized []byte
 
@@ -253,8 +253,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 			return err
 		}
 
-		count += 1
-		bytes += len(serialized)
+		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serialized)))
 	}
 
 	err = statement.Send()
@@ -262,7 +261,9 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 
-	stats.Record(ctx, ExporterSigNozSentSpans.M(int64(count)), ExporterSigNozSentSpansBytes.M(int64(bytes)))
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+	}
 
 	return nil
 }

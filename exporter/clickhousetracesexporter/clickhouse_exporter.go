@@ -56,7 +56,6 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 		f.db,
 		usage.Options{ReportingInterval: 10 * time.Second},
 		"signoz_traces",
-		"usage",
 		UsageExporter,
 	)
 	if err != nil {
@@ -68,7 +67,7 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
-	storage := storage{Writer: spanWriter, usageExporter: exporter}
+	storage := storage{Writer: spanWriter, usageExporter: nil}
 
 	return &storage, nil
 }
@@ -241,7 +240,6 @@ func populateTraceModel(span *Span) {
 }
 
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource) *Span {
-
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	attributes := otelSpan.Attributes()
@@ -261,6 +259,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	})
 
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
+
+	tenant := usage.GetTenantNameFromResource(resource)
 
 	var span *Span = &Span{
 		TraceId:           otelSpan.TraceID().HexString(),
@@ -286,6 +286,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			TagMap:            tagMap,
 			HasError:          false,
 		},
+		Tenant: &tenant,
 	}
 
 	if span.StatusCode == 2 {

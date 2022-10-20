@@ -16,6 +16,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -31,6 +32,7 @@ import (
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
@@ -65,7 +67,6 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 			ReportingInterval: 5 * time.Second,
 		},
 		"signoz_logs",
-		"usage",
 		UsageExporter,
 	)
 	if err != nil {
@@ -112,19 +113,24 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	defer func() {
 		_ = statement.Abort()
 	}()
-	count := 0
-	size := 0
+
+	metrics := map[string]usage.Metric{}
+
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
+
 		resources := attributesToSlice(res.Attributes(), true)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
 			rs := logs.ScopeLogs().At(j).LogRecords()
 			for k := 0; k < rs.Len(); k++ {
 				r := rs.At(k)
-				count += 1
-				// TODO(nitya): Should size also count the size of attributes extracted by the config
-				size += len(r.Body().AsString())
+
+				// capturing the metrics
+				tenant := usage.GetTenantNameFromResource(logs.Resource())
+				attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
+				usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)))
+
 				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(
 					uint64(r.Timestamp()),
@@ -160,7 +166,9 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 		zap.String("cost", duration.String()))
 
-	stats.Record(ctx, ExporterSigNozSentLogRecords.M(int64(count)), ExporterSigNozSentLogRecordsBytes.M(int64(size)))
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+	}
 
 	return err
 }
