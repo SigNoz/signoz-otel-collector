@@ -20,12 +20,12 @@ type Options struct {
 }
 
 type Usage struct {
-	Count int64
-	Size  int64
+	TimeStamp time.Time
+	Count     int64
+	Size      int64
 }
 
 type UsageCollector struct {
-	id             string
 	reader         *metricexport.Reader
 	ir             *metricexport.IntervalReader
 	initReaderOnce sync.Once
@@ -38,9 +38,14 @@ type UsageCollector struct {
 	prevSize       int64
 }
 
+var InstanceId uuid.UUID
+
+func init() {
+	InstanceId = uuid.New()
+}
+
 func NewUsageCollector(db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
-		id:          uuid.NewString(),
 		reader:      metricexport.NewReader(),
 		o:           options,
 		db:          db,
@@ -55,12 +60,12 @@ func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) er
 	query := fmt.Sprintf(
 		`
 		CREATE TABLE IF NOT EXISTS %s.usage (
-			id String,
+			instance_id String,
 			timestamp DateTime,
 			tenant String,
 			data String
 		) ENGINE MergeTree()
-		ORDER BY (id, tenant);
+		ORDER BY (instance_id, tenant);
 		`,
 		databaseName,
 	)
@@ -94,29 +99,30 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 	if err != nil {
 		return err
 	}
-
+	time := time.Now()
 	for tenant, usage := range usages {
+		usage.TimeStamp = time
 		usageBytes, err := json.Marshal(usage)
 		if err != nil {
 			return err
 		}
-		encryptedData, err := Encrypt([]byte(e.id)[:32], usageBytes)
+		encryptedData, err := Encrypt([]byte(InstanceId.String())[:32], usageBytes)
 		if err != nil {
 			return err
 		}
 		prevUsages := []UsageDB{}
-		err = e.db.Select(ctx, &prevUsages, fmt.Sprintf("SELECT * FROM %s.usage where id='%s' and tenant='%s'", e.dbName, e.id, tenant))
+		err = e.db.Select(ctx, &prevUsages, fmt.Sprintf("SELECT * FROM %s.usage where instance_id='%s' and tenant='%s'", e.dbName, InstanceId.String(), tenant))
 		if err != nil {
 			return err
 		}
 		if len(prevUsages) > 0 {
 			// already exist then update
-			err := e.db.Exec(ctx, fmt.Sprintf("alter table %s.usage update timestamp=$1, data=$2 where id=$3 and tenant=$4", e.dbName), time.Now(), string(encryptedData), e.id, tenant)
+			err := e.db.Exec(ctx, fmt.Sprintf("alter table %s.usage update timestamp=$1, data=$2 where instance_id=$3 and tenant=$4", e.dbName), time, string(encryptedData), InstanceId.String(), tenant)
 			if err != nil {
 				return err
 			}
 		} else {
-			err := e.db.Exec(ctx, fmt.Sprintf("insert into %s.usage values ($1, $2, $3, $4)", e.dbName), e.id, time.Now(), tenant, string(encryptedData))
+			err := e.db.Exec(ctx, fmt.Sprintf("insert into %s.usage values ($1, $2, $3, $4)", e.dbName), InstanceId.String(), time, tenant, string(encryptedData))
 			if err != nil {
 				return err
 			}
