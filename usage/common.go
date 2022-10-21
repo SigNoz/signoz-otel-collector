@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	TenantKey = "tenant"
+	TenantKey                 = "tenant"
+	DefaultCollectionInterval = 1 * time.Hour
 )
 
 var (

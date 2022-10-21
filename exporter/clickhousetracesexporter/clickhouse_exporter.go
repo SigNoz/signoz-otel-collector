@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
@@ -54,7 +53,7 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 
 	exporter := usage.NewUsageCollector(
 		f.db,
-		usage.Options{ReportingInterval: 10 * time.Second},
+		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
 		UsageExporter,
 	)

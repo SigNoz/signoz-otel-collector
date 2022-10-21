@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/pkg/errors"
@@ -91,7 +90,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 
 	exporter := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
 		usage.Options{
-			ReportingInterval: 5 * time.Second,
+			ReportingInterval: usage.DefaultCollectionInterval,
 		},
 		"signoz_metrics",
 		UsageExporter,

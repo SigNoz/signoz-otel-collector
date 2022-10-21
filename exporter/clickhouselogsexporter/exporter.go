@@ -64,7 +64,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	exporter := usage.NewUsageCollector(
 		client,
 		usage.Options{
-			ReportingInterval: 5 * time.Second,
+			ReportingInterval: usage.DefaultCollectionInterval,
 		},
 		"signoz_logs",
 		UsageExporter,
