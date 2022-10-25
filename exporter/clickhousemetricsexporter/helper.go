@@ -141,7 +141,9 @@ func addExemplar(tsMap map[string]*prompb.TimeSeries, bucketBounds []bucketBound
 }
 
 // timeSeries return a string signature in the form of:
-// 		TYPE-label1-value1- ...  -labelN-valueN
+//
+//	TYPE-label1-value1- ...  -labelN-valueN
+//
 // the label slice should not contain duplicate label names; this method sorts the slice by label name before creating
 // the signature.
 func timeSeriesSignature(metric pmetric.Metric, labels *[]prompb.Label) string {
@@ -401,7 +403,9 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
 		infBucket.Value = math.Float64frombits(value.StaleNaN)
 	} else {
-		cumulativeCount += pt.BucketCounts().At(pt.BucketCounts().Len() - 1)
+		if pt.BucketCounts().Len() > 0 {
+			cumulativeCount += pt.BucketCounts().At(pt.BucketCounts().Len() - 1)
+		}
 		infBucket.Value = float64(cumulativeCount)
 	}
 	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, pInfStr)
