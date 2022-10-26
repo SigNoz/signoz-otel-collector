@@ -27,10 +27,11 @@ type Metric struct {
 }
 
 type UsageDB struct {
-	InstanceId string    `ch:"instance_id" json:"instanceId"`
-	TimeStamp  time.Time `ch:"timestamp" json:"timestamp"`
-	Tenant     string    `ch:"tenant" json:"tenant"`
-	Data       string    `ch:"data" json:"data"`
+	CollectorID string    `ch:"collector_id" json:"collectorId"`
+	ExporterID  string    `ch:"exporter_id" json:"exporterId"`
+	TimeStamp   time.Time `ch:"timestamp" json:"timestamp"`
+	Tenant      string    `ch:"tenant" json:"tenant"`
+	Data        string    `ch:"data" json:"data"`
 }
 
 func Encrypt(key, text []byte) ([]byte, error) {

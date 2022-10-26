@@ -26,6 +26,7 @@ type Usage struct {
 }
 
 type UsageCollector struct {
+	id             uuid.UUID
 	reader         *metricexport.Reader
 	ir             *metricexport.IntervalReader
 	initReaderOnce sync.Once
@@ -38,14 +39,15 @@ type UsageCollector struct {
 	prevSize       int64
 }
 
-var InstanceId uuid.UUID
+var CollectorID uuid.UUID
 
 func init() {
-	InstanceId = uuid.New()
+	CollectorID = uuid.New()
 }
 
 func NewUsageCollector(db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
+		id:          uuid.New(),
 		reader:      metricexport.NewReader(),
 		o:           options,
 		db:          db,
@@ -60,12 +62,13 @@ func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) er
 	query := fmt.Sprintf(
 		`
 		CREATE TABLE IF NOT EXISTS %s.usage (
-			instance_id String,
+			collector_id String,
+			exporter_id String,
 			timestamp DateTime,
 			tenant String,
 			data String
 		) ENGINE MergeTree()
-		ORDER BY (instance_id, tenant);
+		ORDER BY (collector_id, tenant);
 		`,
 		databaseName,
 	)
@@ -106,23 +109,23 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		if err != nil {
 			return err
 		}
-		encryptedData, err := Encrypt([]byte(InstanceId.String())[:32], usageBytes)
+		encryptedData, err := Encrypt([]byte(e.id.String())[:32], usageBytes)
 		if err != nil {
 			return err
 		}
 		prevUsages := []UsageDB{}
-		err = e.db.Select(ctx, &prevUsages, fmt.Sprintf("SELECT * FROM %s.usage where instance_id='%s' and tenant='%s'", e.dbName, InstanceId.String(), tenant))
+		err = e.db.Select(ctx, &prevUsages, fmt.Sprintf("SELECT * FROM %s.usage where collector_id='%s' and exporter_id='%s' and tenant='%s'", e.dbName, CollectorID.String(), e.id.String(), tenant))
 		if err != nil {
 			return err
 		}
 		if len(prevUsages) > 0 {
 			// already exist then update
-			err := e.db.Exec(ctx, fmt.Sprintf("alter table %s.usage update timestamp=$1, data=$2 where instance_id=$3 and tenant=$4", e.dbName), time, string(encryptedData), InstanceId.String(), tenant)
+			err := e.db.Exec(ctx, fmt.Sprintf("alter table %s.usage update timestamp=$1, data=$2 where collector_id=$3 and exporter_id=$4 and tenant=$5", e.dbName), time, string(encryptedData), CollectorID.String(), e.id.String(), tenant)
 			if err != nil {
 				return err
 			}
 		} else {
-			err := e.db.Exec(ctx, fmt.Sprintf("insert into %s.usage values ($1, $2, $3, $4)", e.dbName), InstanceId.String(), time, tenant, string(encryptedData))
+			err := e.db.Exec(ctx, fmt.Sprintf("insert into %s.usage values ($1, $2, $3, $4, $5)", e.dbName), CollectorID.String(), e.id.String(), time, tenant, string(encryptedData))
 			if err != nil {
 				return err
 			}
