@@ -68,7 +68,7 @@ func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) er
 			tenant String,
 			data String
 		) ENGINE MergeTree()
-		ORDER BY (collector_id, tenant);
+		ORDER BY (collector_id, exporter_id, tenant);
 		`,
 		databaseName,
 	)
