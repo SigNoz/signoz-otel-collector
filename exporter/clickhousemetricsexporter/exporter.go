@@ -59,6 +59,7 @@ type PrwExporter struct {
 	clientSettings  *confighttp.HTTPClientSettings
 	settings        component.TelemetrySettings
 	ch              base.Storage
+	usageCollector  *usage.UsageCollector
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -88,7 +89,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		zap.S().Error("couldn't create instance of clickhouse")
 	}
 
-	exporter := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
+	collector := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
@@ -96,10 +97,10 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		UsageExporter,
 	)
 	if err != nil {
-		log.Fatalf("Error creating log exporter: %v", err)
+		log.Fatalf("Error creating usage collector for metrics: %v", err)
 	}
 
-	exporter.Start()
+	collector.Start()
 
 	if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
 		return nil, err
@@ -116,6 +117,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		clientSettings:  &cfg.HTTPClientSettings,
 		settings:        set.TelemetrySettings,
 		ch:              ch,
+		usageCollector:  collector,
 	}, nil
 }
 
@@ -128,6 +130,11 @@ func (prwe *PrwExporter) Start(_ context.Context, host component.Host) (err erro
 // Shutdown stops the exporter from accepting incoming calls(and return error), and wait for current export operations
 // to finish before returning
 func (prwe *PrwExporter) Shutdown(context.Context) error {
+	// shutdown usage reporting.
+	if prwe.usageCollector != nil {
+		prwe.usageCollector.Stop()
+	}
+
 	close(prwe.closeChan)
 	prwe.wg.Wait()
 	return nil

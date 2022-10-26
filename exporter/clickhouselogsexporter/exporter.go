@@ -46,7 +46,7 @@ type clickhouseLogsExporter struct {
 	logger *zap.Logger
 	cfg    *Config
 
-	usageExporter *usage.UsageCollector
+	usageCollector *usage.UsageCollector
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -61,7 +61,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
 
-	exporter := usage.NewUsageCollector(
+	collector := usage.NewUsageCollector(
 		client,
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
@@ -70,10 +70,10 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		UsageExporter,
 	)
 	if err != nil {
-		log.Fatalf("Error creating exporter: %v", err)
+		log.Fatalf("Error creating usage collector for logs : %v", err)
 	}
 
-	exporter.Start()
+	collector.Start()
 
 	// view should be registered after exporter is initialized
 	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
@@ -81,19 +81,19 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
-		db:            client,
-		insertLogsSQL: insertLogsSQL,
-		logger:        logger,
-		cfg:           cfg,
-		ksuid:         ksuid.New(),
-		usageExporter: exporter,
+		db:             client,
+		insertLogsSQL:  insertLogsSQL,
+		logger:         logger,
+		cfg:            cfg,
+		ksuid:          ksuid.New(),
+		usageCollector: collector,
 	}, nil
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
-	if e.usageExporter != nil {
-		e.usageExporter.Stop()
+	if e.usageCollector != nil {
+		e.usageCollector.Stop()
 	}
 	if e.db != nil {
 		err := e.db.Close()

@@ -19,6 +19,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"strconv"
@@ -51,29 +52,29 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
-	exporter := usage.NewUsageCollector(
+	collector := usage.NewUsageCollector(
 		f.db,
 		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
 		UsageExporter,
 	)
 	if err != nil {
-		log.Fatalf("Error creating log exporter: %v", err)
+		log.Fatalf("Error creating usage collector for traces: %v", err)
 	}
-	exporter.Start()
+	collector.Start()
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil, err
 	}
 
-	storage := storage{Writer: spanWriter, usageExporter: nil}
+	storage := storage{Writer: spanWriter, usageCollector: collector}
 
 	return &storage, nil
 }
 
 type storage struct {
-	Writer        Writer
-	usageExporter *usage.UsageCollector
+	Writer         Writer
+	usageCollector *usage.UsageCollector
 }
 
 func makeJaegerProtoReferences(
@@ -327,5 +328,17 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 		}
 	}
 
+	return nil
+}
+
+// Shutdown will shutdown the exporter.
+func (s *storage) Shutdown(_ context.Context) error {
+	if s.usageCollector != nil {
+		s.usageCollector.Stop()
+	}
+
+	if closer, ok := s.Writer.(io.Closer); ok {
+		return closer.Close()
+	}
 	return nil
 }
