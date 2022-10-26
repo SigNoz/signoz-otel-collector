@@ -27,9 +27,7 @@ import (
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/pkg/errors"
-	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
@@ -147,7 +145,6 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
-	metrics := map[string]usage.Metric{}
 	select {
 	case <-prwe.closeChan:
 		return errors.New("shutdown has been called")
@@ -168,8 +165,6 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 				// TODO: decide if scope information should be exported as labels
 				for k := 0; k < metricSlice.Len(); k++ {
 					metric := metricSlice.At(k)
-
-					usage.AddMetric(metrics, usage.GetTenantNameFromResource(resource), 1, 0)
 
 					// check for valid type and temporality combination and for matching data field and type
 					if ok := validateMetrics(metric); !ok {
@@ -246,10 +241,6 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 
 		if dropped != 0 {
 			return errs
-		}
-
-		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
 
 		return nil

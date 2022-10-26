@@ -119,6 +119,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
+		resBytes, _ := json.Marshal(res.Attributes().AsRaw())
 
 		resources := attributesToSlice(res.Attributes(), true)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
@@ -129,7 +130,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 				// capturing the metrics
 				tenant := usage.GetTenantNameFromResource(logs.Resource())
 				attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
-				usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)))
+				usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
 
 				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(

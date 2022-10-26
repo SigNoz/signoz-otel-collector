@@ -28,9 +28,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -305,6 +308,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		return err
 	}
 
+	metrics := map[string]usage.Metric{}
 	err = func() error {
 		ctx := context.Background()
 
@@ -312,9 +316,18 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		if err != nil {
 			return err
 		}
+
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
+				tenant := "default"
+				for _, val := range timeSeries[fingerprint] {
+					if val.Name == "tenant" {
+						tenant = val.Value
+					}
+				}
+				usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+
 				err = statement.Append(
 					fingerprintToName[fingerprint],
 					fingerprint,
@@ -326,12 +339,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				}
 			}
 		}
-
 		return statement.Send()
-
 	}()
 	if err != nil {
 		return err
+	}
+
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 	}
 
 	n := len(newTimeSeries)
