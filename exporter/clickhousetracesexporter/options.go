@@ -34,8 +34,8 @@ const (
 	defaultErrorTable        string        = "distributed_signoz_error_index_v2"
 	defaultSpansTable        string        = "distributed_signoz_spans"
 	defaultArchiveSpansTable string        = "signoz_archive_spans"
-	defaultWriteBatchDelay   time.Duration = 5 * time.Second
-	defaultWriteBatchSize    int           = 10000
+	defaultWriteBatchDelay   time.Duration = 2 * time.Second
+	defaultWriteBatchSize    int           = 100000
 	defaultEncoding          Encoding      = EncodingJSON
 )
 
