@@ -15,12 +15,12 @@ const (
 func init() {
 	featuregate.GetRegistry().Register(featuregate.Gate{
 		ID:          DurationSortFeature,
-		Description: "A brief description of what the gate controls",
+		Description: "It controls use of materialized view which optimizes span duration based sorting for trace list at cost of extra disk usage",
 		Enabled:     false,
 	})
 	featuregate.GetRegistry().Register(featuregate.Gate{
 		ID:          TimestampSortFeature,
-		Description: "A brief description of what the gate controls",
+		Description: "It controls use of projection which optimizes timestamp based sorting for trace list at cost of extra disk usage",
 		Enabled:     false,
 	})
 }
@@ -37,17 +37,17 @@ func initFeatures(db clickhouse.Conn) error {
 			return err
 		}
 	}
-	// if featuregate.GetRegistry().IsEnabled(TimestampSortFeature) {
-	// 	err := enableTimestampSortFeature(db)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// } else {
-	// 	err := disableTimestampSortFeature(db)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
+	if featuregate.GetRegistry().IsEnabled(TimestampSortFeature) {
+		err := enableTimestampSortFeature(db)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := disableTimestampSortFeature(db)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -128,6 +128,25 @@ func disableDurationSortFeature(db clickhouse.Conn) error {
 		return err
 	}
 	err = db.Exec(context.Background(), "DROP VIEW IF EXISTS signoz_traces.durationSortMV")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func enableTimestampSortFeature(db clickhouse.Conn) error {
+	err := db.Exec(context.Background(), `ALTER TABLE signoz_traces.signoz_index_v2 
+	ADD PROJECTION IF NOT EXISTS timestampSort 
+	( SELECT * ORDER BY timestamp )`)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func disableTimestampSortFeature(db clickhouse.Conn) error {
+	err := db.Exec(context.Background(), `ALTER TABLE signoz_traces.signoz_index_v2 
+	DROP PROJECTION IF EXISTS timestampSort`)
 	if err != nil {
 		return err
 	}
