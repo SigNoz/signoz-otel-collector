@@ -97,10 +97,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	"go.uber.org/multierr"
 
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
-	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 )
 
 func components() (component.Factories, error) {
@@ -171,9 +168,9 @@ func components() (component.Factories, error) {
 
 	exporters := []component.ExporterFactory{
 		carbonexporter.NewFactory(),
-		clickhousemetricsexporter.NewFactory(),
+		// clickhousemetricsexporter.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
-		clickhouselogsexporter.NewFactory(),
+		// clickhouselogsexporter.NewFactory(),
 		fileexporter.NewFactory(),
 		jaegerexporter.NewFactory(),
 		jaegerthrifthttpexporter.NewFactory(),
@@ -208,7 +205,7 @@ func components() (component.Factories, error) {
 		resourcedetectionprocessor.NewFactory(),
 		resourceprocessor.NewFactory(),
 		routingprocessor.NewFactory(),
-		signozspanmetricsprocessor.NewFactory(),
+		// signozspanmetricsprocessor.NewFactory(),
 		spanmetricsprocessor.NewFactory(),
 		spanprocessor.NewFactory(),
 		tailsamplingprocessor.NewFactory(),
