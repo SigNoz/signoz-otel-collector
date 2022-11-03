@@ -95,7 +95,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					e.ksuid.String(),
 					r.TraceID().HexString(),
 					r.SpanID().HexString(),
-					r.Flags(),
+					uint32(r.Flags()),
 					r.SeverityText(),
 					uint8(r.SeverityNumber()),
 					r.Body().AsString(),
@@ -144,10 +144,10 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 			switch v.Type().String() {
 			case "INT":
 				response.IntKeys = append(response.IntKeys, formatKey(k))
-				response.IntValues = append(response.IntValues, v.IntVal())
+				response.IntValues = append(response.IntValues, v.Int())
 			case "DOUBLE":
 				response.FloatKeys = append(response.FloatKeys, formatKey(k))
-				response.FloatValues = append(response.FloatValues, v.DoubleVal())
+				response.FloatValues = append(response.FloatValues, v.Double())
 			default: // store it as string
 				response.StringKeys = append(response.StringKeys, formatKey(k))
 				response.StringValues = append(response.StringValues, v.AsString())

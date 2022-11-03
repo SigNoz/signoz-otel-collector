@@ -97,6 +97,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	"go.uber.org/multierr"
 
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 )
 
@@ -170,7 +171,7 @@ func components() (component.Factories, error) {
 		carbonexporter.NewFactory(),
 		// clickhousemetricsexporter.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
-		// clickhouselogsexporter.NewFactory(),
+		clickhouselogsexporter.NewFactory(),
 		fileexporter.NewFactory(),
 		jaegerexporter.NewFactory(),
 		jaegerthrifthttpexporter.NewFactory(),
