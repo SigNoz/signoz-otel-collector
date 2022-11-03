@@ -141,11 +141,11 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 			response.StringKeys = append(response.StringKeys, formatKey(k))
 			response.StringValues = append(response.StringValues, v.AsString())
 		} else {
-			switch v.Type().String() {
-			case "INT":
+			switch v.Type() {
+			case pcommon.ValueTypeInt:
 				response.IntKeys = append(response.IntKeys, formatKey(k))
 				response.IntValues = append(response.IntValues, v.Int())
-			case "DOUBLE":
+			case pcommon.ValueTypeDouble:
 				response.FloatKeys = append(response.FloatKeys, formatKey(k))
 				response.FloatValues = append(response.FloatValues, v.Double())
 			default: // store it as string
