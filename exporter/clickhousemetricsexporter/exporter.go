@@ -98,7 +98,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 
 // Start creates the prometheus client
 func (prwe *PrwExporter) Start(_ context.Context, host component.Host) (err error) {
-	prwe.client, err = prwe.clientSettings.ToClient(host.GetExtensions(), prwe.settings)
+	prwe.client, err = prwe.clientSettings.ToClient(host, prwe.settings)
 	return err
 }
 
@@ -144,21 +144,21 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New("invalid temporality and type combination")))
 						serviceName, found := resource.Attributes().Get("service.name")
 						if !found {
-							serviceName = pcommon.NewValueString("<missing-svc>")
+							serviceName = pcommon.NewValueStr("<missing-svc>")
 						}
-						metricType := metric.DataType()
+						metricType := metric.Type()
 						var numDataPoints int
-						var temporality pmetric.MetricAggregationTemporality
+						var temporality pmetric.AggregationTemporality
 						switch metricType {
-						case pmetric.MetricDataTypeGauge:
+						case pmetric.MetricTypeGauge:
 							numDataPoints = metric.Gauge().DataPoints().Len()
-						case pmetric.MetricDataTypeSum:
+						case pmetric.MetricTypeSum:
 							numDataPoints = metric.Sum().DataPoints().Len()
 							temporality = metric.Sum().AggregationTemporality()
-						case pmetric.MetricDataTypeHistogram:
+						case pmetric.MetricTypeHistogram:
 							numDataPoints = metric.Histogram().DataPoints().Len()
 							temporality = metric.Histogram().AggregationTemporality()
-						case pmetric.MetricDataTypeSummary:
+						case pmetric.MetricTypeSummary:
 							numDataPoints = metric.Summary().DataPoints().Len()
 						default:
 						}
@@ -167,20 +167,20 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					}
 
 					// handle individual metric based on type
-					switch metric.DataType() {
-					case pmetric.MetricDataTypeGauge:
+					switch metric.Type() {
+					case pmetric.MetricTypeGauge:
 						dataPoints := metric.Gauge().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
-					case pmetric.MetricDataTypeSum:
+					case pmetric.MetricTypeSum:
 						dataPoints := metric.Sum().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
-					case pmetric.MetricDataTypeHistogram:
+					case pmetric.MetricTypeHistogram:
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
@@ -189,7 +189,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
-					case pmetric.MetricDataTypeSummary:
+					case pmetric.MetricTypeSummary:
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
