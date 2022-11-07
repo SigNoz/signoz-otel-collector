@@ -19,24 +19,21 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/spf13/viper"
 )
 
 const (
-	defaultDatasource        string        = "tcp://127.0.0.1:9000/?database=signoz_traces"
-	defaultTraceDatabase     string        = "signoz_traces"
-	defaultMigrations        string        = "/migrations"
-	defaultOperationsTable   string        = "signoz_operations"
-	defaultIndexTable        string        = "signoz_index_v2"
-	defaultErrorTable        string        = "signoz_error_index_v2"
-	defaultSpansTable        string        = "signoz_spans"
-	defaultArchiveSpansTable string        = "signoz_archive_spans"
-	defaultWriteBatchDelay   time.Duration = 5 * time.Second
-	defaultWriteBatchSize    int           = 10000
-	defaultEncoding          Encoding      = EncodingJSON
+	defaultDatasource        string   = "tcp://127.0.0.1:9000/?database=signoz_traces"
+	defaultTraceDatabase     string   = "signoz_traces"
+	defaultMigrations        string   = "/migrations"
+	defaultOperationsTable   string   = "signoz_operations"
+	defaultIndexTable        string   = "signoz_index_v2"
+	defaultErrorTable        string   = "signoz_error_index_v2"
+	defaultSpansTable        string   = "signoz_spans"
+	defaultArchiveSpansTable string   = "signoz_archive_spans"
+	defaultEncoding          Encoding = EncodingJSON
 )
 
 const (
@@ -47,8 +44,6 @@ const (
 	suffixOperationsTable = ".operations-table"
 	suffixIndexTable      = ".index-table"
 	suffixSpansTable      = ".spans-table"
-	suffixWriteBatchDelay = ".write-batch-delay"
-	suffixWriteBatchSize  = ".write-batch-size"
 	suffixEncoding        = ".encoding"
 )
 
@@ -63,8 +58,6 @@ type namespaceConfig struct {
 	IndexTable      string
 	SpansTable      string
 	ErrorTable      string
-	WriteBatchDelay time.Duration
-	WriteBatchSize  int
 	Encoding        Encoding
 	Connector       Connector
 }
@@ -129,8 +122,6 @@ func NewOptions(migrations string, datasource string, primaryNamespace string, o
 			IndexTable:      defaultIndexTable,
 			ErrorTable:      defaultErrorTable,
 			SpansTable:      defaultSpansTable,
-			WriteBatchDelay: defaultWriteBatchDelay,
-			WriteBatchSize:  defaultWriteBatchSize,
 			Encoding:        defaultEncoding,
 			Connector:       defaultConnector,
 		},
@@ -146,8 +137,6 @@ func NewOptions(migrations string, datasource string, primaryNamespace string, o
 				OperationsTable: "",
 				IndexTable:      "",
 				SpansTable:      defaultArchiveSpansTable,
-				WriteBatchDelay: defaultWriteBatchDelay,
-				WriteBatchSize:  defaultWriteBatchSize,
 				Encoding:        defaultEncoding,
 				Connector:       defaultConnector,
 			}
@@ -201,18 +190,6 @@ func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
 		"Clickhouse spans table name.",
 	)
 
-	flagSet.Duration(
-		nsConfig.namespace+suffixWriteBatchDelay,
-		nsConfig.WriteBatchDelay,
-		"A duration after which spans are flushed to Clickhouse",
-	)
-
-	flagSet.Int(
-		nsConfig.namespace+suffixWriteBatchSize,
-		nsConfig.WriteBatchSize,
-		"A number of spans buffered before they are flushed to Clickhouse",
-	)
-
 	flagSet.String(
 		nsConfig.namespace+suffixEncoding,
 		string(nsConfig.Encoding),
@@ -235,8 +212,6 @@ func initFromViper(cfg *namespaceConfig, v *viper.Viper) {
 	cfg.IndexTable = v.GetString(cfg.namespace + suffixIndexTable)
 	cfg.SpansTable = v.GetString(cfg.namespace + suffixSpansTable)
 	cfg.OperationsTable = v.GetString(cfg.namespace + suffixOperationsTable)
-	cfg.WriteBatchDelay = v.GetDuration(cfg.namespace + suffixWriteBatchDelay)
-	cfg.WriteBatchSize = v.GetInt(cfg.namespace + suffixWriteBatchSize)
 	cfg.Encoding = Encoding(v.GetString(cfg.namespace + suffixEncoding))
 }
 

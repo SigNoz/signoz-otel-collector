@@ -280,8 +280,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 	rss := td.ResourceSpans()
+	var batchOfSpans []*Span
 	for i := 0; i < rss.Len(); i++ {
-		// fmt.Printf("ResourceSpans #%d\n", i)
 		rs := rss.At(i)
 
 		serviceName := ServiceNameForResource(rs.Resource())
@@ -295,15 +295,14 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-				// traceID := hex.EncodeToString(span.TraceID())
 				structuredSpan := newStructuredSpan(span, serviceName, rs.Resource())
-				err := s.Writer.WriteSpan(structuredSpan)
-				if err != nil {
-					zap.S().Error("Error in writing spans to clickhouse: ", err)
-				}
+				batchOfSpans = append(batchOfSpans, structuredSpan)
 			}
 		}
 	}
-
+	err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+	if err != nil {
+		zap.S().Error("Error in writing spans to clickhouse: ", err)
+	}
 	return nil
 }
