@@ -7,7 +7,7 @@ linters-settings:
   gofmt:
     simplify: true
   gosimple:
-    go: '1.17'
+    go: '1.18'
 linters:
   enable:
     - gofmt
