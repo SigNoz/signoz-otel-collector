@@ -1,5 +1,5 @@
 # Builder stage
-FROM golang:1.17-alpine as build
+FROM golang:1.19-alpine as build
 RUN apk --update add ca-certificates
 
 WORKDIR /src

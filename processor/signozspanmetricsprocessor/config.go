@@ -61,9 +61,9 @@ type Config struct {
 
 // GetAggregationTemporality converts the string value given in the config into a MetricAggregationTemporality.
 // Returns cumulative, unless delta is correctly specified.
-func (c Config) GetAggregationTemporality() pmetric.MetricAggregationTemporality {
+func (c Config) GetAggregationTemporality() pmetric.AggregationTemporality {
 	if c.AggregationTemporality == delta {
-		return pmetric.MetricAggregationTemporalityDelta
+		return pmetric.AggregationTemporalityDelta
 	}
-	return pmetric.MetricAggregationTemporalityCumulative
+	return pmetric.AggregationTemporalityCumulative
 }
