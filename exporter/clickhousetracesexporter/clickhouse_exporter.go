@@ -37,11 +37,12 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 	configClickHouse := cfg.(*Config)
 
 	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource)
+
 	err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db)
+	err = initFeatures(f.db, f.Options)
 	if err != nil {
 		return nil, err
 	}
