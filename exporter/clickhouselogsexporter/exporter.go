@@ -32,6 +32,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	CLUSTER                = "signoz"
+	DISTRIBUTED_LOGS_TABLE = "distributed_logs"
+)
+
 type clickhouseLogsExporter struct {
 	db            clickhouse.Conn
 	insertLogsSQL string
@@ -282,13 +287,13 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, databaseName, CLUSTER)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", host, databaseName, CLUSTER)
 	}
 	return clickhouseUrl, nil
 }
 
 func renderInsertLogsSQL(cfg *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, "distributed_logs")
+	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
 }
