@@ -5,12 +5,10 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes ON CLUSTER sig
     error_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     total_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     timestamp DateTime CODEC(DoubleDelta, LZ4)
-) ENGINE ReplicatedAggregatingMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/dependency_graph_minutes', '{replica}')
+) ENGINE AggregatingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest);
 
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_dependency_graph_minutes ON CLUSTER signoz AS signoz_traces.dependency_graph_minutes
-ENGINE = Distributed("signoz", "signoz_traces", dependency_graph_minutes, cityHash64(src, dest));
 
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.dependency_graph_minutes_service_calls_mv ON CLUSTER signoz

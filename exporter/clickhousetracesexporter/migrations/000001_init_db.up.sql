@@ -26,19 +26,15 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER signoz (
   INDEX idx_tagsKeys tagsKeys TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_tagsValues tagsValues TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_duration durationNano TYPE minmax GRANULARITY 1
-) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/signoz_index', '{replica}')
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (serviceName, -toUnixTimestamp(timestamp));
 
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_index ON CLUSTER signoz AS signoz_traces.signoz_index
-ENGINE = Distributed("signoz", "signoz_traces", signoz_index, cityHash64(serviceName));
+
 
 CREATE TABLE IF NOT EXISTS signoz_traces.schema_migrations ON CLUSTER signoz (
   version Int64,
   dirty UInt8,
   sequence UInt64
-) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/schema_migrations', '{replica}')
+) ENGINE = MergeTree
 ORDER BY version;
-
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_schema_migrations  ON CLUSTER signoz AS signoz_traces.schema_migrations
-ENGINE = Distributed("signoz", "signoz_traces", schema_migrations, rand());

@@ -13,10 +13,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index ON CLUSTER signoz (
   INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
   INDEX idx_message exceptionMessage TYPE bloom_filter GRANULARITY 4,
   INDEX idx_type exceptionType TYPE bloom_filter GRANULARITY 4
-) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/signoz_error_index', '{replica}')
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (serviceName, exceptionType, exceptionMessage, timestamp);
 
-
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_error_index ON CLUSTER signoz AS signoz_traces.signoz_error_index
-ENGINE = Distributed("signoz", "signoz_traces", signoz_error_index, cityHash64(serviceName));

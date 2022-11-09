@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER signoz (
   INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
   INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
   INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
-) ENGINE ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/signoz_traces/durationSort', '{replica}')
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
 SETTINGS index_granularity = 8192;
@@ -61,6 +61,3 @@ AS SELECT
 FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;
 
-
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_durationSort ON CLUSTER signoz AS signoz_traces.durationSort
-ENGINE = Distributed("signoz", "signoz_traces", durationSort, cityHash64(serviceName));
