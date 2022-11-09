@@ -16,11 +16,13 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.uber.org/zap"
 )
 
 const (
@@ -52,10 +54,11 @@ func createTracesExporter(
 	params component.ExporterCreateSettings,
 	cfg config.Exporter,
 ) (component.TracesExporter, error) {
-
+	c := cfg.(*Config)
 	oce, err := newExporter(cfg, params.Logger)
 	if err != nil {
-		return nil, err
+		zap.S().Errorf("Failed to create clickhouse trace exporter: %v", err)
+		return nil, fmt.Errorf("cannot configure clickhouse trace exporter: %w", err)
 	}
 
 	return exporterhelper.NewTracesExporter(
@@ -67,5 +70,9 @@ func createTracesExporter(
 				return closer.Close()
 			}
 			return nil
-		}))
+		}),
+		exporterhelper.WithTimeout(c.TimeoutSettings),
+		exporterhelper.WithQueue(c.QueueSettings),
+		exporterhelper.WithRetry(c.RetrySettings),
+	)
 }

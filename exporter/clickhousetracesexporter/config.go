@@ -15,21 +15,37 @@
 package clickhousetracesexporter
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for logging exporter.
 type Config struct {
-	config.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
-
-	Options    `mapstructure:",squash"`
-	Datasource string `mapstructure:"datasource"`
-	Migrations string `mapstructure:"migrations"`
+	config.ExporterSettings        `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	exporterhelper.TimeoutSettings `mapstructure:",squash"`
+	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
+	Options                        `mapstructure:",squash"`
+	Datasource                     string `mapstructure:"datasource"`
+	Migrations                     string `mapstructure:"migrations"`
 }
 
 var _ config.Exporter = (*Config)(nil)
 
 // Validate checks if the exporter configuration is valid
 func (cfg *Config) Validate() error {
+	if cfg.QueueSettings.QueueSize < 0 {
+		return fmt.Errorf("remote write queue size can't be negative")
+	}
+
+	if cfg.QueueSettings.Enabled && cfg.QueueSettings.QueueSize == 0 {
+		return fmt.Errorf("a 0 size queue will drop all the data")
+	}
+
+	if cfg.QueueSettings.NumConsumers < 0 {
+		return fmt.Errorf("remote write consumer number can't be negative")
+	}
 	return nil
 }
