@@ -237,15 +237,19 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 
 	for i, ts := range data.Timeseries {
 		var metricName string
-		labels := make([]*prompb.Label, len(ts.Labels))
-		for j, label := range ts.Labels {
-			labels[j] = &prompb.Label{
+		labelsOverridden := make(map[string]*prompb.Label)
+		for _, label := range ts.Labels {
+			labelsOverridden[label.Name] = &prompb.Label{
 				Name:  label.Name,
 				Value: label.Value,
 			}
 			if label.Name == "__name__" {
 				metricName = label.Value
 			}
+		}
+		var labels []*prompb.Label
+		for _, l := range labelsOverridden {
+			labels = append(labels, l)
 		}
 		timeseries.SortLabels(labels)
 		f := timeseries.Fingerprint(labels)

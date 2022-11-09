@@ -323,7 +323,7 @@ func (p *processorImp) buildMetrics() (*pmetric.Metrics, error) {
 	p.externalCallMetricKeyToDimensions.RemoveEvictedItems()
 
 	// If delta metrics, reset accumulated data
-	if p.config.GetAggregationTemporality() == pmetric.MetricAggregationTemporalityDelta {
+	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
 		p.resetAccumulatedMetrics()
 	}
 
@@ -337,15 +337,14 @@ func (p *processorImp) buildMetrics() (*pmetric.Metrics, error) {
 func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	for key := range p.latencyCount {
 		mLatency := ilm.Metrics().AppendEmpty()
-		mLatency.SetDataType(pmetric.MetricDataTypeHistogram)
 		mLatency.SetName("signoz_latency")
-		mLatency.Histogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
+		mLatency.SetEmptyHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 		dpLatency := mLatency.Histogram().DataPoints().AppendEmpty()
 		dpLatency.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpLatency.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpLatency.SetExplicitBounds(pcommon.NewImmutableFloat64Slice(p.latencyBounds))
-		dpLatency.SetBucketCounts(pcommon.NewImmutableUInt64Slice(p.latencyBucketCounts[key]))
+		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
+		dpLatency.BucketCounts().FromRaw(p.latencyBucketCounts[key])
 		dpLatency.SetCount(p.latencyCount[key])
 		dpLatency.SetSum(p.latencySum[key])
 
@@ -365,13 +364,13 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 	for key := range p.dbLatencyCount {
 		dbCallSum := ilm.Metrics().AppendEmpty()
-		dbCallSum.SetDataType(pmetric.MetricDataTypeSum)
+		dbCallSum.SetEmptySum()
 		dbCallSum.SetName("signoz_db_latency_sum")
 		dbCallSum.Sum().SetIsMonotonic(true)
 		dbCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 		dbCallCount := ilm.Metrics().AppendEmpty()
-		dbCallCount.SetDataType(pmetric.MetricDataTypeSum)
+		dbCallCount.SetEmptySum()
 		dbCallCount.SetName("signoz_db_latency_count")
 		dbCallCount.Sum().SetIsMonotonic(true)
 		dbCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
@@ -379,12 +378,12 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 		dpCallSumCalls := dbCallSum.Sum().DataPoints().AppendEmpty()
 		dpCallSumCalls.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpCallSumCalls.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpCallSumCalls.SetDoubleVal(p.dbLatencySum[key])
+		dpCallSumCalls.SetDoubleValue(p.dbLatencySum[key])
 
 		dpCallCountCalls := dbCallCount.Sum().DataPoints().AppendEmpty()
 		dpCallCountCalls.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpCallCountCalls.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpCallCountCalls.SetIntVal(int64(p.dbLatencyCount[key]))
+		dpCallCountCalls.SetIntValue(int64(p.dbLatencyCount[key]))
 
 		dimensions, err := p.getDimensionsByMetricKey(p.dbMetricKeyToDimensions, key)
 		if err != nil {
@@ -403,13 +402,13 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) error {
 	for key := range p.externalCallLatencyCount {
 		externalCallSum := ilm.Metrics().AppendEmpty()
-		externalCallSum.SetDataType(pmetric.MetricDataTypeSum)
+		externalCallSum.SetEmptySum()
 		externalCallSum.SetName("signoz_external_call_latency_sum")
 		externalCallSum.Sum().SetIsMonotonic(true)
 		externalCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 		externalCallCount := ilm.Metrics().AppendEmpty()
-		externalCallCount.SetDataType(pmetric.MetricDataTypeSum)
+		externalCallCount.SetEmptySum()
 		externalCallCount.SetName("signoz_external_call_latency_count")
 		externalCallCount.Sum().SetIsMonotonic(true)
 		externalCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
@@ -417,12 +416,12 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 		dpCallSumCalls := externalCallSum.Sum().DataPoints().AppendEmpty()
 		dpCallSumCalls.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpCallSumCalls.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpCallSumCalls.SetDoubleVal(p.externalCallLatencySum[key])
+		dpCallSumCalls.SetDoubleValue(p.externalCallLatencySum[key])
 
 		dpCallCountCalls := externalCallCount.Sum().DataPoints().AppendEmpty()
 		dpCallCountCalls.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpCallCountCalls.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpCallCountCalls.SetIntVal(int64(p.externalCallLatencyCount[key]))
+		dpCallCountCalls.SetIntValue(int64(p.externalCallLatencyCount[key]))
 
 		dimensions, err := p.getDimensionsByMetricKey(p.externalCallMetricKeyToDimensions, key)
 		if err != nil {
@@ -441,7 +440,7 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 	for key := range p.callSum {
 		mCalls := ilm.Metrics().AppendEmpty()
-		mCalls.SetDataType(pmetric.MetricDataTypeSum)
+		mCalls.SetEmptySum()
 		mCalls.SetName("signoz_calls_total")
 		mCalls.Sum().SetIsMonotonic(true)
 		mCalls.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
@@ -449,7 +448,7 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 		dpCalls := mCalls.Sum().DataPoints().AppendEmpty()
 		dpCalls.SetStartTimestamp(pcommon.NewTimestampFromTime(p.startTime))
 		dpCalls.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-		dpCalls.SetIntVal(p.callSum[key])
+		dpCalls.SetIntValue(p.callSum[key])
 
 		dimensions, err := p.getDimensionsByMetricKey(p.callMetricKeyToDimensions, key)
 		if err != nil {
@@ -487,7 +486,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
-		serviceName := attr.StringVal()
+		serviceName := attr.Str()
 		p.aggregateMetricsForServiceSpans(rspans, serviceName)
 	}
 }
@@ -512,19 +511,19 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 		// Since net.peer.name is readable, it is preferred over net.peer.ip.
 		peerName, ok := attrs.Get(conventions.AttributeNetPeerName)
 		if ok {
-			addr = peerName.StringVal()
+			addr = peerName.Str()
 			port, ok := attrs.Get(conventions.AttributeNetPeerPort)
 			if ok {
-				addr += ":" + port.StringVal()
+				addr += ":" + port.Str()
 			}
 			return addr, true
 		}
 		peerIp, ok := attrs.Get(conventions.AttributeNetPeerIP)
 		if ok {
-			addr = peerIp.StringVal()
+			addr = peerIp.Str()
 			port, ok := attrs.Get(conventions.AttributeNetPeerPort)
 			if ok {
-				addr += ":" + port.StringVal()
+				addr += ":" + port.Str()
 			}
 			return addr, true
 		}
@@ -537,11 +536,11 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 	if isRPC {
 		service, svcOK := attrs.Get(conventions.AttributeRPCService)
 		if svcOK {
-			addr = service.StringVal()
+			addr = service.Str()
 		}
 		method, methodOK := attrs.Get(conventions.AttributeRPCMethod)
 		if methodOK {
-			addr += "/" + method.StringVal()
+			addr += "/" + method.Str()
 		}
 		if addr != "" {
 			return addr, true
@@ -554,14 +553,14 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 	// If HTTP host is set, use it.
 	host, ok := attrs.Get(conventions.AttributeHTTPHost)
 	if ok {
-		return host.StringVal(), true
+		return host.Str(), true
 	}
 
 	peerAddress, ok := getPeerAddress(attrs)
 	if ok {
 		// If the peer address is set and the transport is not unix domain socket, or pipe
 		transport, ok := attrs.Get(conventions.AttributeNetTransport)
-		if ok && transport.StringVal() == "unix" && transport.StringVal() == "pipe" {
+		if ok && transport.Str() == "unix" && transport.Str() == "pipe" {
 			return "", false
 		}
 		return peerAddress, true
@@ -570,7 +569,7 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 	// If none of the above is set, check for full URL.
 	httpURL, ok := attrs.Get(conventions.AttributeHTTPURL)
 	if ok {
-		urlValue := httpURL.StringVal()
+		urlValue := httpURL.Str()
 		// url pattern from godoc [scheme:][//[userinfo@]host][/]path[?query][#fragment]
 		if !strings.HasPrefix(urlValue, "http://") && !strings.HasPrefix(urlValue, "https://") {
 			urlValue = "http://" + urlValue
@@ -584,13 +583,20 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 	peerService, ok := attrs.Get(conventions.AttributePeerService)
 	if ok {
-		return peerService.StringVal(), true
+		return peerService.Str(), true
 	}
 
 	return "", false
 }
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
+
+	// Ideally shouldn't happen but if for some reason span end time is before start time,
+	// ignore the span. We don't want to count negative latency.
+	if span.EndTimestamp() < span.StartTimestamp() {
+		return
+	}
+
 	latencyInMilliseconds := float64(span.EndTimestamp()-span.StartTimestamp()) / float64(time.Millisecond.Nanoseconds())
 
 	// Binary search to find the latencyInMilliseconds bucket index.
@@ -613,7 +619,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		extraVals := []string{remoteAddr}
 		externalCallKey := buildCustomKey(serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
 		extraDims := map[string]pcommon.Value{
-			"address": pcommon.NewValueString(remoteAddr),
+			"address": pcommon.NewValueStr(remoteAddr),
 		}
 		p.externalCallCache(serviceName, span, externalCallKey, resourceAttr, extraDims)
 		p.updateExternalCallLatencyMetrics(externalCallKey, latencyInMilliseconds)
@@ -681,20 +687,20 @@ func (p *processorImp) resetAccumulatedMetrics() {
 func (p *processorImp) buildCustomDimensionKVs(serviceName string, span ptrace.Span, optionalDims []Dimension, resourceAttrs pcommon.Map, extraDims map[string]pcommon.Value) pcommon.Map {
 	dims := pcommon.NewMap()
 
-	dims.UpsertString(serviceNameKey, serviceName)
+	dims.PutStr(serviceNameKey, serviceName)
 	for k, v := range extraDims {
-		dims.Upsert(k, v)
+		v.CopyTo(dims.PutEmpty(k))
 	}
-	dims.UpsertString(statusCodeKey, span.Status().Code().String())
+	dims.PutStr(statusCodeKey, span.Status().Code().String())
 
 	for _, d := range optionalDims {
 
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)
 		if ok {
-			dims.Upsert(d.Name, v)
+			v.CopyTo(dims.PutEmpty(d.Name))
 		}
 		if foundInResource {
-			dims.Upsert(resourcePrefix+d.Name, v)
+			v.CopyTo(dims.PutEmpty(resourcePrefix + d.Name))
 		}
 	}
 	return dims
@@ -719,24 +725,24 @@ func getDimensionValue(d Dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 
 	// Set the default if configured, otherwise this metric will have no value set for the dimension.
 	if d.Default != nil {
-		return pcommon.NewValueString(*d.Default), true, false
+		return pcommon.NewValueStr(*d.Default), true, false
 	}
 	return v, ok, foundInResource
 }
 
 func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, optionalDims []Dimension, resourceAttrs pcommon.Map) pcommon.Map {
 	dims := pcommon.NewMap()
-	dims.UpsertString(serviceNameKey, serviceName)
-	dims.UpsertString(operationKey, span.Name())
-	dims.UpsertString(spanKindKey, span.Kind().String())
-	dims.UpsertString(statusCodeKey, span.Status().Code().String())
+	dims.PutStr(serviceNameKey, serviceName)
+	dims.PutStr(operationKey, span.Name())
+	dims.PutStr(spanKindKey, span.Kind().String())
+	dims.PutStr(statusCodeKey, span.Status().Code().String())
 	for _, d := range optionalDims {
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)
 		if ok {
-			dims.Upsert(d.Name, v)
+			v.CopyTo(dims.PutEmpty(d.Name))
 		}
 		if foundInResource {
-			dims.Upsert(resourcePrefix+d.Name, v)
+			v.CopyTo(dims.PutEmpty(resourcePrefix + d.Name))
 		}
 	}
 	return dims

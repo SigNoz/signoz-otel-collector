@@ -38,7 +38,7 @@ func NewFactory() component.ExporterFactory {
 	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithLogsExporterAndStabilityLevel(createLogsExporter, component.StabilityLevelBeta),
+		component.WithLogsExporter(createLogsExporter, component.StabilityLevelBeta),
 	)
 }
 
@@ -65,8 +65,9 @@ func createLogsExporter(
 	}
 
 	return exporterhelper.NewLogsExporter(
-		cfg,
+		ctx,
 		set,
+		cfg,
 		exporter.pushLogsData,
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutSettings),

@@ -37,12 +37,14 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
 	configClickHouse := cfg.(*Config)
 
 	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource)
-
 	err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
-
+	err = initFeatures(f.db)
+	if err != nil {
+		return nil, err
+	}
 	spanWriter, err := f.CreateSpanWriter()
 	if err != nil {
 		return nil, err
@@ -62,7 +64,7 @@ func makeJaegerProtoReferences(
 	traceID pcommon.TraceID,
 ) ([]OtelSpanRef, error) {
 
-	parentSpanIDSet := len(parentSpanID.Bytes()) != 0
+	parentSpanIDSet := len([8]byte(parentSpanID)) != 0
 	if !parentSpanIDSet && links.Len() == 0 {
 		return nil, nil
 	}
@@ -114,53 +116,53 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 		return "<nil-service-name>"
 	}
 
-	return service.StringVal()
+	return service.Str()
 }
 
 func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" {
-			if v.IntVal() >= 400 {
+			if v.Int() >= 400 {
 				span.HasError = true
 			}
-			span.HttpCode = strconv.FormatInt(v.IntVal(), 10)
+			span.HttpCode = strconv.FormatInt(v.Int(), 10)
 			span.ResponseStatusCode = span.HttpCode
 		} else if k == "http.url" && span.Kind == 3 {
-			value := v.StringVal()
+			value := v.Str()
 			valueUrl, err := url.Parse(value)
 			if err == nil {
 				value = valueUrl.Hostname()
 			}
 			span.ExternalHttpUrl = value
 		} else if k == "http.method" && span.Kind == 3 {
-			span.ExternalHttpMethod = v.StringVal()
+			span.ExternalHttpMethod = v.Str()
 		} else if k == "http.url" && span.Kind != 3 {
-			span.HttpUrl = v.StringVal()
+			span.HttpUrl = v.Str()
 		} else if k == "http.method" && span.Kind != 3 {
-			span.HttpMethod = v.StringVal()
+			span.HttpMethod = v.Str()
 		} else if k == "http.route" {
-			span.HttpRoute = v.StringVal()
+			span.HttpRoute = v.Str()
 		} else if k == "http.host" {
-			span.HttpHost = v.StringVal()
+			span.HttpHost = v.Str()
 		} else if k == "messaging.system" {
-			span.MsgSystem = v.StringVal()
+			span.MsgSystem = v.Str()
 		} else if k == "messaging.operation" {
-			span.MsgOperation = v.StringVal()
+			span.MsgOperation = v.Str()
 		} else if k == "component" {
-			span.Component = v.StringVal()
+			span.Component = v.Str()
 		} else if k == "db.system" {
-			span.DBSystem = v.StringVal()
+			span.DBSystem = v.Str()
 		} else if k == "db.name" {
-			span.DBName = v.StringVal()
+			span.DBName = v.Str()
 		} else if k == "db.operation" {
-			span.DBOperation = v.StringVal()
+			span.DBOperation = v.Str()
 		} else if k == "peer.service" {
-			span.PeerService = v.StringVal()
+			span.PeerService = v.Str()
 		} else if k == "rpc.grpc.status_code" {
 			// Handle both string/int status code in GRPC spans.
-			statusString, err := strconv.Atoi(v.StringVal())
-			statusInt := v.IntVal()
+			statusString, err := strconv.Atoi(v.Str())
+			statusInt := v.Int()
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
@@ -170,17 +172,17 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.GRPCCode = strconv.FormatInt(statusInt, 10)
 			span.ResponseStatusCode = span.GRPCCode
 		} else if k == "rpc.method" {
-			span.RPCMethod = v.StringVal()
+			span.RPCMethod = v.Str()
 			system, found := attributes.Get("rpc.system")
-			if found && system.StringVal() == "grpc" {
-				span.GRPCMethod = v.StringVal()
+			if found && system.Str() == "grpc" {
+				span.GRPCMethod = v.Str()
 			}
 		} else if k == "rpc.service" {
-			span.RPCService = v.StringVal()
+			span.RPCService = v.Str()
 		} else if k == "rpc.system" {
-			span.RPCSystem = v.StringVal()
+			span.RPCSystem = v.Str()
 		} else if k == "rpc.jsonrpc.error_code" {
-			span.ResponseStatusCode = v.StringVal()
+			span.ResponseStatusCode = v.Str()
 		}
 		return true
 
@@ -196,11 +198,7 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span) {
 		event.AttributeMap = map[string]string{}
 		event.IsError = false
 		events.At(i).Attributes().Range(func(k string, v pcommon.Value) bool {
-			if v.Type().String() == "INT" {
-				event.AttributeMap[k] = strconv.FormatInt(v.IntVal(), 10)
-			} else {
-				event.AttributeMap[k] = v.StringVal()
-			}
+			event.AttributeMap[k] = v.AsString()
 			return true
 		})
 		if event.Name == "exception" {
@@ -231,23 +229,13 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	tagMap := map[string]string{}
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		v.StringVal()
-		if v.Type().String() == "INT" {
-			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
-		} else if v.StringVal() != "" {
-			tagMap[k] = v.StringVal()
-		}
+		tagMap[k] = v.AsString()
 		return true
 
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		v.StringVal()
-		if v.Type().String() == "INT" {
-			tagMap[k] = strconv.FormatInt(v.IntVal(), 10)
-		} else if v.StringVal() != "" {
-			tagMap[k] = v.StringVal()
-		}
+		tagMap[k] = v.AsString()
 		return true
 
 	})
