@@ -80,7 +80,7 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 	}
 
 	f.logger.Info("Running migrations from path: ", zap.Any("test", f.Options.primary.Migrations))
-	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasource)
+	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasource, f.Options.primary.Cluster)
 	if err != nil {
 		return fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
 	}
@@ -95,7 +95,7 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 	return nil
 }
 
-func buildClickhouseMigrateURL(datasource string) (string, error) {
+func buildClickhouseMigrateURL(datasource string, cluster string) (string, error) {
 	// return fmt.Sprintf("clickhouse://localhost:9000?database=default&x-multi-statement=true"), nil
 	var clickhouseUrl string
 	database := "default"
@@ -116,9 +116,9 @@ func buildClickhouseMigrateURL(datasource string) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, database)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, database, cluster)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s?database=%s&x-multi-statement=true&x-cluster-name=signoz&x-migrations-table=distributed_schema_migrations", host, database)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s?database=%s&x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", host, database, cluster)
 	}
 	return clickhouseUrl, nil
 }
