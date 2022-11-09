@@ -235,7 +235,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER signoz;", databaseName)
+	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s;", databaseName, CLUSTER)
 	err = db.Exec(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
