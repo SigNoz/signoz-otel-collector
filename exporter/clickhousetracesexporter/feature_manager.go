@@ -16,12 +16,12 @@ func init() {
 	featuregate.GetRegistry().Register(featuregate.Gate{
 		ID:          DurationSortFeature,
 		Description: "It controls use of materialized view which optimizes span duration based sorting for trace list at cost of extra disk usage",
-		Enabled:     false,
+		Enabled:     true,
 	})
 	featuregate.GetRegistry().Register(featuregate.Gate{
 		ID:          TimestampSortFeature,
 		Description: "It controls use of projection which optimizes timestamp based sorting for trace list at cost of extra disk usage",
-		Enabled:     false,
+		Enabled:     true,
 	})
 }
 
