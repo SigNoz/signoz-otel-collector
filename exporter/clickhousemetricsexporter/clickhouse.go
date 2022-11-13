@@ -115,7 +115,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		)
 		ENGINE = MergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)`, TIME_SERIES_TABLE, database, CLUSTER))
+			ORDER BY (metric_name, fingerprint)`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
