@@ -31,6 +31,7 @@ const (
 	defaultMigrations          string        = "/migrations"
 	defaultOperationsTable     string        = "distributed_signoz_operations"
 	defaultIndexTable          string        = "distributed_signoz_index_v2"
+	localIndexTable            string        = "signoz_index_v2"
 	defaultErrorTable          string        = "distributed_signoz_error_index_v2"
 	defaultSpansTable          string        = "distributed_signoz_spans"
 	defaultDurationSortTable   string        = "durationSort"
@@ -64,6 +65,7 @@ type namespaceConfig struct {
 	TraceDatabase       string
 	OperationsTable     string
 	IndexTable          string
+	LocalIndexTable     string
 	SpansTable          string
 	ErrorTable          string
 	Cluster             string
@@ -133,6 +135,7 @@ func NewOptions(migrations string, datasource string, primaryNamespace string, o
 			TraceDatabase:       defaultTraceDatabase,
 			OperationsTable:     defaultOperationsTable,
 			IndexTable:          defaultIndexTable,
+			LocalIndexTable:     localIndexTable,
 			ErrorTable:          defaultErrorTable,
 			SpansTable:          defaultSpansTable,
 			DurationSortTable:   defaultDurationSortTable,

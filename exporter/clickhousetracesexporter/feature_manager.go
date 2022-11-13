@@ -138,7 +138,7 @@ func disableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 func enableTimestampSortFeature(db clickhouse.Conn, options *Options) error {
 	err := db.Exec(context.Background(), fmt.Sprintf(`ALTER TABLE %s.%s ON CLUSTER %s
 	ADD PROJECTION IF NOT EXISTS timestampSort 
-	( SELECT * ORDER BY timestamp )`, options.primary.TraceDatabase, options.primary.IndexTable, options.primary.Cluster))
+	( SELECT * ORDER BY timestamp )`, options.primary.TraceDatabase, options.primary.LocalIndexTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func enableTimestampSortFeature(db clickhouse.Conn, options *Options) error {
 
 func disableTimestampSortFeature(db clickhouse.Conn, options *Options) error {
 	err := db.Exec(context.Background(), fmt.Sprintf(`ALTER TABLE %s.%s ON CLUSTER %s
-	DROP PROJECTION IF EXISTS timestampSort`, options.primary.TraceDatabase, options.primary.IndexTable, options.primary.Cluster))
+	DROP PROJECTION IF EXISTS timestampSort`, options.primary.TraceDatabase, options.primary.LocalIndexTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
