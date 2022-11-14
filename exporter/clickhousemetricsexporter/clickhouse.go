@@ -105,6 +105,9 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database))
 
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.time_series_v2 DROP COLUMN IF EXISTS labels_object`, database))
+
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}
