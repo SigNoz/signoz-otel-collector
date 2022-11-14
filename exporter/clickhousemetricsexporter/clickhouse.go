@@ -94,21 +94,19 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
-	// reading and writing of JSON object are not yet supported
-	// in clickhouse-go. We workaround this limitation for now by
-	// using the DEFAULT expression. However, we can use labels_object
-	// in the querying for faster results.
 	queries = append(queries, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s.time_series_v2 (
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			labels String Codec(ZSTD(5)),
-			labels_object JSON DEFAULT labels CODEC(ZSTD(5))
 		)
 		ENGINE = ReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.time_series_v2 DROP COLUMN IF EXISTS labels_object`, database))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
