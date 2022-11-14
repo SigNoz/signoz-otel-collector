@@ -99,7 +99,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5)),
+			labels String Codec(ZSTD(5))
 		)
 		ENGINE = ReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
