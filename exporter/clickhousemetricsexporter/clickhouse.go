@@ -102,16 +102,12 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
-	// reading and writing of JSON object are not yet supported
-	// in clickhouse-go. We workaround this limitation for now by
-	// using the DEFAULT expression. However, we can use labels_object
-	// in the querying for faster results.
 	queries = append(queries, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s(
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5))
+			labels String Codec(ZSTD(5)),
 		)
 		ENGINE = MergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
@@ -119,6 +115,12 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, TIME_SERIES_TABLE, CLUSTER))
+  
+  queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
