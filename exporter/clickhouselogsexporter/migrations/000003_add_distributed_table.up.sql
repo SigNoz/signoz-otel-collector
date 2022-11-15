@@ -1,3 +1,10 @@
+CREATE TABLE IF NOT EXISTS signoz_logs.schema_migrations ON CLUSTER signoz (
+  version Int64,
+  dirty UInt8,
+  sequence UInt64
+) ENGINE = MergeTree
+ORDER BY version;
+
 CREATE TABLE IF NOT EXISTS signoz_logs.distributed_logs  ON CLUSTER signoz AS signoz_logs.logs
 ENGINE = Distributed("signoz", "signoz_logs", logs, cityHash64(id));
 

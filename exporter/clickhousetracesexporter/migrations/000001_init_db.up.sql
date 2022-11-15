@@ -29,12 +29,3 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER signoz (
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (serviceName, -toUnixTimestamp(timestamp));
-
-
-
-CREATE TABLE IF NOT EXISTS signoz_traces.schema_migrations ON CLUSTER signoz (
-  version Int64,
-  dirty UInt8,
-  sequence UInt64
-) ENGINE = MergeTree
-ORDER BY version;

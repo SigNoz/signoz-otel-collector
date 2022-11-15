@@ -23,14 +23,6 @@ PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id);
 
 
-CREATE TABLE IF NOT EXISTS signoz_logs.schema_migrations ON CLUSTER signoz (
-  version Int64,
-  dirty UInt8,
-  sequence UInt64
-) ENGINE = MergeTree
-ORDER BY version;
-
-
 
 CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER signoz (
 name String,
