@@ -2,8 +2,8 @@ CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_index ON CLUSTER sig
 ENGINE = Distributed("signoz", "signoz_traces", signoz_index, cityHash64(traceID));
 
 
-CREATE TABLE IF NOT EXISTS signoz_traces.distributed_schema_migrations  ON CLUSTER signoz AS signoz_traces.schema_migrations
-ENGINE = Distributed("signoz", "signoz_traces", schema_migrations, rand());
+-- CREATE TABLE IF NOT EXISTS signoz_traces.distributed_schema_migrations  ON CLUSTER signoz AS signoz_traces.schema_migrations
+-- ENGINE = Distributed("signoz", "signoz_traces", schema_migrations, rand());
 
 ALTER TABLE signoz_traces.distributed_signoz_index ON CLUSTER signoz  ADD COLUMN IF NOT EXISTS events Array(String);
 

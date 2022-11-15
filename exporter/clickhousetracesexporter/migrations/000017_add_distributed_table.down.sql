@@ -1,5 +1,5 @@
 DROP TABLE IF EXISTS signoz_traces.distributed_signoz_index ON CLUSTER signoz;
-DROP TABLE IF EXISTS signoz_traces.distributed_schema_migrations ON CLUSTER signoz;
+-- DROP TABLE IF EXISTS signoz_traces.distributed_schema_migrations ON CLUSTER signoz;
 
 ALTER TABLE signoz_traces.distributed_signoz_index ON CLUSTER signoz DROP COLUMN IF EXISTS events;
 DROP TABLE IF EXISTS signoz_traces.distributed_signoz_error_index ON CLUSTER signoz;

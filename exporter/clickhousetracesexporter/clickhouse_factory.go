@@ -116,9 +116,9 @@ func buildClickhouseMigrateURL(datasource string, cluster string) (string, error
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", username[0], password[0], host, database, cluster)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations", username[0], password[0], host, database, cluster)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s?database=%s&x-multi-statement=true&x-cluster-name=%s&x-migrations-table=distributed_schema_migrations", host, database, cluster)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s?database=%s&x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations", host, database, cluster)
 	}
 	return clickhouseUrl, nil
 }
