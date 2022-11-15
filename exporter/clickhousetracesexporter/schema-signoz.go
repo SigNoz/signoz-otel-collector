@@ -14,11 +14,25 @@
 
 package clickhousetracesexporter
 
+import (
+	"fmt"
+
+	"go.uber.org/zap/zapcore"
+)
+
 type Event struct {
 	Name         string            `json:"name,omitempty"`
 	TimeUnixNano uint64            `json:"timeUnixNano,omitempty"`
 	AttributeMap map[string]string `json:"attributeMap,omitempty"`
 	IsError      bool              `json:"isError,omitempty"`
+}
+
+func (e *Event) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("name", e.Name)
+	enc.AddUint64("timeUnixNano", e.TimeUnixNano)
+	enc.AddBool("isError", e.IsError)
+	enc.AddString("attributeMap", fmt.Sprintf("%v", e.AttributeMap))
+	return nil
 }
 
 type TraceModel struct {
@@ -29,11 +43,39 @@ type TraceModel struct {
 	StartTimeUnixNano uint64            `json:"startTimeUnixNano,omitempty"`
 	ServiceName       string            `json:"serviceName,omitempty"`
 	Kind              int8              `json:"kind,omitempty"`
-	References        []OtelSpanRef     `json:"references,omitempty"`
+	References        references        `json:"references,omitempty"`
 	StatusCode        int16             `json:"statusCode,omitempty"`
 	TagMap            map[string]string `json:"tagMap,omitempty"`
 	Events            []string          `json:"event,omitempty"`
 	HasError          bool              `json:"hasError,omitempty"`
+}
+
+func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("traceId", t.TraceId)
+	enc.AddString("spanId", t.SpanId)
+	enc.AddString("name", t.Name)
+	enc.AddUint64("durationNano", t.DurationNano)
+	enc.AddUint64("startTimeUnixNano", t.StartTimeUnixNano)
+	enc.AddString("serviceName", t.ServiceName)
+	enc.AddInt8("kind", t.Kind)
+	enc.AddInt16("statusCode", t.StatusCode)
+	enc.AddBool("hasError", t.HasError)
+	enc.AddArray("references", &t.References)
+	enc.AddString("tagMap", fmt.Sprintf("%v", t.TagMap))
+	enc.AddString("event", fmt.Sprintf("%v", t.Events))
+	return nil
+}
+
+type references []OtelSpanRef
+
+func (s *references) MarshalLogArray(enc zapcore.ArrayEncoder) error {
+	for _, e := range *s {
+		err := enc.AppendObject(&e)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Span struct {
@@ -75,8 +117,56 @@ type Span struct {
 	ResponseStatusCode string            `json:"responseStatusCode,omitempty"`
 }
 
+func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("traceId", s.TraceId)
+	enc.AddString("spanId", s.SpanId)
+	enc.AddString("parentSpanId", s.ParentSpanId)
+	enc.AddString("name", s.Name)
+	enc.AddUint64("durationNano", s.DurationNano)
+	enc.AddUint64("startTimeUnixNano", s.StartTimeUnixNano)
+	enc.AddString("serviceName", s.ServiceName)
+	enc.AddInt8("kind", s.Kind)
+	enc.AddInt16("statusCode", s.StatusCode)
+	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
+	enc.AddString("httpUrl", s.HttpUrl)
+	enc.AddString("httpMethod", s.HttpMethod)
+	enc.AddString("httpHost", s.HttpHost)
+	enc.AddString("httpRoute", s.HttpRoute)
+	enc.AddString("httpCode", s.HttpCode)
+	enc.AddString("msgSystem", s.MsgSystem)
+	enc.AddString("msgOperation", s.MsgOperation)
+	enc.AddString("externalHttpUrl", s.ExternalHttpUrl)
+	enc.AddString("component", s.Component)
+	enc.AddString("dbSystem", s.DBSystem)
+	enc.AddString("dbName", s.DBName)
+	enc.AddString("dbOperation", s.DBOperation)
+	enc.AddString("peerService", s.PeerService)
+	enc.AddString("gRPCCode", s.GRPCCode)
+	enc.AddString("gRPCMethod", s.GRPCMethod)
+	enc.AddString("rpcSystem", s.RPCSystem)
+	enc.AddString("rpcService", s.RPCService)
+	enc.AddString("rpcMethod", s.RPCMethod)
+	enc.AddString("responseStatusCode", s.ResponseStatusCode)
+	enc.AddBool("hasError", s.HasError)
+	enc.AddString("errorID", s.ErrorID)
+	enc.AddString("errorGroupID", s.ErrorGroupID)
+	enc.AddObject("errorEvent", &s.ErrorEvent)
+	enc.AddObject("traceModel", &s.TraceModel)
+	enc.AddString("event", fmt.Sprintf("%v", s.Events))
+	enc.AddString("tagMap", fmt.Sprintf("%v", s.TagMap))
+
+	return nil
+}
+
 type OtelSpanRef struct {
 	TraceId string `json:"traceId,omitempty"`
 	SpanId  string `json:"spanId,omitempty"`
 	RefType string `json:"refType,omitempty"`
+}
+
+func (r *OtelSpanRef) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("traceId", r.TraceId)
+	enc.AddString("spanId", r.SpanId)
+	enc.AddString("refType", r.RefType)
+	return nil
 }
