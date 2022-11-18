@@ -89,6 +89,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/simpleprometheusreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/skywalkingreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlqueryreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlserverreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver"
@@ -180,6 +181,7 @@ func Components() (otelcol.Factories, error) {
 		sqlqueryreceiver.NewFactory(),
 		sqlserverreceiver.NewFactory(),
 		simpleprometheusreceiver.NewFactory(),
+		skywalkingreceiver.NewFactory(),
 		statsdreceiver.NewFactory(),
 		syslogreceiver.NewFactory(),
 		tcplogreceiver.NewFactory(),
