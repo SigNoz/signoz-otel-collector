@@ -108,6 +108,14 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	queries = append(queries, fmt.Sprintf(`
 		ALTER TABLE %s.time_series_v2 DROP COLUMN IF EXISTS labels_object`, database))
 
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.samples_v2
+			ADD COLUMN IF NOT EXISTS datetime DateTime64(9) DEFAULT fromUnixTimestamp64Milli(timestamp_ms)`, database))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.time_series_v2
+			ADD COLUMN IF NOT EXISTS datetime DateTime64(9) DEFAULT fromUnixTimestamp64Milli(timestamp_ms)`, database))
+
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}
