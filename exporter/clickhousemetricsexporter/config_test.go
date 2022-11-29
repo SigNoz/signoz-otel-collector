@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -44,14 +45,14 @@ func Test_loadConfig(t *testing.T) {
 	require.NotNil(t, cfg)
 
 	// From the default configurations -- checks if a correct exporter is instantiated
-	e0 := cfg.Exporters[(config.NewComponentID(typeStr))]
+	e0 := cfg.Exporters[(component.NewID(typeStr))]
 	assert.Equal(t, e0, factory.CreateDefaultConfig())
 
 	// checks if the correct Config struct can be instantiated from testdata/config.yaml
-	e1 := cfg.Exporters[config.NewComponentIDWithName(typeStr, "2")]
+	e1 := cfg.Exporters[component.NewIDWithName(typeStr, "2")]
 	assert.Equal(t, e1,
 		&Config{
-			ExporterSettings: config.NewExporterSettings(config.NewComponentIDWithName(typeStr, "2")),
+			ExporterSettings: config.NewExporterSettings(component.NewIDWithName(typeStr, "2")),
 			TimeoutSettings:  exporterhelper.NewDefaultTimeoutSettings(),
 			RetrySettings: exporterhelper.RetrySettings{
 				Enabled:         true,
@@ -113,5 +114,5 @@ func TestDisabledQueue(t *testing.T) {
 	factories.Exporters[typeStr] = factory
 	cfg, err := servicetest.LoadConfigAndValidate(path.Join(".", "testdata", "disabled_queue.yaml"), factories)
 	assert.NoError(t, err)
-	assert.False(t, cfg.Exporters[config.NewComponentID(typeStr)].(*Config).RemoteWriteQueue.Enabled)
+	assert.False(t, cfg.Exporters[component.NewID(typeStr)].(*Config).RemoteWriteQueue.Enabled)
 }
