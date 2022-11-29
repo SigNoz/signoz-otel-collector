@@ -8,7 +8,10 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/oklog/ulid v1.3.1
+	github.com/open-telemetry/opamp-go v0.5.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.63.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.63.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter v0.63.0
@@ -109,6 +112,7 @@ require (
 	github.com/prometheus/prometheus v0.38.0
 	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.8.1
+	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.1
 	go.opentelemetry.io/collector v0.63.1
@@ -120,6 +124,8 @@ require (
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.23.0
 	google.golang.org/grpc v1.50.1
+	google.golang.org/protobuf v1.28.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -228,7 +234,6 @@ require (
 	github.com/gophercloud/gophercloud v0.25.0 // indirect
 	github.com/gorilla/handlers v1.5.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grafana/regexp v0.0.0-20220304095617-2e8d9baf4ac2 // indirect
 	github.com/grobie/gomemcache v0.0.0-20180201122607-1f779c573665 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
@@ -298,6 +303,7 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nginxinc/nginx-prometheus-exporter v0.8.1-0.20201110005315-f5a5f8086c19 // indirect
 	github.com/observiq/ctimefmt v1.0.0 // indirect
+	github.com/oklog/ulid/v2 v2.0.2 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.63.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.63.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/common v0.63.0 // indirect
@@ -351,7 +357,6 @@ require (
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/cobra v1.6.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/tg123/go-htpasswd v1.2.0 // indirect
@@ -404,13 +409,11 @@ require (
 	google.golang.org/api v0.100.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221018160656-63c7b68cfc55 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.25.3 // indirect
 	k8s.io/apimachinery v0.25.3 // indirect
 	k8s.io/client-go v0.25.3 // indirect

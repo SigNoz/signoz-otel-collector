@@ -1,0 +1,32 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 10s
+extensions:
+  zpages: {}
+exporters:
+  clickhousetraces:
+    datasource: tcp://localhost:9000/?database=signoz_traces
+    migrations: exporter/clickhousetracesexporter/migrations
+  clickhousemetricswrite:
+    endpoint: tcp://localhost:9000/?database=signoz_metrics
+    resource_to_telemetry_conversion:
+      enabled: false
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+service:
+  extensions: [zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhousetraces]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhousemetricswrite]
