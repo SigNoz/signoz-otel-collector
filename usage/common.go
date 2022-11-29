@@ -15,6 +15,7 @@ import (
 const (
 	TenantKey                 = "tenant"
 	DefaultCollectionInterval = 1 * time.Hour
+	UsageTableName            = "usage"
 )
 
 var (
@@ -68,5 +69,5 @@ func GetTenantNameFromResource(resource pcommon.Resource) string {
 	if !found {
 		return "default"
 	}
-	return tenant.StringVal()
+	return tenant.AsString()
 }
