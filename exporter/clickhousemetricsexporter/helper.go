@@ -65,14 +65,14 @@ func (a ByLabelName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 // validateMetrics returns a bool representing whether the metric has a valid type and temporality combination and a
 // matching metric type and field
 func validateMetrics(metric pmetric.Metric) bool {
-	switch metric.DataType() {
-	case pmetric.MetricDataTypeGauge:
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
 		return metric.Gauge().DataPoints().Len() != 0
-	case pmetric.MetricDataTypeSum:
-		return metric.Sum().DataPoints().Len() != 0 && metric.Sum().AggregationTemporality() == pmetric.MetricAggregationTemporalityCumulative
-	case pmetric.MetricDataTypeHistogram:
-		return metric.Histogram().DataPoints().Len() != 0 && metric.Histogram().AggregationTemporality() == pmetric.MetricAggregationTemporalityCumulative
-	case pmetric.MetricDataTypeSummary:
+	case pmetric.MetricTypeSum:
+		return metric.Sum().DataPoints().Len() != 0 && metric.Sum().AggregationTemporality() == pmetric.AggregationTemporalityCumulative
+	case pmetric.MetricTypeHistogram:
+		return metric.Histogram().DataPoints().Len() != 0 && metric.Histogram().AggregationTemporality() == pmetric.AggregationTemporalityCumulative
+	case pmetric.MetricTypeSummary:
 		return metric.Summary().DataPoints().Len() != 0
 	}
 	return false
@@ -141,12 +141,14 @@ func addExemplar(tsMap map[string]*prompb.TimeSeries, bucketBounds []bucketBound
 }
 
 // timeSeries return a string signature in the form of:
-// 		TYPE-label1-value1- ...  -labelN-valueN
+//
+//	TYPE-label1-value1- ...  -labelN-valueN
+//
 // the label slice should not contain duplicate label names; this method sorts the slice by label name before creating
 // the signature.
 func timeSeriesSignature(metric pmetric.Metric, labels *[]prompb.Label) string {
 	b := strings.Builder{}
-	b.WriteString(metric.DataType().String())
+	b.WriteString(metric.Type().String())
 
 	sort.Sort(ByLabelName(*labels))
 
@@ -179,7 +181,7 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, externa
 		if isUsefulResourceAttribute(key) {
 			l[key] = prompb.Label{
 				Name:  sanitize(key),
-				Value: value.StringVal(), // TODO(jbd): Decide what to do with non-string attributes.
+				Value: value.Str(), // TODO(jbd): Decide what to do with non-string attributes.
 			}
 		}
 
@@ -327,11 +329,11 @@ func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resou
 	}
 	switch pt.ValueType() {
 	case pmetric.NumberDataPointValueTypeInt:
-		sample.Value = float64(pt.IntVal())
+		sample.Value = float64(pt.IntValue())
 	case pmetric.NumberDataPointValueTypeDouble:
-		sample.Value = pt.DoubleVal()
+		sample.Value = pt.DoubleValue()
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		sample.Value = math.Float64frombits(value.StaleNaN)
 	}
 	addSample(tsMap, sample, labels, metric)
@@ -349,7 +351,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 		Value:     pt.Sum(),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
 
@@ -361,7 +363,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 		Value:     float64(pt.Count()),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
 
@@ -385,7 +387,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 			Value:     float64(cumulativeCount),
 			Timestamp: time,
 		}
-		if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+		if pt.Flags().NoRecordedValue() {
 			bucket.Value = math.Float64frombits(value.StaleNaN)
 		}
 		boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
@@ -398,10 +400,12 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 	infBucket := &prompb.Sample{
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		infBucket.Value = math.Float64frombits(value.StaleNaN)
 	} else {
-		cumulativeCount += pt.BucketCounts().At(pt.BucketCounts().Len() - 1)
+		if pt.BucketCounts().Len() > 0 {
+			cumulativeCount += pt.BucketCounts().At(pt.BucketCounts().Len() - 1)
+		}
 		infBucket.Value = float64(cumulativeCount)
 	}
 	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, pInfStr)
@@ -418,7 +422,7 @@ func getPromExemplars(pt pmetric.HistogramDataPoint) []prompb.Exemplar {
 		exemplar := pt.Exemplars().At(i)
 
 		promExemplar := &prompb.Exemplar{
-			Value:     exemplar.DoubleVal(),
+			Value:     exemplar.DoubleValue(),
 			Timestamp: timestamp.FromTime(exemplar.Timestamp().AsTime()),
 		}
 
@@ -450,7 +454,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 		Value:     pt.Sum(),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
 	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+sumStr)
@@ -461,7 +465,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 		Value:     float64(pt.Count()),
 		Timestamp: time,
 	}
-	if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+	if pt.Flags().NoRecordedValue() {
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
 	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+countStr)
@@ -474,7 +478,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 			Value:     qt.Value(),
 			Timestamp: time,
 		}
-		if pt.Flags().HasFlag(pmetric.MetricDataPointFlagNoRecordedValue) {
+		if pt.Flags().NoRecordedValue() {
 			quantile.Value = math.Float64frombits(value.StaleNaN)
 		}
 		percentileStr := strconv.FormatFloat(qt.Quantile(), 'f', -1, 64)

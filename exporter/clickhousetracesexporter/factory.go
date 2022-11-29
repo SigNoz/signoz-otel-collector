@@ -42,12 +42,12 @@ func NewFactory() component.ExporterFactory {
 	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesExporter(createTracesExporter),
+		component.WithTracesExporter(createTracesExporter, component.StabilityLevelUndefined),
 	)
 }
 
 func createTracesExporter(
-	_ context.Context,
+	ctx context.Context,
 	params component.ExporterCreateSettings,
 	cfg config.Exporter,
 ) (component.TracesExporter, error) {
@@ -58,8 +58,9 @@ func createTracesExporter(
 	}
 
 	return exporterhelper.NewTracesExporter(
-		cfg,
+		ctx,
 		params,
+		cfg,
 		oce.pushTraceData,
 		exporterhelper.WithShutdown(oce.Shutdown))
 }

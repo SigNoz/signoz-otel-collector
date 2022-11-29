@@ -19,11 +19,11 @@ import (
 )
 
 var (
-	resourceAttributes1 = map[string]interface{}{"resource-attr": pcommon.NewValueString("resource-attr-val-1")}
-	resourceAttributes2 = map[string]interface{}{"resource-attr": pcommon.NewValueString("resource-attr-val-2")}
-	spanEventAttributes = map[string]interface{}{"span-event-attr": pcommon.NewValueString("span-event-attr-val")}
-	spanLinkAttributes  = map[string]interface{}{"span-link-attr": pcommon.NewValueString("span-link-attr-val")}
-	spanAttributes      = map[string]interface{}{"span-attr": pcommon.NewValueString("span-attr-val")}
+	resourceAttributes1 = map[string]interface{}{"resource-attr": pcommon.NewValueStr("resource-attr-val-1")}
+	resourceAttributes2 = map[string]interface{}{"resource-attr": pcommon.NewValueStr("resource-attr-val-2")}
+	spanEventAttributes = map[string]interface{}{"span-event-attr": pcommon.NewValueStr("span-event-attr-val")}
+	spanLinkAttributes  = map[string]interface{}{"span-link-attr": pcommon.NewValueStr("span-link-attr-val")}
+	spanAttributes      = map[string]interface{}{"span-attr": pcommon.NewValueStr("span-attr-val")}
 )
 
 const (
@@ -38,45 +38,55 @@ const (
 )
 
 func initResourceAttributes1(dest pcommon.Map) {
-	pcommon.NewMapFromRaw(resourceAttributes1).CopyTo(dest)
+	t := pcommon.NewMap()
+	t.FromRaw(resourceAttributes1)
+	t.CopyTo(dest)
 }
 
 func initResourceAttributes2(dest pcommon.Map) {
-	pcommon.NewMapFromRaw(resourceAttributes2).CopyTo(dest)
+	t := pcommon.NewMap()
+	t.FromRaw(resourceAttributes2)
+	t.CopyTo(dest)
 }
 
 func initSpanAttributes(dest pcommon.Map) {
-	pcommon.NewMapFromRaw(spanAttributes).CopyTo(dest)
+	t := pcommon.NewMap()
+	t.FromRaw(spanAttributes)
+	t.CopyTo(dest)
 }
 
 func initSpanEventAttributes(dest pcommon.Map) {
-	pcommon.NewMapFromRaw(spanEventAttributes).CopyTo(dest)
+	t := pcommon.NewMap()
+	t.FromRaw(spanEventAttributes)
+	t.CopyTo(dest)
 }
 
 func initSpanLinkAttributes(dest pcommon.Map) {
-	pcommon.NewMapFromRaw(spanLinkAttributes).CopyTo(dest)
+	t := pcommon.NewMap()
+	t.FromRaw(spanLinkAttributes)
+	t.CopyTo(dest)
 }
 
 func initMetricAttachment(dest pcommon.Map) {
-	dest.UpsertString(TestAttachmentKey, TestAttachmentValue)
+	dest.PutStr(TestAttachmentKey, TestAttachmentValue)
 }
 
 func initMetricAttributes1(dest pcommon.Map) {
-	dest.UpsertString(TestLabelKey1, TestLabelValue1)
+	dest.PutStr(TestLabelKey1, TestLabelValue1)
 }
 
 func initMetricAttributes12(dest pcommon.Map) {
-	dest.UpsertString(TestLabelKey1, TestLabelValue1)
-	dest.UpsertString(TestLabelKey2, TestLabelValue2)
+	dest.PutStr(TestLabelKey1, TestLabelValue1)
+	dest.PutStr(TestLabelKey2, TestLabelValue2)
 	dest.Sort()
 }
 
 func initMetricAttributes13(dest pcommon.Map) {
-	dest.UpsertString(TestLabelKey1, TestLabelValue1)
-	dest.UpsertString(TestLabelKey3, TestLabelValue3)
+	dest.PutStr(TestLabelKey1, TestLabelValue1)
+	dest.PutStr(TestLabelKey3, TestLabelValue3)
 	dest.Sort()
 }
 
 func initMetricAttributes2(dest pcommon.Map) {
-	dest.UpsertString(TestLabelKey2, TestLabelValue2)
+	dest.PutStr(TestLabelKey2, TestLabelValue2)
 }

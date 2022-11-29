@@ -3,9 +3,7 @@ name: test-pipeline
 on:
   pull_request:
     branches:
-      - develop
-      - main
-      - release/v*
+      - '**'
 
 jobs:
   lint-and-test:
@@ -15,7 +13,7 @@ jobs:
 
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.17
+          go-version: 1.18
 
       - name: Install tools
         run: make install-ci
