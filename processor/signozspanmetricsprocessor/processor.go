@@ -733,8 +733,8 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 	dims := pcommon.NewMap()
 	dims.PutStr(serviceNameKey, serviceName)
 	dims.PutStr(operationKey, span.Name())
-	dims.PutStr(spanKindKey, span.Kind().String())
-	dims.PutStr(statusCodeKey, span.Status().Code().String())
+	dims.PutStr(spanKindKey, "SPAN_KIND_"+strings.ToUpper(span.Kind().String()))
+	dims.PutStr(statusCodeKey, "STATUS_CODE_"+strings.ToUpper(span.Status().Code().String()))
 	for _, d := range optionalDims {
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)
 		if ok {
@@ -791,8 +791,8 @@ func buildKey(serviceName string, span ptrace.Span, optionalDims []Dimension, re
 	var metricKeyBuilder strings.Builder
 	concatDimensionValue(&metricKeyBuilder, serviceName, false)
 	concatDimensionValue(&metricKeyBuilder, span.Name(), true)
-	concatDimensionValue(&metricKeyBuilder, span.Kind().String(), true)
-	concatDimensionValue(&metricKeyBuilder, span.Status().Code().String(), true)
+	concatDimensionValue(&metricKeyBuilder, "SPAN_KIND_"+strings.ToUpper(span.Kind().String()), true)
+	concatDimensionValue(&metricKeyBuilder, "STATUS_CODE_"+strings.ToUpper(span.Status().Code().String()), true)
 
 	for _, d := range optionalDims {
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)
