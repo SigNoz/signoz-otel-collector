@@ -30,11 +30,11 @@ const (
 	archiveNamespace = "clickhouse-archive"
 )
 
-func createDefaultConfig() config.Exporter {
+func createDefaultConfig() component.ExporterConfig {
 	// opts := NewOptions(primaryNamespace, archiveNamespace)
 	return &Config{
 		// Options:          *opts,
-		ExporterSettings: config.NewExporterSettings(config.NewComponentID(typeStr)),
+		ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
 	}
 }
 
@@ -50,7 +50,7 @@ func NewFactory() component.ExporterFactory {
 func createTracesExporter(
 	ctx context.Context,
 	params component.ExporterCreateSettings,
-	cfg config.Exporter,
+	cfg component.ExporterConfig,
 ) (component.TracesExporter, error) {
 
 	oce, err := newExporter(cfg, params.Logger)
