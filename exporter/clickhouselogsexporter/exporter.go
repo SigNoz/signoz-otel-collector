@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	CLUSTER                = "signoz"
+	CLUSTER                = "cluster"
 	DISTRIBUTED_LOGS_TABLE = "distributed_logs"
 )
 

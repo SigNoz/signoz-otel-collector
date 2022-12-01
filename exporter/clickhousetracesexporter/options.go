@@ -37,7 +37,7 @@ const (
 	defaultDurationSortTable        string        = "durationSort"
 	defaultDurationSortMVTable      string        = "durationSortMV"
 	defaultArchiveSpansTable        string        = "signoz_archive_spans"
-	defaultClusterName              string        = "signoz"
+	defaultClusterName              string        = "cluster"
 	defaultDependencyGraphTable     string        = "dependency_graph_minutes"
 	defaultDependencyGraphServiceMV string        = "dependency_graph_minutes_service_calls_mv"
 	defaultDependencyGraphDbMV      string        = "dependency_graph_minutes_db_calls_mv"

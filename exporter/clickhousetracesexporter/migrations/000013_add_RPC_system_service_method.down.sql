@@ -1,17 +1,17 @@
-DROP TABLE IF EXISTS signoz_traces.durationSortMV ON CLUSTER signoz;
+DROP TABLE IF EXISTS signoz_traces.durationSortMV ON CLUSTER cluster;
 
-ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER signoz
+ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER cluster
     DROP INDEX idx_rpcMethod,
     DROP INDEX idx_responseStatusCode;
 
-ALTER TABLE signoz_traces.durationSort ON CLUSTER signoz
+ALTER TABLE signoz_traces.durationSort ON CLUSTER cluster
     DROP INDEX idx_rpcMethod,
     DROP INDEX idx_responseStatusCode;
 
 
 
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER signoz
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER cluster
 TO signoz_traces.durationSort
 AS SELECT
   timestamp,
@@ -36,4 +36,4 @@ AS SELECT
 FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;
 
-ATTACH TABLE IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER signoz;
+ATTACH TABLE IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER cluster;

@@ -1,1 +1,1 @@
-ALTER TABLE signoz_logs.logs ON CLUSTER signoz DROP INDEX IF EXISTS id_minmax;
+ALTER TABLE signoz_logs.logs ON CLUSTER cluster DROP INDEX IF EXISTS id_minmax;

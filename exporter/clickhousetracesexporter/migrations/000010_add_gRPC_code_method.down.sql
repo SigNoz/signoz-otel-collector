@@ -1,1 +1,1 @@
-ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER signoz DROP COLUMN IF EXISTS gRPCCode, DROP COLUMN IF EXISTS gRPCMethod;
+ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER cluster DROP COLUMN IF EXISTS gRPCCode, DROP COLUMN IF EXISTS gRPCMethod;

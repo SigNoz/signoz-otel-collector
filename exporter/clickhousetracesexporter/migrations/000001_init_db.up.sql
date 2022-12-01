@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
   traceID String CODEC(ZSTD(1)),
   spanID String CODEC(ZSTD(1)),
