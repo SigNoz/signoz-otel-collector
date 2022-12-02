@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   traceID FixedString(32) CODEC(ZSTD(1)),
   spanID String CODEC(ZSTD(1)),
@@ -36,7 +36,7 @@ PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
 SETTINGS index_granularity = 8192;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER signoz
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER cluster
 TO signoz_traces.durationSort
 AS SELECT
   timestamp,

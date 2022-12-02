@@ -1,5 +1,5 @@
 -- https://altinity.com/blog/2019/7/new-encodings-to-improve-clickhouse
-CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER cluster (
 	timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	observed_timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	id String CODEC(ZSTD(1)),
@@ -24,7 +24,7 @@ ORDER BY (timestamp, id);
 
 
 
-CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER cluster (
 name String,
 datatype String
 )ENGINE = MergeTree
@@ -32,32 +32,32 @@ ORDER BY (name, datatype);
 
 
 
-CREATE TABLE IF NOT EXISTS signoz_logs.logs_resource_keys ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_logs.logs_resource_keys ON CLUSTER cluster (
 name String,
 datatype String
 )ENGINE = ReplacingMergeTree
 ORDER BY (name, datatype);
 
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_string_final_mv ON CLUSTER cluster TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_string_key) as name, 'String' datatype
 FROM signoz_logs.logs
 ORDER BY name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_int64_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_int64_final_mv ON CLUSTER cluster TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_int64_key) as name, 'Int64' datatype
 FROM signoz_logs.logs
 ORDER BY  name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_float64_final_mv ON CLUSTER signoz TO signoz_logs.logs_atrribute_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  atrribute_keys_float64_final_mv ON CLUSTER cluster TO signoz_logs.logs_atrribute_keys AS
 SELECT
 distinct arrayJoin(attributes_float64_key) as name, 'Float64' datatype
 FROM signoz_logs.logs
 ORDER BY  name;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS  resource_keys_string_final_mv  ON CLUSTER signoz TO signoz_logs.logs_resource_keys AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS  resource_keys_string_final_mv  ON CLUSTER cluster TO signoz_logs.logs_resource_keys AS
 SELECT
 distinct arrayJoin(resources_string_key) as name, 'String' datatype
 FROM signoz_logs.logs

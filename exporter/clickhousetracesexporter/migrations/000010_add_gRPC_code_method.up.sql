@@ -1,1 +1,1 @@
-ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER signoz ADD COLUMN IF NOT EXISTS gRPCMethod LowCardinality(String) CODEC(ZSTD(1)), ADD COLUMN IF NOT EXISTS gRPCCode LowCardinality(String) CODEC(ZSTD(1));
+ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER cluster ADD COLUMN IF NOT EXISTS gRPCMethod LowCardinality(String) CODEC(ZSTD(1)), ADD COLUMN IF NOT EXISTS gRPCCode LowCardinality(String) CODEC(ZSTD(1));

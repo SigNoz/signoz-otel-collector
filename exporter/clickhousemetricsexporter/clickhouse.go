@@ -37,7 +37,7 @@ import (
 const (
 	namespace                     = "promhouse"
 	subsystem                     = "clickhouse"
-	CLUSTER                       = "signoz"
+	CLUSTER                       = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE = "distributed_time_series_v2"
 	DISTRIBUTED_SAMPLES_TABLE     = "distributed_samples_v2"
 	TIME_SERIES_TABLE             = "time_series_v2"

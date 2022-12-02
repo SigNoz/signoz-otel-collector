@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER signoz (
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   errorID FixedString(32) CODEC(ZSTD(1)),
   groupID FixedString(32) CODEC(ZSTD(1)),
