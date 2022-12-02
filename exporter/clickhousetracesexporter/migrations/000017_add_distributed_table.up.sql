@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS signoz_traces.schema_migrations ON CLUSTER signoz (
 ) ENGINE = MergeTree
 ORDER BY version;
 
-
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_index ON CLUSTER signoz AS signoz_traces.signoz_index
 ENGINE = Distributed("signoz", "signoz_traces", signoz_index, cityHash64(traceID));
 
