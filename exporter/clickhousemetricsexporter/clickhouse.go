@@ -109,7 +109,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
 			labels String Codec(ZSTD(5))
 		)
-		ENGINE = MergeTree
+		ENGINE = ReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
 			ORDER BY (metric_name, fingerprint)`, database, TIME_SERIES_TABLE, CLUSTER))
 
