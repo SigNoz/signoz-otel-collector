@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -41,12 +42,12 @@ func TestLoadConfig(t *testing.T) {
 
 	defaultCfg := factory.CreateDefaultConfig()
 	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000"
-	r0 := cfg.Exporters[config.NewComponentID(typeStr)]
+	r0 := cfg.Exporters[component.NewID(typeStr)]
 	assert.Equal(t, r0, defaultCfg)
 
-	r1 := cfg.Exporters[config.NewComponentIDWithName(typeStr, "full")].(*Config)
+	r1 := cfg.Exporters[component.NewIDWithName(typeStr, "full")].(*Config)
 	assert.Equal(t, r1, &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewComponentIDWithName(typeStr, "full")),
+		ExporterSettings: config.NewExporterSettings(component.NewIDWithName(typeStr, "full")),
 		DSN:              "tcp://127.0.0.1:9000",
 		TimeoutSettings: exporterhelper.TimeoutSettings{
 			Timeout: 5 * time.Second,

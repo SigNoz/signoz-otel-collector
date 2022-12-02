@@ -14,16 +14,16 @@ const (
 )
 
 func init() {
-	featuregate.GetRegistry().Register(featuregate.Gate{
-		ID:          DurationSortFeature,
-		Description: "It controls use of materialized view which optimizes span duration based sorting for trace list at cost of extra disk usage",
-		Enabled:     true,
-	})
-	featuregate.GetRegistry().Register(featuregate.Gate{
-		ID:          TimestampSortFeature,
-		Description: "It controls use of projection which optimizes timestamp based sorting for trace list at cost of extra disk usage",
-		Enabled:     true,
-	})
+	featuregate.GetRegistry().MustRegisterID(
+		DurationSortFeature,
+		featuregate.StageBeta,
+		featuregate.WithRegisterDescription("It controls use of materialized view which optimizes span duration based sorting for trace list at cost of extra disk usage"),
+	)
+	featuregate.GetRegistry().MustRegisterID(
+		TimestampSortFeature,
+		featuregate.StageBeta,
+		featuregate.WithRegisterDescription("It controls use of materialized view which optimizes span timestamp based sorting for trace list at cost of extra disk usage"),
+	)
 }
 
 func initFeatures(db clickhouse.Conn, options *Options) error {
