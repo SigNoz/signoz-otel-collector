@@ -1,1 +1,1 @@
-alter table signoz_logs.logs add index id_minmax id TYPE minmax GRANULARITY 1
+ALTER TABLE signoz_logs.logs ON CLUSTER cluster ADD INDEX IF NOT EXISTS id_minmax id TYPE minmax GRANULARITY 1;

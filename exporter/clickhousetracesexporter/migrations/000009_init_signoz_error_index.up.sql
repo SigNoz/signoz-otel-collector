@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index (
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   errorID FixedString(32) CODEC(ZSTD(1)),
   traceID FixedString(32) CODEC(ZSTD(1)),
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index (
   INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
   INDEX idx_message exceptionMessage TYPE bloom_filter GRANULARITY 4,
   INDEX idx_type exceptionType TYPE bloom_filter GRANULARITY 4
-) ENGINE MergeTree()
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
-ORDER BY (serviceName, exceptionType, exceptionMessage, timestamp)
+ORDER BY (serviceName, exceptionType, exceptionMessage, timestamp);
+

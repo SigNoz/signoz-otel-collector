@@ -1,1 +1,1 @@
-ALTER TABLE signoz_index DROP COLUMN IF EXISTS hasError
+ALTER TABLE signoz_traces.signoz_index ON CLUSTER cluster DROP COLUMN IF EXISTS hasError;

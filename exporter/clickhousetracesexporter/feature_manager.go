@@ -2,6 +2,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"go.opentelemetry.io/collector/featuregate"
@@ -25,25 +26,25 @@ func init() {
 	)
 }
 
-func initFeatures(db clickhouse.Conn) error {
+func initFeatures(db clickhouse.Conn, options *Options) error {
 	if featuregate.GetRegistry().IsEnabled(DurationSortFeature) {
-		err := enableDurationSortFeature(db)
+		err := enableDurationSortFeature(db, options)
 		if err != nil {
 			return err
 		}
 	} else {
-		err := disableDurationSortFeature(db)
+		err := disableDurationSortFeature(db, options)
 		if err != nil {
 			return err
 		}
 	}
 	if featuregate.GetRegistry().IsEnabled(TimestampSortFeature) {
-		err := enableTimestampSortFeature(db)
+		err := enableTimestampSortFeature(db, options)
 		if err != nil {
 			return err
 		}
 	} else {
-		err := disableTimestampSortFeature(db)
+		err := disableTimestampSortFeature(db, options)
 		if err != nil {
 			return err
 		}
@@ -51,8 +52,8 @@ func initFeatures(db clickhouse.Conn) error {
 	return nil
 }
 
-func enableDurationSortFeature(db clickhouse.Conn) error {
-	err := db.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ( 
+func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s( 
 		timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
 		traceID FixedString(32) CODEC(ZSTD(1)),
 		spanID String CODEC(ZSTD(1)),
@@ -88,12 +89,12 @@ func enableDurationSortFeature(db clickhouse.Conn) error {
 		) ENGINE MergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
-		SETTINGS index_granularity = 8192`)
+		SETTINGS index_granularity = 8192`, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
-	err = db.Exec(context.Background(), `CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV
-		TO signoz_traces.durationSort
+	err = db.Exec(context.Background(), fmt.Sprintf(`CREATE MATERIALIZED VIEW IF NOT EXISTS %s.%s ON CLUSTER %s
+		TO %s.%s
 		AS SELECT
 		timestamp,
 		traceID,
@@ -114,39 +115,39 @@ func enableDurationSortFeature(db clickhouse.Conn) error {
 		gRPCCode,
 		hasError,
 		tagMap
-		FROM signoz_traces.signoz_index_v2
-		ORDER BY durationNano, timestamp`)
+		FROM %s.%s
+		ORDER BY durationNano, timestamp`, options.primary.TraceDatabase, options.primary.DurationSortMVTable, options.primary.Cluster, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.TraceDatabase, options.primary.IndexTable))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func disableDurationSortFeature(db clickhouse.Conn) error {
-	err := db.Exec(context.Background(), "DROP TABLE IF EXISTS signoz_traces.durationSort")
+func disableDurationSortFeature(db clickhouse.Conn, options *Options) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s`, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
-	err = db.Exec(context.Background(), "DROP VIEW IF EXISTS signoz_traces.durationSortMV")
+	err = db.Exec(context.Background(), fmt.Sprintf(`DROP VIEW IF EXISTS %s.%s ON CLUSTER %s`, options.primary.TraceDatabase, options.primary.DurationSortMVTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func enableTimestampSortFeature(db clickhouse.Conn) error {
-	err := db.Exec(context.Background(), `ALTER TABLE signoz_traces.signoz_index_v2 
+func enableTimestampSortFeature(db clickhouse.Conn, options *Options) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`ALTER TABLE %s.%s ON CLUSTER %s
 	ADD PROJECTION IF NOT EXISTS timestampSort 
-	( SELECT * ORDER BY timestamp )`)
+	( SELECT * ORDER BY timestamp )`, options.primary.TraceDatabase, options.primary.LocalIndexTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func disableTimestampSortFeature(db clickhouse.Conn) error {
-	err := db.Exec(context.Background(), `ALTER TABLE signoz_traces.signoz_index_v2 
-	DROP PROJECTION IF EXISTS timestampSort`)
+func disableTimestampSortFeature(db clickhouse.Conn, options *Options) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`ALTER TABLE %s.%s ON CLUSTER %s
+	DROP PROJECTION IF EXISTS timestampSort`, options.primary.TraceDatabase, options.primary.LocalIndexTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}

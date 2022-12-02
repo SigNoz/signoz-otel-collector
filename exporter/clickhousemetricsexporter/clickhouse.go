@@ -35,8 +35,13 @@ import (
 )
 
 const (
-	namespace = "promhouse"
-	subsystem = "clickhouse"
+	namespace                     = "promhouse"
+	subsystem                     = "clickhouse"
+	CLUSTER                       = "cluster"
+	DISTRIBUTED_TIME_SERIES_TABLE = "distributed_time_series_v2"
+	DISTRIBUTED_SAMPLES_TABLE     = "distributed_samples_v2"
+	TIME_SERIES_TABLE             = "time_series_v2"
+	SAMPLES_TABLE                 = "samples_v2"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -77,12 +82,12 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	var queries []string
 	if params.DropDatabase {
-		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s`, database))
+		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s ON CLUSTER %s;`, database, CLUSTER))
 	}
-	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, database))
+	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, database, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.samples_v2 (
+		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
@@ -90,12 +95,15 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		)
 		ENGINE = MergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms)`, database))
+			ORDER BY (metric_name, fingerprint, timestamp_ms);`, database, SAMPLES_TABLE, CLUSTER))
+
+	queries = append(queries, fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
 
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
 	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.time_series_v2 (
+		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s(
 			metric_name LowCardinality(String),
 			fingerprint UInt64 Codec(DoubleDelta, LZ4),
 			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
@@ -103,10 +111,16 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		)
 		ENGINE = ReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)`, database))
+			ORDER BY (metric_name, fingerprint)`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.time_series_v2 DROP COLUMN IF EXISTS labels_object`, database))
+			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, TIME_SERIES_TABLE, CLUSTER))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
@@ -170,7 +184,7 @@ func (ch *clickHouse) runTimeSeriesReloader(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.time_series_v2`, ch.database)
+	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.%s`, ch.database, DISTRIBUTED_TIME_SERIES_TABLE)
 	for {
 		ch.timeSeriesRW.RLock()
 		timeSeries := make(map[uint64]struct{}, len(ch.timeSeries))
@@ -273,7 +287,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.time_series_v2 (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
 			return err
 		}
@@ -302,7 +316,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 	err = func() error {
 		ctx := context.Background()
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.samples_v2", ch.database))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE))
 		if err != nil {
 			return err
 		}

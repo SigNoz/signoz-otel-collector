@@ -32,6 +32,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	CLUSTER                = "cluster"
+	DISTRIBUTED_LOGS_TABLE = "distributed_logs"
+)
+
 type clickhouseLogsExporter struct {
 	db            clickhouse.Conn
 	insertLogsSQL string
@@ -230,7 +235,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
+	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s;", databaseName, CLUSTER)
 	err = db.Exec(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
@@ -282,13 +287,13 @@ func buildClickhouseMigrateURL(cfg *Config) (string, error) {
 	password := paramMap["password"]
 
 	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true", username[0], password[0], host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, databaseName, CLUSTER)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true", host, databaseName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, databaseName, CLUSTER)
 	}
 	return clickhouseUrl, nil
 }
 
 func renderInsertLogsSQL(cfg *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, tableName)
+	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
 }
