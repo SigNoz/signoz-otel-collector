@@ -27,7 +27,7 @@ ORDER BY (timestamp, id);
 CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER cluster (
 name String,
 datatype String
-)ENGINE = MergeTree
+)ENGINE = ReplacingMergeTree
 ORDER BY (name, datatype);
 
 
