@@ -27,8 +27,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
-	"go.opencensus.io/stats/view"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/component"
 	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -36,16 +35,17 @@ import (
 )
 
 // Crete new exporter.
-func newExporter(cfg config.Exporter, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, error) {
 
 	configClickHouse := cfg.(*Config)
 
 	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource)
+
 	err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db)
+	err = initFeatures(f.db, f.Options)
 	if err != nil {
 		return nil, err
 	}

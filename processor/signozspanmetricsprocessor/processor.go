@@ -27,7 +27,6 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/cache"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -100,7 +99,7 @@ type processorImp struct {
 	externalCallMetricKeyToDimensions *cache.Cache
 }
 
-func newProcessor(logger *zap.Logger, config config.Processor, nextConsumer consumer.Traces) (*processorImp, error) {
+func newProcessor(logger *zap.Logger, config component.ProcessorConfig, nextConsumer consumer.Traces) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor")
 	pConfig := config.(*Config)
 
@@ -233,7 +232,7 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	var availableMetricsExporters []string
 
 	// The available list of exporters come from any configured metrics pipelines' exporters.
-	for k, exp := range exporters[config.MetricsDataType] {
+	for k, exp := range exporters[component.DataTypeMetrics] {
 		metricsExp, ok := exp.(component.MetricsExporter)
 		if !ok {
 			return fmt.Errorf("the exporter %q isn't a metrics exporter", k.String())
@@ -734,8 +733,8 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 	dims := pcommon.NewMap()
 	dims.PutStr(serviceNameKey, serviceName)
 	dims.PutStr(operationKey, span.Name())
-	dims.PutStr(spanKindKey, span.Kind().String())
-	dims.PutStr(statusCodeKey, span.Status().Code().String())
+	dims.PutStr(spanKindKey, "SPAN_KIND_"+strings.ToUpper(span.Kind().String()))
+	dims.PutStr(statusCodeKey, "STATUS_CODE_"+strings.ToUpper(span.Status().Code().String()))
 	for _, d := range optionalDims {
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)
 		if ok {
@@ -792,8 +791,8 @@ func buildKey(serviceName string, span ptrace.Span, optionalDims []Dimension, re
 	var metricKeyBuilder strings.Builder
 	concatDimensionValue(&metricKeyBuilder, serviceName, false)
 	concatDimensionValue(&metricKeyBuilder, span.Name(), true)
-	concatDimensionValue(&metricKeyBuilder, span.Kind().String(), true)
-	concatDimensionValue(&metricKeyBuilder, span.Status().Code().String(), true)
+	concatDimensionValue(&metricKeyBuilder, "SPAN_KIND_"+strings.ToUpper(span.Kind().String()), true)
+	concatDimensionValue(&metricKeyBuilder, "STATUS_CODE_"+strings.ToUpper(span.Status().Code().String()), true)
 
 	for _, d := range optionalDims {
 		v, ok, foundInResource := getDimensionValue(d, span.Attributes(), resourceAttrs)

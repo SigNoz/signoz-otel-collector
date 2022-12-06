@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS signoz_traces.signoz_spans
+DROP TABLE IF EXISTS signoz_traces.signoz_spans ON CLUSTER cluster;
