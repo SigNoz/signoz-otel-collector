@@ -16,7 +16,6 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"io"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
@@ -63,10 +62,5 @@ func createTracesExporter(
 		params,
 		cfg,
 		oce.pushTraceData,
-		exporterhelper.WithShutdown(func(context.Context) error {
-			if closer, ok := oce.Writer.(io.Closer); ok {
-				return closer.Close()
-			}
-			return nil
-		}))
+		exporterhelper.WithShutdown(oce.Shutdown))
 }

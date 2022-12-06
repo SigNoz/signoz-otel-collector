@@ -24,6 +24,10 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.uber.org/zap"
 )
 
@@ -54,6 +58,9 @@ type SpanWriter struct {
 
 // NewSpanWriter returns a SpanWriter for the database
 func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
+	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
+		return nil
+	}
 	writer := &SpanWriter{
 		logger:        logger,
 		db:            db,
@@ -246,6 +253,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 
+	metrics := map[string]usage.Metric{}
 	for _, span := range batchSpans {
 		var serialized []byte
 
@@ -260,9 +268,20 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
 			return err
 		}
+
+		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serialized)))
 	}
 
-	return statement.Send()
+	err = statement.Send()
+	if err != nil {
+		return err
+	}
+
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+	}
+
+	return nil
 }
 
 // WriteSpan writes the encoded span

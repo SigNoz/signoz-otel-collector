@@ -28,15 +28,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/prometheus/prometheus/prompb"
 )
 
 const (
 	namespace                     = "promhouse"
 	subsystem                     = "clickhouse"
+	nameLabel                     = "__name__"
 	CLUSTER                       = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE = "distributed_time_series_v2"
 	DISTRIBUTED_SAMPLES_TABLE     = "distributed_samples_v2"
@@ -236,6 +240,10 @@ func (ch *clickHouse) Collect(c chan<- prometheus.Metric) {
 	ch.mWrittenTimeSeries.Collect(c)
 }
 
+func (ch *clickHouse) GetDBConn() interface{} {
+	return ch.conn
+}
+
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
@@ -250,7 +258,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				Name:  label.Name,
 				Value: label.Value,
 			}
-			if label.Name == "__name__" {
+			if label.Name == nameLabel {
 				metricName = label.Value
 			}
 		}
@@ -313,6 +321,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		return err
 	}
 
+	metrics := map[string]usage.Metric{}
 	err = func() error {
 		ctx := context.Background()
 
@@ -320,9 +329,28 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		if err != nil {
 			return err
 		}
+
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
+
+				// usage collection checks
+				tenant := "default"
+				collectUsage := true
+				for _, val := range timeSeries[fingerprint] {
+					if val.Name == nameLabel && strings.HasPrefix(val.Value, "signoz_") {
+						collectUsage = false
+						break
+					}
+					if val.Name == "tenant" {
+						tenant = val.Value
+					}
+				}
+
+				if collectUsage {
+					usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+				}
+
 				err = statement.Append(
 					fingerprintToName[fingerprint],
 					fingerprint,
@@ -334,12 +362,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				}
 			}
 		}
-
 		return statement.Send()
-
 	}()
 	if err != nil {
 		return err
+	}
+
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 	}
 
 	n := len(newTimeSeries)

@@ -16,17 +16,23 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/segmentio/ksuid"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
@@ -44,6 +50,8 @@ type clickhouseLogsExporter struct {
 
 	logger *zap.Logger
 	cfg    *Config
+
+	usageCollector *usage.UsageCollector
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -58,19 +66,45 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
 
+	collector := usage.NewUsageCollector(
+		client,
+		usage.Options{
+			ReportingInterval: usage.DefaultCollectionInterval,
+		},
+		"signoz_logs",
+		UsageExporter,
+	)
+	if err != nil {
+		log.Fatalf("Error creating usage collector for logs : %v", err)
+	}
+
+	collector.Start()
+
+	// view should be registered after exporter is initialized
+	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
+		return nil, err
+	}
+
 	return &clickhouseLogsExporter{
-		db:            client,
-		insertLogsSQL: insertLogsSQL,
-		logger:        logger,
-		cfg:           cfg,
-		ksuid:         ksuid.New(),
+		db:             client,
+		insertLogsSQL:  insertLogsSQL,
+		logger:         logger,
+		cfg:            cfg,
+		ksuid:          ksuid.New(),
+		usageCollector: collector,
 	}, nil
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
+	if e.usageCollector != nil {
+		e.usageCollector.Stop()
+	}
 	if e.db != nil {
-		return e.db.Close()
+		err := e.db.Close()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -84,14 +118,24 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	defer func() {
 		_ = statement.Abort()
 	}()
+
+	metrics := map[string]usage.Metric{}
+
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
+		resBytes, _ := json.Marshal(res.Attributes().AsRaw())
+
 		resources := attributesToSlice(res.Attributes(), true)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
 			rs := logs.ScopeLogs().At(j).LogRecords()
 			for k := 0; k < rs.Len(); k++ {
 				r := rs.At(k)
+
+				// capturing the metrics
+				tenant := usage.GetTenantNameFromResource(logs.Resource())
+				attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
+				usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
 
 				attributes := attributesToSlice(r.Attributes(), false)
 				err = statement.Append(
@@ -127,6 +171,11 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	duration := time.Since(start)
 	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 		zap.String("cost", duration.String()))
+
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+	}
+
 	return err
 }
 
