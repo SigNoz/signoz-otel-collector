@@ -40,6 +40,7 @@ import (
 const (
 	namespace = "promhouse"
 	subsystem = "clickhouse"
+	nameLabel = "__name__"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -243,7 +244,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				Name:  label.Name,
 				Value: label.Value,
 			}
-			if label.Name == "__name__" {
+			if label.Name == nameLabel {
 				metricName = label.Value
 			}
 		}
@@ -318,13 +319,23 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
+
+				// usage collection checks
 				tenant := "default"
+				collectUsage := true
 				for _, val := range timeSeries[fingerprint] {
+					if val.Name == nameLabel && strings.HasPrefix(val.Value, "signoz_") {
+						collectUsage = false
+						break
+					}
 					if val.Name == "tenant" {
 						tenant = val.Value
 					}
 				}
-				usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+
+				if collectUsage {
+					usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+				}
 
 				err = statement.Append(
 					fingerprintToName[fingerprint],
