@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.distributed_durationSort ON CLUSTER clu
 ENGINE = Distributed("cluster", "signoz_traces", durationSort, cityHash64(traceID));
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_signoz_error_index_v2 ON CLUSTER cluster AS signoz_traces.signoz_error_index_v2
-ENGINE = Distributed("cluster", "signoz_traces", signoz_error_index_v2, cityHash64(errorID));
+ENGINE = Distributed("cluster", "signoz_traces", signoz_error_index_v2, cityHash64(groupID));
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_usage_explorer ON CLUSTER cluster AS signoz_traces.usage_explorer
 ENGINE = Distributed("cluster", "signoz_traces", usage_explorer, cityHash64(rand()));
