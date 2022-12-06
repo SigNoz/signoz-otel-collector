@@ -93,14 +93,16 @@ func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) er
 	query = fmt.Sprintf(
 		`
 		CREATE TABLE IF NOT EXISTS 
-			%s.%s  ON CLUSTER cluster 
+			%s.%s  ON CLUSTER %s 
 			AS %s.%s
-			ENGINE = Distributed("cluster", %s, %s, cityHash64(rand()));
+			ENGINE = Distributed(%s, %s, %s, cityHash64(rand()));
 		`,
 		databaseName,
 		e.distributedTableName,
+		cluster,
 		databaseName,
 		e.tableName,
+		cluster,
 		databaseName,
 		e.tableName,
 	)
