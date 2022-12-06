@@ -27,6 +27,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
 	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
 	"go.opentelemetry.io/collector/pdata/pcommon"

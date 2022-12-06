@@ -26,18 +26,19 @@ type Usage struct {
 }
 
 type UsageCollector struct {
-	id             uuid.UUID
-	reader         *metricexport.Reader
-	ir             *metricexport.IntervalReader
-	initReaderOnce sync.Once
-	o              Options
-	db             clickhouse.Conn
-	dbName         string
-	tableName      string
-	usageParser    func(metrics []*metricdata.Metric) (map[string]Usage, error)
-	prevCount      int64
-	prevSize       int64
-	ttl            int
+	id                   uuid.UUID
+	reader               *metricexport.Reader
+	ir                   *metricexport.IntervalReader
+	initReaderOnce       sync.Once
+	o                    Options
+	db                   clickhouse.Conn
+	dbName               string
+	tableName            string
+	distributedTableName string
+	usageParser          func(metrics []*metricdata.Metric) (map[string]Usage, error)
+	prevCount            int64
+	prevSize             int64
+	ttl                  int
 }
 
 var CollectorID uuid.UUID
@@ -46,40 +47,66 @@ func init() {
 	CollectorID = uuid.New()
 }
 
+const cluster = "cluster"
+
 func NewUsageCollector(db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
-		id:          uuid.New(),
-		reader:      metricexport.NewReader(),
-		o:           options,
-		db:          db,
-		dbName:      dbName,
-		tableName:   UsageTableName,
-		usageParser: usageParser,
-		prevCount:   0,
-		prevSize:    0,
-		ttl:         3,
+		id:                   uuid.New(),
+		reader:               metricexport.NewReader(),
+		o:                    options,
+		db:                   db,
+		dbName:               dbName,
+		tableName:            UsageTableName,
+		distributedTableName: "distributed_" + UsageTableName,
+		usageParser:          usageParser,
+		prevCount:            0,
+		prevSize:             0,
+		ttl:                  3,
 	}
 }
 func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) error {
 	//  we don't have timestamp in the order by field as we need to update it contiously.
 	query := fmt.Sprintf(
 		`
-		CREATE TABLE IF NOT EXISTS %s.%s (
+		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
 			tenant String,
 			collector_id String,
 			exporter_id String,
 			timestamp DateTime,
 			data String
 		) ENGINE MergeTree()
-		ORDER BY (tenant, collector_id, exporter_id)
+		ORDER BY (tenant, collector_id, exporter_id, timestamp)
 		TTL timestamp + INTERVAL %d DAY;
 		`,
 		databaseName,
 		e.tableName,
+		cluster,
 		e.ttl,
 	)
 
 	err := db.Exec(context.Background(), query)
+	if err != nil {
+		return err
+	}
+
+	// distributed usage
+	query = fmt.Sprintf(
+		`
+		CREATE TABLE IF NOT EXISTS 
+			%s.%s  ON CLUSTER cluster 
+			AS %s.%s
+			ENGINE = Distributed("cluster", %s, %s, cityHash64(rand()));
+		`,
+		databaseName,
+		e.distributedTableName,
+		databaseName,
+		e.tableName,
+		databaseName,
+		e.tableName,
+	)
+
+	err = db.Exec(context.Background(), query)
+
 	return err
 }
 
@@ -119,22 +146,11 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		if err != nil {
 			return err
 		}
-		prevUsages := []UsageDB{}
-		err = e.db.Select(ctx, &prevUsages, fmt.Sprintf("SELECT * FROM %s.%s where collector_id='%s' and exporter_id='%s' and tenant='%s'", e.dbName, e.tableName, CollectorID.String(), e.id.String(), tenant))
+
+		// insert everything as a new row
+		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.id.String(), time, string(encryptedData))
 		if err != nil {
 			return err
-		}
-		if len(prevUsages) > 0 {
-			// already exist then update
-			err := e.db.Exec(ctx, fmt.Sprintf("alter table %s.%s update timestamp=$1, data=$2 where collector_id=$3 and exporter_id=$4 and tenant=$5", e.dbName, e.tableName), time, string(encryptedData), CollectorID.String(), e.id.String(), tenant)
-			if err != nil {
-				return err
-			}
-		} else {
-			err := e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.tableName), tenant, CollectorID.String(), e.id.String(), time, string(encryptedData))
-			if err != nil {
-				return err
-			}
 		}
 	}
 	return nil
