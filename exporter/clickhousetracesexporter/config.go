@@ -26,6 +26,8 @@ type Config struct {
 	Options    `mapstructure:",squash"`
 	Datasource string `mapstructure:"datasource"`
 	Migrations string `mapstructure:"migrations"`
+	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
+	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
 }
 
 var _ component.ExporterConfig = (*Config)(nil)

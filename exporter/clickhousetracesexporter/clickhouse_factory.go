@@ -47,9 +47,9 @@ type Writer interface {
 type writerMaker func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, encoding Encoding, delay time.Duration, size int) (Writer, error)
 
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(migrations string, datasource string) *Factory {
+func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeCluster bool) *Factory {
 	return &Factory{
-		Options: NewOptions(migrations, datasource, primaryNamespace, archiveNamespace),
+		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -83,6 +83,14 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 	err = patchGroupByParenInMV(db, f)
 	if err != nil {
 		return err
+	}
+
+	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
+	if f.Options.primary.DockerMultiNodeCluster {
+		err = dropSchemaMigrationsTable(db, f)
+		if err != nil {
+			return err
+		}
 	}
 
 	f.logger.Info("Running migrations from path: ", zap.Any("test", f.Options.primary.Migrations))
@@ -182,6 +190,16 @@ func patchGroupByParenInMV(db clickhouse.Conn, f *Factory) error {
 		return fmt.Errorf("error creating %s: %v", f.Options.getPrimary().DependencyGraphMessagingMV, err)
 	}
 
+	return nil
+}
+
+func dropSchemaMigrationsTable(db clickhouse.Conn, f *Factory) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s;`,
+		f.Options.getPrimary().TraceDatabase, "schema_migrations", f.Options.getPrimary().Cluster))
+	if err != nil {
+		f.logger.Error("Error dropping schema_migrations table", zap.Error(err))
+		return fmt.Errorf("error dropping schema_migrations table: %v", err)
+	}
 	return nil
 }
 

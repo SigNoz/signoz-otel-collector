@@ -290,6 +290,15 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, fmt.Errorf("failed to create database, err: %s", err)
 	}
 
+	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
+	if cfg.DockerMultiNodeCluster {
+		err = dropSchemaMigrationsTable(db)
+		if err != nil {
+			logger.Error("Error dropping schema_migrations table", zap.Error(err))
+			return nil, err
+		}
+	}
+
 	// do the migration here
 
 	// get the migrations folder
@@ -314,6 +323,15 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 
 	logger.Info("Clickhouse Migrate finished")
 	return db, nil
+}
+
+func dropSchemaMigrationsTable(db clickhouse.Conn) error {
+	err := db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s;`,
+		databaseName, "schema_migrations", CLUSTER))
+	if err != nil {
+		return fmt.Errorf("error dropping schema_migrations table: %v", err)
+	}
+	return nil
 }
 
 func buildClickhouseMigrateURL(cfg *Config) (string, error) {

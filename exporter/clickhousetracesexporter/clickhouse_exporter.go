@@ -40,7 +40,7 @@ func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, er
 
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource)
+	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
 
 	err := f.Initialize(logger)
 	if err != nil {
