@@ -79,6 +79,7 @@ type namespaceConfig struct {
 	DependencyGraphDbMV        string
 	DependencyGraphMessagingMV string
 	DependencyGraphTable       string
+	DockerMultiNodeCluster     bool
 	WriteBatchDelay            time.Duration
 	WriteBatchSize             int
 	Encoding                   Encoding
@@ -125,7 +126,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, primaryNamespace string, otherNamespaces ...string) *Options {
 
 	if datasource == "" {
 		datasource = defaultDatasource
@@ -153,6 +154,7 @@ func NewOptions(migrations string, datasource string, primaryNamespace string, o
 			DependencyGraphServiceMV:   defaultDependencyGraphServiceMV,
 			DependencyGraphDbMV:        defaultDependencyGraphDbMV,
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
+			DockerMultiNodeCluster:     dockerMultiNodeCluster,
 			WriteBatchDelay:            defaultWriteBatchDelay,
 			WriteBatchSize:             defaultWriteBatchSize,
 			Encoding:                   defaultEncoding,
