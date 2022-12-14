@@ -19,11 +19,15 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
 	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -36,12 +40,13 @@ func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, er
 
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource)
+	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
+
 	err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db)
+	err = initFeatures(f.db, f.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -49,13 +54,30 @@ func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, er
 	if err != nil {
 		return nil, err
 	}
-	storage := storage{Writer: spanWriter}
+
+	collector := usage.NewUsageCollector(
+		f.db,
+		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
+		"signoz_traces",
+		UsageExporter,
+	)
+	if err != nil {
+		log.Fatalf("Error creating usage collector for traces: %v", err)
+	}
+	collector.Start()
+
+	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
+		return nil, err
+	}
+
+	storage := storage{Writer: spanWriter, usageCollector: collector}
 
 	return &storage, nil
 }
 
 type storage struct {
-	Writer Writer
+	Writer         Writer
+	usageCollector *usage.UsageCollector
 }
 
 func makeJaegerProtoReferences(
@@ -221,7 +243,6 @@ func populateTraceModel(span *Span) {
 }
 
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource) *Span {
-
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	attributes := otelSpan.Attributes()
@@ -241,6 +262,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	})
 
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
+
+	tenant := usage.GetTenantNameFromResource(resource)
 
 	var span *Span = &Span{
 		TraceId:           otelSpan.TraceID().HexString(),
@@ -266,6 +289,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			TagMap:            tagMap,
 			HasError:          false,
 		},
+		Tenant: &tenant,
 	}
 
 	if span.StatusCode == 2 {
@@ -307,5 +331,17 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 		}
 	}
 
+	return nil
+}
+
+// Shutdown will shutdown the exporter.
+func (s *storage) Shutdown(_ context.Context) error {
+	if s.usageCollector != nil {
+		s.usageCollector.Stop()
+	}
+
+	if closer, ok := s.Writer.(io.Closer); ok {
+		return closer.Close()
+	}
 	return nil
 }

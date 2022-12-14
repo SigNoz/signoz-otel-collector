@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_traces.durationSort (
+CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   traceID FixedString(32) CODEC(ZSTD(1)),
   spanID String CODEC(ZSTD(1)),
@@ -31,12 +31,12 @@ CREATE TABLE IF NOT EXISTS signoz_traces.durationSort (
   INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
   INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
   INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
-) ENGINE MergeTree()
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
 SETTINGS index_granularity = 8192;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER cluster
 TO signoz_traces.durationSort
 AS SELECT
   timestamp,
@@ -60,3 +60,4 @@ AS SELECT
   tagMap
 FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;
+

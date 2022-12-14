@@ -18,19 +18,23 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/pkg/errors"
+	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/prometheus/prometheus/prompb"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer/consumererror"
@@ -53,6 +57,7 @@ type PrwExporter struct {
 	clientSettings  *confighttp.HTTPClientSettings
 	settings        component.TelemetrySettings
 	ch              base.Storage
+	usageCollector  *usage.UsageCollector
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -82,6 +87,23 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		zap.S().Error("couldn't create instance of clickhouse")
 	}
 
+	collector := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
+		usage.Options{
+			ReportingInterval: usage.DefaultCollectionInterval,
+		},
+		"signoz_metrics",
+		UsageExporter,
+	)
+	if err != nil {
+		log.Fatalf("Error creating usage collector for metrics: %v", err)
+	}
+
+	collector.Start()
+
+	if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
+		return nil, err
+	}
+
 	return &PrwExporter{
 		namespace:       cfg.Namespace,
 		externalLabels:  sanitizedLabels,
@@ -93,6 +115,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		clientSettings:  &cfg.HTTPClientSettings,
 		settings:        set.TelemetrySettings,
 		ch:              ch,
+		usageCollector:  collector,
 	}, nil
 }
 
@@ -105,6 +128,11 @@ func (prwe *PrwExporter) Start(_ context.Context, host component.Host) (err erro
 // Shutdown stops the exporter from accepting incoming calls(and return error), and wait for current export operations
 // to finish before returning
 func (prwe *PrwExporter) Shutdown(context.Context) error {
+	// shutdown usage reporting.
+	if prwe.usageCollector != nil {
+		prwe.usageCollector.Stop()
+	}
+
 	close(prwe.closeChan)
 	prwe.wg.Wait()
 	return nil

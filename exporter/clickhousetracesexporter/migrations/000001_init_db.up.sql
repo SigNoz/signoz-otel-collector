@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS signoz_index (
+CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER cluster (
   timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
   traceID String CODEC(ZSTD(1)),
   spanID String CODEC(ZSTD(1)),
@@ -26,6 +26,6 @@ CREATE TABLE IF NOT EXISTS signoz_index (
   INDEX idx_tagsKeys tagsKeys TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_tagsValues tagsValues TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_duration durationNano TYPE minmax GRANULARITY 1
-) ENGINE MergeTree()
+) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
-ORDER BY (serviceName, -toUnixTimestamp(timestamp))
+ORDER BY (serviceName, -toUnixTimestamp(timestamp));
