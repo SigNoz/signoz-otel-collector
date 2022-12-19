@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -102,6 +103,9 @@ type processorImp struct {
 	callMetricKeyToDimensions         *cache.Cache[metricKey, pcommon.Map]
 	dbCallMetricKeyToDimensions       *cache.Cache[metricKey, pcommon.Map]
 	externalCallMetricKeyToDimensions *cache.Cache[metricKey, pcommon.Map]
+
+	attrsCardinality    map[string]map[string]struct{}
+	excludePatternRegex map[string]*regexp.Regexp
 }
 
 type dimension struct {
@@ -181,6 +185,11 @@ func newProcessor(logger *zap.Logger, config component.ProcessorConfig, nextCons
 		return nil, err
 	}
 
+	excludePatternRegex := make(map[string]*regexp.Regexp)
+	for _, pattern := range pConfig.ExcludePatterns {
+		excludePatternRegex[pattern.Name] = regexp.MustCompile(pattern.Pattern)
+	}
+
 	return &processorImp{
 		logger:                            logger,
 		config:                            *pConfig,
@@ -203,6 +212,8 @@ func newProcessor(logger *zap.Logger, config component.ProcessorConfig, nextCons
 		callMetricKeyToDimensions:         callMetricKeyToDimensionsCache,
 		dbCallMetricKeyToDimensions:       dbMetricKeyToDimensionsCache,
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensionsCache,
+		attrsCardinality:                  make(map[string]map[string]struct{}),
+		excludePatternRegex:               excludePatternRegex,
 	}, nil
 }
 
@@ -247,6 +258,41 @@ func validateDimensions(dimensions []Dimension, skipSanitizeLabel bool) error {
 	}
 
 	return nil
+}
+
+func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resourceAttrs pcommon.Map) bool {
+	for key, pattern := range p.excludePatternRegex {
+		if key == serviceNameKey && pattern.MatchString(serviceName) {
+			return true
+		}
+		if key == operationKey && pattern.MatchString(span.Name()) {
+			return true
+		}
+		if key == spanKindKey && pattern.MatchString(span.Kind().String()) {
+			return true
+		}
+		if key == statusCodeKey && pattern.MatchString(span.Status().Code().String()) {
+			return true
+		}
+
+		matched := false
+		span.Attributes().Range(func(k string, v pcommon.Value) bool {
+			if key == k && pattern.MatchString(v.AsString()) {
+				matched = true
+			}
+			return true
+		})
+		resourceAttrs.Range(func(k string, v pcommon.Value) bool {
+			if key == k && pattern.MatchString(v.AsString()) {
+				matched = true
+			}
+			return true
+		})
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 // Start implements the component.Component interface.
@@ -317,6 +363,7 @@ func (p *processorImp) tracesToMetrics(ctx context.Context, traces ptrace.Traces
 	p.lock.Unlock()
 
 	if err != nil {
+		p.logCardinalityInfo()
 		return err
 	}
 
@@ -359,6 +406,16 @@ func (p *processorImp) buildMetrics() (pmetric.Metrics, error) {
 	p.resetExemplarData()
 
 	return m, nil
+}
+
+func (p *processorImp) logCardinalityInfo() {
+	for k, v := range p.attrsCardinality {
+		values := make([]string, 0, len(v))
+		for key := range v {
+			values = append(values, key)
+		}
+		p.logger.Info("Attribute cardinality", zap.String("attribute", k), zap.Int("cardinality", len(v)), zap.Strings("values", values))
+	}
 }
 
 // collectLatencyMetrics collects the raw latency metrics, writing the data
@@ -492,6 +549,7 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 		dimensions, err := p.getDimensionsByCallMetricKey(key)
 		if err != nil {
+			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -619,6 +677,11 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 }
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
+
+	if p.shouldSkip(serviceName, span, resourceAttr) {
+		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))
+		return
+	}
 	// Protect against end timestamps before start timestamps. Assume 0 duration.
 	latencyInMilliseconds := float64(0)
 	startTime := span.StartTimestamp()
@@ -806,6 +869,13 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 			v.CopyTo(dims.PutEmpty(resourcePrefix + d.name))
 		}
 	}
+	dims.Range(func(k string, v pcommon.Value) bool {
+		if _, exists := p.attrsCardinality[k]; !exists {
+			p.attrsCardinality[k] = make(map[string]struct{})
+		}
+		p.attrsCardinality[k][v.AsString()] = struct{}{}
+		return true
+	})
 	return dims
 }
 
@@ -827,6 +897,13 @@ func (p *processorImp) buildCustomDimensionKVs(serviceName string, span ptrace.S
 			v.CopyTo(dims.PutEmpty(resourcePrefix + d.name))
 		}
 	}
+	dims.Range(func(k string, v pcommon.Value) bool {
+		if _, exists := p.attrsCardinality[k]; !exists {
+			p.attrsCardinality[k] = make(map[string]struct{})
+		}
+		p.attrsCardinality[k][v.AsString()] = struct{}{}
+		return true
+	})
 	return dims
 }
 
