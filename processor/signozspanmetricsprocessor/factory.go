@@ -27,7 +27,7 @@ const (
 	// The value of "type" key in configuration.
 	typeStr = "signozspanmetrics"
 	// The stability level of the processor.
-	stability = component.StabilityLevelUndefined
+	stability = component.StabilityLevelBeta
 )
 
 // NewFactory creates a factory for the spanmetrics processor.

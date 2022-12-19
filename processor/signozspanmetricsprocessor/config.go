@@ -31,7 +31,7 @@ const (
 func init() {
 	featuregate.GetRegistry().MustRegisterID(
 		dropSanitizationGateID,
-		featuregate.StageAlpha,
+		featuregate.StageBeta,
 		featuregate.WithRegisterDescription("Controls whether to change labels starting with '_' to 'key_'"),
 	)
 }
