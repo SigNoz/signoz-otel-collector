@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/SigNoz/signoz-otel-collector/components"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/service"
 )
 
 func main() {
 
-	factories, err := components()
+	factories, err := components.Components()
 	if err != nil {
 		log.Fatalf("failed to build default components: %v", err)
 	}
