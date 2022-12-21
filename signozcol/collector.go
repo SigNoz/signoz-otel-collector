@@ -95,6 +95,7 @@ func (c *WrappedCollector) Shutdown() {
 
 	if c.svc != nil {
 		c.svc.Shutdown()
+		c.svc = nil
 	}
 }
 
