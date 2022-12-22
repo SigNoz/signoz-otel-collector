@@ -9,6 +9,8 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/oklog/ulid v1.3.1
+	github.com/open-telemetry/opamp-go v0.5.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter v0.66.0
@@ -306,6 +308,7 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nginxinc/nginx-prometheus-exporter v0.8.1-0.20201110005315-f5a5f8086c19 // indirect
 	github.com/observiq/ctimefmt v1.0.0 // indirect
+	github.com/oklog/ulid/v2 v2.0.2 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/common v0.66.0 // indirect
