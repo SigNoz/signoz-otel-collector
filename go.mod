@@ -37,6 +37,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.66.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor v0.66.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatorateprocessor v0.66.0
@@ -111,6 +112,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.14.0
 	github.com/stretchr/testify v1.8.1
+	github.com/vjeantet/grok v1.0.1
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/collector v0.66.0
 	go.opentelemetry.io/collector/component v0.66.0
@@ -126,6 +128,7 @@ require (
 	go.opentelemetry.io/collector/processor/batchprocessor v0.66.0
 	go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.66.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.66.0
+	go.uber.org/atomic v1.10.0
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.23.0
 	google.golang.org/grpc v1.51.0
@@ -319,7 +322,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/batchpersignal v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/experimentalmetricmetadata v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.66.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/opencensus v0.66.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.66.0 // indirect
@@ -394,7 +396,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.11.1 // indirect
 	go.opentelemetry.io/otel/sdk/metric v0.33.0 // indirect
 	go.opentelemetry.io/otel/trace v1.11.1 // indirect
-	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/goleak v1.2.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20221019170559-20944726eadf // indirect
