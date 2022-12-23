@@ -1,4 +1,4 @@
-package main
+package components
 
 import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter"
@@ -112,7 +112,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 )
 
-func components() (component.Factories, error) {
+func Components() (component.Factories, error) {
 	var errs []error
 	factories, err := CoreComponents()
 	if err != nil {
