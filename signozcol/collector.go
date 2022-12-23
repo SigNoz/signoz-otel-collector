@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
+
 	"go.opentelemetry.io/collector/service"
 	"go.uber.org/zap"
 )
@@ -23,6 +24,12 @@ type WrappedCollectorSettings struct {
 	LoggingOpts []zap.Option
 }
 
+// WrappedCollector is a wrapper around the OpenTelemetry Collector
+// that allows it to be started and stopped.
+// It internally uses the OpenTelemetry Collector's service package.
+
+// On restart, the collector is stopped and a new instance is started.
+// The Opamp client implementation is responsible for restarting the collector.
 type WrappedCollector struct {
 	configPaths []string
 	version     string
