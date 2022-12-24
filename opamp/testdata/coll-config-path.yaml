@@ -10,6 +10,7 @@ processors:
 extensions:
   zpages: {}
 exporters:
+  logging:
   clickhousetraces:
     datasource: tcp://localhost:9000/?database=signoz_traces
     migrations: exporter/clickhousetracesexporter/migrations
@@ -25,8 +26,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [clickhousetraces]
+      exporters: [logging]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [clickhousemetricswrite]
+      exporters: [logging]
