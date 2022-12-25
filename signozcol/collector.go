@@ -17,13 +17,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type WrappedCollectorSettings struct {
-	ConfigPaths []string
-	Version     string
-	Desc        string
-	LoggingOpts []zap.Option
-}
-
 // WrappedCollector is a wrapper around the OpenTelemetry Collector
 // that allows it to be started and stopped.
 // It internally uses the OpenTelemetry Collector's service package.
@@ -35,8 +28,17 @@ type WrappedCollector struct {
 	version     string
 	desc        string
 	loggingOpts []zap.Option
+	wg          sync.WaitGroup
+	errChan     chan error
 	mux         sync.Mutex
 	svc         *service.Collector
+}
+
+type WrappedCollectorSettings struct {
+	ConfigPaths []string
+	Version     string
+	Desc        string
+	LoggingOpts []zap.Option
 }
 
 // New returns a new collector.
@@ -46,19 +48,20 @@ func New(settings WrappedCollectorSettings) *WrappedCollector {
 		version:     settings.Version,
 		desc:        settings.Desc,
 		loggingOpts: settings.LoggingOpts,
+		errChan:     make(chan error, 1),
 	}
 }
 
 // Run runs the collector.
-func (c *WrappedCollector) Run(ctx context.Context) error {
-	c.mux.Lock()
-	defer c.mux.Unlock()
+func (wCol *WrappedCollector) Run(ctx context.Context) error {
+	wCol.mux.Lock()
+	defer wCol.mux.Unlock()
 
-	if c.svc != nil {
+	if wCol.svc != nil {
 		return fmt.Errorf("collector is already running")
 	}
 
-	settings, err := newOtelColSettings(c.configPaths, c.version, c.desc, c.loggingOpts)
+	settings, err := newOtelColSettings(wCol.configPaths, wCol.version, wCol.desc, wCol.loggingOpts)
 	if err != nil {
 		return err
 	}
@@ -68,14 +71,32 @@ func (c *WrappedCollector) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create a new OTel collector service: %w", err)
 	}
-	c.svc = svc
+	wCol.svc = svc
 
+	// Partially copied from
+	// https://github.com/open-telemetry/opentelemetry-collector/blob/release/v0.66.x/service/collector_windows.go#L91
 	colErrorChannel := make(chan error, 1)
 
-	// col.Run blocks until receiving a SIGTERM signal, so needs to be started
+	// https://github.com/open-telemetry/opentelemetry-collector/blob/release/v0.66.x/service/collector.go#L71
+	//
+	// col.Run blocks until receiving a signal, so needs to be started
 	// asynchronously, but it will exit early if an error occurs on startup
+	// When we disable graceful shutdown, it doesn't respond to SIGTERM and
+	// SIGINT signals, it runs until the shutdown is invoked or some async error
+	// occurs.
+	wCol.wg.Add(1)
 	go func() {
-		colErrorChannel <- svc.Run(ctx)
+		defer wCol.wg.Done()
+		err := svc.Run(ctx)
+		// https://github.com/open-telemetry/opentelemetry-collector/blob/release/v0.66.x/service/collector.go#L124
+		//
+		// The .Shutdown doesn't return an error, it just closes the channel
+		// It is then handled by the .Run method
+		// If the Shutdown is unsuccessful, the .Run method will return an error
+		// and we will return it here
+
+		wCol.reportError(err)
+		colErrorChannel <- err
 	}()
 
 	// wait until the collector server is in the Running state
@@ -88,6 +109,15 @@ func (c *WrappedCollector) Run(ctx context.Context) error {
 				break
 			}
 			time.Sleep(time.Millisecond * 200)
+
+			// Context may be cancelled
+			select {
+			case <-ctx.Done():
+				svc.Shutdown()
+				colErrorChannel <- ctx.Err()
+				return
+			default:
+			}
 		}
 	}()
 
@@ -96,20 +126,27 @@ func (c *WrappedCollector) Run(ctx context.Context) error {
 }
 
 // Shutdown stops the collector.
-func (c *WrappedCollector) Shutdown() {
-	c.mux.Lock()
-	defer c.mux.Unlock()
+func (wCol *WrappedCollector) Shutdown() {
+	wCol.mux.Lock()
+	defer wCol.mux.Unlock()
 
-	if c.svc != nil {
-		c.svc.Shutdown()
-		c.svc = nil
+	if wCol.svc != nil {
+		wCol.svc.Shutdown()
+		wCol.wg.Wait()
+		wCol.svc = nil
+	}
+}
+
+func (wCol *WrappedCollector) reportError(err error) {
+	select {
+	case wCol.errChan <- err:
 	}
 }
 
 // Restart restarts the collector.
-func (c *WrappedCollector) Restart(ctx context.Context) error {
-	c.Shutdown()
-	return c.Run(ctx)
+func (wCol *WrappedCollector) Restart(ctx context.Context) error {
+	wCol.Shutdown()
+	return wCol.Run(ctx)
 }
 
 func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*service.CollectorSettings, error) {
