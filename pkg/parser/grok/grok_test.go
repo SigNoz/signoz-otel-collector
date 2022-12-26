@@ -200,9 +200,10 @@ func TestParserRegex(t *testing.T) {
 	}
 }
 
-// return 100 unique user names, example:
-// 252.18.112.145 - random1 [23/Dec/2022:04:37:05 +0000] \"POST /architectures/back-end/relationships/value-added HTTP/2.0\" 203 25439
-// 252.18.112.145 - random2 [23/Dec/2022:04:37:05 +0000] \"POST /architectures/back-end/relationships/value-added HTTP/2.0\" 203 25439
+// return 100 unique file names, example:
+// dafplsjfbcxoeff-5644d7b6d9-mzngq_kube-system_coredns-901f7510281180a402936c92f5bc0f3557f5a21ccb5a4591c5bf98f3ddbffdd6.log
+// rswxpldnjobcsnv-5644d7b6d9-mzngq_kube-system_coredns-901f7510281180a402936c92f5bc0f3557f5a21ccb5a4591c5bf98f3ddbffdd6.log
+// lgtemapezqleqyh-5644d7b6d9-mzngq_kube-system_coredns-901f7510281180a402936c92f5bc0f3557f5a21ccb5a4591c5bf98f3ddbffdd6.log
 func benchParseInput() (patterns []string) {
 	const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 	for i := 1; i <= 100; i++ {
@@ -211,14 +212,14 @@ func benchParseInput() (patterns []string) {
 			b[i] = letterBytes[rand.Intn(len(letterBytes))]
 		}
 		randomStr := string(b)
-		p := fmt.Sprintf("252.18.112.145 - %s [23/Dec/2022:04:37:05 +0000] \"POST /architectures/back-end/relationships/value-added HTTP/2.0\" 203 25439", randomStr)
+		p := fmt.Sprintf("%s-5644d7b6d9-mzngq_kube-system_coredns-901f7510281180a402936c92f5bc0f3557f5a21ccb5a4591c5bf98f3ddbffdd6.log", randomStr)
 		patterns = append(patterns, p)
 	}
 	return patterns
 }
 
 // Grok pattern use to parse a apache common log
-const benchParsePattern = `%{COMMONAPACHELOG}`
+const benchParsePattern = `%{DATA:podname}_%{DATA:namespace}_%{GREEDYDATA:container_name}-%{WORD:container_id}.log`
 
 var benchParsePatterns = benchParseInput()
 
