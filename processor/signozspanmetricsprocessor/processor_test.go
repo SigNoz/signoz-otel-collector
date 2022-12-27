@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +38,7 @@ import (
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
+	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/cache"
@@ -212,7 +215,7 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 			tcon := &mocks.TracesConsumer{}
 			tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(tc.consumeTracesErr)
 
-			p := newProcessorImp(mexp, tcon, nil, cumulative, logger)
+			p := newProcessorImp(mexp, tcon, nil, cumulative, logger, []ExcludePattern{})
 
 			traces := buildSampleTrace()
 
@@ -298,7 +301,7 @@ func TestProcessorConsumeTraces(t *testing.T) {
 			tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
 
 			defaultNullValue := pcommon.NewValueStr("defaultNullValue")
-			p := newProcessorImp(mexp, tcon, &defaultNullValue, tc.aggregationTemporality, zaptest.NewLogger(t))
+			p := newProcessorImp(mexp, tcon, &defaultNullValue, tc.aggregationTemporality, zaptest.NewLogger(t), []ExcludePattern{})
 
 			for _, traces := range tc.traces {
 				// Test
@@ -320,7 +323,7 @@ func TestMetricKeyCache(t *testing.T) {
 	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
 
 	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
-	p := newProcessorImp(mexp, tcon, &defaultNullValue, cumulative, zaptest.NewLogger(t))
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, cumulative, zaptest.NewLogger(t), []ExcludePattern{})
 	traces := buildSampleTrace()
 
 	// Test
@@ -347,6 +350,40 @@ func TestMetricKeyCache(t *testing.T) {
 	}, 10*time.Second, time.Millisecond*100)
 }
 
+func TestExcludePatternSkips(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+
+	mexp.On("ConsumeMetrics", mock.Anything, mock.Anything).Return(nil)
+	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
+
+	observedZapCore, observedLogs := observer.New(zap.DebugLevel)
+	observedLogger := zap.New(observedZapCore)
+
+	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, cumulative, observedLogger, []ExcludePattern{
+		{
+			Name:    "operation",
+			Pattern: "p*",
+		},
+	})
+
+	traces := buildSampleTrace()
+
+	// Test
+	ctx := metadata.NewIncomingContext(context.Background(), nil)
+	err := p.ConsumeTraces(ctx, traces)
+
+	assert.NoError(t, err)
+	found := false
+	for _, log := range observedLogs.All() {
+		if strings.Contains(log.Message, "Skipping span") {
+			found = true
+		}
+	}
+	assert.True(t, found)
+}
+
 func BenchmarkProcessorConsumeTraces(b *testing.B) {
 	// Prepare
 	mexp := &mocks.MetricsExporter{}
@@ -356,7 +393,7 @@ func BenchmarkProcessorConsumeTraces(b *testing.B) {
 	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
 
 	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
-	p := newProcessorImp(mexp, tcon, &defaultNullValue, cumulative, zaptest.NewLogger(b))
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, cumulative, zaptest.NewLogger(b), []ExcludePattern{})
 
 	traces := buildSampleTrace()
 
@@ -367,7 +404,7 @@ func BenchmarkProcessorConsumeTraces(b *testing.B) {
 	}
 }
 
-func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, defaultNullValue *pcommon.Value, temporality string, logger *zap.Logger) *processorImp {
+func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, defaultNullValue *pcommon.Value, temporality string, logger *zap.Logger, excludePatterns []ExcludePattern) *processorImp {
 	defaultNotInSpanAttrVal := pcommon.NewValueStr("defaultNotInSpanAttrVal")
 	// use size 2 for LRU cache for testing purpose
 	metricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
@@ -413,6 +450,12 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 	if err != nil {
 		panic(err)
 	}
+
+	excludePatternRegex := make(map[string]*regexp.Regexp)
+	for _, pattern := range excludePatterns {
+		excludePatternRegex[pattern.Name] = regexp.MustCompile(pattern.Pattern)
+	}
+
 	return &processorImp{
 		logger:          logger,
 		config:          Config{AggregationTemporality: temporality},
@@ -455,6 +498,9 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 		callMetricKeyToDimensions:         callMetricKeyToDimensions,
 		dbCallMetricKeyToDimensions:       dbCallMetricKeyToDimensions,
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensions,
+
+		attrsCardinality:    make(map[string]map[string]struct{}),
+		excludePatternRegex: excludePatternRegex,
 	}
 }
 

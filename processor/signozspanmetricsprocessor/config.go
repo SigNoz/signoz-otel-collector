@@ -42,6 +42,12 @@ type Dimension struct {
 	Default *string `mapstructure:"default"`
 }
 
+// ExcludePattern defines the pattern to exclude from the metrics.
+type ExcludePattern struct {
+	Name    string `mapstructure:"name"`
+	Pattern string `mapstructure:"pattern"`
+}
+
 // Config defines the configuration options for spanmetricsprocessor.
 type Config struct {
 	config.ProcessorSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
@@ -61,6 +67,9 @@ type Config struct {
 	// The dimensions will be fetched from the span's attributes. Examples of some conventionally used attributes:
 	// https://github.com/open-telemetry/opentelemetry-collector/blob/main/model/semconv/opentelemetry.go.
 	Dimensions []Dimension `mapstructure:"dimensions"`
+
+	// ExcludePatterns defines the list of patterns to exclude from the metrics.
+	ExcludePatterns []ExcludePattern `mapstructure:"exclude_patterns"`
 
 	// DimensionsCacheSize defines the size of cache for storing Dimensions, which helps to avoid cache memory growing
 	// indefinitely over the lifetime of the collector.
