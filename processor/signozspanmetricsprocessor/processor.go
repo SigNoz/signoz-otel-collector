@@ -414,7 +414,8 @@ func (p *processorImp) logCardinalityInfo() {
 		for key := range v {
 			values = append(values, key)
 		}
-		p.logger.Info("Attribute cardinality", zap.String("attribute", k), zap.Int("cardinality", len(v)), zap.Strings("values", values))
+		p.logger.Info("Attribute cardinality", zap.String("attribute", k), zap.Int("cardinality", len(v)))
+		p.logger.Debug("Attribute values", zap.Strings("values", values))
 	}
 }
 
