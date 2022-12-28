@@ -1,33 +1,42 @@
-receivers:
-  otlp:
-    protocols:
-      grpc:
-      http:
-processors:
-  batch:
-    send_batch_size: 10000
-    timeout: 10s
-extensions:
-  zpages: {}
 exporters:
-  logging:
-  clickhousetraces:
-    datasource: tcp://localhost:9000/?database=signoz_traces
-    migrations: exporter/clickhousetracesexporter/migrations
-  clickhousemetricswrite:
-    endpoint: tcp://localhost:9000/?database=signoz_metrics
-    resource_to_telemetry_conversion:
-      enabled: false
-  prometheus:
-    endpoint: "0.0.0.0:8889"
+    clickhousemetricswrite:
+        endpoint: tcp://localhost:9000/?database=signoz_metrics
+        resource_to_telemetry_conversion:
+            enabled: false
+    clickhousetraces:
+        datasource: tcp://localhost:9000/?database=signoz_traces
+        migrations: exporter/clickhousetracesexporter/migrations
+    prometheus:
+        endpoint: 0.0.0.0:8889
+extensions:
+    zpages: {}
+processors:
+    batch:
+        send_batch_size: 10000
+        timeout: 10s
+receivers:
+    otlp:
+        protocols:
+            grpc: null
+            http: null
 service:
-  extensions: [zpages]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+    extensions:
+        - zpages
+    pipelines:
+        metrics:
+            exporters:
+                - clickhousemetricswrite
+            processors:
+                - batch
+            receivers:
+                - otlp
+        traces:
+            exporters:
+                - clickhousetraces
+            processors:
+                - batch
+            receivers:
+                - otlp
+    telemetry:
+        resource:
+            service.instance.id: 0ffab2a5-132e-4bef-bd3d-c6d6e7296cfd

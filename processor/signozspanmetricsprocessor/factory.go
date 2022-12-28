@@ -20,11 +20,14 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/featuregate"
 )
 
 const (
 	// The value of "type" key in configuration.
 	typeStr = "signozspanmetrics"
+	// The stability level of the processor.
+	stability = component.StabilityLevelBeta
 )
 
 // NewFactory creates a factory for the spanmetrics processor.
@@ -32,7 +35,7 @@ func NewFactory() component.ProcessorFactory {
 	return component.NewProcessorFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesProcessor(createTracesProcessor, component.StabilityLevelUndefined),
+		component.WithTracesProcessor(createTracesProcessor, stability),
 	)
 }
 
@@ -41,6 +44,7 @@ func createDefaultConfig() component.ProcessorConfig {
 		ProcessorSettings:      config.NewProcessorSettings(component.NewID(typeStr)),
 		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
 		DimensionsCacheSize:    defaultDimensionsCacheSize,
+		skipSanitizeLabel:      featuregate.GetRegistry().IsEnabled(dropSanitizationGateID),
 	}
 }
 
