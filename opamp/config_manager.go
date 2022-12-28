@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/google/uuid"
+	"github.com/knadh/koanf"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"go.uber.org/zap"
 )
 
 const collectorConfigKey = "collector.yaml"
+
+var k = koanf.New("::")
 
 // agentConfigManager is responsible for managing the agent configuration
 // It is responsible for:
@@ -37,11 +44,45 @@ func NewDynamicConfig(configPath string, reloader reloadFunc) (*remoteControlled
 		reloader: reloader,
 	}
 
+	err := remoteControlledConfig.UpsertInstanceID()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert instance id %w", err)
+	}
+
 	if err := remoteControlledConfig.UpdateCurrentHash(); err != nil {
 		return nil, fmt.Errorf("failed to compute hash for the current config %w", err)
 	}
 
 	return remoteControlledConfig, nil
+}
+
+// UpsertInstanceID adds a unique instance id to the config file if it is not present
+func (m *remoteControlledConfig) UpsertInstanceID() error {
+	// Parse the config file
+	if err := k.Load(file.Provider(m.path), yaml.Parser()); err != nil {
+		return fmt.Errorf("failed to parse config file %s: %w", m.path, err)
+	}
+	instanceID := k.String("service::telemetry::resource::service.instance.id")
+	if instanceID == "" {
+		instanceID = uuid.New().String()
+	}
+	servicePartialConfig := `
+service:
+  telemetry:
+    resource:
+      service.instance.id: ` + instanceID
+	if err := k.Load(rawbytes.Provider([]byte(servicePartialConfig)), yaml.Parser()); err != nil {
+		return fmt.Errorf("failed to parse service instance id config: %w", err)
+	}
+	bytes, err := k.Marshal(yaml.Parser())
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	if err := os.WriteFile(m.path, bytes, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", m.path, err)
+	}
+	return nil
 }
 
 func (m *remoteControlledConfig) UpdateCurrentHash() error {

@@ -24,9 +24,6 @@ type Service interface {
 type service struct {
 	l      *zap.Logger
 	client opamp.Client
-
-	managerConfigPath   string
-	collectorConfigPath string
 }
 
 func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, managerConfigPath string, collectorConfigPath string) (*service, error) {

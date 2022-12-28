@@ -155,6 +155,15 @@ func (s *serverClient) Stop(ctx context.Context) error {
 	return s.opampClient.Stop(ctx)
 }
 
+func (s *serverClient) Error() error {
+	var err error
+	select {
+	case err = <-s.collector.ErrorChan():
+	default:
+	}
+	return err
+}
+
 // onMessageFuncHandler is the callback function that is called when the Opamp client receives a message from the Opamp server
 func (s *serverClient) onMessageFuncHandler(ctx context.Context, msg *types.MessageData) {
 	if msg.RemoteConfig != nil {
