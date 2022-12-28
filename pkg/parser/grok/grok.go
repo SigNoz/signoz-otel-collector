@@ -56,7 +56,7 @@ func (c Config) Build(logger *zap.SugaredLogger) (operator.Operator, error) {
 	}
 
 	if c.Pattern == "" {
-		return nil, fmt.Errorf("missing required field 'grok'")
+		return nil, fmt.Errorf("missing required field 'pattern'")
 	}
 
 	g, err := grok.NewWithConfig(&grok.Config{NamedCapturesOnly: true})
@@ -64,20 +64,20 @@ func (c Config) Build(logger *zap.SugaredLogger) (operator.Operator, error) {
 		return nil, fmt.Errorf("new grok object: %w", err)
 	}
 
-	include := map[string]bool{}
-	exclude := map[string]bool{}
+	include := make(map[string]struct{})
+	exclude := make(map[string]struct{})
 	includeKeysPresent := false
 	excludeKeysPresent := false
 	if c.Include != nil && len(c.Include) > 0 {
 		includeKeysPresent = true
 		for _, k := range c.Include {
-			include[k] = true
+			include[k] = struct{}{}
 		}
 	}
 	if c.Exclude != nil && len(c.Exclude) > 0 {
 		excludeKeysPresent = true
 		for _, k := range c.Exclude {
-			exclude[k] = true
+			exclude[k] = struct{}{}
 		}
 	}
 
@@ -106,9 +106,9 @@ type Parser struct {
 	pattern            string
 	cache              cache
 	includeKeysPresent bool
-	include            map[string]bool
+	include            map[string]struct{}
 	excludeKeysPresent bool
-	exclude            map[string]bool
+	exclude            map[string]struct{}
 }
 
 // Process will parse an entry for grok.
@@ -143,12 +143,12 @@ func (r *Parser) match(value string) (interface{}, error) {
 	parsedValues := map[string]interface{}{}
 	for k, v := range values {
 		if r.excludeKeysPresent {
-			if r.exclude[k] {
+			if _, ok := r.exclude[k]; ok {
 				continue
 			}
 		}
 		if r.includeKeysPresent {
-			if r.include[k] {
+			if _, ok := r.include[k]; ok {
 				parsedValues[k] = v
 			}
 		} else {
