@@ -198,7 +198,3 @@ func newOtelColSettings(configPaths []string, version string, desc string, loggi
 		DisableGracefulShutdown: true,
 	}, nil
 }
-
-func (c *WrappedCollector) GetState() service.State {
-	return c.svc.GetState()
-}

@@ -20,6 +20,14 @@ func (c simpleClient) Start(ctx context.Context) error {
 
 func (c simpleClient) Stop(ctx context.Context) error {
 	c.coll.Shutdown()
-	// TODO: Wait for the collector to actually stop and return the possible error from .Run.
-	return nil
+	return c.Error()
+}
+
+func (c simpleClient) Error() error {
+	var err error
+	select {
+	case err = <-c.coll.ErrorChan():
+	default:
+	}
+	return err
 }
