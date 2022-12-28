@@ -140,6 +140,7 @@ func (wCol *WrappedCollector) Shutdown() {
 func (wCol *WrappedCollector) reportError(err error) {
 	select {
 	case wCol.errChan <- err:
+	default:
 	}
 }
 
@@ -147,6 +148,20 @@ func (wCol *WrappedCollector) reportError(err error) {
 func (wCol *WrappedCollector) Restart(ctx context.Context) error {
 	wCol.Shutdown()
 	return wCol.Run(ctx)
+}
+
+func (wCol *WrappedCollector) ErrorChan() <-chan error {
+	return wCol.errChan
+}
+
+func (wCol *WrappedCollector) GetState() service.State {
+	wCol.mux.Lock()
+	defer wCol.mux.Unlock()
+
+	if wCol.svc != nil {
+		return wCol.svc.GetState()
+	}
+	return service.StateClosed
 }
 
 func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*service.CollectorSettings, error) {
