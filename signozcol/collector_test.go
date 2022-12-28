@@ -91,14 +91,16 @@ func TestCollectorShutdown(t *testing.T) {
 	}
 
 	err := coll.Run(context.TODO())
-	defer coll.Shutdown()
 
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	coll.Shutdown()
-	// should evntually return no error
+	shutdownErr := <-coll.ErrorChan()
+	if shutdownErr != nil {
+		t.Fatal(shutdownErr)
+	}
 }
 
 func TestCollectorRunMultipleTimes(t *testing.T) {
@@ -124,4 +126,28 @@ func TestCollectorRunMultipleTimes(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	assert.Contains(t, err.Error(), "already running")
+}
+
+func TestCollectorRestart(t *testing.T) {
+	coll := New(WrappedCollectorSettings{
+		ConfigPaths: []string{"testdata/config.yaml"},
+		Version:     "0.0.1",
+		Desc:        "test",
+		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
+	})
+	if coll == nil {
+		t.Fatal("coll is nil")
+	}
+
+	err := coll.Run(context.TODO())
+	defer coll.Shutdown()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = coll.Restart(context.TODO())
+	if err != nil {
+		t.Fatal(err)
+	}
 }
