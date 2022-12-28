@@ -50,10 +50,8 @@ func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, manag
 	}
 
 	return &service{
-		client:              client,
-		l:                   logger,
-		managerConfigPath:   managerConfigPath,
-		collectorConfigPath: collectorConfigPath,
+		client: client,
+		l:      logger,
 	}, err
 }
 
