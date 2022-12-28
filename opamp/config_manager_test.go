@@ -26,7 +26,7 @@ func TestNewDynamicConfigInvalidPath(t *testing.T) {
 	}
 
 	_, err := NewDynamicConfig("./testdata/collector.yaml", reloadFunc)
-	assert.ErrorContains(t, err, "failed to read config file")
+	assert.ErrorContains(t, err, "no such file or directory")
 }
 
 func TestNewDynamicConfig(t *testing.T) {
@@ -69,6 +69,26 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 	bytes, err := os.ReadFile("./testdata/coll-config-path.yaml")
 	assert.Equal(t, effCfg.GetConfigMap().ConfigMap["collector.yaml"].GetContentType(), "text/yaml")
 	assert.Equal(t, effCfg.GetConfigMap().ConfigMap["collector.yaml"].Body, bytes)
+}
+
+func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
+	// make a copy of the original file
+	func() {
+		copy("./testdata/service-instance-id.yaml", "./testdata/service-instance-id-copy.yaml")
+	}()
+
+	// restore the original file
+	defer func() {
+		copy("./testdata/service-instance-id-copy.yaml", "./testdata/service-instance-id.yaml")
+		os.Remove("./testdata/service-instance-id-copy.yaml")
+	}()
+
+	_, err := NewDynamicConfig("./testdata/service-instance-id.yaml", func(contents []byte) error { return nil })
+	assert.NoError(t, err)
+
+	bytes, err := os.ReadFile("./testdata/service-instance-id.yaml")
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "service.instance.id: ")
 }
 
 func TestNewAgentConfigManagerApply(t *testing.T) {
