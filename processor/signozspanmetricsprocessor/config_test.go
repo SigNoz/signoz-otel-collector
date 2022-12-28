@@ -15,7 +15,7 @@
 package signozspanmetricsprocessor
 
 import (
-	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -94,7 +94,7 @@ func TestLoadConfig(t *testing.T) {
 			factories.Exporters["jaeger"] = jaegerexporter.NewFactory()
 
 			// Test
-			cfg, err := servicetest.LoadConfigAndValidate(path.Join(".", "testdata", tc.configFile), factories)
+			cfg, err := servicetest.LoadConfigAndValidate(filepath.Join("testdata", tc.configFile), factories)
 
 			// Verify
 			require.NoError(t, err)
