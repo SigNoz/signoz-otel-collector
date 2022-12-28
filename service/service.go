@@ -22,9 +22,6 @@ type Service interface {
 type service struct {
 	l      *zap.Logger
 	client opamp.Client
-
-	managerConfigPath   string
-	collectorConfigPath string
 }
 
 // Start starts the Opamp connection and collector
