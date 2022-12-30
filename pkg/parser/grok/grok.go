@@ -135,7 +135,7 @@ func (r *Parser) match(value string) (interface{}, error) {
 		}
 	}
 
-	values, err := r.grok.Parse(r.pattern, value)
+	values, err := r.grok.ParseTyped(r.pattern, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse log: %v", err.Error())
 	}

@@ -67,7 +67,7 @@ func TestParserCache(t *testing.T) {
 	require.Equal(t, parser.cache.maxSize(), uint16(100))
 }
 
-func TestParserRegex(t *testing.T) {
+func TestParserGrok(t *testing.T) {
 	cases := []struct {
 		name      string
 		configure func(*Config)
@@ -112,6 +112,24 @@ func TestParserRegex(t *testing.T) {
 					"verb":        "POST",
 					"request":     "/architectures/back-end/relationships/value-added",
 					"response":    "203",
+				},
+			},
+		},
+		{
+			"grok pattern with type specified",
+			func(p *Config) {
+				p.Pattern = `%{IPV4:ip:string} %{NUMBER:status:int} %{NUMBER:duration:float}`
+				p.Cache.Size = 100
+			},
+			&entry.Entry{
+				Body: "127.0.0.1 200 0.8",
+			},
+			&entry.Entry{
+				Body: "127.0.0.1 200 0.8",
+				Attributes: map[string]interface{}{
+					"ip":       "127.0.0.1",
+					"status":   200,
+					"duration": 0.8,
 				},
 			},
 		},
