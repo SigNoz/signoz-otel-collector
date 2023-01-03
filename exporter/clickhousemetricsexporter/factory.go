@@ -20,6 +20,9 @@ import (
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -31,8 +34,26 @@ const (
 	typeStr = "clickhousemetricswrite"
 )
 
+var (
+	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
+	exporterKey        = tag.MustNewKey("exporter")
+	tableKey           = tag.MustNewKey("table")
+)
+
 // NewFactory creates a new Prometheus Remote Write exporter.
 func NewFactory() component.ExporterFactory {
+
+	writeLatencyDistribution := view.Distribution(100, 150, 200, 300, 400, 500, 750, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 40000, 80000)
+
+	writeLatencyView := &view.View{
+		Name:        "exporter_db_write_latency",
+		Measure:     writeLatencyMillis,
+		Description: writeLatencyMillis.Description(),
+		TagKeys:     []tag.Key{exporterKey, tableKey},
+		Aggregation: writeLatencyDistribution,
+	}
+
+	view.Register(writeLatencyView)
 	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
