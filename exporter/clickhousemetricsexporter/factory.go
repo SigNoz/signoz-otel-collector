@@ -43,7 +43,7 @@ var (
 // NewFactory creates a new Prometheus Remote Write exporter.
 func NewFactory() component.ExporterFactory {
 
-	writeLatencyDistribution := view.Distribution(100, 150, 200, 300, 400, 500, 750, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 40000, 80000)
+	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
 	writeLatencyView := &view.View{
 		Name:        "exporter_db_write_latency",
