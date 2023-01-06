@@ -33,6 +33,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
@@ -164,10 +165,14 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			}
 		}
 	}
+
+	dbWriteStart := time.Now()
 	err = statement.Send()
 	if err != nil {
 		return fmt.Errorf("StatementSend:%w", err)
 	}
+	stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(exporterKey, string(component.DataTypeLogs)), tag.Upsert(tableKey, DISTRIBUTED_LOGS_TABLE)}, writeLatencyMillis.M(int64(time.Since(dbWriteStart).Milliseconds())))
+
 	duration := time.Since(start)
 	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 		zap.String("cost", duration.String()))
