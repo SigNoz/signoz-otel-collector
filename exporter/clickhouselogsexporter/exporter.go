@@ -17,11 +17,13 @@ package clickhouselogsexporter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -52,6 +54,9 @@ type clickhouseLogsExporter struct {
 	cfg    *Config
 
 	usageCollector *usage.UsageCollector
+
+	wg        *sync.WaitGroup
+	closeChan chan struct{}
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -92,11 +97,15 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		cfg:            cfg,
 		ksuid:          ksuid.New(),
 		usageCollector: collector,
+		wg:             new(sync.WaitGroup),
+		closeChan:      make(chan struct{}),
 	}, nil
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
+	close(e.closeChan)
+	e.wg.Wait()
 	if e.usageCollector != nil {
 		e.usageCollector.Stop()
 	}
@@ -110,73 +119,81 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
-	start := time.Now()
-	statement, err := e.db.PrepareBatch(ctx, e.insertLogsSQL)
-	if err != nil {
-		return fmt.Errorf("PrepareBatch:%w", err)
-	}
-	defer func() {
-		_ = statement.Abort()
-	}()
+	e.wg.Add(1)
+	defer e.wg.Done()
 
-	metrics := map[string]usage.Metric{}
+	select {
+	case <-e.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		start := time.Now()
+		statement, err := e.db.PrepareBatch(ctx, e.insertLogsSQL)
+		if err != nil {
+			return fmt.Errorf("PrepareBatch:%w", err)
+		}
+		defer func() {
+			_ = statement.Abort()
+		}()
 
-	for i := 0; i < ld.ResourceLogs().Len(); i++ {
-		logs := ld.ResourceLogs().At(i)
-		res := logs.Resource()
-		resBytes, _ := json.Marshal(res.Attributes().AsRaw())
+		metrics := map[string]usage.Metric{}
 
-		resources := attributesToSlice(res.Attributes(), true)
-		for j := 0; j < logs.ScopeLogs().Len(); j++ {
-			rs := logs.ScopeLogs().At(j).LogRecords()
-			for k := 0; k < rs.Len(); k++ {
-				r := rs.At(k)
+		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+			logs := ld.ResourceLogs().At(i)
+			res := logs.Resource()
+			resBytes, _ := json.Marshal(res.Attributes().AsRaw())
 
-				// capturing the metrics
-				tenant := usage.GetTenantNameFromResource(logs.Resource())
-				attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
-				usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
+			resources := attributesToSlice(res.Attributes(), true)
+			for j := 0; j < logs.ScopeLogs().Len(); j++ {
+				rs := logs.ScopeLogs().At(j).LogRecords()
+				for k := 0; k < rs.Len(); k++ {
+					r := rs.At(k)
 
-				attributes := attributesToSlice(r.Attributes(), false)
-				err = statement.Append(
-					uint64(r.Timestamp()),
-					uint64(r.ObservedTimestamp()),
-					e.ksuid.String(),
-					r.TraceID().HexString(),
-					r.SpanID().HexString(),
-					uint32(r.Flags()),
-					r.SeverityText(),
-					uint8(r.SeverityNumber()),
-					r.Body().AsString(),
-					resources.StringKeys,
-					resources.StringValues,
-					attributes.StringKeys,
-					attributes.StringValues,
-					attributes.IntKeys,
-					attributes.IntValues,
-					attributes.FloatKeys,
-					attributes.FloatValues,
-				)
-				if err != nil {
-					return fmt.Errorf("StatementAppend:%w", err)
+					// capturing the metrics
+					tenant := usage.GetTenantNameFromResource(logs.Resource())
+					attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
+					usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
+
+					attributes := attributesToSlice(r.Attributes(), false)
+					err = statement.Append(
+						uint64(r.Timestamp()),
+						uint64(r.ObservedTimestamp()),
+						e.ksuid.String(),
+						r.TraceID().HexString(),
+						r.SpanID().HexString(),
+						uint32(r.Flags()),
+						r.SeverityText(),
+						uint8(r.SeverityNumber()),
+						r.Body().AsString(),
+						resources.StringKeys,
+						resources.StringValues,
+						attributes.StringKeys,
+						attributes.StringValues,
+						attributes.IntKeys,
+						attributes.IntValues,
+						attributes.FloatKeys,
+						attributes.FloatValues,
+					)
+					if err != nil {
+						return fmt.Errorf("StatementAppend:%w", err)
+					}
+					e.ksuid = e.ksuid.Next()
 				}
-				e.ksuid = e.ksuid.Next()
 			}
 		}
-	}
-	err = statement.Send()
-	if err != nil {
-		return fmt.Errorf("StatementSend:%w", err)
-	}
-	duration := time.Since(start)
-	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
-		zap.String("cost", duration.String()))
+		err = statement.Send()
+		if err != nil {
+			return fmt.Errorf("StatementSend:%w", err)
+		}
+		duration := time.Since(start)
+		e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
+			zap.String("cost", duration.String()))
 
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
-	}
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+		}
 
-	return err
+		return err
+	}
 }
 
 type attributesToSliceResponse struct {
