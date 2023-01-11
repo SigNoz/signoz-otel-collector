@@ -66,9 +66,10 @@ type exemplarData struct {
 type metricKey string
 
 type processorImp struct {
-	lock   sync.Mutex
-	logger *zap.Logger
-	config Config
+	lock       sync.Mutex
+	logger     *zap.Logger
+	instanceID string
+	config     Config
 
 	metricsExporter component.MetricsExporter
 	nextConsumer    consumer.Traces
@@ -135,7 +136,7 @@ type histogramData struct {
 	exemplarsData []exemplarData
 }
 
-func newProcessor(logger *zap.Logger, config component.ProcessorConfig, nextConsumer consumer.Traces) (*processorImp, error) {
+func newProcessor(logger *zap.Logger, instanceID string, config component.ProcessorConfig, nextConsumer consumer.Traces) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor")
 	pConfig := config.(*Config)
 
@@ -192,6 +193,7 @@ func newProcessor(logger *zap.Logger, config component.ProcessorConfig, nextCons
 
 	return &processorImp{
 		logger:                            logger,
+		instanceID:                        instanceID,
 		config:                            *pConfig,
 		startTimestamp:                    pcommon.NewTimestampFromTime(time.Now()),
 		histograms:                        make(map[metricKey]*histogramData),
@@ -739,6 +741,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
+		resourceAttr.PutStr(signozID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()
 		for j := 0; j < ilsSlice.Len(); j++ {

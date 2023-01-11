@@ -17,6 +17,7 @@ package signozspanmetricsprocessor
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
@@ -28,6 +29,8 @@ const (
 	typeStr = "signozspanmetrics"
 	// The stability level of the processor.
 	stability = component.StabilityLevelBeta
+
+	signozID = "signoz.collector.id"
 )
 
 // NewFactory creates a factory for the spanmetrics processor.
@@ -49,5 +52,8 @@ func createDefaultConfig() component.ProcessorConfig {
 }
 
 func createTracesProcessor(_ context.Context, params component.ProcessorCreateSettings, cfg component.ProcessorConfig, nextConsumer consumer.Traces) (component.TracesProcessor, error) {
-	return newProcessor(params.Logger, cfg, nextConsumer)
+	// TODO(srikanthccv): use the instanceID from params when it is added
+	instanceUUID, _ := uuid.NewRandom()
+	instanceID := instanceUUID.String()
+	return newProcessor(params.Logger, instanceID, cfg, nextConsumer)
 }
