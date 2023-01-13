@@ -63,6 +63,10 @@ const (
 	sampleLatencyDuration = time.Duration(sampleLatency) * time.Millisecond
 )
 
+var (
+	testID = "test-instance-id"
+)
+
 // metricID represents the minimum attributes that uniquely identifies a metric in our tests.
 type metricID struct {
 	service    string
@@ -140,7 +144,7 @@ func TestProcessorShutdown(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
 	assert.NoError(t, err)
 	err = p.Shutdown(context.Background())
 
@@ -161,7 +165,7 @@ func TestConfigureLatencyBounds(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
 
 	// Verify
 	assert.NoError(t, err)
@@ -176,7 +180,7 @@ func TestProcessorCapabilities(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
 	assert.NoError(t, err)
 	caps := p.Capabilities()
 
@@ -815,6 +819,16 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 			},
 			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000100",
 		},
+		{
+			name: "resource attribute contains instance ID",
+			optionalDims: []dimension{
+				{name: signozID},
+			},
+			resourceAttrMap: map[string]interface{}{
+				signozID: testID,
+			},
+			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000test-instance-id",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resAttr := pcommon.NewMap()
@@ -840,7 +854,7 @@ func TestProcessorDuplicateDimensions(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
 	assert.Error(t, err)
 	assert.Nil(t, p)
 }
@@ -964,7 +978,7 @@ func TestProcessorUpdateExemplars(t *testing.T) {
 	spanID := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).SpanID()
 	key := metricKey("metricKey")
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
 	value := float64(42)
 
 	// ----- call -------------------------------------------------------------

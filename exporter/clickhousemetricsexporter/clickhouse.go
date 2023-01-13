@@ -30,6 +30,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/component"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -313,8 +314,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			}
 		}
 
-		return statement.Send()
-
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
 	}()
 
 	if err != nil {
@@ -362,7 +369,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				}
 			}
 		}
-		return statement.Send()
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
 	}()
 	if err != nil {
 		return err
