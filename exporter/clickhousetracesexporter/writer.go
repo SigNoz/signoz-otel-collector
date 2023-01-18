@@ -28,6 +28,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/component"
 	"go.uber.org/zap"
 )
 
@@ -199,7 +200,20 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 		}
 	}
 
-	return statement.Send()
+	start := time.Now()
+
+	err = statement.Send()
+	if err != nil {
+		return err
+	}
+
+	ctx, _ = tag.New(ctx,
+		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(tableKey, w.indexTable),
+	)
+	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+
+	return nil
 }
 
 func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
@@ -234,7 +248,20 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 		}
 	}
 
-	return statement.Send()
+	start := time.Now()
+
+	err = statement.Send()
+	if err != nil {
+		return err
+	}
+
+	ctx, _ = tag.New(ctx,
+		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(tableKey, w.errorTable),
+	)
+	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+
+	return nil
 }
 
 func stringToBool(s string) bool {
@@ -271,11 +298,18 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 
 		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serialized)))
 	}
+	start := time.Now()
 
 	err = statement.Send()
 	if err != nil {
 		return err
 	}
+
+	ctx, _ = tag.New(ctx,
+		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(tableKey, w.spansTable),
+	)
+	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 
 	for k, v := range metrics {
 		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
