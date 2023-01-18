@@ -156,21 +156,25 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 					// set observedtimestamp as the default timestamp if timestamp is empty.
 					ts := uint64(r.Timestamp())
+					ots := uint64(r.ObservedTimestamp())
+					if ots == 0 {
+						ots = uint64(time.Now().UnixNano())
+					}
 					if ts == 0 {
-						ts = uint64(r.ObservedTimestamp())
+						ts = ots
 					}
 
 					attributes := attributesToSlice(r.Attributes(), false)
 					err = statement.Append(
 						ts,
-						uint64(r.ObservedTimestamp()),
+						ots,
 						e.ksuid.String(),
 						r.TraceID().HexString(),
 						r.SpanID().HexString(),
 						uint32(r.Flags()),
 						r.SeverityText(),
 						uint8(r.SeverityNumber()),
-						r.Body().AsString(),
+						getStringifiedBody(r.Body()),
 						resources.StringKeys,
 						resources.StringValues,
 						attributes.StringKeys,
@@ -217,6 +221,17 @@ type attributesToSliceResponse struct {
 	IntValues    []int64
 	FloatKeys    []string
 	FloatValues  []float64
+}
+
+func getStringifiedBody(body pcommon.Value) string {
+	var strBody string
+	switch body.Type() {
+	case pcommon.ValueTypeBytes:
+		strBody = string(body.Bytes().AsRaw())
+	default:
+		strBody = body.AsString()
+	}
+	return strBody
 }
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
