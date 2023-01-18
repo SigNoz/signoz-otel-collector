@@ -154,9 +154,15 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
 					usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
 
+					// set observedtimestamp as the default timestamp if timestamp is empty.
+					ts := uint64(r.Timestamp())
+					if ts == 0 {
+						ts = uint64(r.ObservedTimestamp())
+					}
+
 					attributes := attributesToSlice(r.Attributes(), false)
 					err = statement.Append(
-						uint64(r.Timestamp()),
+						ts,
 						uint64(r.ObservedTimestamp()),
 						e.ksuid.String(),
 						r.TraceID().HexString(),
