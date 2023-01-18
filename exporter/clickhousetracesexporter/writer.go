@@ -205,14 +205,11 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
 		tag.Upsert(tableKey, w.indexTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
@@ -252,14 +249,11 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
 		tag.Upsert(tableKey, w.errorTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func stringToBool(s string) bool {
@@ -300,7 +294,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 
 	err = statement.Send()
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
 		tag.Upsert(tableKey, w.spansTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
