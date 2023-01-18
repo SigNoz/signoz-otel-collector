@@ -203,16 +203,15 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 	start := time.Now()
 
 	err = statement.Send()
-	if err != nil {
-		return err
-	}
 
 	ctx, _ = tag.New(ctx,
 		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 		tag.Upsert(tableKey, w.indexTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -251,16 +250,15 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 	start := time.Now()
 
 	err = statement.Send()
-	if err != nil {
-		return err
-	}
 
 	ctx, _ = tag.New(ctx,
 		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 		tag.Upsert(tableKey, w.errorTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -301,16 +299,14 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 	start := time.Now()
 
 	err = statement.Send()
-	if err != nil {
-		return err
-	}
-
 	ctx, _ = tag.New(ctx,
 		tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 		tag.Upsert(tableKey, w.spansTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-
+	if err != nil {
+		return err
+	}
 	for k, v := range metrics {
 		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 	}
