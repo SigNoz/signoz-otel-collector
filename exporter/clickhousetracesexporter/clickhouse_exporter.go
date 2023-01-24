@@ -248,15 +248,36 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	attributes := otelSpan.Attributes()
 	resourceAttributes := resource.Attributes()
 	tagMap := map[string]string{}
+	stringTagMap := map[string]string{}
+	numberTagMap := map[string]float64{}
+	boolTagMap := map[string]bool{}
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
+		if v.Type() == pcommon.ValueTypeDouble {
+			numberTagMap[k] = v.Double()
+		} else if v.Type() == pcommon.ValueTypeInt {
+			numberTagMap[k] = float64(v.Int())
+		} else if v.Type() == pcommon.ValueTypeBool {
+			boolTagMap[k] = v.Bool()
+		} else {
+			stringTagMap[k] = v.AsString()
+		}
 		return true
 
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
+		if v.Type() == pcommon.ValueTypeDouble {
+			numberTagMap[k] = v.Double()
+		} else if v.Type() == pcommon.ValueTypeInt {
+			numberTagMap[k] = float64(v.Int())
+		} else if v.Type() == pcommon.ValueTypeBool {
+			boolTagMap[k] = v.Bool()
+		} else {
+			stringTagMap[k] = v.AsString()
+		}
 		return true
 
 	})
@@ -276,6 +297,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		Kind:              int8(otelSpan.Kind()),
 		StatusCode:        int16(otelSpan.Status().Code()),
 		TagMap:            tagMap,
+		StringTagMap:      stringTagMap,
+		NumberTagMap:      numberTagMap,
+		BoolTagMap:        boolTagMap,
 		HasError:          false,
 		TraceModel: TraceModel{
 			TraceId:           otelSpan.TraceID().HexString(),
@@ -287,6 +311,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			Kind:              int8(otelSpan.Kind()),
 			References:        references,
 			TagMap:            tagMap,
+			StringTagMap:      stringTagMap,
+			NumberTagMap:      numberTagMap,
+			BoolTagMap:        boolTagMap,
 			HasError:          false,
 		},
 		Tenant: &tenant,
