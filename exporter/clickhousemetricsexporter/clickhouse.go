@@ -105,6 +105,9 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	queries = append(queries, fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
 
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, SAMPLES_TABLE, CLUSTER))
+
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
 	queries = append(queries, fmt.Sprintf(`
@@ -126,6 +129,9 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, fmt.Sprintf(`
 		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
