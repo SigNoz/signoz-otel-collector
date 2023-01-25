@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes ON CLUSTER clu
     timestamp DateTime CODEC(DoubleDelta, LZ4)
 ) ENGINE AggregatingMergeTree
 PARTITION BY toDate(timestamp)
-ORDER BY (timestamp, src, dest);
+ORDER BY (timestamp, src, dest)
+TTL toDateTime(timestamp) + toIntervalSecond(604800);
 
 
 

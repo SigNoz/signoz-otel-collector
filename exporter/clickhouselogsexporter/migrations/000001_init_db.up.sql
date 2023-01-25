@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER cluster (
 	INDEX body_idx body TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
-ORDER BY (timestamp, id);
+ORDER BY (timestamp, id)
+TTL toDateTime(timestamp) + toIntervalSecond(604800);
 
 
 

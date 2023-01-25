@@ -12,5 +12,6 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER cluste
   INDEX idx_error_id errorID TYPE bloom_filter GRANULARITY 4
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
-ORDER BY (timestamp, groupID);
+ORDER BY (timestamp, groupID)
+TTL toDateTime(timestamp) + toIntervalSecond(604800);
 
