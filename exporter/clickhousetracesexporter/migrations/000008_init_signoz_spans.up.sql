@@ -5,5 +5,5 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_spans ON CLUSTER cluster (
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY traceID
-TTL toDateTime(timestamp) + toIntervalSecond(604800)
+TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE
 SETTINGS index_granularity=1024;

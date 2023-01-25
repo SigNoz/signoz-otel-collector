@@ -13,5 +13,4 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER cluste
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, groupID)
-TTL toDateTime(timestamp) + toIntervalSecond(604800);
-
+TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE;

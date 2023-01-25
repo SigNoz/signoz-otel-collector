@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.usage_explorer ON CLUSTER cluster (
 ) ENGINE SummingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, service_name)
-TTL toDateTime(timestamp) + toIntervalSecond(604800);
+TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE;
 
 
 

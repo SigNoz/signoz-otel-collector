@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER cluster (
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id)
-TTL toDateTime(timestamp) + toIntervalSecond(604800);
+TTL toDateTime(timestamp / 1000000000) + INTERVAL 604800 SECOND DELETE;
 
 
 
