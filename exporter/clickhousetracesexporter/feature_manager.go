@@ -74,9 +74,9 @@ func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 		hasError bool CODEC(T64, ZSTD(1)),
 		tagMap Map(LowCardinality(String), String) CODEC(ZSTD(1)),
 		rpcSystem LowCardinality(String) CODEC(ZSTD(1)),
-     	rpcService LowCardinality(String) CODEC(ZSTD(1)),
-     	rpcMethod LowCardinality(String) CODEC(ZSTD(1)),
-     	responseStatusCode LowCardinality(String) CODEC(ZSTD(1)),
+		rpcService LowCardinality(String) CODEC(ZSTD(1)),
+		rpcMethod LowCardinality(String) CODEC(ZSTD(1)),
+		responseStatusCode LowCardinality(String) CODEC(ZSTD(1)),
 		stringTagMap Map(String, String) CODEC(ZSTD(1)),
 		numberTagMap Map(String, Float64) CODEC(ZSTD(1)),
 		boolTagMap Map(String, bool) CODEC(ZSTD(1)),
@@ -94,7 +94,7 @@ func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 		INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
 		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
-    	INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
+		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
 		) ENGINE MergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
