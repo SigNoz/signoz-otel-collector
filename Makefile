@@ -1,6 +1,6 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
-IMAGE_NAME ?= "signoz-otel-collector"
+IMAGE_NAME ?= signoz-otel-collector
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
@@ -14,6 +14,9 @@ IMPORT_LOG=.import.log
 
 CLICKHOUSE_HOST ?= localhost
 CLICKHOUSE_PORT ?= 9000
+
+LD_FLAGS ?= ""
+GOCC ?= ""
 
 
 .PHONY: install-tools
@@ -31,7 +34,18 @@ test:
 
 .PHONY: build
 build:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o signoz-collector ./cmd/signozcollector
+	CC=${GOCC} OS111MODULE=on CGO_ENABLED=1 GOOS=${GOOS} GOARCH=${GOARCH} go build -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
+
+.PHONY: amd64
+amd64:
+	make GOARCH=amd64 build
+
+.PHONY: arm64
+arm64:
+	make GOCC=aarch64-linux-gnu-gcc GOARCH=arm64 build
+
+.PHONY: build-all
+build-all: amd64 arm64
 
 .PHONY: run
 run:
