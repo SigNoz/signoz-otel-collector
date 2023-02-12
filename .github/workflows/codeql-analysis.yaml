@@ -37,10 +37,10 @@ jobs:
       uses: github/codeql-action/autobuild@v2
 
     - name: Install cross-compilation tools
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+      run: |
+        set -ex
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
 
     - name: Build Artifacts
       run: make build-all
