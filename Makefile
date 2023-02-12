@@ -15,8 +15,8 @@ IMPORT_LOG=.import.log
 CLICKHOUSE_HOST ?= localhost
 CLICKHOUSE_PORT ?= 9000
 
-LD_FLAGS ?= ""
-GOCC ?= ""
+LD_FLAGS ?=
+GOCC ?=
 
 
 .PHONY: install-tools
