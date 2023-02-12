@@ -39,7 +39,12 @@ jobs:
           else
             echo "DOCKER_TAG=${{ steps.branch-name.outputs.current_branch }}" >> $GITHUB_ENV
           fi
-      - name: Build Multi Architecture Artifacts
+      - name: Install cross-compilation tools
+        run: |
+          set -ex
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+      - name: Build artifacts for arm64/amd64
         run: make build-all
       - name: Build and push docker image
         run: make build-and-push-signoz-collector
