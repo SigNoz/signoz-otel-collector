@@ -16,7 +16,6 @@ CLICKHOUSE_HOST ?= localhost
 CLICKHOUSE_PORT ?= 9000
 
 LD_FLAGS ?=
-GOCC ?=
 
 
 .PHONY: install-tools
@@ -34,7 +33,7 @@ test:
 
 .PHONY: build
 build:
-	CC=${GOCC} OS111MODULE=on CGO_ENABLED=1 GOOS=${GOOS} GOARCH=${GOARCH} go build -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
+	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
 
 .PHONY: amd64
 amd64:
@@ -42,7 +41,7 @@ amd64:
 
 .PHONY: arm64
 arm64:
-	make GOCC=aarch64-linux-gnu-gcc GOARCH=arm64 build
+	make CC=aarch64-linux-gnu-gcc GOARCH=arm64 build
 
 .PHONY: build-all
 build-all: amd64 arm64

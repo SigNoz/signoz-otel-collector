@@ -16,6 +16,8 @@ COPY config/default-config.yaml /etc/otel/config.yaml
 COPY exporter/clickhousetracesexporter/migrations /migrations
 COPY exporter/clickhouselogsexporter/migrations /logsmigrations
 
+ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
+
 # expose OTLP ports for the collector
 EXPOSE 4317
 EXPOSE 4318
