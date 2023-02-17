@@ -33,7 +33,7 @@ const (
 	archiveNamespace = "clickhouselogs-archive"
 	databaseName     = "signoz_logs"
 	tableName        = "logs"
-	migrationsFolder = "./logsmigrations"
+	migrationsFolder = "./migrations"
 )
 
 var (
