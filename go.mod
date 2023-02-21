@@ -381,6 +381,7 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.1 // indirect
 	github.com/xdg-go/stringprep v1.0.3 // indirect
+	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
@@ -435,6 +436,7 @@ require (
 replace (
 	github.com/golang-migrate/migrate/v4 => github.com/sergey-telpuk/migrate/v4 v4.15.3-0.20220303065225-d5ae59d12ff7
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
+	go.opentelemetry.io/collector/config => go.opentelemetry.io/collector/config v0.66.0
 )
 
 // see https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/4433
