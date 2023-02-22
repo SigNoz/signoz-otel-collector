@@ -43,39 +43,39 @@ const (
 
 // SpanWriter for writing spans to ClickHouse
 type SpanWriter struct {
-	logger        *zap.Logger
-	db            clickhouse.Conn
-	traceDatabase string
-	indexTable    string
-	errorTable    string
-	spansTable    string
-	tagTable      string
-	encoding      Encoding
-	delay         time.Duration
-	size          int
-	spans         chan *Span
-	finish        chan bool
-	done          sync.WaitGroup
+	logger         *zap.Logger
+	db             clickhouse.Conn
+	traceDatabase  string
+	indexTable     string
+	errorTable     string
+	spansTable     string
+	attributeTable string
+	encoding       Encoding
+	delay          time.Duration
+	size           int
+	spans          chan *Span
+	finish         chan bool
+	done           sync.WaitGroup
 }
 
 // NewSpanWriter returns a SpanWriter for the database
-func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, tagTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
+func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, attributeTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
 	writer := &SpanWriter{
-		logger:        logger,
-		db:            db,
-		traceDatabase: traceDatabase,
-		indexTable:    indexTable,
-		errorTable:    errorTable,
-		spansTable:    spansTable,
-		tagTable:      tagTable,
-		encoding:      encoding,
-		delay:         delay,
-		size:          size,
-		spans:         make(chan *Span, size),
-		finish:        make(chan bool),
+		logger:         logger,
+		db:             db,
+		traceDatabase:  traceDatabase,
+		indexTable:     indexTable,
+		errorTable:     errorTable,
+		spansTable:     spansTable,
+		attributeTable: attributeTable,
+		encoding:       encoding,
+		delay:          delay,
+		size:           size,
+		spans:          make(chan *Span, size),
+		finish:         make(chan bool),
 	}
 
 	go writer.backgroundWriter()
@@ -147,7 +147,7 @@ func (w *SpanWriter) writeBatch(batch []*Span) error {
 			return err
 		}
 	}
-	if w.tagTable != "" {
+	if w.attributeTable != "" {
 		if err := w.writeTagBatch(batch); err != nil {
 			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
 			w.logger.Error("Could not write a batch of spans to tag table: ", zap.Any("batch", logBatch), zap.Error(err))
@@ -227,7 +227,7 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 
 	ctx := context.Background()
-	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.tagTable))
+	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable))
 	if err != nil {
 		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
 		w.logger.Error("Could not prepare batch for index table: ", zap.Any("batch", logBatch), zap.Error(err))
@@ -239,6 +239,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 			err = statement.Append(
 				time.Unix(0, int64(span.StartTimeUnixNano)),
 				key,
+				"attribute",
 				value,
 				nil,
 				nil,
@@ -252,6 +253,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 			err = statement.Append(
 				time.Unix(0, int64(span.StartTimeUnixNano)),
 				key,
+				"attribute",
 				nil,
 				value,
 				nil,
@@ -265,6 +267,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 			err = statement.Append(
 				time.Unix(0, int64(span.StartTimeUnixNano)),
 				key,
+				"attribute",
 				nil,
 				nil,
 				value,
@@ -282,7 +285,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 
 	ctx, _ = tag.New(ctx,
 		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
-		tag.Upsert(tableKey, w.tagTable),
+		tag.Upsert(tableKey, w.attributeTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err

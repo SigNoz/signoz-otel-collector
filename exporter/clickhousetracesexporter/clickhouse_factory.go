@@ -47,7 +47,7 @@ type Writer interface {
 	WriteSpan(span *Span) error
 }
 
-type writerMaker func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, tagTable string, encoding Encoding, delay time.Duration, size int) (Writer, error)
+type writerMaker func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, attributeTable string, encoding Encoding, delay time.Duration, size int) (Writer, error)
 
 var (
 	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
@@ -73,8 +73,8 @@ func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeC
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
-		makeWriter: func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, tagTable string, encoding Encoding, delay time.Duration, size int) (Writer, error) {
-			return NewSpanWriter(logger, db, traceDatabase, spansTable, indexTable, errorTable, tagTable, encoding, delay, size), nil
+		makeWriter: func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, attributeTable string, encoding Encoding, delay time.Duration, size int) (Writer, error) {
+			return NewSpanWriter(logger, db, traceDatabase, spansTable, indexTable, errorTable, attributeTable, encoding, delay, size), nil
 		},
 	}
 }
@@ -272,7 +272,7 @@ func (f *Factory) InitFromViper(v *viper.Viper) {
 // CreateSpanWriter implements storage.Factory
 func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
-	return f.makeWriter(f.logger, f.db, cfg.TraceDatabase, cfg.SpansTable, cfg.IndexTable, cfg.ErrorTable, cfg.TagTable, cfg.Encoding, cfg.WriteBatchDelay, cfg.WriteBatchSize)
+	return f.makeWriter(f.logger, f.db, cfg.TraceDatabase, cfg.SpansTable, cfg.IndexTable, cfg.ErrorTable, cfg.AttributeTable, cfg.Encoding, cfg.WriteBatchDelay, cfg.WriteBatchSize)
 }
 
 // CreateArchiveSpanWriter implements storage.ArchiveFactory
@@ -281,7 +281,7 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		return nil, nil
 	}
 	cfg := f.Options.others[archiveNamespace]
-	return f.makeWriter(f.logger, f.archive, "", cfg.TraceDatabase, cfg.SpansTable, cfg.ErrorTable, cfg.TagTable, cfg.Encoding, cfg.WriteBatchDelay, cfg.WriteBatchSize)
+	return f.makeWriter(f.logger, f.archive, "", cfg.TraceDatabase, cfg.SpansTable, cfg.ErrorTable, cfg.AttributeTable, cfg.Encoding, cfg.WriteBatchDelay, cfg.WriteBatchSize)
 }
 
 // Close Implements io.Closer and closes the underlying storage

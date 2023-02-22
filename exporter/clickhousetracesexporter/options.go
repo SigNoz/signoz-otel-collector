@@ -34,7 +34,7 @@ const (
 	localIndexTable                 string        = "signoz_index_v2"
 	defaultErrorTable               string        = "distributed_signoz_error_index_v2"
 	defaultSpansTable               string        = "distributed_signoz_spans"
-	defaultTagTable                 string        = "distributed_tag_attributes"
+	defaultAttributeTable           string        = "distributed_span_attributes"
 	defaultDurationSortTable        string        = "durationSort"
 	defaultDurationSortMVTable      string        = "durationSortMV"
 	defaultArchiveSpansTable        string        = "signoz_archive_spans"
@@ -73,7 +73,7 @@ type namespaceConfig struct {
 	LocalIndexTable            string
 	SpansTable                 string
 	ErrorTable                 string
-	TagTable                   string
+	AttributeTable             string
 	Cluster                    string
 	DurationSortTable          string
 	DurationSortMVTable        string
@@ -149,7 +149,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			LocalIndexTable:            localIndexTable,
 			ErrorTable:                 defaultErrorTable,
 			SpansTable:                 defaultSpansTable,
-			TagTable:                   defaultTagTable,
+			AttributeTable:             defaultAttributeTable,
 			DurationSortTable:          defaultDurationSortTable,
 			DurationSortMVTable:        defaultDurationSortMVTable,
 			Cluster:                    defaultClusterName,
