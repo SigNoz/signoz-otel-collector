@@ -235,43 +235,35 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 	}
 
 	for _, span := range batchSpans {
-		for key, value := range span.StringTagMap {
+		for _, spanAttribute := range span.SpanAttributes {
+			if spanAttribute.DataType == "string" {
 			err = statement.Append(
 				time.Unix(0, int64(span.StartTimeUnixNano)),
-				key,
-				"attribute",
-				value,
-				nil,
+				spanAttribute.Key,
+				spanAttribute.AttType,
+				spanAttribute.DataType,
+				spanAttribute.StringValue,
 				nil,
 			)
-			if err != nil {
-				w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-				return err
+			} else if spanAttribute.DataType == "number" {
+				err = statement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.AttType,
+					spanAttribute.DataType,
+					nil,
+					spanAttribute.NumberValue,
+				)
+			} else if spanAttribute.DataType == "bool" {
+				err = statement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.AttType,
+					spanAttribute.DataType,
+					nil,
+					nil,
+				)
 			}
-		}
-		for key, value := range span.NumberTagMap {
-			err = statement.Append(
-				time.Unix(0, int64(span.StartTimeUnixNano)),
-				key,
-				"attribute",
-				nil,
-				value,
-				nil,
-			)
-			if err != nil {
-				w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-				return err
-			}
-		}
-		for key, value := range span.BoolTagMap {
-			err = statement.Append(
-				time.Unix(0, int64(span.StartTimeUnixNano)),
-				key,
-				"attribute",
-				nil,
-				nil,
-				value,
-			)
 			if err != nil {
 				w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
 				return err
