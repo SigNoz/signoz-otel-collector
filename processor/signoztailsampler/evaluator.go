@@ -1,4 +1,4 @@
-package signoztailsamplingprocessor
+package signoztailsampler
 
 import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
