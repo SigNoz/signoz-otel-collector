@@ -320,7 +320,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("Could not append number attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append bool attribute to batch, err: %s", err)
 		}
 	}
 	return nil
