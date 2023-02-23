@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
@@ -42,8 +43,9 @@ import (
 )
 
 const (
-	CLUSTER                = "cluster"
-	DISTRIBUTED_LOGS_TABLE = "distributed_logs"
+	CLUSTER                    = "cluster"
+	DISTRIBUTED_LOGS_TABLE     = "distributed_logs"
+	DISTRIBUTED_TAG_ATTRIBUTES = "distributed_tag_attributes"
 )
 
 type clickhouseLogsExporter struct {
@@ -132,8 +134,15 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		if err != nil {
 			return fmt.Errorf("PrepareBatch:%w", err)
 		}
+
+		tagStatement, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES))
+		if err != nil {
+			return fmt.Errorf("PrepareTagBatch:%w", err)
+		}
+
 		defer func() {
 			_ = statement.Abort()
+			_ = tagStatement.Abort()
 		}()
 
 		metrics := map[string]usage.Metric{}
@@ -144,6 +153,11 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			resBytes, _ := json.Marshal(res.Attributes().AsRaw())
 
 			resources := attributesToSlice(res.Attributes(), true)
+
+			err := addAttrsToTagStatement(tagStatement, "resource", resources)
+			if err != nil {
+				return err
+			}
 			for j := 0; j < logs.ScopeLogs().Len(); j++ {
 				rs := logs.ScopeLogs().At(j).LogRecords()
 				for k := 0; k < rs.Len(); k++ {
@@ -154,7 +168,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
 					usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
 
-					// set observedtimestamp as the default timestamp if timestamp is empty.
+					// set observedTimestamp as the default timestamp if timestamp is empty.
 					ts := uint64(r.Timestamp())
 					ots := uint64(r.ObservedTimestamp())
 					if ots == 0 {
@@ -165,6 +179,12 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					}
 
 					attributes := attributesToSlice(r.Attributes(), false)
+
+					err := addAttrsToTagStatement(tagStatement, "attributes", attributes)
+					if err != nil {
+						return err
+					}
+
 					err = statement.Append(
 						ts,
 						ots,
@@ -210,6 +230,21 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		for k, v := range metrics {
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 		}
+
+		// push tag attributes
+		tagWriteStart := time.Now()
+		err = tagStatement.Send()
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeLogs)),
+				tag.Upsert(tableKey, DISTRIBUTED_TAG_ATTRIBUTES),
+			},
+			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),
+		)
+		if err != nil {
+			return err
+		}
+
 		return err
 	}
 }
@@ -221,6 +256,7 @@ type attributesToSliceResponse struct {
 	IntValues    []int64
 	FloatKeys    []string
 	FloatValues  []float64
+	BoolKeys     []string
 }
 
 func getStringifiedBody(body pcommon.Value) string {
@@ -232,6 +268,62 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
+}
+
+func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse) error {
+	for i, v := range attrs.StringKeys {
+		err := statement.Append(
+			time.Now(),
+			v,
+			tagType,
+			"string",
+			attrs.StringValues[i],
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
+		}
+	}
+	for i, v := range attrs.IntKeys {
+		err := statement.Append(
+			time.Now(),
+			v,
+			tagType,
+			"number",
+			nil,
+			attrs.IntValues[i],
+		)
+		if err != nil {
+			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+		}
+	}
+	for i, v := range attrs.FloatKeys {
+		err := statement.Append(
+			time.Now(),
+			v,
+			tagType,
+			"number",
+			nil,
+			attrs.FloatValues[i],
+		)
+		if err != nil {
+			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+		}
+	}
+	for _, v := range attrs.BoolKeys {
+		err := statement.Append(
+			time.Now(),
+			v,
+			tagType,
+			"bool",
+			nil,
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("Could not append number attribute to batch, err: %s", err)
+		}
+	}
+	return nil
 }
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
@@ -248,6 +340,9 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 			case pcommon.ValueTypeDouble:
 				response.FloatKeys = append(response.FloatKeys, formatKey(k))
 				response.FloatValues = append(response.FloatValues, v.Double())
+			case pcommon.ValueTypeBool:
+				// add boolValues in future if it is required
+				response.BoolKeys = append(response.BoolKeys, formatKey(k))
 			default: // store it as string
 				response.StringKeys = append(response.StringKeys, formatKey(k))
 				response.StringValues = append(response.StringValues, v.AsString())
