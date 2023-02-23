@@ -142,8 +142,6 @@ type PolicyFilterCfg struct {
 
 	StringAttributeCfgs  []StringAttributeCfg  `mapstructure:"string_attributes"`
 	NumericAttributeCfgs []NumericAttributeCfg `mapstructure:"numeric_attributes"`
-	SpanCountCfg         `mapstructure:",squash"`
-	StatusCodeCfg        `mapstructure:",squash"`
 }
 
 // PolicyCfg identifies policy rules in policy group
@@ -160,10 +158,10 @@ type PolicyCfg struct {
 	Priority int `mapstructure:"priority"`
 
 	// sampling applied when  PolicyFilter matches
-	ProbabilisticCfg `mapstructure:",squash"`
+	ProbabilisticCfg `mapstructure:"sampling"`
 
 	// filter to activate policy
-	PolicyFilterCfg `mapstructure:",squash"`
+	PolicyFilterCfg `mapstructure:"policy_filter"`
 
 	SubPolicies []PolicyCfg `mapstructure:"sub_policies"`
 }
