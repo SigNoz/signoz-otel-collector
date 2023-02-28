@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	"github.com/oklog/ulid"
 	"github.com/open-telemetry/opamp-go/client"
@@ -93,6 +94,7 @@ func (s *serverClient) createAgentDescription() *protobufs.AgentDescription {
 		NonIdentifyingAttributes: []*protobufs.KeyValue{
 			keyVal("os.family", runtime.GOOS),
 			keyVal("host.name", hostname),
+			keyVal("capabilities.lbexporter", constants.AllowLbExporterConfig),
 		},
 	}
 }
