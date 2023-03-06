@@ -21,7 +21,7 @@ func TestCollectorNew(t *testing.T) {
 	}
 }
 
-func TestCollectorNewInvalidPath(t *testing.T) {
+func TestCollectorRunInvalidPath(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/invalid.yaml"},
 		Version:     "0.0.1",
@@ -40,7 +40,7 @@ func TestCollectorNewInvalidPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "no such file or directory")
 }
 
-func TestCollectorNewValidPath(t *testing.T) {
+func TestCollectorRunValidPath(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
 		Version:     "0.0.1",
@@ -59,7 +59,7 @@ func TestCollectorNewValidPath(t *testing.T) {
 	}
 }
 
-func TestCollectorNewValidPathInvalidConfig(t *testing.T) {
+func TestCollectorRunValidPathInvalidConfig(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/invalid_config.yaml"},
 		Version:     "0.0.1",
