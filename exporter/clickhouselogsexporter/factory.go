@@ -18,6 +18,9 @@ import (
 	"context"
 	"fmt"
 
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -33,8 +36,26 @@ const (
 	migrationsFolder = "./migrations"
 )
 
+var (
+	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
+	exporterKey        = tag.MustNewKey("exporter")
+	tableKey           = tag.MustNewKey("table")
+)
+
 // NewFactory creates a factory for Elastic exporter.
 func NewFactory() component.ExporterFactory {
+	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+
+	writeLatencyView := &view.View{
+		Name:        "exporter_db_write_latency",
+		Measure:     writeLatencyMillis,
+		Description: writeLatencyMillis.Description(),
+		TagKeys:     []tag.Key{exporterKey, tableKey},
+		Aggregation: writeLatencyDistribution,
+	}
+
+	view.Register(writeLatencyView)
+
 	return component.NewExporterFactory(
 		typeStr,
 		createDefaultConfig,
