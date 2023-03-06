@@ -180,7 +180,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 					attributes := attributesToSlice(r.Attributes(), false)
 
-					err := addAttrsToTagStatement(tagStatement, "attribute", attributes)
+					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
 					if err != nil {
 						return err
 					}
