@@ -26,6 +26,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/spf13/viper"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.uber.org/zap"
 )
 
@@ -46,8 +49,25 @@ type Writer interface {
 
 type writerMaker func(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, encoding Encoding, delay time.Duration, size int) (Writer, error)
 
+var (
+	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
+	exporterKey        = tag.MustNewKey("exporter")
+	tableKey           = tag.MustNewKey("table")
+)
+
 // NewFactory creates a new Factory.
 func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeCluster bool) *Factory {
+	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+
+	writeLatencyView := &view.View{
+		Name:        "exporter_db_write_latency",
+		Measure:     writeLatencyMillis,
+		Description: writeLatencyMillis.Description(),
+		TagKeys:     []tag.Key{exporterKey, tableKey},
+		Aggregation: writeLatencyDistribution,
+	}
+
+	view.Register(writeLatencyView)
 	return &Factory{
 		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
