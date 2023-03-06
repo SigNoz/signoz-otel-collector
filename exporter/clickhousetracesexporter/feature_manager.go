@@ -73,6 +73,13 @@ func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 		gRPCMethod LowCardinality(String) CODEC(ZSTD(1)),
 		hasError bool CODEC(T64, ZSTD(1)),
 		tagMap Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+		rpcSystem LowCardinality(String) CODEC(ZSTD(1)),
+		rpcService LowCardinality(String) CODEC(ZSTD(1)),
+		rpcMethod LowCardinality(String) CODEC(ZSTD(1)),
+		responseStatusCode LowCardinality(String) CODEC(ZSTD(1)),
+		stringTagMap Map(String, String) CODEC(ZSTD(1)),
+		numberTagMap Map(String, Float64) CODEC(ZSTD(1)),
+		boolTagMap Map(String, bool) CODEC(ZSTD(1)),
 		INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_name name TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_kind kind TYPE minmax GRANULARITY 4,
@@ -85,11 +92,14 @@ func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 		INDEX idx_httpUrl httpUrl TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
-		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
+		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
+		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
 		) ENGINE MergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
-		SETTINGS index_granularity = 8192`, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.Cluster))
+		TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE
+		SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1`, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.Cluster))
 	if err != nil {
 		return err
 	}
@@ -114,7 +124,14 @@ func enableDurationSortFeature(db clickhouse.Conn, options *Options) error {
 		gRPCMethod,
 		gRPCCode,
 		hasError,
-		tagMap
+		tagMap,
+		rpcSystem,
+  		rpcService,
+  		rpcMethod,
+  		responseStatusCode,
+		stringTagMap,
+		numberTagMap,
+		boolTagMap
 		FROM %s.%s
 		ORDER BY durationNano, timestamp`, options.primary.TraceDatabase, options.primary.DurationSortMVTable, options.primary.Cluster, options.primary.TraceDatabase, options.primary.DurationSortTable, options.primary.TraceDatabase, options.primary.IndexTable))
 	if err != nil {
