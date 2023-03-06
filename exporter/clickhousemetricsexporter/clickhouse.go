@@ -30,6 +30,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/component"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -99,10 +100,14 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		)
 		ENGINE = MergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms);`, database, SAMPLES_TABLE, CLUSTER))
+			ORDER BY (metric_name, fingerprint, timestamp_ms)
+			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, SAMPLES_TABLE, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, SAMPLES_TABLE, CLUSTER))
 
 	queries = append(queries, `SET allow_experimental_object_type = 1`)
 
@@ -115,7 +120,8 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		)
 		ENGINE = ReplacingMergeTree
 			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)`, database, TIME_SERIES_TABLE, CLUSTER))
+			ORDER BY (metric_name, fingerprint)
+			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
@@ -125,6 +131,9 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, fmt.Sprintf(`
 		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
@@ -313,8 +322,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			}
 		}
 
-		return statement.Send()
-
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
 	}()
 
 	if err != nil {
@@ -362,7 +377,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				}
 			}
 		}
-		return statement.Send()
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
 	}()
 	if err != nil {
 		return err

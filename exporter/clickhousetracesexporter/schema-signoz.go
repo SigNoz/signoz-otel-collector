@@ -36,18 +36,21 @@ func (e *Event) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 }
 
 type TraceModel struct {
-	TraceId           string            `json:"traceId,omitempty"`
-	SpanId            string            `json:"spanId,omitempty"`
-	Name              string            `json:"name,omitempty"`
-	DurationNano      uint64            `json:"durationNano,omitempty"`
-	StartTimeUnixNano uint64            `json:"startTimeUnixNano,omitempty"`
-	ServiceName       string            `json:"serviceName,omitempty"`
-	Kind              int8              `json:"kind,omitempty"`
-	References        references        `json:"references,omitempty"`
-	StatusCode        int16             `json:"statusCode,omitempty"`
-	TagMap            map[string]string `json:"tagMap,omitempty"`
-	Events            []string          `json:"event,omitempty"`
-	HasError          bool              `json:"hasError,omitempty"`
+	TraceId           string             `json:"traceId,omitempty"`
+	SpanId            string             `json:"spanId,omitempty"`
+	Name              string             `json:"name,omitempty"`
+	DurationNano      uint64             `json:"durationNano,omitempty"`
+	StartTimeUnixNano uint64             `json:"startTimeUnixNano,omitempty"`
+	ServiceName       string             `json:"serviceName,omitempty"`
+	Kind              int8               `json:"kind,omitempty"`
+	References        references         `json:"references,omitempty"`
+	StatusCode        int16              `json:"statusCode,omitempty"`
+	TagMap            map[string]string  `json:"tagMap,omitempty"`
+	StringTagMap      map[string]string  `json:"stringTagMap,omitempty"`
+	NumberTagMap      map[string]float64 `json:"numberTagMap,omitempty"`
+	BoolTagMap        map[string]bool    `json:"boolTagMap,omitempty"`
+	Events            []string           `json:"event,omitempty"`
+	HasError          bool               `json:"hasError,omitempty"`
 }
 
 func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -79,43 +82,46 @@ func (s *references) MarshalLogArray(enc zapcore.ArrayEncoder) error {
 }
 
 type Span struct {
-	TraceId            string            `json:"traceId,omitempty"`
-	SpanId             string            `json:"spanId,omitempty"`
-	ParentSpanId       string            `json:"parentSpanId,omitempty"`
-	Name               string            `json:"name,omitempty"`
-	DurationNano       uint64            `json:"durationNano,omitempty"`
-	StartTimeUnixNano  uint64            `json:"startTimeUnixNano,omitempty"`
-	ServiceName        string            `json:"serviceName,omitempty"`
-	Kind               int8              `json:"kind,omitempty"`
-	StatusCode         int16             `json:"statusCode,omitempty"`
-	ExternalHttpMethod string            `json:"externalHttpMethod,omitempty"`
-	HttpUrl            string            `json:"httpUrl,omitempty"`
-	HttpMethod         string            `json:"httpMethod,omitempty"`
-	HttpHost           string            `json:"httpHost,omitempty"`
-	HttpRoute          string            `json:"httpRoute,omitempty"`
-	HttpCode           string            `json:"httpCode,omitempty"`
-	MsgSystem          string            `json:"msgSystem,omitempty"`
-	MsgOperation       string            `json:"msgOperation,omitempty"`
-	ExternalHttpUrl    string            `json:"externalHttpUrl,omitempty"`
-	Component          string            `json:"component,omitempty"`
-	DBSystem           string            `json:"dbSystem,omitempty"`
-	DBName             string            `json:"dbName,omitempty"`
-	DBOperation        string            `json:"dbOperation,omitempty"`
-	PeerService        string            `json:"peerService,omitempty"`
-	Events             []string          `json:"event,omitempty"`
-	ErrorEvent         Event             `json:"errorEvent,omitempty"`
-	ErrorID            string            `json:"errorID,omitempty"`
-	ErrorGroupID       string            `json:"errorGroupID,omitempty"`
-	TagMap             map[string]string `json:"tagMap,omitempty"`
-	HasError           bool              `json:"hasError,omitempty"`
-	TraceModel         TraceModel        `json:"traceModel,omitempty"`
-	GRPCCode           string            `json:"gRPCCode,omitempty"`
-	GRPCMethod         string            `json:"gRPCMethod,omitempty"`
-	RPCSystem          string            `json:"rpcSystem,omitempty"`
-	RPCService         string            `json:"rpcService,omitempty"`
-	RPCMethod          string            `json:"rpcMethod,omitempty"`
-	ResponseStatusCode string            `json:"responseStatusCode,omitempty"`
-	Tenant             *string           `json:"-"`
+	TraceId            string             `json:"traceId,omitempty"`
+	SpanId             string             `json:"spanId,omitempty"`
+	ParentSpanId       string             `json:"parentSpanId,omitempty"`
+	Name               string             `json:"name,omitempty"`
+	DurationNano       uint64             `json:"durationNano,omitempty"`
+	StartTimeUnixNano  uint64             `json:"startTimeUnixNano,omitempty"`
+	ServiceName        string             `json:"serviceName,omitempty"`
+	Kind               int8               `json:"kind,omitempty"`
+	StatusCode         int16              `json:"statusCode,omitempty"`
+	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
+	HttpUrl            string             `json:"httpUrl,omitempty"`
+	HttpMethod         string             `json:"httpMethod,omitempty"`
+	HttpHost           string             `json:"httpHost,omitempty"`
+	HttpRoute          string             `json:"httpRoute,omitempty"`
+	HttpCode           string             `json:"httpCode,omitempty"`
+	MsgSystem          string             `json:"msgSystem,omitempty"`
+	MsgOperation       string             `json:"msgOperation,omitempty"`
+	ExternalHttpUrl    string             `json:"externalHttpUrl,omitempty"`
+	Component          string             `json:"component,omitempty"`
+	DBSystem           string             `json:"dbSystem,omitempty"`
+	DBName             string             `json:"dbName,omitempty"`
+	DBOperation        string             `json:"dbOperation,omitempty"`
+	PeerService        string             `json:"peerService,omitempty"`
+	Events             []string           `json:"event,omitempty"`
+	ErrorEvent         Event              `json:"errorEvent,omitempty"`
+	ErrorID            string             `json:"errorID,omitempty"`
+	ErrorGroupID       string             `json:"errorGroupID,omitempty"`
+	TagMap             map[string]string  `json:"tagMap,omitempty"`
+	StringTagMap       map[string]string  `json:"stringTagMap,omitempty"`
+	NumberTagMap       map[string]float64 `json:"numberTagMap,omitempty"`
+	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
+	HasError           bool               `json:"hasError,omitempty"`
+	TraceModel         TraceModel         `json:"traceModel,omitempty"`
+	GRPCCode           string             `json:"gRPCCode,omitempty"`
+	GRPCMethod         string             `json:"gRPCMethod,omitempty"`
+	RPCSystem          string             `json:"rpcSystem,omitempty"`
+	RPCService         string             `json:"rpcService,omitempty"`
+	RPCMethod          string             `json:"rpcMethod,omitempty"`
+	ResponseStatusCode string             `json:"responseStatusCode,omitempty"`
+	Tenant             *string            `json:"-"`
 }
 
 func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
