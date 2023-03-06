@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v2 ON CLUSTER cluster (
 PARTITION BY toDate(timestamp)
 PRIMARY KEY (serviceName, hasError, toStartOfHour(timestamp), name)
 ORDER BY (serviceName, hasError, toStartOfHour(timestamp), name, timestamp)
+TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE
 SETTINGS index_granularity = 8192;
 
 SET allow_experimental_projection_optimization = 1;
