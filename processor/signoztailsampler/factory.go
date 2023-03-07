@@ -12,47 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tailsamplingprocessor // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
+package signoztailsampler // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer"
 )
 
 const (
 	// The value of "type" Tail Sampling in configuration.
-	typeStr = "tail_sampling"
+	typeStr = "signoz_tail_sampling"
 	// The stability level of the processor.
 	stability = component.StabilityLevelBeta
 )
 
 var onceMetrics sync.Once
 
-// NewFactory returns a new factory for the Tail Sampling processor.
+// NewFactory creates a factory for the spanmetrics processor.
 func NewFactory() component.ProcessorFactory {
-	onceMetrics.Do(func() {
-		// TODO: this is hardcoding the metrics level and skips error handling
-		_ = view.Register(SamplingProcessorMetricViews(configtelemetry.LevelNormal)...)
-	})
-
 	return component.NewProcessorFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesProcessor(createTracesProcessor, stability))
+		component.WithTracesProcessor(createTracesProcessor, stability),
+	)
 }
 
 func createDefaultConfig() component.ProcessorConfig {
 	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(component.NewID(typeStr)),
-		DecisionWait:      30 * time.Second,
-		NumTraces:         50000,
+		DecisionWait: 30 * time.Second,
+		NumTraces:    50000,
 	}
 }
 

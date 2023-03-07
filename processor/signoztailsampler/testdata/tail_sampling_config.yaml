@@ -1,4 +1,4 @@
-tail_sampling:
+signoz_tail_sampling:
   decision_wait: 10s
   num_traces: 100
   expected_new_traces_per_sec: 10
