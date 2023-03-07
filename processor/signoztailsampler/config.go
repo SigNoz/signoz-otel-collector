@@ -137,7 +137,7 @@ type SpanCountCfg struct {
 }
 
 type PolicyFilterCfg struct {
-	// values: AND | OR
+	// values: and | or
 	FilterOp string `mapstructure:"filter_op"`
 
 	StringAttributeCfgs  []StringAttributeCfg  `mapstructure:"string_attributes"`

@@ -16,7 +16,6 @@ package signoztailsampler // import "github.com/open-telemetry/opentelemetry-col
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -100,7 +99,7 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 		policies = append(policies, p)
 	}
 	logger.Debug("loadded policies:", zap.Int("policy count", len(policies)))
-	fmt.Println("len polciy:", policies)
+
 	tsp := &tailSamplingSpanProcessor{
 		ctx:             ctx,
 		nextConsumer:    nextConsumer,
@@ -139,18 +138,15 @@ func (tsp *tailSamplingSpanProcessor) samplingPolicyOnTick() {
 		trace.DecisionTime = time.Now()
 
 		decision, policy := tsp.makeDecision(id, trace, &metrics)
-		fmt.Println("traceid:", id, trace)
-		fmt.Println("decision:", decision)
-		fmt.Println("policy:", policy)
+
 		// Sampled or not, remove the batches
 		trace.Lock()
 		allSpans := ptrace.NewTraces()
 		trace.FinalDecision = decision
 		trace.ReceivedBatches.MoveTo(allSpans)
 		trace.Unlock()
-		fmt.Println(" before sampling :", decision)
+
 		if decision == sampling.Sampled {
-			fmt.Println(" allSpans:", allSpans)
 			_ = tsp.nextConsumer.ConsumeTraces(policy.ctx, allSpans)
 		}
 	}
@@ -175,17 +171,10 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sa
 	finalDecision := sampling.NoResult
 	var matchingPolicy *policy
 
-	defer func() {
-		fmt.Println(id, d, p)
-		fmt.Println("finalDecision:", finalDecision)
-	}()
-
 	// Check all policies before making a final decision
 	for i, p := range tsp.policies {
 		policyEvaluateStartTime := time.Now()
 		decision, err := p.evaluator.Evaluate(id, trace)
-		fmt.Println(" evaluating p:", p)
-		fmt.Println("decision: ", decision)
 		stats.Record(
 			p.ctx,
 			statDecisionLatencyMicroSec.M(int64(time.Since(policyEvaluateStartTime)/time.Microsecond)))
@@ -266,9 +255,10 @@ func (tsp *tailSamplingSpanProcessor) groupSpansByTraceKey(resourceSpans ptrace.
 }
 
 func (tsp *tailSamplingSpanProcessor) processTraces(resourceSpans ptrace.ResourceSpans) {
+
 	// Group spans per their traceId to minimize contention on idToTrace
 	idToSpans := tsp.groupSpansByTraceKey(resourceSpans)
-	fmt.Println("idToSpans:", idToSpans)
+
 	var newTraceIDs int64
 	for id, spans := range idToSpans {
 		lenSpans := int64(len(spans))
@@ -335,7 +325,6 @@ func (tsp *tailSamplingSpanProcessor) processTraces(resourceSpans ptrace.Resourc
 			}
 		}
 	}
-
 	stats.Record(tsp.ctx, statNewTraceIDReceivedCount.M(newTraceIDs))
 }
 

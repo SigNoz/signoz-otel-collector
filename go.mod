@@ -6,10 +6,12 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.0.12
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-migrate/migrate/v4 v4.15.1
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/knadh/koanf v1.4.4
 	github.com/oklog/ulid v1.3.1
 	github.com/open-telemetry/opamp-go v0.5.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.66.0
@@ -132,6 +134,7 @@ require (
 	go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.66.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.66.0
 	go.opentelemetry.io/collector/semconv v0.66.0
+	go.opentelemetry.io/otel/trace v1.11.1
 	go.uber.org/atomic v1.10.0
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.23.0
@@ -236,7 +239,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.2.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/flatbuffers v2.0.8+incompatible // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
@@ -283,7 +285,6 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.15.12 // indirect
-	github.com/knadh/koanf v1.4.4 // indirect
 	github.com/kolo/xmlrpc v0.0.0-20201022064351-38db28db192b // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165 // indirect
 	github.com/leoluk/perflib_exporter v0.2.0 // indirect
@@ -400,7 +401,6 @@ require (
 	go.opentelemetry.io/otel/metric v0.33.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.11.1 // indirect
 	go.opentelemetry.io/otel/sdk/metric v0.33.0 // indirect
-	go.opentelemetry.io/otel/trace v1.11.1 // indirect
 	go.uber.org/goleak v1.2.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/exp v0.0.0-20221019170559-20944726eadf // indirect
@@ -438,6 +438,12 @@ require (
 replace (
 	github.com/golang-migrate/migrate/v4 => github.com/sergey-telpuk/migrate/v4 v4.15.3-0.20220303065225-d5ae59d12ff7
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
+
+	// using 0.23.0 as there is an issue with 0.24.0 stats that results in 
+	// an error 
+	// panic: interface conversion: interface {} is nil, not func(*tag.Map, []stats.Measurement, map[string]interface {})
+
+	go.opencensus.io => go.opencensus.io v0.23.0
 )
 
 // see https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/4433

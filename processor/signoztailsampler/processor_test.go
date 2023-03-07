@@ -1,18 +1,4 @@
-// Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package tailsamplingprocessor
+package signoztailsampler
 
 import (
 	"context"
@@ -31,16 +17,16 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/timeutils"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/idbatcher"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/idbatcher"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/timeutils"
 )
 
 const (
 	defaultTestDecisionWait = 30 * time.Second
 )
 
-var testPolicy = []PolicyCfg{{sharedPolicyCfg: sharedPolicyCfg{Name: "test-policy", Type: AlwaysSample}}}
+var testPolicy = []PolicyCfg{{Name: "test-policy", Type: AlwaysSample}}
 
 func TestSequentialTraceArrival(t *testing.T) {
 	traceIds, batches := generateIdsAndBatches(128)
@@ -48,7 +34,7 @@ func TestSequentialTraceArrival(t *testing.T) {
 		DecisionWait:            defaultTestDecisionWait,
 		NumTraces:               uint64(2 * len(traceIds)),
 		ExpectedNewTracesPerSec: 64,
-		PolicyCfgs:              testPolicy,
+		PolicyCfgs:              []PolicyCfg{},
 	}
 	sp, _ := newTracesProcessor(zap.NewNop(), consumertest.NewNop(), cfg)
 	tsp := sp.(*tailSamplingSpanProcessor)

@@ -15,7 +15,6 @@
 package sampling // import "github.com/SigNoz/signoz-otel-collector/processor/internal/sampling"
 
 import (
-	"fmt"
 	"regexp"
 
 	"github.com/golang/groupcache/lru"
@@ -91,9 +90,6 @@ func NewStringAttributeFilter(logger *zap.Logger, key string, values []string, r
 		logger: logger,
 		// matcher returns true if the given string matches any of the string attribute filters
 		matcher: func(toMatch string) bool {
-			fmt.Println(" toMatch:", toMatch)
-			fmt.Println(" valuesMap:", valuesMap)
-
 			_, matched := valuesMap[toMatch]
 			return matched
 		},
