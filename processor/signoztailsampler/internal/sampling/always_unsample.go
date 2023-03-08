@@ -13,7 +13,7 @@ var _ PolicyEvaluator = (*alwaysUnSample)(nil)
 
 // NewAlwaysSample creates a policy evaluator the samples all traces.
 func NewAlwaysUnsample(logger *zap.Logger) PolicyEvaluator {
-	return &alwaysSample{
+	return &alwaysUnSample{
 		logger: logger,
 	}
 }

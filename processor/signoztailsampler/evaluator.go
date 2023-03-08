@@ -1,6 +1,8 @@
 package signoztailsampler
 
 import (
+	"strings"
+
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap"
@@ -43,7 +45,7 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 	// todo(amol): need to handle situations with zero filters
 
 	// list of sub-policies evaluators
-	subpolicies := make([]sampling.PolicyEvaluator, len(policyCfg.SubPolicies))
+	subpolicies := make([]sampling.PolicyEvaluator, 0)
 	for _, subRule := range policyCfg.SubPolicies {
 		subPolicy := NewDefaultEvaluator(logger, &subRule)
 		subpolicies = append(subpolicies, subPolicy)
@@ -52,6 +54,9 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 	// sampling is applied only when filter conditions are met
 	var sampler sampling.PolicyEvaluator
 	var samplingMethod string
+
+	// todo(amol): need to handle cases where percent is not set by
+	// the user
 	switch policyCfg.SamplingPercentage {
 	case 0:
 		samplingMethod = "exclude_all"
@@ -61,7 +66,7 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 		sampler = sampling.NewAlwaysSample(logger)
 	default:
 		samplingMethod = "probabilistic"
-		sampler = sampling.NewProbabilisticSampler(logger, "21d2", policyCfg.SamplingPercentage)
+		sampler = sampling.NewProbabilisticSampler(logger, "", policyCfg.SamplingPercentage)
 	}
 
 	return &defaultEvaluator{
@@ -90,27 +95,41 @@ func prepareFilterEvaluators(logger *zap.Logger, policyFilterCfg PolicyFilterCfg
 
 func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.TraceData) (sampling.Decision, error) {
 
-	// todo: explore doing this in parallel
-	for _, sp := range de.subpolicies {
-		decision, err := sp.Evaluate(traceId, trace)
-		if err != nil {
-			// todo: consider adding health for each evaluator
-			// to avoid printing log messages for each trace
-			zap.S().Errorf("failed to evaluate trace:", traceId)
-			continue
-		}
+	if de.root {
+		// todo: explore doing this in parallel
+		// here we evaluate sub-policies sequentially. and if any
+		// of them succeed we return that as sampling decision
+		for _, sp := range de.subpolicies {
+			if sp == nil {
+				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil", de.name)
+				continue
+			}
+			decision, err := sp.Evaluate(traceId, trace)
+			if err != nil {
+				// todo: consider adding health for each evaluator
+				// to avoid printing log messages for each trace
+				zap.S().Errorf("failed to evaluate trace:", de.name)
+				continue
+			}
 
-		if decision != sampling.NoResult {
-			// found a result, exit
-			return decision, nil
+			// check if sub-policy evaluation has a useful result else continue
+			// to next
+			if decision != sampling.NoResult {
+				// found a result, exit
+				return decision, nil
+			}
 		}
 	}
+
+	// this loop evaluates for both sub-policy and root policy
+	// the sequence however is sub-policy by priority first and
+	// then root policy
 
 	// filterMatched captures when atleast one filter matches
 	var filterMatched bool
 
 	for _, fe := range de.filters {
-
+		// evaluate each filter from sub-policy
 		filterResult, err := fe.Evaluate(traceId, trace)
 		if err != nil {
 			return sampling.Error, nil
@@ -124,8 +143,10 @@ func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.Tr
 		}
 
 		if filterResult == sampling.NotSampled {
-			if de.filterOperator == "AND" {
+			if strings.ToLower(de.filterOperator) == "and" {
 				// filter condition failed, return no op
+				// filter operator AND indcates all the filter condition
+				// must return a sample decision
 				return sampling.NoResult, nil
 			}
 		}
