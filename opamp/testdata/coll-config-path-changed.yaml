@@ -1,32 +1,36 @@
-receivers:
-  otlp:
-    protocols:
-      grpc:
-      http:
-processors:
-  batch:
-    send_batch_size: 10000
-    timeout: 10s
-extensions:
-  zpages: {}
 exporters:
-  clickhousetraces:
-    datasource: tcp://localhost:9000/?database=signoz_traces
-    migrations: exporter/clickhousetracesexporter/migrations
-  clickhousemetricswrite:
-    endpoint: tcp://localhost:9000/?database=signoz_metrics
-    resource_to_telemetry_conversion:
-      enabled: true
-  prometheus:
-    endpoint: "0.0.0.0:8889"
+    logging: null
+    prometheus:
+        endpoint: 0.0.0.0:8889
+extensions:
+    zpages: {}
+processors:
+    batch:
+        send_batch_size: 100000 # changed
+        timeout: 10s
+receivers:
+    otlp:
+        protocols:
+            grpc: null
+            http: null
 service:
-  extensions: [zpages]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhousetraces]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [clickhousemetricswrite]
+    extensions:
+        - zpages
+    pipelines:
+        metrics:
+            exporters:
+                - logging
+            processors:
+                - batch
+            receivers:
+                - otlp
+        traces:
+            exporters:
+                - logging
+            processors:
+                - batch
+            receivers:
+                - otlp
+    telemetry:
+        resource:
+            service.instance.id: opamp/testdata/coll-config-path.yaml

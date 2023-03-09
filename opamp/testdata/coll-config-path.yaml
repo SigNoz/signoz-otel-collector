@@ -1,11 +1,5 @@
 exporters:
-    clickhousemetricswrite:
-        endpoint: tcp://localhost:9000/?database=signoz_metrics
-        resource_to_telemetry_conversion:
-            enabled: false
-    clickhousetraces:
-        datasource: tcp://localhost:9000/?database=signoz_traces
-        migrations: exporter/clickhousetracesexporter/migrations
+    logging: null
     prometheus:
         endpoint: 0.0.0.0:8889
 extensions:
@@ -25,18 +19,18 @@ service:
     pipelines:
         metrics:
             exporters:
-                - clickhousemetricswrite
+                - logging
             processors:
                 - batch
             receivers:
                 - otlp
         traces:
             exporters:
-                - clickhousetraces
+                - logging
             processors:
                 - batch
             receivers:
                 - otlp
     telemetry:
         resource:
-            service.instance.id: 0ffab2a5-132e-4bef-bd3d-c6d6e7296cfd
+            service.instance.id: opamp/testdata/coll-config-path.yaml

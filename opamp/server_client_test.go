@@ -62,6 +62,9 @@ func startClient(t *testing.T, settings types.StartSettings, client client.OpAMP
 }
 
 func TestNewClient(t *testing.T) {
+	// FIXME(srikanthccv): this test interferes with other tests that use the same port.
+	// Remove the sleep and find a better way to fix this.
+	time.Sleep(5 * time.Second)
 	srv := StartMockServer(t)
 
 	var conn atomic.Value
@@ -102,7 +105,18 @@ func TestNewClient(t *testing.T) {
 	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc)
 	require.NoError(t, err)
 
-	coll := signozcol.New(signozcol.WrappedCollectorSettings{ConfigPaths: []string{"./testdata/coll-config-path.yaml"}})
+	// maintain a cop of the original config file and restore it after the test
+	fileContents, err := os.ReadFile("testdata/coll-config-path.yaml")
+	require.NoError(t, err)
+	defer func() {
+		err := os.WriteFile("testdata/coll-config-path.yaml", fileContents, 0644)
+		require.NoError(t, err)
+	}()
+
+	coll := signozcol.New(signozcol.WrappedCollectorSettings{
+		ConfigPaths: []string{"./testdata/coll-config-path.yaml"},
+		Version:     "0.0.1-server-client-test",
+	})
 
 	svrClient, err := NewServerClient(&NewServerClientOpts{
 		Logger: logger,
@@ -118,6 +132,10 @@ func TestNewClient(t *testing.T) {
 	ctx := context.Background()
 	// Start the client.
 	err = svrClient.Start(ctx)
+	defer func() {
+		err := svrClient.Stop(ctx)
+		require.NoError(t, err)
+	}()
 	require.NoError(t, err)
 
 	// Wait for the client to connect.
