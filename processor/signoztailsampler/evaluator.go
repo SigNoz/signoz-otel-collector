@@ -93,39 +93,12 @@ func prepareFilterEvaluators(logger *zap.Logger, policyFilterCfg PolicyFilterCfg
 	return filterEvaluators
 }
 
+// Evaluate executes policy filter first to determin if policy applies for current trace data
+// and if it succeeds then sampling is performed based on sampling params set the
+// selected policy. This method works for both root and sub-policies.
 func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.TraceData) (sampling.Decision, error) {
 
-	if de.root {
-		// todo: explore doing this in parallel
-		// here we evaluate sub-policies sequentially. and if any
-		// of them succeed we return that as sampling decision
-		for _, sp := range de.subpolicies {
-			if sp == nil {
-				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil", de.name)
-				continue
-			}
-			decision, err := sp.Evaluate(traceId, trace)
-			if err != nil {
-				// todo: consider adding health for each evaluator
-				// to avoid printing log messages for each trace
-				zap.S().Errorf("failed to evaluate trace:", de.name)
-				continue
-			}
-
-			// check if sub-policy evaluation has a useful result else continue
-			// to next
-			if decision != sampling.NoResult {
-				// found a result, exit
-				return decision, nil
-			}
-		}
-	}
-
-	// this loop evaluates for both sub-policy and root policy
-	// the sequence however is sub-policy by priority first and
-	// then root policy
-
-	// filterMatched captures when atleast one filter matches
+	// capture if any of the filter in current policy matches
 	var filterMatched bool
 
 	for _, fe := range de.filters {
@@ -153,9 +126,34 @@ func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.Tr
 	}
 
 	if filterMatched {
-		// filter conditions have matched, let us
-		// apply sampling action now
+
+		// here we evaluate sub-policies sequentially. and if any
+		// of them succeed we return that as sampling decision
+		for _, sp := range de.subpolicies {
+			if sp == nil {
+				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil", de.name)
+				continue
+			}
+			decision, err := sp.Evaluate(traceId, trace)
+			if err != nil {
+				// todo: consider adding health for each evaluator
+				// to avoid printing log messages for each trace
+				zap.S().Errorf("failed to evaluate trace:", de.name)
+				continue
+			}
+
+			// check if sub-policy evaluation has a useful result else continue
+			// to next
+			if decision != sampling.NoResult {
+				// found a result, exit
+				return decision, nil
+			}
+		}
+
+		// filter conditions matched, we can
+		// apply sampling now
 		return de.sampler.Evaluate(traceId, trace)
+
 	}
 
 	return sampling.NoResult, nil

@@ -231,6 +231,74 @@ func TestSubPolicyCfgStringFilters(t *testing.T) {
 
 }
 
+func TestRootPolicyNotMatch(t *testing.T) {
+	// this policy will omit all records with source audit (as sampling percent is 0 for root)
+	// except those filtered by sub-policy (which has sampling percent 100)
+
+	cfg := PolicyCfg{
+		Name: "security",
+		ProbabilisticCfg: ProbabilisticCfg{
+			SamplingPercentage: 100,
+		},
+		Root: true,
+		PolicyFilterCfg: PolicyFilterCfg{
+			StringAttributeCfgs: []StringAttributeCfg{
+				{
+					Key:    "source",
+					Values: []string{"audit"},
+				},
+			},
+		},
+		SubPolicies: []PolicyCfg{
+			{
+				Name: "sub-policy",
+				ProbabilisticCfg: ProbabilisticCfg{
+					SamplingPercentage: 100,
+				},
+				PolicyFilterCfg: PolicyFilterCfg{
+					StringAttributeCfgs: []StringAttributeCfg{
+						{
+							Key:    "threat",
+							Values: []string{"true"},
+						},
+						{
+							Key:    "website",
+							Values: []string{"true"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+
+	decision, err := e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+		16}), newTraceStringAttrs(nil, []string{"threat", "website"}, []string{"true", "true"}))
+
+	assert.Nil(t, err, "expected evaluation to complete successfully")
+	assert.Equal(t, sampling.NoResult, decision, "expected no result - sub-policy match to fail as root policy failed")
+
+	decision, err = e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+		16}), newTraceStringAttrs(nil, []string{"source", "threat", "website"}, []string{"unknown", "true", "true"}))
+
+	assert.Nil(t, err, "expected evaluation to complete successfully")
+	assert.Equal(t, sampling.NoResult, decision, "expected no result - sub-policy match to fail as root policy attrib does not match")
+
+	decision, err = e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+		16}), newTraceStringAttrs(nil, []string{"source", "threat", "website"}, []string{"audit", "true", "true"}))
+
+	assert.Nil(t, err, "expected evaluation to complete successfully")
+	assert.Equal(t, sampling.Sampled, decision, "expected sampled decision as subpolicy and root policy filter match")
+
+	decision, err = e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+		16}), newTraceStringAttrs(nil, []string{"source", "threat"}, []string{"audit", "false"}))
+
+	assert.Nil(t, err, "expected evaluation to complete successfully")
+	assert.Equal(t, sampling.Sampled, decision, "expected sampled decision as root policy filters matches event if subpolicy doesnt")
+
+}
+
 func newTraceStringAttrs(nodeAttrs map[string]interface{}, spanAttrKey []string, spanAttrValue []string) *sampling.TraceData {
 	traces := ptrace.NewTraces()
 	rs := traces.ResourceSpans().AppendEmpty()
