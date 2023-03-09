@@ -20,6 +20,6 @@ func NewAlwaysUnsample(logger *zap.Logger) PolicyEvaluator {
 
 // Evaluate looks at the trace data and returns a corresponding SamplingDecision.
 func (aus *alwaysUnSample) Evaluate(pcommon.TraceID, *TraceData) (Decision, error) {
-	aus.logger.Debug("Evaluating spans in always-sample filter")
+	aus.logger.Debug("Evaluating spans in never-sample filter")
 	return NotSampled, nil
 }

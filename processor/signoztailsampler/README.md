@@ -4,7 +4,6 @@
 | ------------------------ | --------- |
 | Stability                | [beta]    |
 | Supported pipeline types | traces    |
-| Distributions            | [contrib] |
 
 The tail sampling processor samples traces based on a set of defined policies. All spans for a given trace MUST be received by the same collector instance for effective sampling decisions.
 
