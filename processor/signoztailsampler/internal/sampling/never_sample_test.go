@@ -22,8 +22,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestEvaluate_AlwaysUnSample(t *testing.T) {
-	filter := NewAlwaysUnsample(zap.NewNop())
+func TestEvaluate_NeverSample(t *testing.T) {
+	filter := NewNeverSample(zap.NewNop())
 	decision, err := filter.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 		16}), newTraceStringAttrs(nil, "example", "value"))
 	assert.Nil(t, err)

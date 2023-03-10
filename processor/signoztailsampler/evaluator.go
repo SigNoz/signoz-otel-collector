@@ -23,6 +23,7 @@ type defaultEvaluator struct {
 	// can be probabilistic, always_include, always_exclude
 	samplingMethod string
 
+	// filter operator can be "and" | "or". empty resolves to or
 	filterOperator string
 	filters        []sampling.PolicyEvaluator
 
@@ -30,11 +31,11 @@ type defaultEvaluator struct {
 	// the sub-policies will be evaluated prior to evaluating top-level policy,
 	// if any of subpolicy filters match, the sampling method associated with that
 	// sub-policy will be applied. and no further processing will be performed.
-	subpolicies []sampling.PolicyEvaluator
-	logger      *zap.Logger
+	subEvaluators []sampling.PolicyEvaluator
+	logger        *zap.Logger
 }
 
-func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.PolicyEvaluator {
+func NewDefaultEvaluator(logger *zap.Logger, policyCfg BasePolicy, subpolicies []BasePolicy) sampling.PolicyEvaluator {
 
 	// condition operator to apply on filters (AND | OR)
 	filterOperator := policyCfg.PolicyFilterCfg.FilterOp
@@ -45,10 +46,10 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 	// todo(amol): need to handle situations with zero filters
 
 	// list of sub-policies evaluators
-	subpolicies := make([]sampling.PolicyEvaluator, 0)
-	for _, subRule := range policyCfg.SubPolicies {
-		subPolicy := NewDefaultEvaluator(logger, &subRule)
-		subpolicies = append(subpolicies, subPolicy)
+	subEvaluators := make([]sampling.PolicyEvaluator, 0)
+	for _, subRule := range subpolicies {
+		subEvaluator := NewDefaultEvaluator(logger, subRule, nil)
+		subEvaluators = append(subEvaluators, subEvaluator)
 	}
 
 	// sampling is applied only when filter conditions are met
@@ -60,7 +61,7 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 	switch policyCfg.SamplingPercentage {
 	case 0:
 		samplingMethod = "exclude_all"
-		sampler = sampling.NewAlwaysUnsample(logger)
+		sampler = sampling.NewNeverSample(logger)
 	case 100:
 		samplingMethod = "include_all"
 		sampler = sampling.NewAlwaysSample(logger)
@@ -76,7 +77,7 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg *PolicyCfg) sampling.Poli
 		samplingMethod: samplingMethod,
 		filterOperator: filterOperator,
 		filters:        filters,
-		subpolicies:    subpolicies,
+		subEvaluators:  subEvaluators,
 	}
 }
 
@@ -129,7 +130,7 @@ func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.Tr
 
 		// here we evaluate sub-policies sequentially. and if any
 		// of them succeed we return that as sampling decision
-		for _, sp := range de.subpolicies {
+		for _, sp := range de.subEvaluators {
 			if sp == nil {
 				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil", de.name)
 				continue

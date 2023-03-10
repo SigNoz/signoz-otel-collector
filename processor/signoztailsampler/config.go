@@ -26,52 +26,23 @@ type PolicyType string
 const (
 	// AlwaysSample samples all traces, typically used for debugging.
 	AlwaysSample PolicyType = "always_sample"
-	// Latency sample traces that are longer than a given threshold.
-	Latency PolicyType = "latency"
+
+	NeverSample PolicyType = "never_sample"
+
 	// NumericAttribute sample traces that have a given numeric attribute in a specified
 	// range, e.g.: attribute "http.status_code" >= 399 and <= 999.
 	NumericAttribute PolicyType = "numeric_attribute"
+
 	// Probabilistic samples a given percentage of traces.
 	Probabilistic PolicyType = "probabilistic"
-	// StatusCode sample traces that have a given status code.
-	StatusCode PolicyType = "status_code"
+
 	// StringAttribute sample traces that a attribute, of type string, matching
 	// one of the listed values.
 	StringAttribute PolicyType = "string_attribute"
-	// RateLimiting allows all traces until the specified limits are satisfied.
-	RateLimiting PolicyType = "rate_limiting"
-	// Composite allows defining a composite policy, combining the other policies in one
-	Composite PolicyType = "composite"
-	// And allows defining a And policy, combining the other policies in one
-	And PolicyType = "and"
-	// SpanCount sample traces that are have more spans per Trace than a given threshold.
-	SpanCount PolicyType = "span_count"
-	// TraceState sample traces with specified values by the given key
-	TraceState PolicyType = "trace_state"
 
 	// PolicyGroup allows grouping of rules and priority based sampling
 	PolicyGroup = "policy_group"
 )
-
-type TraceStateCfg struct {
-	// Tag that the filter is going to be matching against.
-	Key string `mapstructure:"key"`
-	// Values indicate the set of values to use when matching against trace_state values.
-	Values []string `mapstructure:"values"`
-}
-
-// RateAllocationCfg  used within composite policy
-type RateAllocationCfg struct {
-	Policy  string `mapstructure:"policy"`
-	Percent int64  `mapstructure:"percent"`
-}
-
-// LatencyCfg holds the configurable settings to create a latency filter sampling policy
-// evaluator
-type LatencyCfg struct {
-	// ThresholdMs in milliseconds.
-	ThresholdMs int64 `mapstructure:"threshold_ms"`
-}
 
 // NumericAttributeCfg holds the configurable settings to create a numeric attribute filter
 // sampling policy evaluator.
@@ -96,12 +67,6 @@ type ProbabilisticCfg struct {
 	SamplingPercentage float64 `mapstructure:"sampling_percentage"`
 }
 
-// StatusCodeCfg holds the configurable settings to create a status code filter sampling
-// policy evaluator.
-type StatusCodeCfg struct {
-	StatusCodes []string `mapstructure:"status_codes"`
-}
-
 // StringAttributeCfg holds the configurable settings to create a string attribute filter
 // sampling policy evaluator.
 type StringAttributeCfg struct {
@@ -122,20 +87,7 @@ type StringAttributeCfg struct {
 	InvertMatch bool `mapstructure:"invert_match"`
 }
 
-// RateLimitingCfg holds the configurable settings to create a rate limiting
-// sampling policy evaluator.
-type RateLimitingCfg struct {
-	// SpansPerSecond sets the limit on the maximum nuber of spans that can be processed each second.
-	SpansPerSecond int64 `mapstructure:"spans_per_second"`
-}
-
-// SpanCountCfg holds the configurable settings to create a Span Count filter sampling policy
-// sampling policy evaluator
-type SpanCountCfg struct {
-	// Minimum number of spans in a Trace
-	MinSpans int32 `mapstructure:"min_spans"`
-}
-
+// PolicyFilterCfg is evaluated before applying a policy
 type PolicyFilterCfg struct {
 	// values: and | or . when empty defaults to or
 	FilterOp string `mapstructure:"filter_op"`
@@ -145,7 +97,7 @@ type PolicyFilterCfg struct {
 }
 
 // PolicyCfg identifies policy rules in policy group
-type PolicyCfg struct {
+type BasePolicy struct {
 	// name of the policy
 	Name string `mapstructure:"name"`
 
@@ -162,8 +114,12 @@ type PolicyCfg struct {
 
 	// filter to activate policy
 	PolicyFilterCfg `mapstructure:"policy_filter"`
+}
 
-	SubPolicies []PolicyCfg `mapstructure:"sub_policies"`
+// PolicyGroupCfg identifies policy rules in policy group
+type PolicyGroupCfg struct {
+	BasePolicy  `mapstructure:",squash"`
+	SubPolicies []BasePolicy `mapstructure:"sub_policies"`
 }
 
 // Config holds the configuration for tail-based sampling.
@@ -181,7 +137,7 @@ type Config struct {
 	ExpectedNewTracesPerSec uint64 `mapstructure:"expected_new_traces_per_sec"`
 	// PolicyCfgs sets the tail-based sampling policy which makes a sampling decision
 	// for a given trace when requested.
-	PolicyCfgs []PolicyCfg `mapstructure:"policies"`
+	PolicyCfgs []PolicyGroupCfg `mapstructure:"policies"`
 
 	// read only version number (optional)
 	Version int

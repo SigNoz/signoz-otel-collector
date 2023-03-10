@@ -87,7 +87,7 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 		if err != nil {
 			return nil, err
 		}
-		eval := NewDefaultEvaluator(logger, policyCfg)
+		eval := NewDefaultEvaluator(logger, policyCfg.BasePolicy, policyCfg.SubPolicies)
 		if err != nil {
 			return nil, err
 		}

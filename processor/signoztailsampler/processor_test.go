@@ -26,7 +26,12 @@ const (
 	defaultTestDecisionWait = 30 * time.Second
 )
 
-var testPolicy = []PolicyCfg{{Name: "test-policy", Type: AlwaysSample}}
+var testPolicy = []PolicyGroupCfg{
+	{
+		BasePolicy:  BasePolicy{Name: "test-policy", Type: AlwaysSample},
+		SubPolicies: []BasePolicy{},
+	},
+}
 
 func TestSequentialTraceArrival(t *testing.T) {
 	traceIds, batches := generateIdsAndBatches(128)
@@ -34,7 +39,7 @@ func TestSequentialTraceArrival(t *testing.T) {
 		DecisionWait:            defaultTestDecisionWait,
 		NumTraces:               uint64(2 * len(traceIds)),
 		ExpectedNewTracesPerSec: 64,
-		PolicyCfgs:              []PolicyCfg{},
+		PolicyCfgs:              []PolicyGroupCfg{},
 	}
 	sp, _ := newTracesProcessor(zap.NewNop(), consumertest.NewNop(), cfg)
 	tsp := sp.(*tailSamplingSpanProcessor)

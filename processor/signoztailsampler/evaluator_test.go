@@ -15,22 +15,23 @@ import (
 )
 
 func TestDefaultEvaluator(t *testing.T) {
-	cfg := PolicyCfg{
-		Name: "security",
-		ProbabilisticCfg: ProbabilisticCfg{
-			SamplingPercentage: 100,
-		},
-		PolicyFilterCfg: PolicyFilterCfg{
-			StringAttributeCfgs: []StringAttributeCfg{
-				{
-					Key:    "source",
-					Values: []string{"audit"},
+	cfg := PolicyGroupCfg{
+		BasePolicy: BasePolicy{Name: "security",
+			ProbabilisticCfg: ProbabilisticCfg{
+				SamplingPercentage: 100,
+			},
+			PolicyFilterCfg: PolicyFilterCfg{
+				StringAttributeCfgs: []StringAttributeCfg{
+					{
+						Key:    "source",
+						Values: []string{"audit"},
+					},
 				},
 			},
 		},
 	}
 
-	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	e := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, cfg.SubPolicies)
 	traceIds, traces := generateTraceForTestEval(1, "source", "audit")
 
 	eval := func(id pcommon.TraceID, td ptrace.Traces) (sampling.Decision, error) {
@@ -63,22 +64,24 @@ func TestDefaultEvaluator(t *testing.T) {
 }
 
 func TestProbablisticCfg(t *testing.T) {
-	cfg := PolicyCfg{
-		Name: "security",
-		ProbabilisticCfg: ProbabilisticCfg{
-			SamplingPercentage: 100,
-		},
-		PolicyFilterCfg: PolicyFilterCfg{
-			StringAttributeCfgs: []StringAttributeCfg{
-				{
-					Key:    "source",
-					Values: []string{"audit"},
+	cfg := PolicyGroupCfg{
+		BasePolicy: BasePolicy{
+			Name: "security",
+			ProbabilisticCfg: ProbabilisticCfg{
+				SamplingPercentage: 100,
+			},
+			PolicyFilterCfg: PolicyFilterCfg{
+				StringAttributeCfgs: []StringAttributeCfg{
+					{
+						Key:    "source",
+						Values: []string{"audit"},
+					},
 				},
 			},
 		},
 	}
 
-	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	e := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, nil)
 	traceIds, traces := generateTraceForTestEval(1, "source", "audit")
 
 	eval := func(e sampling.PolicyEvaluator, id pcommon.TraceID, td ptrace.Traces) (sampling.Decision, error) {
@@ -104,39 +107,39 @@ func TestProbablisticCfg(t *testing.T) {
 	require.Equal(t, sampling.Sampled, decision, "expected to sample a valid trace as per policy")
 
 	cfg.SamplingPercentage = 0
-	zeroSamplingEvaluator := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	zeroSamplingEvaluator := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, cfg.SubPolicies)
 	decision1, err1 := eval(zeroSamplingEvaluator, traceIds[0], traces[0])
 
 	require.NoError(t, err1, "failed to evaluate trace for policy with zero sampling")
 	require.Equal(t, sampling.NotSampled, decision1, "expected to not sampled as sampling percent is zero")
 
 	cfg.SamplingPercentage = 99
-	evaluator99 := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	evaluator99 := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, cfg.SubPolicies)
 	decision99, err99 := eval(evaluator99, traceIds[0], traces[0])
 
 	require.NoError(t, err99, "failed to evaluate trace for policy with 99 percent sampling")
 	require.Equal(t, sampling.Sampled, decision99, "expected to sampled as sampling percent is 99, re-run the test to try again")
 }
 
-func TestSubPolicyCfg(t *testing.T) {
+func TestSubPolicyGroupCfg(t *testing.T) {
 	// this policy will omit all records with source audit (as sampling percent is 0 for root)
 	// except those filtered by sub-policy (which has sampling percent 100)
 
-	cfg := PolicyCfg{
-		Name: "security",
-		ProbabilisticCfg: ProbabilisticCfg{
-			SamplingPercentage: 0,
-		},
-		Root: true,
-		PolicyFilterCfg: PolicyFilterCfg{
-			StringAttributeCfgs: []StringAttributeCfg{
-				{
-					Key:    "source",
-					Values: []string{"audit"},
-				},
+	cfg := PolicyGroupCfg{
+		BasePolicy: BasePolicy{Name: "security",
+			ProbabilisticCfg: ProbabilisticCfg{
+				SamplingPercentage: 0,
 			},
-		},
-		SubPolicies: []PolicyCfg{
+			Root: true,
+			PolicyFilterCfg: PolicyFilterCfg{
+				StringAttributeCfgs: []StringAttributeCfg{
+					{
+						Key:    "source",
+						Values: []string{"audit"},
+					},
+				},
+			}},
+		SubPolicies: []BasePolicy{
 			{
 				Name: "sub-policy",
 				ProbabilisticCfg: ProbabilisticCfg{
@@ -154,7 +157,7 @@ func TestSubPolicyCfg(t *testing.T) {
 		},
 	}
 
-	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	e := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, cfg.SubPolicies)
 	decision, err := e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 		16}), newTraceStringAttrs(nil, []string{"source", "threat"}, []string{"audit", "true"}))
 
@@ -169,25 +172,27 @@ func TestSubPolicyCfg(t *testing.T) {
 
 }
 
-func TestSubPolicyCfgStringFilters(t *testing.T) {
+func TestSubPolicyGroupCfgStringFilters(t *testing.T) {
 	// this policy will omit all records with source audit (as sampling percent is 0 for root)
 	// except those filtered by sub-policy (which has sampling percent 100)
 
-	cfg := PolicyCfg{
-		Name: "security",
-		ProbabilisticCfg: ProbabilisticCfg{
-			SamplingPercentage: 0,
-		},
-		Root: true,
-		PolicyFilterCfg: PolicyFilterCfg{
-			StringAttributeCfgs: []StringAttributeCfg{
-				{
-					Key:    "source",
-					Values: []string{"audit"},
+	cfg := PolicyGroupCfg{
+		BasePolicy: BasePolicy{
+			Name: "security",
+			ProbabilisticCfg: ProbabilisticCfg{
+				SamplingPercentage: 0,
+			},
+			Root: true,
+			PolicyFilterCfg: PolicyFilterCfg{
+				StringAttributeCfgs: []StringAttributeCfg{
+					{
+						Key:    "source",
+						Values: []string{"audit"},
+					},
 				},
 			},
 		},
-		SubPolicies: []PolicyCfg{
+		SubPolicies: []BasePolicy{
 			{
 				Name: "sub-policy",
 				ProbabilisticCfg: ProbabilisticCfg{
@@ -210,7 +215,7 @@ func TestSubPolicyCfgStringFilters(t *testing.T) {
 		},
 	}
 
-	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	e := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, cfg.SubPolicies)
 	decision, err := e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 		16}), newTraceStringAttrs(nil, []string{"source", "threat", "website"}, []string{"audit", "true", "true"}))
 
@@ -235,21 +240,21 @@ func TestRootPolicyNotMatch(t *testing.T) {
 	// this policy will omit all records with source audit (as sampling percent is 0 for root)
 	// except those filtered by sub-policy (which has sampling percent 100)
 
-	cfg := PolicyCfg{
-		Name: "security",
-		ProbabilisticCfg: ProbabilisticCfg{
-			SamplingPercentage: 100,
-		},
-		Root: true,
-		PolicyFilterCfg: PolicyFilterCfg{
-			StringAttributeCfgs: []StringAttributeCfg{
-				{
-					Key:    "source",
-					Values: []string{"audit"},
-				},
+	cfg := PolicyGroupCfg{
+		BasePolicy: BasePolicy{Name: "security",
+			ProbabilisticCfg: ProbabilisticCfg{
+				SamplingPercentage: 100,
 			},
-		},
-		SubPolicies: []PolicyCfg{
+			Root: true,
+			PolicyFilterCfg: PolicyFilterCfg{
+				StringAttributeCfgs: []StringAttributeCfg{
+					{
+						Key:    "source",
+						Values: []string{"audit"},
+					},
+				},
+			}},
+		SubPolicies: []BasePolicy{
 			{
 				Name: "sub-policy",
 				ProbabilisticCfg: ProbabilisticCfg{
@@ -271,7 +276,7 @@ func TestRootPolicyNotMatch(t *testing.T) {
 		},
 	}
 
-	e := NewDefaultEvaluator(zap.NewNop(), &cfg)
+	e := NewDefaultEvaluator(zap.NewNop(), cfg.BasePolicy, nil)
 
 	decision, err := e.Evaluate(pcommon.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 		16}), newTraceStringAttrs(nil, []string{"threat", "website"}, []string{"true", "true"}))
