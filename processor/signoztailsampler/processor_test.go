@@ -28,7 +28,7 @@ const (
 
 var testPolicy = []PolicyGroupCfg{
 	{
-		BasePolicy:  BasePolicy{Name: "test-policy", Type: AlwaysSample},
+		BasePolicy:  BasePolicy{Name: "test-policy", Type: AlwaysSample, Priority: 1},
 		SubPolicies: []BasePolicy{},
 	},
 }

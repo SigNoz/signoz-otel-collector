@@ -16,6 +16,7 @@ package signoztailsampler // import "github.com/open-telemetry/opentelemetry-col
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sort"
 	"sync"
@@ -71,6 +72,10 @@ const (
 func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Config) (component.TracesProcessor, error) {
 	if nextConsumer == nil {
 		return nil, component.ErrNilNextConsumer
+	}
+
+	if invalidations := cfg.Valid(); invalidations != "" {
+		return nil, fmt.Errorf(fmt.Sprintf("config invalid: %s", invalidations))
 	}
 
 	numDecisionBatches := uint64(cfg.DecisionWait.Seconds())

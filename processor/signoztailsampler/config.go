@@ -15,6 +15,8 @@
 package signoztailsampler
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/config"
@@ -138,4 +140,21 @@ type Config struct {
 
 	// read only version number (optional)
 	Version int `mapstructure:"version"`
+}
+
+// Valid returns empty string when config is valid
+func (c *Config) Valid() (invalidReason string) {
+	var errs []string
+	for _, p := range c.PolicyCfgs {
+		if p.Priority == 0 {
+			// priority must be explicitly assigned
+			errs = append(errs, fmt.Sprintf("%s: %s", p.Name, "priority must be greater than 1"))
+		}
+	}
+
+	if len(errs) != 0 {
+		invalidReason = strings.Join(errs, ",")
+	}
+
+	return
 }
