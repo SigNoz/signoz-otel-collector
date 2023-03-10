@@ -140,5 +140,5 @@ type Config struct {
 	PolicyCfgs []PolicyGroupCfg `mapstructure:"policies"`
 
 	// read only version number (optional)
-	Version int
+	Version int `mapstructure:"version"`
 }
