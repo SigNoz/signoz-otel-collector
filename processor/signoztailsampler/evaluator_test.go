@@ -126,11 +126,11 @@ func TestSubPolicyGroupCfg(t *testing.T) {
 	// except those filtered by sub-policy (which has sampling percent 100)
 
 	cfg := PolicyGroupCfg{
-		BasePolicy: BasePolicy{Name: "security",
+		BasePolicy: BasePolicy{
+			Name: "security",
 			ProbabilisticCfg: ProbabilisticCfg{
 				SamplingPercentage: 0,
 			},
-			Root: true,
 			PolicyFilterCfg: PolicyFilterCfg{
 				StringAttributeCfgs: []StringAttributeCfg{
 					{
@@ -182,7 +182,6 @@ func TestSubPolicyGroupCfgStringFilters(t *testing.T) {
 			ProbabilisticCfg: ProbabilisticCfg{
 				SamplingPercentage: 0,
 			},
-			Root: true,
 			PolicyFilterCfg: PolicyFilterCfg{
 				StringAttributeCfgs: []StringAttributeCfg{
 					{
@@ -245,7 +244,6 @@ func TestRootPolicyNotMatch(t *testing.T) {
 			ProbabilisticCfg: ProbabilisticCfg{
 				SamplingPercentage: 100,
 			},
-			Root: true,
 			PolicyFilterCfg: PolicyFilterCfg{
 				StringAttributeCfgs: []StringAttributeCfg{
 					{

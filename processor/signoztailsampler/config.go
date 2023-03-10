@@ -104,9 +104,6 @@ type BasePolicy struct {
 	// Type of the policy this will be used to match the proper configuration of the policy.
 	Type PolicyType `mapstructure:"type"`
 
-	// Set to true for sampling rule (root) and false for conditions
-	Root bool `mapstructure:"root"`
-
 	Priority int `mapstructure:"priority"`
 
 	// sampling applied when  PolicyFilter matches

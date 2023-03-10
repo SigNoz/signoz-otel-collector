@@ -37,7 +37,6 @@ func TestLoadConfig(t *testing.T) {
 						Name:     "test-policy-1",
 						Type:     PolicyGroup,
 						Priority: 1,
-						Root:     true,
 						ProbabilisticCfg: ProbabilisticCfg{
 							SamplingPercentage: 100,
 						},

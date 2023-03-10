@@ -7,7 +7,6 @@ signoz_tail_sampling:
         {
           name: test-policy-1,
           type: policy_group,
-          root: true,
           priority: 1,
           policy_filter: {
             string_attributes: {

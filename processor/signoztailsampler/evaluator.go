@@ -1,6 +1,7 @@
 package signoztailsampler
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
@@ -11,9 +12,6 @@ import (
 // default evaluator for policyCfg.
 type defaultEvaluator struct {
 	name string
-
-	// true for top level policies
-	root bool
 
 	priority int
 
@@ -46,6 +44,10 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg BasePolicy, subpolicies [
 	// todo(amol): need to handle situations with zero filters
 
 	// list of sub-policies evaluators
+	sort.Slice(subpolicies, func(i, j int) bool {
+		return subpolicies[i].Priority < subpolicies[j].Priority
+	})
+
 	subEvaluators := make([]sampling.PolicyEvaluator, 0)
 	for _, subRule := range subpolicies {
 		subEvaluator := NewDefaultEvaluator(logger, subRule, nil)
@@ -72,7 +74,6 @@ func NewDefaultEvaluator(logger *zap.Logger, policyCfg BasePolicy, subpolicies [
 
 	return &defaultEvaluator{
 		name:           policyCfg.Name,
-		root:           policyCfg.Root,
 		sampler:        sampler,
 		samplingMethod: samplingMethod,
 		filterOperator: filterOperator,

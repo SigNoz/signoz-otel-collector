@@ -17,6 +17,7 @@ package signoztailsampler // import "github.com/open-telemetry/opentelemetry-col
 import (
 	"context"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -81,8 +82,16 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 
 	ctx := context.Background()
 	var policies []*policy
-	for i := range cfg.PolicyCfgs {
-		policyCfg := &cfg.PolicyCfgs[i]
+	policyGroups := []PolicyGroupCfg{}
+
+	copy(policyGroups, cfg.PolicyCfgs)
+	// sort the policies by priority
+	sort.Slice(policyGroups, func(i, j int) bool {
+		return policyGroups[i].Priority < policyGroups[j].Priority
+	})
+
+	for i := range policyGroups {
+		policyCfg := policyGroups[i]
 		policyCtx, err := tag.New(ctx, tag.Upsert(tagPolicyKey, policyCfg.Name), tag.Upsert(tagSourceFormat, sourceFormat))
 		if err != nil {
 			return nil, err
