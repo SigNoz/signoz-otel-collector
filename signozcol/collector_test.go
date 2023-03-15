@@ -12,7 +12,7 @@ import (
 func TestCollectorNew(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-new",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -24,7 +24,7 @@ func TestCollectorNew(t *testing.T) {
 func TestCollectorRunInvalidPath(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/invalid.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-invalid-path",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -43,7 +43,7 @@ func TestCollectorRunInvalidPath(t *testing.T) {
 func TestCollectorRunValidPath(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-valid-path",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -62,7 +62,7 @@ func TestCollectorRunValidPath(t *testing.T) {
 func TestCollectorRunValidPathInvalidConfig(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/invalid_config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-valid-path-invalid-config",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -82,7 +82,7 @@ func TestCollectorRunValidPathInvalidConfig(t *testing.T) {
 func TestCollectorShutdown(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-shutdown",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -106,7 +106,7 @@ func TestCollectorShutdown(t *testing.T) {
 func TestCollectorRunMultipleTimes(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-run-multiple-times",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})
@@ -131,7 +131,7 @@ func TestCollectorRunMultipleTimes(t *testing.T) {
 func TestCollectorRestart(t *testing.T) {
 	coll := New(WrappedCollectorSettings{
 		ConfigPaths: []string{"testdata/config.yaml"},
-		Version:     "0.0.1",
+		Version:     "0.0.1-test-restart",
 		Desc:        "test",
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)},
 	})

@@ -84,7 +84,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
-		zap.S().Error("couldn't create instance of clickhouse")
+		log.Fatalf("Error creating clickhouse client: %v", err)
 	}
 
 	collector := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),

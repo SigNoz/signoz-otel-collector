@@ -10,17 +10,18 @@ processors:
 extensions:
   zpages: {}
 exporters:
-  clickhousetraces:
-    datasource: tcp://localhost:9000/?database=signoz_traces
-    migrations: exporter/clickhousetracesexporter/migrations
+  logging:
 service:
   extensions: [zpages]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch_processor]
-      exporters: [clickhousetraces]
+      exporters: [logging]
     metrics:
       receivers: [otlp]
       processors: [batch_processor]
       exporters: [clickhousemetricswrite]
+  telemetry:
+      resource:
+          service.instance.id: signozcol/testdata/invalid_config.yaml
