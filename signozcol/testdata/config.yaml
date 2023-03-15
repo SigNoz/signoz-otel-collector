@@ -22,3 +22,6 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [logging]
+  telemetry:
+      resource:
+          service.instance.id: "signozcol/testdata/config.yaml"
