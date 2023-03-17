@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -34,7 +35,7 @@ type Storage interface {
 	// Read(context.Context, []Query) (*prompb.ReadResponse, error)
 
 	// Write puts data into storage.
-	Write(context.Context, *prompb.WriteRequest) error
+	Write(context.Context, *prompb.WriteRequest, map[string]pmetric.AggregationTemporality) error
 
 	// Returns the DB conn.
 	GetDBConn() interface{}

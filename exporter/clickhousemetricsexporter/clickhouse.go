@@ -31,6 +31,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -134,6 +135,13 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	queries = append(queries, fmt.Sprintf(`
 		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
+
+	// Add temporality column to time_series table
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality String DEFAULT 'Cumulative'`, database, TIME_SERIES_TABLE, CLUSTER))
+
+	queries = append(queries, fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality String DEFAULT 'Cumulative'`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
@@ -253,7 +261,7 @@ func (ch *clickHouse) GetDBConn() interface{} {
 	return ch.conn
 }
 
-func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) error {
+func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToTemporality map[string]pmetric.AggregationTemporality) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
@@ -304,7 +312,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
 			return err
 		}
@@ -313,6 +321,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 			err = statement.Append(
 				fingerprintToName[fingerprint],
+				metricNameToTemporality[fingerprintToName[fingerprint]].String(),
 				timestamp,
 				fingerprint,
 				encodedLabels,
