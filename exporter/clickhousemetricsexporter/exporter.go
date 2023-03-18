@@ -183,7 +183,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
 					}
-					prwe.metricNameToTemporality[metric.Name()] = temporality
+					prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)] = temporality
 
 					// handle individual metric based on type
 					switch metricType {

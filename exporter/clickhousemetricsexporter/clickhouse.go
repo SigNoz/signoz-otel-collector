@@ -48,6 +48,7 @@ const (
 	DISTRIBUTED_SAMPLES_TABLE     = "distributed_samples_v2"
 	TIME_SERIES_TABLE             = "time_series_v2"
 	SAMPLES_TABLE                 = "samples_v2"
+	temporalityLabel              = "__temporality__"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -282,6 +283,15 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		var labels []*prompb.Label
 		for _, l := range labelsOverridden {
 			labels = append(labels, l)
+		}
+		// add temporality label
+		if metricName != "" {
+			if t, ok := metricNameToTemporality[metricName]; ok {
+				labels = append(labels, &prompb.Label{
+					Name:  temporalityLabel,
+					Value: t.String(),
+				})
+			}
 		}
 		timeseries.SortLabels(labels)
 		f := timeseries.Fingerprint(labels)
