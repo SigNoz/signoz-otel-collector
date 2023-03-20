@@ -24,31 +24,42 @@ import (
 // On restart, the collector is stopped and a new instance is started.
 // The Opamp client implementation is responsible for restarting the collector.
 type WrappedCollector struct {
-	configPaths []string
-	version     string
-	desc        string
-	loggingOpts []zap.Option
-	wg          sync.WaitGroup
-	errChan     chan error
-	mux         sync.Mutex
-	svc         *service.Collector
+	configPaths  []string
+	version      string
+	desc         string
+	loggingOpts  []zap.Option
+	wg           sync.WaitGroup
+	errChan      chan error
+	mux          sync.Mutex
+	svc          *service.Collector
+	logger       *zap.Logger
+	PollInterval time.Duration
 }
 
 type WrappedCollectorSettings struct {
-	ConfigPaths []string
-	Version     string
-	Desc        string
-	LoggingOpts []zap.Option
+	ConfigPaths  []string
+	Version      string
+	Desc         string
+	LoggingOpts  []zap.Option
+	PollInterval time.Duration
+	Logger       *zap.Logger
 }
+
+var StateUknown = service.State(-1)
 
 // New returns a new collector.
 func New(settings WrappedCollectorSettings) *WrappedCollector {
+	if settings.Logger == nil {
+		settings.Logger = zap.NewNop()
+	}
 	return &WrappedCollector{
-		configPaths: settings.ConfigPaths,
-		version:     settings.Version,
-		desc:        settings.Desc,
-		loggingOpts: settings.LoggingOpts,
-		errChan:     make(chan error, 1),
+		configPaths:  settings.ConfigPaths,
+		version:      settings.Version,
+		desc:         settings.Desc,
+		loggingOpts:  settings.LoggingOpts,
+		PollInterval: settings.PollInterval,
+		errChan:      make(chan error, 1),
+		logger:       settings.Logger,
 	}
 }
 
@@ -65,6 +76,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	wCol.logger.Debug("Created new settings for collector", zap.Any("settings", settings))
 
 	// Create a new instance of collector to be used
 	svc, err := service.New(*settings)
@@ -87,6 +99,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	wCol.wg.Add(1)
 	go func() {
 		defer wCol.wg.Done()
+		wCol.logger.Info("Starting collector service")
 		err := svc.Run(ctx)
 		// https://github.com/open-telemetry/opentelemetry-collector/blob/release/v0.66.x/service/collector.go#L124
 		//
@@ -103,7 +116,8 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	go func() {
 		for {
 			state := svc.GetState()
-			if state == service.Running {
+			if state == service.StateRunning {
+				wCol.logger.Info("Collector service is running")
 				// TODO: collector may panic or exit unexpectedly, need to handle that
 				colErrorChannel <- nil
 				break
@@ -127,6 +141,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 
 // Shutdown stops the collector.
 func (wCol *WrappedCollector) Shutdown() {
+	wCol.logger.Info("Shutting down collector service")
 	wCol.mux.Lock()
 	defer wCol.mux.Unlock()
 
@@ -134,6 +149,7 @@ func (wCol *WrappedCollector) Shutdown() {
 		wCol.svc.Shutdown()
 		wCol.wg.Wait()
 		wCol.svc = nil
+		wCol.logger.Info("Collector service is shut down")
 	}
 }
 
@@ -146,6 +162,7 @@ func (wCol *WrappedCollector) reportError(err error) {
 
 // Restart restarts the collector.
 func (wCol *WrappedCollector) Restart(ctx context.Context) error {
+	wCol.logger.Info("Restarting collector service")
 	wCol.Shutdown()
 	return wCol.Run(ctx)
 }
@@ -161,7 +178,7 @@ func (wCol *WrappedCollector) GetState() service.State {
 	if wCol.svc != nil {
 		return wCol.svc.GetState()
 	}
-	return service.StateClosed
+	return StateUknown
 }
 
 func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*service.CollectorSettings, error) {

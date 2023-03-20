@@ -27,7 +27,7 @@ test-and-lint: test fmt lint
 
 .PHONY: test
 test:
-	go test -count=1 -v -race -cover ./...
+	go test --timeout=30s -count=1 -v -race -cover ./...
 
 .PHONY: build
 build:

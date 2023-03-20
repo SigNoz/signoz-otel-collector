@@ -14,6 +14,7 @@ import (
 	"github.com/open-telemetry/opamp-go/client"
 	"github.com/open-telemetry/opamp-go/client/types"
 	"github.com/open-telemetry/opamp-go/protobufs"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 )
 
@@ -28,10 +29,10 @@ import (
 // 4. Applying the remote configuration to the agent
 // 5. Sending the updated agent configuration to the Opamp server
 type serverClient struct {
+	baseClient
 	logger        *zap.Logger
 	opampClient   client.OpAMPClient
 	configManager *agentConfigManager
-	collector     *signozcol.WrappedCollector
 	managerConfig AgentManagerConfig
 	instanceId    ulid.ULID
 }
@@ -51,9 +52,14 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 	configManager := NewAgentConfigManager(args.Logger)
 
 	svrClient := &serverClient{
+		baseClient: baseClient{
+			coll:    args.WrappedCollector,
+			err:     make(chan error, 1),
+			stopped: make(chan bool),
+			logger:  clientLogger,
+		},
 		logger:        clientLogger,
 		configManager: configManager,
-		collector:     args.WrappedCollector,
 		managerConfig: *args.Config,
 	}
 
@@ -147,23 +153,23 @@ func (s *serverClient) Start(ctx context.Context) error {
 		s.logger.Error("Error while starting opamp client", zap.Error(err))
 		return err
 	}
-	return s.collector.Run(ctx)
+	err = s.coll.Run(ctx)
+	if err != nil {
+		return err
+	}
+	go s.ensureRunning()
+	return nil
 }
 
 // Stop stops the Opamp client
 // It stops the Opamp client and disconnects from the Opamp server
 func (s *serverClient) Stop(ctx context.Context) error {
-	s.collector.Shutdown()
-	return s.opampClient.Stop(ctx)
-}
-
-func (s *serverClient) Error() error {
-	var err error
-	select {
-	case err = <-s.collector.ErrorChan():
-	default:
-	}
-	return err
+	s.logger.Info("Stopping OpAMP server client")
+	close(s.stopped)
+	s.coll.Shutdown()
+	opampErr := s.opampClient.Stop(ctx)
+	collErr := <-s.coll.ErrorChan()
+	return multierr.Combine(opampErr, collErr)
 }
 
 // onMessageFuncHandler is the callback function that is called when the Opamp client receives a message from the Opamp server
@@ -223,14 +229,14 @@ func (s *serverClient) reload(contents []byte) error {
 		return fmt.Errorf("failed to update config file %s: %w", collectorConfigPath, err)
 	}
 
-	if err := s.collector.Restart(context.Background()); err != nil {
+	if err := s.coll.Restart(context.Background()); err != nil {
 
 		if rollbackErr := rollbackFunc(); rollbackErr != nil {
 			s.logger.Error("Failed to rollbakc the config", zap.Error(rollbackErr))
 		}
 
 		// Restart collector with original file
-		if rollbackErr := s.collector.Restart(context.Background()); rollbackErr != nil {
+		if rollbackErr := s.coll.Restart(context.Background()); rollbackErr != nil {
 			s.logger.Error("Collector failed for restart during rollback", zap.Error(rollbackErr))
 		}
 

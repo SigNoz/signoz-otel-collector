@@ -48,22 +48,23 @@ func main() {
 		signozcol.WrappedCollectorSettings{
 			ConfigPaths: []string{collectorConfig},
 			// TODO: Build version from git tag
-			Version:     "0.63.0",
-			Desc:        "SigNoz OpenTelemetry Collector",
-			LoggingOpts: []zap.Option{zap.WithCaller(true)},
+			Version:      "0.66.5",
+			Desc:         "SigNoz OpenTelemetry Collector",
+			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
+			PollInterval: 200 * time.Millisecond,
 		},
 	)
 
 	svc, err := service.New(coll, logger, managerConfig, collectorConfig)
 	if err != nil {
-		log.Fatalf("failed to create collector service: %v", err)
+		logger.Fatal("failed to create collector service:", zap.Error(err))
 	}
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	if err := runInteractive(ctx, logger, svc); err != nil {
-		log.Fatalf("failed to run service: %v", err)
+		logger.Fatal("failed to run service:", zap.Error(err))
 	}
 }
 
@@ -72,8 +73,12 @@ func runInteractive(ctx context.Context, logger *zap.Logger, svc service.Service
 		return fmt.Errorf("failed to start collector service: %w", err)
 	}
 
+	// Wait for context done or service error
 	select {
 	case <-ctx.Done():
+		logger.Info("Context done, shutting down...")
+	case err := <-svc.Error():
+		logger.Error("Service error, shutting down...", zap.Error(err))
 	}
 
 	stopTimeoutCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)

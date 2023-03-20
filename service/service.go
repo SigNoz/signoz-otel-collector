@@ -19,6 +19,7 @@ import (
 type Service interface {
 	Start(ctx context.Context) error
 	Shutdown(ctx context.Context) error
+	Error() <-chan error
 }
 
 type service struct {
@@ -33,7 +34,7 @@ func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, manag
 
 	// Running without Opamp
 	if managerConfigPath == "" {
-		client = opamp.NewSimpleClient(wrappedCollector)
+		client = opamp.NewSimpleClient(wrappedCollector, logger)
 	} else {
 		managerConfig, err := opamp.ParseAgentManagerConfig(managerConfigPath)
 		// Invalid config file
@@ -47,6 +48,9 @@ func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, manag
 			CollectorConfgPath: collectorConfigPath,
 		}
 		client, err = opamp.NewServerClient(serverClientOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create server client: %w", err)
+		}
 	}
 
 	return &service{
@@ -55,18 +59,27 @@ func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, manag
 	}, err
 }
 
-// Start starts the Opamp connection and collector
+// Start starts the (Opamp connection and) collector
 func (s *service) Start(ctx context.Context) error {
+	s.l.Info("Starting service")
 	if err := s.client.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start : %w", err)
 	}
+	s.l.Info("Client started successfully")
 	return nil
 }
 
-// Shutdown stops the Opamp connection and collector
+// Shutdown stops the (Opamp connection and) collector
 func (s *service) Shutdown(ctx context.Context) error {
+	s.l.Info("Shutting down service")
 	if err := s.client.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop: %w", err)
 	}
+	s.l.Info("Client stopped successfully")
 	return nil
+}
+
+// Error returns the error channel
+func (s *service) Error() <-chan error {
+	return s.client.Error()
 }
