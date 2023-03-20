@@ -21,3 +21,5 @@
 
 # build folder
 .build
+*.rollback
+signoz-collector

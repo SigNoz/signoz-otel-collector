@@ -164,6 +164,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.ExternalHttpUrl = value
 		} else if k == "http.method" && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
+			span.HttpMethod = v.Str()
 		} else if k == "http.url" && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if k == "http.method" && span.Kind != 3 {
