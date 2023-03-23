@@ -32,7 +32,7 @@ const (
 
 var onceMetrics sync.Once
 
-// NewFactory creates a factory for the spanmetrics processor.
+// NewFactory creates a factory for the SigNoz Tail Sampling processor.
 func NewFactory() component.ProcessorFactory {
 	return component.NewProcessorFactory(
 		typeStr,
