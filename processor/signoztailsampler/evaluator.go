@@ -133,7 +133,7 @@ func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.Tr
 		// of them succeed we return that as sampling decision
 		for _, sp := range de.subEvaluators {
 			if sp == nil {
-				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil", de.name)
+				zap.S().Errorf("failed to evaluate subpolicy as evaluator is nil %s", de.name)
 				continue
 			}
 			decision, err := sp.Evaluate(traceId, trace)
