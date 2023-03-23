@@ -103,7 +103,7 @@ func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.Tr
 	var filterMatched bool
 
 	for _, fe := range de.filters {
-		// evaluate each filter from sub-policy
+		// evaluate each filter from (sub-)policy
 		filterResult, err := fe.Evaluate(traceId, trace)
 		if err != nil {
 			return sampling.Error, nil
