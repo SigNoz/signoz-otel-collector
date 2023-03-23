@@ -142,9 +142,10 @@ type Config struct {
 	Version int `mapstructure:"version"`
 }
 
-// Valid returns empty string when config is valid
-func (c *Config) Valid() (invalidReason string) {
+// Validate returns errors with config
+func (c *Config) Validate() error {
 	var errs []string
+	var allErrors string
 	for _, p := range c.PolicyCfgs {
 		if p.Priority == 0 {
 			// priority must be explicitly assigned
@@ -153,8 +154,8 @@ func (c *Config) Valid() (invalidReason string) {
 	}
 
 	if len(errs) != 0 {
-		invalidReason = strings.Join(errs, ",")
+		allErrors = strings.Join(errs, ",")
 	}
 
-	return
+	return fmt.Errorf("%v", allErrors)
 }

@@ -74,8 +74,8 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 		return nil, component.ErrNilNextConsumer
 	}
 
-	if invalidations := cfg.Valid(); invalidations != "" {
-		return nil, fmt.Errorf(fmt.Sprintf("config invalid: %s", invalidations))
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config invalid: %v", err)
 	}
 
 	numDecisionBatches := uint64(cfg.DecisionWait.Seconds())

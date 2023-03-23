@@ -91,7 +91,6 @@ func prepareFilterEvaluators(logger *zap.Logger, policyFilterCfg PolicyFilterCfg
 	for _, n := range policyFilterCfg.NumericAttributeCfgs {
 		filterEvaluators = append(filterEvaluators, sampling.NewNumericAttributeFilter(logger, n.Key, n.MinValue, n.MaxValue))
 	}
-	// todo: status filter
 	return filterEvaluators
 }
 
