@@ -98,7 +98,7 @@ type PolicyFilterCfg struct {
 	NumericAttributeCfgs []NumericAttributeCfg `mapstructure:"numeric_attributes"`
 }
 
-// PolicyCfg identifies policy rules in policy group
+// BasePolicy identifies policy rules in (sub-)policy group
 type BasePolicy struct {
 	// name of the policy
 	Name string `mapstructure:"name"`
