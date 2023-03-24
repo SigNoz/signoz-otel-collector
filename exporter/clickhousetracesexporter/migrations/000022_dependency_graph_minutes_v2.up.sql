@@ -5,17 +5,12 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes_v2 ON CLUSTER 
     error_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     total_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     timestamp DateTime CODEC(DoubleDelta, LZ4),
-    src_resource_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    src_resource_attributes_hash UInt64 CODEC(Delta, ZSTD(1)),
-    dest_resource_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    dest_resource_attributes_hash UInt64 CODEC(Delta, ZSTD(1)),
-    INDEX idx_src_resource_attributes_keys mapKeys(src_resource_attributes) TYPE bloom_filter(0.01) GRANULARITY 64,
-    INDEX idx_src_resource_attributes_values mapValues(src_resource_attributes) TYPE bloom_filter(0.01) GRANULARITY 64,
-    INDEX idx_dest_resource_attributes_keys mapKeys(dest_resource_attributes) TYPE bloom_filter(0.01) GRANULARITY 64,
-    INDEX idx_dest_resource_attributes_values mapValues(dest_resource_attributes) TYPE bloom_filter(0.01) GRANULARITY 64,
+    deployment_environment LowCardinality(String) CODEC(ZSTD(1)),
+    k8s_cluster_name LowCardinality(String) CODEC(ZSTD(1)),
+    k8s_namespace_name LowCardinality(String) CODEC(ZSTD(1))
 ) ENGINE AggregatingMergeTree
 PARTITION BY toDate(timestamp)
-ORDER BY (timestamp, src, dest, src_resource_attributes_hash, dest_resource_attributes_hash)
+ORDER BY (timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name)
 TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE;
 
 
@@ -28,13 +23,12 @@ SELECT
     countIf(B.statusCode=2) as error_count,
     count(*) as total_count,
     toStartOfMinute(B.timestamp) as timestamp,
-    anyLast(A.resourceTagsMap) as src_resource_attributes,
-    farmFingerprint64(A.resourceTagsMap) as src_resource_attributes_hash,
-    anyLast(B.resourceTagsMap) as dest_resource_attributes,
-    farmFingerprint64(B.resourceTagsMap) as dest_resource_attributes_hash
+    B.resourceTagsMap['deployment.environment'] as deployment_environment,
+    B.resourceTagsMap['k8s.cluster.name'] as k8s_cluster_name,
+    B.resourceTagsMap['k8s.namespace.name'] as k8s_namespace_name
 FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
 WHERE (A.serviceName != B.serviceName) AND (A.spanID = B.parentSpanID)
-GROUP BY timestamp, src, dest, src_resource_attributes_hash, dest_resource_attributes_hash;
+GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.dependency_graph_minutes_db_calls_mv_v2 ON CLUSTER cluster
 TO signoz_traces.dependency_graph_minutes_v2 AS
@@ -45,13 +39,12 @@ SELECT
     countIf(statusCode=2) as error_count,
     count(*) as total_count,
     toStartOfMinute(timestamp) as timestamp,
-    anyLast(resourceTagsMap) as src_resource_attributes,
-    farmFingerprint64(signoz_traces.signoz_index_v2.resourceTagsMap) as src_resource_attributes_hash,
-    anyLast(resourceTagsMap) as dest_resource_attributes,
-    farmFingerprint64(signoz_traces.signoz_index_v2.resourceTagsMap) as dest_resource_attributes_hash
+    resourceTagsMap['deployment.environment'] as deployment_environment,
+    resourceTagsMap['k8s.cluster.name'] as k8s_cluster_name,
+    resourceTagsMap['k8s.namespace.name'] as k8s_namespace_name
 FROM signoz_traces.signoz_index_v2
 WHERE dest != '' and kind != 2
-GROUP BY timestamp, src, dest, src_resource_attributes_hash, dest_resource_attributes_hash;
+GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.dependency_graph_minutes_messaging_calls_mv_v2 ON CLUSTER cluster
 TO signoz_traces.dependency_graph_minutes_v2 AS
@@ -62,13 +55,12 @@ SELECT
     countIf(statusCode=2) as error_count,
     count(*) as total_count,
     toStartOfMinute(timestamp) as timestamp,
-    anyLast(resourceTagsMap) as src_resource_attributes,
-    farmFingerprint64(signoz_traces.signoz_index_v2.resourceTagsMap) as src_resource_attributes_hash,
-    anyLast(resourceTagsMap) as dest_resource_attributes,
-    farmFingerprint64(signoz_traces.signoz_index_v2.resourceTagsMap) as dest_resource_attributes_hash
+    resourceTagsMap['deployment.environment'] as deployment_environment,
+    resourceTagsMap['k8s.cluster.name'] as k8s_cluster_name,
+    resourceTagsMap['k8s.namespace.name'] as k8s_namespace_name
 FROM signoz_traces.signoz_index_v2
 WHERE dest != '' and kind != 2
-GROUP BY timestamp, src, dest, src_resource_attributes_hash, dest_resource_attributes_hash;
+GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name;
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_dependency_graph_minutes_v2 ON CLUSTER cluster AS signoz_traces.dependency_graph_minutes_v2
 ENGINE = Distributed("cluster", "signoz_traces", dependency_graph_minutes_v2, cityHash64(rand()));
