@@ -1,4 +1,3 @@
-BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
 IMAGE_NAME ?= "signoz-otel-collector"
@@ -60,15 +59,6 @@ build-signoz-collector:
 	docker build --build-arg TARGETPLATFORM="linux/amd64" \
 		--no-cache -f cmd/signozcollector/Dockerfile --progress plane \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
-
-.PHONY: build-signoz-collector-local
-build-signoz-collector-local:
-	@echo "------------------"
-	@echo  "--> Build signoz collector docker image"
-	@echo "------------------"
-	docker build --build-arg TARGETPLATFORM="linux/amd64" \
-		--no-cache -f cmd/signozcollector/Dockerfile \
-		--tag $(REPONAME)/$(IMAGE_NAME):$(BRANCH) .
 
 .PHONY: lint
 lint:

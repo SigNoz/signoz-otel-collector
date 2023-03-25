@@ -58,7 +58,7 @@ type PrwExporter struct {
 	ch                      base.Storage
 	usageCollector          *usage.UsageCollector
 	metricNameToTemporality map[string]pmetric.AggregationTemporality
-	mux                     sync.Mutex
+	mux                     *sync.Mutex
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -118,7 +118,7 @@ func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExpo
 		ch:                      ch,
 		usageCollector:          collector,
 		metricNameToTemporality: make(map[string]pmetric.AggregationTemporality),
-		mux:                     sync.Mutex{},
+		mux:                     new(sync.Mutex),
 	}, nil
 }
 

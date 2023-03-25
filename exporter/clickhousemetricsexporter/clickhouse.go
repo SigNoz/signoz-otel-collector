@@ -139,10 +139,10 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	// Add temporality column to time_series table
 	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality String DEFAULT 'Cumulative'`, database, TIME_SERIES_TABLE, CLUSTER))
+		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality Enum('Unspecified' = 0, 'Delta', 'Cumulative')`, database, TIME_SERIES_TABLE, CLUSTER))
 
 	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality String DEFAULT 'Cumulative'`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
+		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality Enum('Unspecified' = 0, 'Delta', 'Cumulative')`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
 
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
