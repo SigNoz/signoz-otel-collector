@@ -196,6 +196,7 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 			span.StringTagMap,
 			span.NumberTagMap,
 			span.BoolTagMap,
+			span.ResourceTagsMap,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
