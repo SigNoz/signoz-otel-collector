@@ -164,6 +164,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.ExternalHttpUrl = value
 		} else if k == "http.method" && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
+			span.HttpMethod = v.Str()
 		} else if k == "http.url" && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if k == "http.method" && span.Kind != 3 {
@@ -264,6 +265,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	boolTagMap := map[string]bool{}
 	SpanAttributes := []SpanAttribute{}
 
+	resourceAttrs := map[string]string{}
+
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
 		SpanAttribute := SpanAttribute{
@@ -297,6 +300,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			Key:     k,
 			AttType: "resource",
 		}
+		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
 			SpanAttribute.NumberValue = v.Double()
@@ -336,6 +340,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
 		BoolTagMap:        boolTagMap,
+		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
 		TraceModel: TraceModel{
 			TraceId:           otelSpan.TraceID().HexString(),
