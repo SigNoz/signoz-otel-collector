@@ -1244,6 +1244,8 @@ github.com/observiq/nanojack v0.0.0-20201106172433-343928847ebc h1:49ewVBwLcy+eY
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
 github.com/oklog/ulid v1.3.1 h1:EGfNDEx6MqHz8B3uNV6QAib1UR2Lm97sHi3ocA6ESJ4=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
+github.com/oklog/ulid/v2 v2.0.2 h1:r4fFzBm+bv0wNKNh5eXTwU7i85y5x+uwkxCUTNVQqLc=
+github.com/oklog/ulid/v2 v2.0.2/go.mod h1:mtBL0Qe/0HAx6/a4Z30qxVIAL1eQDweXq5lxOEiwQ68=
 github.com/olekukonko/tablewriter v0.0.0-20170122224234-a0225b3f23b5/go.mod h1:vsDQFd/mU46D+Z4whnwzcISnGGzXWMclvtLoiIKAKIo=
 github.com/onsi/ginkgo v0.0.0-20151202141238-7f8ab55aaf3b/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v0.0.0-20170829012221-11459a886d9c/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
@@ -1264,6 +1266,8 @@ github.com/onsi/gomega v1.9.0/go.mod h1:Ho0h+IUsWyvy1OpqCwxlQ/21gkhVunqlU8fDGcoT
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
 github.com/onsi/gomega v1.10.3/go.mod h1:V9xEwhxec5O8UDM77eCW8vLymOMltsqPVYWrpDsH8xc=
 github.com/onsi/gomega v1.20.1 h1:PA/3qinGoukvymdIDV8pii6tiZgC8kbmJO6Z5+b002Q=
+github.com/open-telemetry/opamp-go v0.5.0 h1:2YFbb6G4qBkq3yTRdVb5Nfz9hKHW/ldUyex352e1J7g=
+github.com/open-telemetry/opamp-go v0.5.0/go.mod h1:IMdeuHGVc5CjKSu5/oNV0o+UmiXuahoHvoZ4GOmAI9M=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.66.0 h1:aCbnZmugygYv/Ij1QDpkf7TZ8ti0bkXSy5VuNlC2ADg=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.66.0/go.mod h1:MGNqxHpHVdoxhbkuqloLHQH/mZPKT8Anx7bUJwbjcGk=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.66.0 h1:qyLVcRXVQaFR4pkvbtix7LNj246UVWxsMCshIHZHs2o=
@@ -1538,6 +1542,7 @@ github.com/pascaldekloe/goe v0.1.0/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144T
 github.com/paulmach/orb v0.4.0 h1:ilp1MQjRapLJ1+qcays1nZpe0mvkCY+b8JU/qBKRZ1A=
 github.com/paulmach/orb v0.4.0/go.mod h1:FkcWtplUAIVqAuhAOV2d3rpbnQyliDOjOcLW9dUrfdU=
 github.com/paulmach/protoscan v0.2.1-0.20210522164731-4e53c6875432/go.mod h1:2sV+uZ/oQh66m4XJVZm5iqUZ62BN88Ex1E+TTS0nLzI=
+github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/pelletier/go-toml v1.7.0/go.mod h1:vwGMzjaWMwyfHwgIBhI2YUM4fB6nL6lVAvS1LBMMhTE=
 github.com/pelletier/go-toml v1.8.1/go.mod h1:T2/BmBdy8dvIRq1a/8aqjN41wvWlN4lrapLU/GW4pbc=

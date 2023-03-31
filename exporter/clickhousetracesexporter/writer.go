@@ -196,6 +196,7 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 			span.StringTagMap,
 			span.NumberTagMap,
 			span.BoolTagMap,
+			span.ResourceTagsMap,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
@@ -240,6 +241,7 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 			span.ErrorEvent.AttributeMap["exception.message"],
 			span.ErrorEvent.AttributeMap["exception.stacktrace"],
 			stringToBool(span.ErrorEvent.AttributeMap["exception.escaped"]),
+			span.ResourceTagsMap,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
