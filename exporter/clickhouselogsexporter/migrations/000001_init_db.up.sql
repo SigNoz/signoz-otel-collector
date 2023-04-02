@@ -1,4 +1,6 @@
 -- https://altinity.com/blog/2019/7/new-encodings-to-improve-clickhouse
+CREATE DATABASE IF NOT EXISTS signoz_logs ON CLUSTER cluster;
+
 CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER cluster (
 	timestamp UInt64 CODEC(DoubleDelta, LZ4),
 	observed_timestamp UInt64 CODEC(DoubleDelta, LZ4),
