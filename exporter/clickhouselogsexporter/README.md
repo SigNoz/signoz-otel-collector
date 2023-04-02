@@ -28,6 +28,10 @@ The following settings can be optionally configured:
     - `max_interval` (default = 30s): The upper bound on backoff; ignored if `enabled` is `false`
     - `max_elapsed_time` (default = 300s): The maximum amount of time spent trying to send a batch; ignored if `enabled` is `false`
 
+### Environment variable configuration options
+* LOG_MIGRATIONS_FOLDER: folder containing migrations to be applied by the OTel exporter
+* LOG_MIGRATIONS: when set to "false", the migrations will not be applied by OTel exporter
+
 ## Example
 
 ```yaml

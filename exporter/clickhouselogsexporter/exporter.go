@@ -330,6 +330,11 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
+	// in cases where we want migrations to be handled outside the OTel collector(for RBAC, schema versioning, etc)
+	if strings.ToLower(os.Getenv("LOGS_MIGRATE")) == "false" {
+		return db, nil
+	}
+
 	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s;", databaseName, CLUSTER)
 	err = db.Exec(ctx, q)
 	if err != nil {
