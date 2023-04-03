@@ -279,6 +279,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			"string",
 			attrs.StringValues[i],
 			nil,
+			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
@@ -289,9 +290,10 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			time.Now(),
 			v,
 			tagType,
-			"number",
+			"int64",
 			nil,
 			attrs.IntValues[i],
+			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
@@ -302,7 +304,8 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			time.Now(),
 			v,
 			tagType,
-			"number",
+			"float64",
+			nil,
 			nil,
 			attrs.FloatValues[i],
 		)
@@ -316,6 +319,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			v,
 			tagType,
 			"bool",
+			nil,
 			nil,
 			nil,
 		)
