@@ -12,4 +12,4 @@ TTL toDateTime(timestamp) + INTERVAL 172800 SECOND DELETE
 SETTINGS ttl_only_drop_parts = 1, allow_nullable_key = 1;
 
 CREATE TABLE IF NOT EXISTS signoz_logs.distributed_tag_attributes ON CLUSTER cluster AS signoz_logs.tag_attributes
-ENGINE = Distributed("cluster", "signoz_logs", tag_attributes, cityHash64(tagKey));
+ENGINE = Distributed("cluster", "signoz_logs", tag_attributes, cityHash64(rand()));
