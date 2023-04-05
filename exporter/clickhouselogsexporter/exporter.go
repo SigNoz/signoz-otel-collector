@@ -180,6 +180,11 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 					attributes := attributesToSlice(r.Attributes(), false)
 
+					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
+					if err != nil {
+						return err
+					}
+
 					err = statement.Append(
 						ts,
 						ots,
@@ -201,12 +206,6 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
-					}
-
-					tagAttrs := modifyAttributesForTagSuggestion(r, attributes)
-					err := addAttrsToTagStatement(tagStatement, "tag", tagAttrs)
-					if err != nil {
-						return err
 					}
 					e.ksuid = e.ksuid.Next()
 				}
@@ -269,14 +268,6 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
-}
-
-func modifyAttributesForTagSuggestion(record plog.LogRecord, attrs attributesToSliceResponse) attributesToSliceResponse {
-	attrs.StringKeys = append(attrs.StringKeys, "trace_id", "span_id", "severity_text")
-	attrs.StringValues = append(attrs.StringValues, record.TraceID().HexString(), record.SpanID().HexString(), record.SeverityText())
-	attrs.IntKeys = append(attrs.IntKeys, "trace_flags", "severity_number")
-	attrs.IntValues = append(attrs.IntValues, int64(record.Flags()), int64(record.SeverityNumber()))
-	return attrs
 }
 
 func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse) error {
