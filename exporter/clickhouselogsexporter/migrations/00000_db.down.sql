@@ -1,0 +1,1 @@
+DROP DATABASE signoz_logs ON CLUSTER cluster;

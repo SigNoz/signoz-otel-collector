@@ -1,0 +1,1 @@
+CREATE DATABASE IF NOT EXISTS signoz_logs ON CLUSTER cluster;
