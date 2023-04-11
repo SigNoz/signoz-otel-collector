@@ -58,23 +58,36 @@ type SpanWriter struct {
 	done           sync.WaitGroup
 }
 
+type WriterOptions struct {
+	logger         *zap.Logger
+	db             clickhouse.Conn
+	traceDatabase  string
+	spansTable     string
+	indexTable     string
+	errorTable     string
+	attributeTable string
+	encoding       Encoding
+	delay          time.Duration
+	size           int
+}
+
 // NewSpanWriter returns a SpanWriter for the database
-func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, attributeTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
+func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
 	writer := &SpanWriter{
-		logger:         logger,
-		db:             db,
-		traceDatabase:  traceDatabase,
-		indexTable:     indexTable,
-		errorTable:     errorTable,
-		spansTable:     spansTable,
-		attributeTable: attributeTable,
-		encoding:       encoding,
-		delay:          delay,
-		size:           size,
-		spans:          make(chan *Span, size),
+		logger:         options.logger,
+		db:             options.db,
+		traceDatabase:  options.traceDatabase,
+		indexTable:     options.indexTable,
+		errorTable:     options.errorTable,
+		spansTable:     options.spansTable,
+		attributeTable: options.attributeTable,
+		encoding:       options.encoding,
+		delay:          options.delay,
+		size:           options.size,
+		spans:          make(chan *Span, options.size),
 		finish:         make(chan bool),
 	}
 
@@ -231,26 +244,26 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable))
 	if err != nil {
 		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for index table: ", zap.Any("batch", logBatch), zap.Error(err))
+		w.logger.Error("Could not prepare batch for span attributes table: ", zap.Any("batch", logBatch), zap.Error(err))
 		return err
 	}
 
 	for _, span := range batchSpans {
 		for _, spanAttribute := range span.SpanAttributes {
 			if spanAttribute.DataType == "string" {
-			err = statement.Append(
-				time.Unix(0, int64(span.StartTimeUnixNano)),
-				spanAttribute.Key,
-				spanAttribute.AttType,
-				spanAttribute.DataType,
-				spanAttribute.StringValue,
-				nil,
-			)
+				err = statement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.TagType,
+					spanAttribute.DataType,
+					spanAttribute.StringValue,
+					nil,
+				)
 			} else if spanAttribute.DataType == "number" {
 				err = statement.Append(
 					time.Unix(0, int64(span.StartTimeUnixNano)),
 					spanAttribute.Key,
-					spanAttribute.AttType,
+					spanAttribute.TagType,
 					spanAttribute.DataType,
 					nil,
 					spanAttribute.NumberValue,
@@ -259,7 +272,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 				err = statement.Append(
 					time.Unix(0, int64(span.StartTimeUnixNano)),
 					spanAttribute.Key,
-					spanAttribute.AttType,
+					spanAttribute.TagType,
 					spanAttribute.DataType,
 					nil,
 					nil,

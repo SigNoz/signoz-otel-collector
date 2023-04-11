@@ -128,7 +128,7 @@ type Span struct {
 
 type SpanAttribute struct {
 	Key         string
-	AttType     string
+	TagType     string
 	DataType    string
 	StringValue string
 	NumberValue float64

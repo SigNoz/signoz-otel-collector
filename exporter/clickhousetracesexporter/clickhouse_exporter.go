@@ -263,61 +263,61 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	stringTagMap := map[string]string{}
 	numberTagMap := map[string]float64{}
 	boolTagMap := map[string]bool{}
-	SpanAttributes := []SpanAttribute{}
+	spanAttributes := []SpanAttribute{}
 
 	resourceAttrs := map[string]string{}
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
-		SpanAttribute := SpanAttribute{
+		spanAttribute := SpanAttribute{
 			Key:     k,
-			AttType: "attribute",
+			TagType: "tag",
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
-			SpanAttribute.NumberValue = v.Double()
-			SpanAttribute.DataType = "number"
+			spanAttribute.NumberValue = v.Double()
+			spanAttribute.DataType = "number"
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
-			SpanAttribute.NumberValue = float64(v.Int())
-			SpanAttribute.DataType = "number"
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "number"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
-			SpanAttribute.DataType = "bool"
+			spanAttribute.DataType = "bool"
 		} else {
 			stringTagMap[k] = v.AsString()
-			SpanAttribute.StringValue = v.AsString()
-			SpanAttribute.DataType = "string"
+			spanAttribute.StringValue = v.AsString()
+			spanAttribute.DataType = "string"
 		}
-		SpanAttributes = append(SpanAttributes, SpanAttribute)
+		spanAttributes = append(spanAttributes, spanAttribute)
 		return true
 
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
-		SpanAttribute := SpanAttribute{
+		spanAttribute := SpanAttribute{
 			Key:     k,
-			AttType: "resource",
+			TagType: "resource",
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
-			SpanAttribute.NumberValue = v.Double()
-			SpanAttribute.DataType = "number"
+			spanAttribute.NumberValue = v.Double()
+			spanAttribute.DataType = "number"
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
-			SpanAttribute.NumberValue = float64(v.Int())
-			SpanAttribute.DataType = "number"
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "number"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
-			SpanAttribute.DataType = "bool"
+			spanAttribute.DataType = "bool"
 		} else {
 			stringTagMap[k] = v.AsString()
-			SpanAttribute.StringValue = v.AsString()
-			SpanAttribute.DataType = "string"
+			spanAttribute.StringValue = v.AsString()
+			spanAttribute.DataType = "string"
 		}
-		SpanAttributes = append(SpanAttributes, SpanAttribute)
+		spanAttributes = append(spanAttributes, spanAttribute)
 		return true
 
 	})
@@ -357,7 +357,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			BoolTagMap:        boolTagMap,
 			HasError:          false,
 		},
-		SpanAttributes: SpanAttributes,
+		SpanAttributes: spanAttributes,
 		Tenant:         &tenant,
 	}
 
