@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS signoz_traces.span_attributes ON CLUSTER cluster (
-    timestamp DateTime CODEC(ZSTD(1)), 
+    timestamp DateTime CODEC(DoubleDelta, ZSTD(1)), 
     tagKey LowCardinality(String) CODEC(ZSTD(1)),
     tagType Enum('tag', 'resource') CODEC(ZSTD(1)),
     dataType Enum('string', 'bool', 'number') CODEC(ZSTD(1)),
