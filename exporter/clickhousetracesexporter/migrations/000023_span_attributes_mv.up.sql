@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.span_attributes ON CLUSTER cluster (
     dataType Enum('string', 'bool', 'number') CODEC(ZSTD(1)),
     stringTagValue String CODEC(ZSTD(1)),
     numberTagValue Nullable(Float64) CODEC(ZSTD(1)),
+    isColumn bool CODEC(ZSTD(1)),
 ) ENGINE ReplacingMergeTree
 ORDER BY (tagKey, tagType, dataType, stringTagValue, numberTagValue)
 TTL toDateTime(timestamp) + INTERVAL 172800 SECOND DELETE
