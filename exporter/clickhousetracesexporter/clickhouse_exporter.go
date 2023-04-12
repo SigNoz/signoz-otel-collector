@@ -542,7 +542,7 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
-		StringValue: convertArrayToString(span.Events),
+		StringValue: strings.Join(span.Events, ","),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "httpMethod",
@@ -615,13 +615,4 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		StringValue: span.ResponseStatusCode,
 	})
 	return spanAttributes
-}
-
-// convert array of string to string
-func convertArrayToString(array []string) string {
-	var str string
-	for _, v := range array {
-		str = str + v + ","
-	}
-	return str
 }
