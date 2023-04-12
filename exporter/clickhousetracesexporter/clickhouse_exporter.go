@@ -263,36 +263,63 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	stringTagMap := map[string]string{}
 	numberTagMap := map[string]float64{}
 	boolTagMap := map[string]bool{}
+	spanAttributes := []SpanAttribute{}
 
 	resourceAttrs := map[string]string{}
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
+		spanAttribute := SpanAttribute{
+			Key:      k,
+			TagType:  "tag",
+			IsColumn: false,
+		}
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
+			spanAttribute.NumberValue = v.Double()
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
+			spanAttribute.DataType = "bool"
 		} else {
 			stringTagMap[k] = v.AsString()
+			spanAttribute.StringValue = v.AsString()
+			spanAttribute.DataType = "string"
 		}
+		spanAttributes = append(spanAttributes, spanAttribute)
 		return true
 
 	})
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
 		tagMap[k] = v.AsString()
+		spanAttribute := SpanAttribute{
+			Key:      k,
+			TagType:  "resource",
+			IsColumn: false,
+		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
+			spanAttribute.NumberValue = v.Double()
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
+			spanAttribute.DataType = "bool"
 		} else {
 			stringTagMap[k] = v.AsString()
+			spanAttribute.StringValue = v.AsString()
+			spanAttribute.DataType = "string"
 		}
+		spanAttributes = append(spanAttributes, spanAttribute)
 		return true
 
 	})
@@ -341,7 +368,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	populateOtherDimensions(attributes, span)
 	populateEvents(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
 	populateTraceModel(span)
-
+	spanAttributes = append(spanAttributes, extractSpanAttributesFromSpanIndex(span)...)
+	span.SpanAttributes = spanAttributes
 	return span
 }
 
@@ -387,4 +415,204 @@ func (s *storage) Shutdown(_ context.Context) error {
 		return closer.Close()
 	}
 	return nil
+}
+
+func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
+	spanAttributes := []SpanAttribute{}
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "traceId",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.TraceId,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "spanId",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.SpanId,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "parentSpanId",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ParentSpanId,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "name",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.Name,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "serviceName",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ServiceName,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "kind",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "float64",
+		NumberValue: float64(span.Kind),
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "startTime",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "float64",
+		NumberValue: float64(span.StartTimeUnixNano),
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "durationNano",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "float64",
+		NumberValue: float64(span.DurationNano),
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusCode",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "float64",
+		NumberValue: float64(span.StatusCode),
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:      "hasError",
+		TagType:  "tag",
+		IsColumn: true,
+		DataType: "bool",
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "externalHttpMethod",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ExternalHttpMethod,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "externalHttpUrl",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ExternalHttpUrl,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "component",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.Component,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "dbSystem",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.DBSystem,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "dbName",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.DBName,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "dbOperation",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.DBOperation,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "peerService",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.PeerService,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "events",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: strings.Join(span.Events, ","),
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "httpMethod",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.HttpMethod,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "httpUrl",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.HttpUrl,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "httpRoute",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.HttpRoute,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "httpHost",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.HttpHost,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "msgSystem",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.MsgSystem,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "msgOperation",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.MsgOperation,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "rpcSystem",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.RPCSystem,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "rpcService",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.RPCService,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "rpcMethod",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.RPCMethod,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "responseStatusCode",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ResponseStatusCode,
+	})
+	return spanAttributes
 }
