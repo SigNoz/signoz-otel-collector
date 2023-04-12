@@ -260,7 +260,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 					nil,
 					spanAttribute.IsColumn,
 				)
-			} else if spanAttribute.DataType == "number" {
+			} else if spanAttribute.DataType == "float64" {
 				err = statement.Append(
 					time.Unix(0, int64(span.StartTimeUnixNano)),
 					spanAttribute.Key,
