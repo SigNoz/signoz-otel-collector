@@ -258,6 +258,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 					spanAttribute.DataType,
 					spanAttribute.StringValue,
 					nil,
+					spanAttribute.IsColumn,
 				)
 			} else if spanAttribute.DataType == "number" {
 				err = statement.Append(
@@ -267,6 +268,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 					spanAttribute.DataType,
 					nil,
 					spanAttribute.NumberValue,
+					spanAttribute.IsColumn,
 				)
 			} else if spanAttribute.DataType == "bool" {
 				err = statement.Append(
@@ -276,6 +278,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 					spanAttribute.DataType,
 					nil,
 					nil,
+					spanAttribute.IsColumn,
 				)
 			}
 			if err != nil {
