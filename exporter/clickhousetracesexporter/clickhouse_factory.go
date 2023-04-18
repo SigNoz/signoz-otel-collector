@@ -272,16 +272,17 @@ func (f *Factory) InitFromViper(v *viper.Viper) {
 func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
-		logger:         f.logger,
-		db:             f.db,
-		traceDatabase:  cfg.TraceDatabase,
-		spansTable:     cfg.SpansTable,
-		indexTable:     cfg.IndexTable,
-		errorTable:     cfg.ErrorTable,
-		attributeTable: cfg.AttributeTable,
-		encoding:       cfg.Encoding,
-		delay:          cfg.WriteBatchDelay,
-		size:           cfg.WriteBatchSize,
+		logger:            f.logger,
+		db:                f.db,
+		traceDatabase:     cfg.TraceDatabase,
+		spansTable:        cfg.SpansTable,
+		indexTable:        cfg.IndexTable,
+		errorTable:        cfg.ErrorTable,
+		attributeTable:    cfg.AttributeTable,
+		attributeKeyTable: cfg.AttributeKeyTable,
+		encoding:          cfg.Encoding,
+		delay:             cfg.WriteBatchDelay,
+		size:              cfg.WriteBatchSize,
 	})
 }
 
@@ -292,16 +293,17 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 	}
 	cfg := f.Options.others[archiveNamespace]
 	return f.makeWriter(WriterOptions{
-		logger:         f.logger,
-		db:             f.archive,
-		traceDatabase:  cfg.TraceDatabase,
-		spansTable:     cfg.SpansTable,
-		indexTable:     cfg.IndexTable,
-		errorTable:     cfg.ErrorTable,
-		attributeTable: cfg.AttributeTable,
-		encoding:       cfg.Encoding,
-		delay:          cfg.WriteBatchDelay,
-		size:           cfg.WriteBatchSize,
+		logger:            f.logger,
+		db:                f.archive,
+		traceDatabase:     cfg.TraceDatabase,
+		spansTable:        cfg.SpansTable,
+		indexTable:        cfg.IndexTable,
+		errorTable:        cfg.ErrorTable,
+		attributeTable:    cfg.AttributeTable,
+		attributeKeyTable: cfg.AttributeKeyTable,
+		encoding:          cfg.Encoding,
+		delay:             cfg.WriteBatchDelay,
+		size:              cfg.WriteBatchSize,
 	})
 }
 
