@@ -165,8 +165,7 @@ func (w *SpanWriter) writeBatch(batch []*Span) error {
 	}
 	if w.attributeTable != "" && w.attributeKeyTable != "" {
 		if err := w.writeTagBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Any("batch", logBatch), zap.Error(err))
+			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
 			return err
 		}
 	}
@@ -317,6 +316,11 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 		},
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
 	)
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not write to span attributes table: ", zap.Any("batch", logBatch), zap.Error(err))
+		return err
+	}
 
 	tagKeyStart := time.Now()
 	err = tagKeyStatement.Send()
@@ -327,6 +331,11 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 		},
 		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
 	)
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not write to span attributes key table: ", zap.Any("batch", logBatch), zap.Error(err))
+		return err
+	}
 
 	return err
 }
