@@ -36,7 +36,7 @@ import (
 )
 
 // Crete new exporter.
-func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	configClickHouse := cfg.(*Config)
 
@@ -108,8 +108,8 @@ func makeJaegerProtoReferences(
 	if parentSpanIDSet {
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: traceID.HexString(),
-			SpanId:  parentSpanID.HexString(),
+			TraceId: traceID.String(),
+			SpanId:  parentSpanID.String(),
 			RefType: "CHILD_OF",
 		})
 	}
@@ -118,8 +118,8 @@ func makeJaegerProtoReferences(
 		link := links.At(i)
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: link.TraceID().HexString(),
-			SpanId:  link.SpanID().HexString(),
+			TraceId: link.TraceID().String(),
+			SpanId:  link.SpanID().String(),
 
 			// Since Jaeger RefType is not captured in internal data,
 			// use SpanRefType_FOLLOWS_FROM by default.
@@ -302,9 +302,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	tenant := usage.GetTenantNameFromResource(resource)
 
 	var span *Span = &Span{
-		TraceId:           otelSpan.TraceID().HexString(),
-		SpanId:            otelSpan.SpanID().HexString(),
-		ParentSpanId:      otelSpan.ParentSpanID().HexString(),
+		TraceId:           otelSpan.TraceID().String(),
+		SpanId:            otelSpan.SpanID().String(),
+		ParentSpanId:      otelSpan.ParentSpanID().String(),
 		Name:              otelSpan.Name(),
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 		DurationNano:      durationNano,
@@ -318,8 +318,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
 		TraceModel: TraceModel{
-			TraceId:           otelSpan.TraceID().HexString(),
-			SpanId:            otelSpan.SpanID().HexString(),
+			TraceId:           otelSpan.TraceID().String(),
+			SpanId:            otelSpan.SpanID().String(),
 			Name:              otelSpan.Name(),
 			DurationNano:      durationNano,
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),

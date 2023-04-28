@@ -24,8 +24,9 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -41,7 +42,7 @@ var (
 )
 
 // NewFactory creates a new Prometheus Remote Write exporter.
-func NewFactory() component.ExporterFactory {
+func NewFactory() exporter.Factory {
 
 	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
@@ -54,14 +55,14 @@ func NewFactory() component.ExporterFactory {
 	}
 
 	view.Register(writeLatencyView)
-	return component.NewExporterFactory(
+	return exporter.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithMetricsExporter(createMetricsExporter, component.StabilityLevelUndefined))
+		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
 
-func createMetricsExporter(ctx context.Context, set component.ExporterCreateSettings,
-	cfg component.ExporterConfig) (component.MetricsExporter, error) {
+func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
+	cfg component.Config) (exporter.Metrics, error) {
 
 	prwCfg, ok := cfg.(*Config)
 	if !ok {
@@ -102,12 +103,11 @@ func createMetricsExporter(ctx context.Context, set component.ExporterCreateSett
 	return resourcetotelemetry.WrapMetricsExporter(prwCfg.ResourceToTelemetrySettings, exporter), nil
 }
 
-func createDefaultConfig() component.ExporterConfig {
+func createDefaultConfig() component.Config {
 	return &Config{
-		ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
-		Namespace:        "",
-		ExternalLabels:   map[string]string{},
-		TimeoutSettings:  exporterhelper.NewDefaultTimeoutSettings(),
+		Namespace:       "",
+		ExternalLabels:  map[string]string{},
+		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
 		RetrySettings: exporterhelper.RetrySettings{
 			Enabled:         true,
 			InitialInterval: 50 * time.Millisecond,
@@ -120,7 +120,7 @@ func createDefaultConfig() component.ExporterConfig {
 			ReadBufferSize:  0,
 			WriteBufferSize: 512 * 1024,
 			Timeout:         exporterhelper.NewDefaultTimeoutSettings().Timeout,
-			Headers:         map[string]string{},
+			Headers:         map[string]configopaque.String{},
 		},
 		// TODO(jbd): Adjust the default queue size.
 		RemoteWriteQueue: RemoteWriteQueue{
