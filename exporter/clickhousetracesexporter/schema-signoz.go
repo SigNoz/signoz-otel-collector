@@ -123,6 +123,16 @@ type Span struct {
 	RPCMethod          string             `json:"rpcMethod,omitempty"`
 	ResponseStatusCode string             `json:"responseStatusCode,omitempty"`
 	Tenant             *string            `json:"-"`
+	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
+}
+
+type SpanAttribute struct {
+	Key         string
+	TagType     string
+	DataType    string
+	StringValue string
+	NumberValue float64
+	IsColumn    bool
 }
 
 func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
