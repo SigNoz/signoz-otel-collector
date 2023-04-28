@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/processor"
 )
 
@@ -46,7 +45,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
 		DimensionsCacheSize:    defaultDimensionsCacheSize,
-		skipSanitizeLabel:      featuregate.GetRegistry().IsEnabled(dropSanitizationGateID),
+		skipSanitizeLabel:      dropSanitizationFeatureGate.IsEnabled(),
 	}
 }
 

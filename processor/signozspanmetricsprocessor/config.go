@@ -27,8 +27,10 @@ const (
 	dropSanitizationGateID = "processor.signozspanmetrics.PermissiveLabelSanitization"
 )
 
+var dropSanitizationFeatureGate *featuregate.Gate
+
 func init() {
-	featuregate.GetRegistry().MustRegisterID(
+	dropSanitizationFeatureGate = featuregate.GlobalRegistry().MustRegister(
 		dropSanitizationGateID,
 		featuregate.StageAlpha,
 		featuregate.WithRegisterDescription("Controls whether to change labels starting with '_' to 'key_'"),
