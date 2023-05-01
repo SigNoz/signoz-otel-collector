@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
@@ -108,8 +109,8 @@ func makeJaegerProtoReferences(
 	if parentSpanIDSet {
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: traceID.String(),
-			SpanId:  parentSpanID.String(),
+			TraceId: utils.GetTraceId(traceID),
+			SpanId:  utils.GetSpanId(parentSpanID),
 			RefType: "CHILD_OF",
 		})
 	}
@@ -118,8 +119,8 @@ func makeJaegerProtoReferences(
 		link := links.At(i)
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: link.TraceID().String(),
-			SpanId:  link.SpanID().String(),
+			TraceId: utils.GetTraceId(link.TraceID()),
+			SpanId:  utils.GetSpanId(link.SpanID()),
 
 			// Since Jaeger RefType is not captured in internal data,
 			// use SpanRefType_FOLLOWS_FROM by default.
@@ -330,9 +331,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	tenant := usage.GetTenantNameFromResource(resource)
 
 	var span *Span = &Span{
-		TraceId:           otelSpan.TraceID().String(),
-		SpanId:            otelSpan.SpanID().String(),
-		ParentSpanId:      otelSpan.ParentSpanID().String(),
+		TraceId:           utils.GetTraceId(otelSpan.TraceID()),
+		SpanId:            utils.GetSpanId(otelSpan.SpanID()),
+		ParentSpanId:      utils.GetSpanId(otelSpan.ParentSpanID()),
 		Name:              otelSpan.Name(),
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 		DurationNano:      durationNano,
@@ -346,8 +347,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
 		TraceModel: TraceModel{
-			TraceId:           otelSpan.TraceID().String(),
-			SpanId:            otelSpan.SpanID().String(),
+			TraceId:           utils.GetTraceId(otelSpan.TraceID()),
+			SpanId:            utils.GetSpanId(otelSpan.SpanID()),
 			Name:              otelSpan.Name(),
 			DurationNano:      durationNano,
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
