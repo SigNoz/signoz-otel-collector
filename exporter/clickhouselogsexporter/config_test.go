@@ -50,10 +50,12 @@ func TestLoadConfig(t *testing.T) {
 			Timeout: 5 * time.Second,
 		},
 		RetrySettings: exporterhelper.RetrySettings{
-			Enabled:         true,
-			InitialInterval: 5 * time.Second,
-			MaxInterval:     30 * time.Second,
-			MaxElapsedTime:  300 * time.Second,
+			Enabled:             true,
+			InitialInterval:     5 * time.Second,
+			MaxInterval:         30 * time.Second,
+			MaxElapsedTime:      300 * time.Second,
+			RandomizationFactor: 0.7,
+			Multiplier:          1.3,
 		},
 		QueueSettings: QueueSettings{
 			QueueSize: 100,
