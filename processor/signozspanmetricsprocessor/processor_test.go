@@ -110,7 +110,7 @@ func TestProcessorStart(t *testing.T) {
 			exporters := map[component.DataType]map[component.ID]component.Component{
 				component.DataTypeMetrics: {
 					component.NewID(component.DataTypeMetrics): tc.exporter,
-					// otlpConfig.ID(): tc.exporter,
+					component.NewID(typeStr):                   tc.exporter,
 				},
 			}
 			mhost := &mocks.Host{}

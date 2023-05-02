@@ -23,7 +23,6 @@ import (
 
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
-	// config.ExporterSettings        `mapstructure:",squash"`
 	exporterhelper.TimeoutSettings `mapstructure:",squash"`
 	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
 	// QueueSettings is a subset of exporterhelper.QueueSettings,
