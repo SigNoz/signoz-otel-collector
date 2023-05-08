@@ -29,6 +29,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -184,13 +185,12 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					if err != nil {
 						return err
 					}
-
 					err = statement.Append(
 						ts,
 						ots,
 						e.ksuid.String(),
-						r.TraceID().HexString(),
-						r.SpanID().HexString(),
+						utils.TraceIDToHexOrEmptyString(r.TraceID()),
+						utils.SpanIDToHexOrEmptyString(r.SpanID()),
 						uint32(r.Flags()),
 						r.SeverityText(),
 						uint8(r.SeverityNumber()),

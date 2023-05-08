@@ -26,17 +26,18 @@ import (
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
-	conventions "go.opentelemetry.io/collector/model/semconv/v1.5.0"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
 	"go.uber.org/zap"
 )
 
 // Crete new exporter.
-func newExporter(cfg component.ExporterConfig, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	configClickHouse := cfg.(*Config)
 
@@ -108,8 +109,8 @@ func makeJaegerProtoReferences(
 	if parentSpanIDSet {
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: traceID.HexString(),
-			SpanId:  parentSpanID.HexString(),
+			TraceId: utils.TraceIDToHexOrEmptyString(traceID),
+			SpanId:  utils.SpanIDToHexOrEmptyString(parentSpanID),
 			RefType: "CHILD_OF",
 		})
 	}
@@ -118,8 +119,8 @@ func makeJaegerProtoReferences(
 		link := links.At(i)
 
 		refs = append(refs, OtelSpanRef{
-			TraceId: link.TraceID().HexString(),
-			SpanId:  link.SpanID().HexString(),
+			TraceId: utils.TraceIDToHexOrEmptyString(link.TraceID()),
+			SpanId:  utils.SpanIDToHexOrEmptyString(link.SpanID()),
 
 			// Since Jaeger RefType is not captured in internal data,
 			// use SpanRefType_FOLLOWS_FROM by default.
@@ -330,9 +331,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	tenant := usage.GetTenantNameFromResource(resource)
 
 	var span *Span = &Span{
-		TraceId:           otelSpan.TraceID().HexString(),
-		SpanId:            otelSpan.SpanID().HexString(),
-		ParentSpanId:      otelSpan.ParentSpanID().HexString(),
+		TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
+		SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
+		ParentSpanId:      utils.SpanIDToHexOrEmptyString(otelSpan.ParentSpanID()),
 		Name:              otelSpan.Name(),
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 		DurationNano:      durationNano,
@@ -346,8 +347,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
 		TraceModel: TraceModel{
-			TraceId:           otelSpan.TraceID().HexString(),
-			SpanId:            otelSpan.SpanID().HexString(),
+			TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
+			SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
 			Name:              otelSpan.Name(),
 			DurationNano:      durationNano,
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
