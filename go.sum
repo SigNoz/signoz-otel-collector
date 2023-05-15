@@ -1403,6 +1403,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformpro
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.76.3/go.mod h1:tWkmaYfZSbM4IqaEDvWxkF7aXzh5k5t9oVqhayz+X14=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachereceiver v0.76.3 h1:oqwcs84GjvFdB8ZUTY5JxinoixRhSOaHzQPcJFMZRmk=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachereceiver v0.76.3/go.mod h1:maqUHzm1cjBwJjhc5OAX9dEH1v5ZFHMCdqcjAARN+P4=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.76.3 h1:Ih+Owpy3gDWdEPPk7/KoEEE5Hxh7ucrcOH2/1GF20Y8=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.76.3/go.mod h1:YfgyPO10ixvJR0b6qmHm/nzZplC/FZQvR96L365B+h4=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v0.76.3 h1:BZGWj7DxhV2PW0DBp/ehHiLxtxGOn2qr7G5vu0tppzY=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v0.76.3/go.mod h1:iWVJlVG3KFKo19+6Jf618i3dF4yDv263Dhy7cXK8Y8c=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver v0.76.3 h1:Oe9gpBdezSp+AkOMfjEyFBsVJT4g9ZIePUzPY5Pyn0Q=
