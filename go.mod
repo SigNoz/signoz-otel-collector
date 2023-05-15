@@ -65,6 +65,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachereceiver v0.76.3
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/couchdbreceiver v0.76.3
