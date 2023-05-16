@@ -17,14 +17,12 @@ package clickhouselogsexporter
 import (
 	"errors"
 
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
 )
 
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
-	config.ExporterSettings        `mapstructure:",squash"`
 	exporterhelper.TimeoutSettings `mapstructure:",squash"`
 	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
 	// QueueSettings is a subset of exporterhelper.QueueSettings,

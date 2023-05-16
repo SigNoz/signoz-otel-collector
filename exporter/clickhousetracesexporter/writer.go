@@ -43,37 +43,55 @@ const (
 
 // SpanWriter for writing spans to ClickHouse
 type SpanWriter struct {
-	logger        *zap.Logger
-	db            clickhouse.Conn
-	traceDatabase string
-	indexTable    string
-	errorTable    string
-	spansTable    string
-	encoding      Encoding
-	delay         time.Duration
-	size          int
-	spans         chan *Span
-	finish        chan bool
-	done          sync.WaitGroup
+	logger            *zap.Logger
+	db                clickhouse.Conn
+	traceDatabase     string
+	indexTable        string
+	errorTable        string
+	spansTable        string
+	attributeTable    string
+	attributeKeyTable string
+	encoding          Encoding
+	delay             time.Duration
+	size              int
+	spans             chan *Span
+	finish            chan bool
+	done              sync.WaitGroup
+}
+
+type WriterOptions struct {
+	logger            *zap.Logger
+	db                clickhouse.Conn
+	traceDatabase     string
+	spansTable        string
+	indexTable        string
+	errorTable        string
+	attributeTable    string
+	attributeKeyTable string
+	encoding          Encoding
+	delay             time.Duration
+	size              int
 }
 
 // NewSpanWriter returns a SpanWriter for the database
-func NewSpanWriter(logger *zap.Logger, db clickhouse.Conn, traceDatabase string, spansTable string, indexTable string, errorTable string, encoding Encoding, delay time.Duration, size int) *SpanWriter {
+func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
 	writer := &SpanWriter{
-		logger:        logger,
-		db:            db,
-		traceDatabase: traceDatabase,
-		indexTable:    indexTable,
-		errorTable:    errorTable,
-		spansTable:    spansTable,
-		encoding:      encoding,
-		delay:         delay,
-		size:          size,
-		spans:         make(chan *Span, size),
-		finish:        make(chan bool),
+		logger:            options.logger,
+		db:                options.db,
+		traceDatabase:     options.traceDatabase,
+		indexTable:        options.indexTable,
+		errorTable:        options.errorTable,
+		spansTable:        options.spansTable,
+		attributeTable:    options.attributeTable,
+		attributeKeyTable: options.attributeKeyTable,
+		encoding:          options.encoding,
+		delay:             options.delay,
+		size:              options.size,
+		spans:             make(chan *Span, options.size),
+		finish:            make(chan bool),
 	}
 
 	go writer.backgroundWriter()
@@ -145,6 +163,12 @@ func (w *SpanWriter) writeBatch(batch []*Span) error {
 			return err
 		}
 	}
+	if w.attributeTable != "" && w.attributeKeyTable != "" {
+		if err := w.writeTagBatch(batch); err != nil {
+			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
+			return err
+		}
+	}
 
 	return nil
 }
@@ -213,6 +237,106 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 		tag.Upsert(tableKey, w.indexTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+	return err
+}
+
+func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
+
+	ctx := context.Background()
+	tagStatement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable))
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		return err
+	}
+	tagKeyStatement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable))
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		return err
+	}
+	for _, span := range batchSpans {
+		for _, spanAttribute := range span.SpanAttributes {
+
+			err = tagKeyStatement.Append(
+				spanAttribute.Key,
+				spanAttribute.TagType,
+				spanAttribute.DataType,
+				spanAttribute.IsColumn,
+			)
+			if err != nil {
+				w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Object("span", span))
+				return err
+			}
+
+			if spanAttribute.DataType == "string" {
+				err = tagStatement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.TagType,
+					spanAttribute.DataType,
+					spanAttribute.StringValue,
+					nil,
+					spanAttribute.IsColumn,
+				)
+			} else if spanAttribute.DataType == "float64" {
+				err = tagStatement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.TagType,
+					spanAttribute.DataType,
+					nil,
+					spanAttribute.NumberValue,
+					spanAttribute.IsColumn,
+				)
+			} else if spanAttribute.DataType == "bool" {
+				err = tagStatement.Append(
+					time.Unix(0, int64(span.StartTimeUnixNano)),
+					spanAttribute.Key,
+					spanAttribute.TagType,
+					spanAttribute.DataType,
+					nil,
+					nil,
+					spanAttribute.IsColumn,
+				)
+			}
+			if err != nil {
+				w.logger.Error("Could not append span to tag Statement batch due to error: ", zap.Error(err), zap.Object("span", span))
+				return err
+			}
+		}
+	}
+
+	tagStart := time.Now()
+	err = tagStatement.Send()
+	stats.RecordWithTags(ctx,
+		[]tag.Mutator{
+			tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+			tag.Upsert(tableKey, w.attributeTable),
+		},
+		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
+	)
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not write to span attributes table due to error: ",  zap.Error(err),zap.Any("batch", logBatch))
+		return err
+	}
+
+	tagKeyStart := time.Now()
+	err = tagKeyStatement.Send()
+	stats.RecordWithTags(ctx,
+		[]tag.Mutator{
+			tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+			tag.Upsert(tableKey, w.attributeKeyTable),
+		},
+		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
+	)
+	if err != nil {
+		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
+		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		return err
+	}
+
 	return err
 }
 

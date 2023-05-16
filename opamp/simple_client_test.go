@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
-	"go.opentelemetry.io/collector/service"
+	"go.opentelemetry.io/collector/otelcol"
 	"go.uber.org/zap"
 )
 
@@ -24,7 +24,7 @@ func TestNopClientWithCollector(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	if coll.GetState() != service.StateRunning {
+	if coll.GetState() != otelcol.StateRunning {
 		t.Errorf("expected collector to be run")
 	}
 
@@ -49,7 +49,7 @@ func TestNopClientWithCollectorError(t *testing.T) {
 		t.Errorf("expected error")
 	}
 
-	if coll.GetState() != service.StateClosed {
+	if coll.GetState() != otelcol.StateClosed {
 		t.Errorf("expected collector to be in closed state")
 	}
 
@@ -74,7 +74,7 @@ func TestNopClientWithCollectorErrorRead(t *testing.T) {
 		t.Errorf("expected error")
 	}
 
-	if coll.GetState() != service.StateClosed {
+	if coll.GetState() != otelcol.StateClosed {
 		t.Errorf("expected collector to be in closed state")
 	}
 
@@ -99,7 +99,7 @@ func TestNopClientWithCollectorErrorChanMultipleTime(t *testing.T) {
 		t.Errorf("expected error")
 	}
 
-	if coll.GetState() != service.StateClosed {
+	if coll.GetState() != otelcol.StateClosed {
 		t.Errorf("expected collector to be in closed state")
 	}
 
