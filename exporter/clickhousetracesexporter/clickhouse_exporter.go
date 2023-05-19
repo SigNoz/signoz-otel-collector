@@ -464,13 +464,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		NumberValue: float64(span.Kind),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "startTime",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "float64",
-		NumberValue: float64(span.StartTimeUnixNano),
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "durationNano",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -538,13 +531,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.PeerService,
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "events",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: strings.Join(span.Events, ","),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "httpMethod",
