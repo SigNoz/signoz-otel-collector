@@ -151,10 +151,16 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" {
-			if v.Int() >= 400 {
+			// Handle both string/int http status codes.
+			statusString, err := strconv.Atoi(v.Str())
+			statusInt := v.Int()
+			if err == nil && statusString != 0 {
+				statusInt = int64(statusString)
+			}
+			if statusInt >= 400 {
 				span.HasError = true
 			}
-			span.HttpCode = strconv.FormatInt(v.Int(), 10)
+			span.HttpCode = strconv.FormatInt(statusInt, 10)
 			span.ResponseStatusCode = span.HttpCode
 		} else if k == "http.url" && span.Kind == 3 {
 			value := v.Str()
