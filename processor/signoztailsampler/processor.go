@@ -185,7 +185,7 @@ func (tsp *tailSamplingSpanProcessor) samplingPolicyOnTick() {
 		// Sampled or not, remove the batches
 		trace.Lock()
 		allSpans := ptrace.NewTraces()
-		trace.ReceivedBatches.MoveTo(allSpans)
+		trace.ReceivedBatches.CopyTo(allSpans)
 		trace.Unlock()
 
 		if decision == sampling.Sampled {
