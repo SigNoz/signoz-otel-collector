@@ -21,6 +21,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/idbatcher"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/timeutils"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
@@ -30,10 +33,6 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/timeutils"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/idbatcher"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
 )
 
 // policy combines a sampling policy evaluator with the destinations to be

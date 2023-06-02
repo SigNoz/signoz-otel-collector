@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
 )
 
 func TestCompositeHelper(t *testing.T) {
