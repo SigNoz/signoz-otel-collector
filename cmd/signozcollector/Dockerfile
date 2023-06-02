@@ -7,6 +7,10 @@ RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 # define arguments and default values
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+ARG USER_UID=10001
+
+# create a non-root user for running the collector
+USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
 COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
@@ -19,8 +23,7 @@ COPY exporter/clickhouselogsexporter/migrations /logsmigrations
 ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
 
 # expose OTLP ports for the collector
-EXPOSE 4317
-EXPOSE 4318
+EXPOSE 4317 4318
 
 # run the binary as the entrypoint and pass the default config file as a flag
 ENTRYPOINT [ "/signoz-collector" ]
