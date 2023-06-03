@@ -15,9 +15,10 @@
 package signoztailsampler
 
 import (
-	"errors"
 	"fmt"
 	"time"
+
+	"go.uber.org/multierr"
 )
 
 // PolicyType indicates the type of sampling policy.
@@ -149,7 +150,7 @@ func (c *Config) Validate() error {
 	}
 
 	if len(errs) != 0 {
-		return errors.Join(errs...)
+		return multierr.Combine(errs...)
 	}
 
 	return nil
