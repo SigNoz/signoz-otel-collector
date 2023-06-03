@@ -19,8 +19,11 @@ import (
 	"sync"
 	"time"
 
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/processor"
 )
 
 const (
@@ -32,17 +35,22 @@ const (
 
 var onceMetrics sync.Once
 
-// NewFactory creates a factory for the SigNoz Tail Sampling processor.
-func NewFactory() component.ProcessorFactory {
-	return component.NewProcessorFactory(
+// NewFactory returns a new factory for the Tail Sampling processor.
+func NewFactory() processor.Factory {
+	onceMetrics.Do(func() {
+		// TODO: this is hardcoding the metrics level and skips error handling
+		_ = view.Register(SamplingProcessorMetricViews(configtelemetry.LevelNormal)...)
+	})
+
+	return processor.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesProcessor(createTracesProcessor, stability),
-	)
+		processor.WithTraces(createTracesProcessor, stability))
 }
 
-func createDefaultConfig() component.ProcessorConfig {
+func createDefaultConfig() component.Config {
 	return &Config{
+		// ProcessorSettings: config.NewProcessorSettings(component.NewID(typeStr)),
 		DecisionWait: 30 * time.Second,
 		NumTraces:    50000,
 	}
@@ -50,10 +58,10 @@ func createDefaultConfig() component.ProcessorConfig {
 
 func createTracesProcessor(
 	_ context.Context,
-	params component.ProcessorCreateSettings,
-	cfg component.ProcessorConfig,
+	params processor.CreateSettings,
+	cfg component.Config,
 	nextConsumer consumer.Traces,
-) (component.TracesProcessor, error) {
+) (processor.Traces, error) {
 	tCfg := cfg.(*Config)
 	return newTracesProcessor(params.Logger, nextConsumer, *tCfg)
 }

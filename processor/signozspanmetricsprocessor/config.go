@@ -17,7 +17,6 @@ package signozspanmetricsprocessor
 import (
 	"time"
 
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
@@ -28,8 +27,10 @@ const (
 	dropSanitizationGateID = "processor.signozspanmetrics.PermissiveLabelSanitization"
 )
 
+var dropSanitizationFeatureGate *featuregate.Gate
+
 func init() {
-	featuregate.GetRegistry().MustRegisterID(
+	dropSanitizationFeatureGate = featuregate.GlobalRegistry().MustRegister(
 		dropSanitizationGateID,
 		featuregate.StageAlpha,
 		featuregate.WithRegisterDescription("Controls whether to change labels starting with '_' to 'key_'"),
@@ -50,7 +51,6 @@ type ExcludePattern struct {
 
 // Config defines the configuration options for spanmetricsprocessor.
 type Config struct {
-	config.ProcessorSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 
 	// MetricsExporter is the name of the metrics exporter to use to ship metrics.
 	MetricsExporter string `mapstructure:"metrics_exporter"`

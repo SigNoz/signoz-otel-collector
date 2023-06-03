@@ -22,7 +22,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -43,7 +43,7 @@ var (
 )
 
 // NewFactory creates a factory for Elastic exporter.
-func NewFactory() component.ExporterFactory {
+func NewFactory() exporter.Factory {
 	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
 	writeLatencyView := &view.View{
@@ -56,19 +56,18 @@ func NewFactory() component.ExporterFactory {
 
 	view.Register(writeLatencyView)
 
-	return component.NewExporterFactory(
+	return exporter.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithLogsExporter(createLogsExporter, component.StabilityLevelBeta),
+		exporter.WithLogs(createLogsExporter, component.StabilityLevelBeta),
 	)
 }
 
-func createDefaultConfig() component.ExporterConfig {
+func createDefaultConfig() component.Config {
 	return &Config{
-		ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
-		TimeoutSettings:  exporterhelper.NewDefaultTimeoutSettings(),
-		QueueSettings:    QueueSettings{QueueSize: exporterhelper.NewDefaultQueueSettings().QueueSize},
-		RetrySettings:    exporterhelper.NewDefaultRetrySettings(),
+		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
+		QueueSettings:   QueueSettings{QueueSize: exporterhelper.NewDefaultQueueSettings().QueueSize},
+		RetrySettings:   exporterhelper.NewDefaultRetrySettings(),
 	}
 }
 
@@ -76,9 +75,9 @@ func createDefaultConfig() component.ExporterConfig {
 // Logs are directly insert into clickhouse.
 func createLogsExporter(
 	ctx context.Context,
-	set component.ExporterCreateSettings,
-	cfg component.ExporterConfig,
-) (component.LogsExporter, error) {
+	set exporter.CreateSettings,
+	cfg component.Config,
+) (exporter.Logs, error) {
 	c := cfg.(*Config)
 	exporter, err := newExporter(set.Logger, c)
 	if err != nil {

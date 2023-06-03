@@ -38,6 +38,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer/consumererror"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
@@ -62,7 +63,7 @@ type PrwExporter struct {
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
 // client parameter cannot be nil.
-func NewPrwExporter(cfg *Config, set component.ExporterCreateSettings) (*PrwExporter, error) {
+func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, error) {
 
 	sanitizedLabels, err := validateAndSanitizeExternalLabels(cfg.ExternalLabels)
 	if err != nil {
@@ -190,7 +191,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							numDataPoints = metric.Summary().DataPoints().Len()
 						default:
 						}
-						zap.S().Errorf("dropped %d number of metric data points of type %d with temporality %d for a service %s", numDataPoints, metricType, temporality, serviceName.AsString())
+						prwe.settings.Logger.Error("unsupported metric type and temporality combination", zap.Int("numDataPoints", numDataPoints), zap.Any("metricType", metricType), zap.Any("temporality", temporality), zap.String("service name", serviceName.AsString()))
 						continue
 					}
 
