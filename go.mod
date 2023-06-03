@@ -40,7 +40,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage v0.76.3
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.76.3
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.76.3
@@ -139,7 +138,6 @@ require (
 	go.opentelemetry.io/collector/semconv v0.76.1
 	go.opentelemetry.io/otel/trace v1.14.0
 	go.uber.org/atomic v1.10.0
-	go.uber.org/goleak v1.2.1
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.24.0
 	google.golang.org/grpc v1.54.0
@@ -324,6 +322,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.76.3 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.76.3 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/common v0.76.3 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.76.3 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/docker v0.76.3 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter v0.76.3 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/k8sconfig v0.76.3 // indirect
@@ -410,6 +409,7 @@ require (
 	go.opentelemetry.io/otel/metric v0.37.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.14.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v0.37.0 // indirect
+	go.uber.org/goleak v1.2.1 // indirect
 	golang.org/x/crypto v0.8.0 // indirect
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
 	golang.org/x/mod v0.10.0 // indirect
@@ -446,6 +446,12 @@ require (
 replace (
 	github.com/golang-migrate/migrate/v4 => github.com/sergey-telpuk/migrate/v4 v4.15.3-0.20220303065225-d5ae59d12ff7
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
+
+	// using 0.23.0 as there is an issue with 0.24.0 stats that results in
+	// an error
+	// panic: interface conversion: interface {} is nil, not func(*tag.Map, []stats.Measurement, map[string]interface {})
+
+	go.opencensus.io => go.opencensus.io v0.23.0
 )
 
 // see https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/4433
