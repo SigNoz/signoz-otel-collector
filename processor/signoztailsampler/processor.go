@@ -158,7 +158,7 @@ func (tsp *tailSamplingSpanProcessor) samplingPolicyOnTick() {
 		trace.Lock()
 		allSpans := ptrace.NewTraces()
 		trace.FinalDecision = decision
-		trace.ReceivedBatches.MoveTo(allSpans)
+		trace.ReceivedBatches.CopyTo(allSpans)
 		trace.Unlock()
 
 		if decision == sampling.Sampled {

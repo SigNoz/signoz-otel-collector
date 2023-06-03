@@ -15,8 +15,8 @@
 package signoztailsampler
 
 import (
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -140,18 +140,17 @@ type Config struct {
 
 // Validate returns errors with config
 func (c *Config) Validate() error {
-	var errs []string
-	var allErrors string
+	var errs []error
 	for _, p := range c.PolicyCfgs {
 		if p.Priority == 0 {
 			// priority must be explicitly assigned
-			errs = append(errs, fmt.Sprintf("%s: %s", p.Name, "priority must be greater than 1"))
+			errs = append(errs, fmt.Errorf("%s: %s", p.Name, "priority must be greater than 1"))
 		}
 	}
 
 	if len(errs) != 0 {
-		allErrors = strings.Join(errs, ",")
+		return errors.Join(errs...)
 	}
 
-	return fmt.Errorf("%v", allErrors)
+	return nil
 }
