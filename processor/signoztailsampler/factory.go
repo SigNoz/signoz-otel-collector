@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tailsamplingprocessor // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
+package signoztailsampler // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
 
 import (
 	"context"
@@ -28,7 +28,7 @@ import (
 
 const (
 	// The value of "type" Tail Sampling in configuration.
-	typeStr = "tail_sampling"
+	typeStr = "signoz_tail_sampling"
 	// The stability level of the processor.
 	stability = component.StabilityLevelBeta
 )

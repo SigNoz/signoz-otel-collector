@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sampling // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
+package sampling // import "github.com/SigNoz/signoz-otel-collector/processor/internal/sampling"
 
 import (
 	"sync"
@@ -36,6 +36,8 @@ type TraceData struct {
 	SpanCount *atomic.Int64
 	// ReceivedBatches stores all the batches received for the trace.
 	ReceivedBatches ptrace.Traces
+	// FinalDecision.
+	FinalDecision Decision
 }
 
 // Decision gives the status of sampling decision.
@@ -63,6 +65,11 @@ const (
 	// InvertNotSampled is used on the invert match flow and indicates to not
 	// sample the data.
 	InvertNotSampled
+
+	// No result indicates that a particular evaluation did not
+	// have an opinion about the trace. this is likely when
+	// the filters on policy dont match the trace
+	NoResult
 )
 
 // PolicyEvaluator implements a tail-based sampling policy evaluator,

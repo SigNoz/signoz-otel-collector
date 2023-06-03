@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tailsamplingprocessor // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
+package signoztailsampler // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor"
 
 import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -31,9 +32,9 @@ import (
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/timeutils"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/idbatcher"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/idbatcher"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/sampling"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/timeutils"
 )
 
 // policy combines a sampling policy evaluator with the destinations to be
@@ -64,7 +65,7 @@ type tailSamplingSpanProcessor struct {
 }
 
 const (
-	sourceFormat = "tail_sampling"
+	sourceFormat = "signoz_tail_sampling"
 )
 
 // newTracesProcessor returns a processor.TracesProcessor that will perform tail sampling according to the given
@@ -74,7 +75,12 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 		return nil, component.ErrNilNextConsumer
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config invalid: %v", err)
+	}
+
 	numDecisionBatches := uint64(cfg.DecisionWait.Seconds())
+
 	inBatcher, err := idbatcher.New(numDecisionBatches, cfg.ExpectedNewTracesPerSec, uint64(2*runtime.NumCPU()))
 	if err != nil {
 		return nil, err
@@ -82,13 +88,21 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 
 	ctx := context.Background()
 	var policies []*policy
-	for i := range cfg.PolicyCfgs {
-		policyCfg := &cfg.PolicyCfgs[i]
+	policyGroups := []PolicyGroupCfg{}
+
+	copy(policyGroups, cfg.PolicyCfgs)
+	// sort the policies by priority
+	sort.Slice(policyGroups, func(i, j int) bool {
+		return policyGroups[i].Priority < policyGroups[j].Priority
+	})
+
+	for i := range policyGroups {
+		policyCfg := policyGroups[i]
 		policyCtx, err := tag.New(ctx, tag.Upsert(tagPolicyKey, policyCfg.Name), tag.Upsert(tagSourceFormat, sourceFormat))
 		if err != nil {
 			return nil, err
 		}
-		eval, err := getPolicyEvaluator(logger, policyCfg)
+		eval := NewDefaultEvaluator(logger, policyCfg.BasePolicy, policyCfg.SubPolicies)
 		if err != nil {
 			return nil, err
 		}
@@ -99,6 +113,7 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 		}
 		policies = append(policies, p)
 	}
+	logger.Debug("loadded policies:", zap.Int("policy count", len(policies)))
 
 	tsp := &tailSamplingSpanProcessor{
 		ctx:             ctx,
@@ -115,50 +130,6 @@ func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Co
 	tsp.deleteChan = make(chan pcommon.TraceID, cfg.NumTraces)
 
 	return tsp, nil
-}
-
-func getPolicyEvaluator(logger *zap.Logger, cfg *PolicyCfg) (sampling.PolicyEvaluator, error) {
-	switch cfg.Type {
-	case Composite:
-		return getNewCompositePolicy(logger, &cfg.CompositeCfg)
-	case And:
-		return getNewAndPolicy(logger, &cfg.AndCfg)
-	default:
-		return getSharedPolicyEvaluator(logger, &cfg.sharedPolicyCfg)
-	}
-}
-
-func getSharedPolicyEvaluator(logger *zap.Logger, cfg *sharedPolicyCfg) (sampling.PolicyEvaluator, error) {
-	switch cfg.Type {
-	case AlwaysSample:
-		return sampling.NewAlwaysSample(logger), nil
-	case Latency:
-		lfCfg := cfg.LatencyCfg
-		return sampling.NewLatency(logger, lfCfg.ThresholdMs), nil
-	case NumericAttribute:
-		nafCfg := cfg.NumericAttributeCfg
-		return sampling.NewNumericAttributeFilter(logger, nafCfg.Key, nafCfg.MinValue, nafCfg.MaxValue), nil
-	case Probabilistic:
-		pCfg := cfg.ProbabilisticCfg
-		return sampling.NewProbabilisticSampler(logger, pCfg.HashSalt, pCfg.SamplingPercentage), nil
-	case StringAttribute:
-		safCfg := cfg.StringAttributeCfg
-		return sampling.NewStringAttributeFilter(logger, safCfg.Key, safCfg.Values, safCfg.EnabledRegexMatching, safCfg.CacheMaxSize, safCfg.InvertMatch), nil
-	case StatusCode:
-		scfCfg := cfg.StatusCodeCfg
-		return sampling.NewStatusCodeFilter(logger, scfCfg.StatusCodes)
-	case RateLimiting:
-		rlfCfg := cfg.RateLimitingCfg
-		return sampling.NewRateLimiting(logger, rlfCfg.SpansPerSecond), nil
-	case SpanCount:
-		spCfg := cfg.SpanCountCfg
-		return sampling.NewSpanCount(logger, spCfg.MinSpans), nil
-	case TraceState:
-		tsfCfg := cfg.TraceStateCfg
-		return sampling.NewTraceStateFilter(logger, tsfCfg.Key, tsfCfg.Values), nil
-	default:
-		return nil, fmt.Errorf("unknown sampling policy type %s", cfg.Type)
-	}
 }
 
 type policyMetrics struct {
@@ -186,7 +157,8 @@ func (tsp *tailSamplingSpanProcessor) samplingPolicyOnTick() {
 		// Sampled or not, remove the batches
 		trace.Lock()
 		allSpans := ptrace.NewTraces()
-		trace.ReceivedBatches.MoveTo(allSpans)
+		trace.FinalDecision = decision
+		trace.ReceivedBatches.CopyTo(allSpans)
 		trace.Unlock()
 
 		if decision == sampling.Sampled {
@@ -209,16 +181,10 @@ func (tsp *tailSamplingSpanProcessor) samplingPolicyOnTick() {
 	)
 }
 
-func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sampling.TraceData, metrics *policyMetrics) (sampling.Decision, *policy) {
-	finalDecision := sampling.NotSampled
+func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sampling.TraceData, metrics *policyMetrics) (d sampling.Decision, p *policy) {
+
+	finalDecision := sampling.NoResult
 	var matchingPolicy *policy
-	samplingDecision := map[sampling.Decision]bool{
-		sampling.Error:            false,
-		sampling.Sampled:          false,
-		sampling.NotSampled:       false,
-		sampling.InvertSampled:    false,
-		sampling.InvertNotSampled: false,
-	}
 
 	// Check all policies before making a final decision
 	for i, p := range tsp.policies {
@@ -228,72 +194,58 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sa
 			p.ctx,
 			statDecisionLatencyMicroSec.M(int64(time.Since(policyEvaluateStartTime)/time.Microsecond)))
 
+		trace.Decisions[i] = decision
+
 		if err != nil {
-			samplingDecision[sampling.Error] = true
-			trace.Decisions[i] = sampling.NotSampled
 			metrics.evaluateErrorCount++
 			tsp.logger.Debug("Sampling policy error", zap.Error(err))
-		} else {
-			switch decision {
-			case sampling.Sampled:
-				samplingDecision[sampling.Sampled] = true
-				trace.Decisions[i] = decision
+		}
 
-			case sampling.NotSampled:
-				samplingDecision[sampling.NotSampled] = true
-				trace.Decisions[i] = decision
-
-			case sampling.InvertSampled:
-				samplingDecision[sampling.InvertSampled] = true
-				trace.Decisions[i] = sampling.Sampled
-
-			case sampling.InvertNotSampled:
-				samplingDecision[sampling.InvertNotSampled] = true
-				trace.Decisions[i] = sampling.NotSampled
-			}
+		if decision == sampling.Sampled || decision == sampling.NotSampled {
+			finalDecision = decision
+			matchingPolicy = p
+			break
 		}
 	}
 
-	// InvertNotSampled takes precedence over any other decision
-	switch {
-	case samplingDecision[sampling.InvertNotSampled]:
-		finalDecision = sampling.NotSampled
-	case samplingDecision[sampling.Sampled]:
+	// check if none of the policies matched
+	if finalDecision == sampling.NoResult {
+		// we default to always sample when no policies match
 		finalDecision = sampling.Sampled
-	case samplingDecision[sampling.InvertSampled] && !samplingDecision[sampling.NotSampled]:
-		finalDecision = sampling.Sampled
+
+		// this assignment is for reporting purpose only,
+		// no evaluation occurs after this point
+		matchingPolicy = &policy{
+			name:      string(AlwaysSample),
+			evaluator: sampling.NewAlwaysSample(tsp.logger),
+			ctx:       tsp.ctx,
+		}
 	}
 
-	for _, p := range tsp.policies {
-		switch finalDecision {
-		case sampling.Sampled:
-			// any single policy that decides to sample will cause the decision to be sampled
-			// the nextConsumer will get the context from the first matching policy
-			if matchingPolicy == nil {
-				matchingPolicy = p
-			}
+	// always sample by default, hence no-result means sampled
+	switch finalDecision {
+	case sampling.Sampled:
 
-			_ = stats.RecordWithTags(
-				p.ctx,
-				[]tag.Mutator{tag.Upsert(tagSampledKey, "true")},
-				statCountTracesSampled.M(int64(1)),
-			)
-			metrics.decisionSampled++
+		_ = stats.RecordWithTags(
+			matchingPolicy.ctx,
+			[]tag.Mutator{tag.Upsert(tagSampledKey, "true")},
+			statCountTracesSampled.M(int64(1)),
+		)
+		metrics.decisionSampled++
 
-		case sampling.NotSampled:
-			_ = stats.RecordWithTags(
-				p.ctx,
-				[]tag.Mutator{tag.Upsert(tagSampledKey, "false")},
-				statCountTracesSampled.M(int64(1)),
-			)
-			metrics.decisionNotSampled++
-		}
+	case sampling.NotSampled:
+		_ = stats.RecordWithTags(
+			matchingPolicy.ctx,
+			[]tag.Mutator{tag.Upsert(tagSampledKey, "false")},
+			statCountTracesSampled.M(int64(1)),
+		)
+		metrics.decisionNotSampled++
 	}
 
 	return finalDecision, matchingPolicy
 }
 
-// ConsumeTraces is required by the component.TracesProcessor interface.
+// ConsumeTraces is required by the processor.Traces interface.
 func (tsp *tailSamplingSpanProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
 	resourceSpans := td.ResourceSpans()
 	for i := 0; i < resourceSpans.Len(); i++ {
@@ -318,8 +270,10 @@ func (tsp *tailSamplingSpanProcessor) groupSpansByTraceKey(resourceSpans ptrace.
 }
 
 func (tsp *tailSamplingSpanProcessor) processTraces(resourceSpans ptrace.ResourceSpans) {
+
 	// Group spans per their traceId to minimize contention on idToTrace
 	idToSpans := tsp.groupSpansByTraceKey(resourceSpans)
+
 	var newTraceIDs int64
 	for id, spans := range idToSpans {
 		lenSpans := int64(len(spans))
@@ -357,47 +311,35 @@ func (tsp *tailSamplingSpanProcessor) processTraces(resourceSpans ptrace.Resourc
 			}
 		}
 
-		for i, p := range tsp.policies {
-			actualData.Lock()
-			actualDecision := actualData.Decisions[i]
-			// If decision is pending, we want to add the new spans still under the lock, so the decision doesn't happen
-			// in between the transition from pending.
-			if actualDecision == sampling.Pending {
-				// Add the spans to the trace, but only once for all policy, otherwise same spans will
-				// be duplicated in the final trace.
-				appendToTraces(actualData.ReceivedBatches, resourceSpans, spans)
-				actualData.Unlock()
-				break
-			}
+		// The only thing we really care about here is the final decision.
+		actualData.Lock()
+		finalDecision := actualData.FinalDecision
+
+		if finalDecision == sampling.Unspecified {
+			// If the final decision hasn't been made, add the new spans under the lock.
+			appendToTraces(actualData.ReceivedBatches, resourceSpans, spans)
+			actualData.Unlock()
+		} else {
 			actualData.Unlock()
 
-			switch actualDecision {
+			switch finalDecision {
 			case sampling.Sampled:
 				// Forward the spans to the policy destinations
 				traceTd := ptrace.NewTraces()
 				appendToTraces(traceTd, resourceSpans, spans)
-				if err := tsp.nextConsumer.ConsumeTraces(p.ctx, traceTd); err != nil {
-					tsp.logger.Warn("Error sending late arrived spans to destination",
-						zap.String("policy", p.name),
+				if err := tsp.nextConsumer.ConsumeTraces(tsp.ctx, traceTd); err != nil {
+					tsp.logger.Warn(
+						"Error sending late arrived spans to destination",
 						zap.Error(err))
 				}
 			case sampling.NotSampled:
 				stats.Record(tsp.ctx, statLateSpanArrivalAfterDecision.M(int64(time.Since(actualData.DecisionTime)/time.Second)))
-
 			default:
 				tsp.logger.Warn("Encountered unexpected sampling decision",
-					zap.String("policy", p.name),
-					zap.Int("decision", int(actualDecision)))
-			}
-
-			// At this point the late arrival has been passed to nextConsumer. Need to break out of the policy loop
-			// so that it isn't sent to nextConsumer more than once when multiple policies chose to sample
-			if actualDecision == sampling.Sampled {
-				break
+					zap.Int("decision", int(finalDecision)))
 			}
 		}
 	}
-
 	stats.Record(tsp.ctx, statNewTraceIDReceivedCount.M(newTraceIDs))
 }
 
