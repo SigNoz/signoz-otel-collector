@@ -33,15 +33,18 @@ test:
 
 .PHONY: build
 build:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o signoz-collector ./cmd/signozcollector
+
+.PHONY: build-static
 	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
 
 .PHONY: amd64
 amd64:
-	make GOARCH=amd64 build
+	make GOARCH=amd64 build-static
 
 .PHONY: arm64
 arm64:
-	make CC=aarch64-linux-gnu-gcc GOARCH=arm64 build
+	make CC=aarch64-linux-gnu-gcc GOARCH=arm64 build-static
 
 .PHONY: build-all
 build-all: amd64 arm64
