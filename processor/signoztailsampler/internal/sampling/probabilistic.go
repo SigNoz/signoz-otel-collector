@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sampling // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
+package sampling // import "github.com/SigNoz/signoz-otel-collector/processor/internal/sampling"
 
 import (
 	"hash/fnv"
@@ -52,6 +52,7 @@ func NewProbabilisticSampler(logger *zap.Logger, hashSalt string, samplingPercen
 
 // Evaluate looks at the trace data and returns a corresponding SamplingDecision.
 func (s *probabilisticSampler) Evaluate(traceID pcommon.TraceID, _ *TraceData) (Decision, error) {
+
 	s.logger.Debug("Evaluating spans in probabilistic filter")
 
 	if hashTraceID(s.hashSalt, traceID[:]) <= s.threshold {

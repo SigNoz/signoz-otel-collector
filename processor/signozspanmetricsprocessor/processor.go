@@ -161,7 +161,9 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	}
 	dbCallDimensions = append(dbCallDimensions, pConfig.Dimensions...)
 
-	var externalCallDimensions []Dimension
+	var externalCallDimensions = []Dimension{
+		{Name: tagHTTPStatusCode},
+	}
 	externalCallDimensions = append(externalCallDimensions, pConfig.Dimensions...)
 
 	if pConfig.DimensionsCacheSize <= 0 {
