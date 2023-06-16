@@ -50,6 +50,9 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/apachereceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscontainerinsightreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsecscontainermetricsreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/couchdbreceiver"
@@ -135,6 +138,10 @@ func Components() (otelcol.Factories, error) {
 
 	receivers := []receiver.Factory{
 		apachereceiver.NewFactory(),
+		awscloudwatchreceiver.NewFactory(),
+		awscontainerinsightreceiver.NewFactory(),
+		awsecscontainermetricsreceiver.NewFactory(),
+		awsxrayreceiver.NewFactory(),
 		carbonreceiver.NewFactory(),
 		collectdreceiver.NewFactory(),
 		couchdbreceiver.NewFactory(),
@@ -179,7 +186,6 @@ func Components() (otelcol.Factories, error) {
 		udplogreceiver.NewFactory(),
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
-		awscloudwatchreceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
