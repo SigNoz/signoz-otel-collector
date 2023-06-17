@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - v*.*.*
+
+jobs:
+  upload-release-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Install cross-compilation tools
+        run: |
+          set -ex
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+      - name: Build artifacts for arm64/amd64
+        run: make build-all
+      - name: Tar artifacts
+        run: |
+          set -ex
+          echo "Creating checksums and tarballs"
+          cd .build/linux-amd64
+          sha256sum signoz-collector > signoz-collector-linux-amd64.sha256
+          tar -czvf signoz-collector-linux-amd64.tar.gz signoz-collector
+          cd ../linux-arm64
+          sha256sum signoz-collector > signoz-collector-linux-arm64.sha256
+          tar -czvf signoz-collector-linux-arm64.tar.gz signoz-collector
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            .build/linux-amd64/signoz-collector-linux-amd64.sha256
+            .build/linux-amd64/signoz-collector-linux-amd64.tar.gz
+            .build/linux-arm64/signoz-collector-linux-arm64.sha256
+            .build/linux-arm64/signoz-collector-linux-arm64.tar.gz
