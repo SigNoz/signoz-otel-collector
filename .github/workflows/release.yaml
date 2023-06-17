@@ -36,3 +36,4 @@ jobs:
             .build/linux-amd64/signoz-collector-linux-amd64.tar.gz
             .build/linux-arm64/signoz-collector-linux-arm64.sha256
             .build/linux-arm64/signoz-collector-linux-arm64.tar.gz
+          generate_release_notes: true
