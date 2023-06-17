@@ -18,7 +18,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
       - name: Build artifacts for arm64/amd64
         run: make build-all
-      - name: Tar artifacts
+      - name: Create checksums and tarballs
         run: |
           set -ex
           echo "Creating checksums and tarballs"
@@ -28,7 +28,7 @@ jobs:
           cd ../linux-arm64
           sha256sum signoz-collector > signoz-collector-linux-arm64.sha256
           tar -czvf signoz-collector-linux-arm64.tar.gz signoz-collector
-      - name: Release
+      - name: Create release and upload assets
         uses: softprops/action-gh-release@v1
         with:
           files: |
