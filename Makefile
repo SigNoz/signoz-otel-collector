@@ -63,7 +63,7 @@ build-and-push-signoz-collector:
 	@echo "------------------"
 	@echo  "--> Build and push signoz collector docker image"
 	@echo "------------------"
-	docker buildx build --platform linux/amd64,linux/arm64 --progress plane \
+	docker buildx build --platform linux/amd64,linux/arm64 --progress plain \
 		--no-cache --push -f cmd/signozcollector/Dockerfile \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
@@ -73,7 +73,7 @@ build-signoz-collector:
 	@echo  "--> Build signoz collector docker image"
 	@echo "------------------"
 	docker build --build-arg TARGETPLATFORM="linux/amd64" \
-		--no-cache -f cmd/signozcollector/Dockerfile --progress plane \
+		--no-cache -f cmd/signozcollector/Dockerfile --progress plain \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
 .PHONY: lint
