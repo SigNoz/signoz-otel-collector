@@ -1,0 +1,186 @@
+project_name: signoz-otel-collector
+builds:
+    - id: signoz-otel-collector
+      goos:
+        - darwin
+        - linux
+        - windows
+      goarch:
+        - "386"
+        - amd64
+        - arm64
+      ignore:
+        - goos: darwin
+          goarch: "386"
+        - goos: windows
+          goarch: arm64
+      binary: signoz-collector
+      main: ./cmd/signozcollector
+      ldflags:
+        - -s
+        - -w
+      flags:
+        - -trimpath
+        - -tags=timetzdata
+      env:
+        - CGO_ENABLED=0
+archives:
+    - id: signoz-otel-collector
+      builds:
+        - signoz-otel-collector
+      name_template: '{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}'
+nfpms:
+    - package_name: signoz-otel-collector
+      contents:
+        - src: config/default-config.yaml
+          dst: /etc/otel/config.yaml
+          type: config
+      id: signoz-otel-collector
+      builds:
+        - signoz-otel-collector
+      formats:
+        - apk
+        - deb
+        - rpm
+      maintainer: SigNoz <dev@signoz.io>
+      description: SigNoz's distribution of OpenTelemetry Collector
+checksum:
+    name_template: '{{ .ProjectName }}_checksums.txt'
+dockers:
+    - goos: linux
+      goarch: "386"
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+    - goos: linux
+      goarch: amd64
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+    - goos: linux
+      goarch: arm64
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+    - goos: linux
+      goarch: "386"
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+
+    - goos: linux
+      goarch: amd64
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+
+    - goos: linux
+      goarch: arm64
+      dockerfile: ./cmd/signozcollector/Dockerfile.experimental
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+      extra_files:
+        - config/default-config.yaml
+      build_flag_templates:
+        - --pull
+        - --platform=linux/386
+        - --label=org.opencontainers.image.created={{.Date}}
+        - --label=org.opencontainers.image.name={{.ProjectName}}
+        - --label=org.opencontainers.image.revision={{.FullCommit}}
+        - --label=org.opencontainers.image.version={{.Version}}
+        - --label=org.opencontainers.image.source={{.GitURL}}
+      use: buildx
+docker_manifests:
+    - name_template: signoz/signoz-otel-collector:{{ .Version }}
+      image_templates:
+        - signoz/signoz-otel-collector:{{ .Version }}-386
+        - signoz/signoz-otel-collector:{{ .Version }}-amd64
+        - signoz/signoz-otel-collector:{{ .Version }}-arm64
+    - name_template: signoz/signoz-otel-collector:latest
+      image_templates:
+        - signoz/signoz-otel-collector:latest-386
+        - signoz/signoz-otel-collector:latest-amd64
+        - signoz/signoz-otel-collector:latest-arm64
+    - name_template: ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}
+      image_templates:
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-amd64
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:{{ .Version }}-arm64
+    - name_template: ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest
+      image_templates:
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-386
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-amd64
+        - ghcr.io/signoz/signoz-otel-collector/signoz-otel-collector:latest-arm64
