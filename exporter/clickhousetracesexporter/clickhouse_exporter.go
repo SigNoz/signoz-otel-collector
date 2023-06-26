@@ -157,7 +157,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			if statusInt >= 400 {
+			if statusInt >= 500 || (statusInt >= 400 && span.Kind != 2) {
 				span.HasError = true
 			}
 			span.HttpCode = strconv.FormatInt(statusInt, 10)
