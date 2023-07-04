@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -29,28 +29,27 @@ const (
 	archiveNamespace = "clickhouse-archive"
 )
 
-func createDefaultConfig() component.ExporterConfig {
+func createDefaultConfig() component.Config {
 	// opts := NewOptions(primaryNamespace, archiveNamespace)
 	return &Config{
 		// Options:          *opts,
-		ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
 	}
 }
 
 // NewFactory creates a factory for Logging exporter
-func NewFactory() component.ExporterFactory {
-	return component.NewExporterFactory(
+func NewFactory() exporter.Factory {
+	return exporter.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesExporter(createTracesExporter, component.StabilityLevelUndefined),
+		exporter.WithTraces(createTracesExporter, component.StabilityLevelUndefined),
 	)
 }
 
 func createTracesExporter(
 	ctx context.Context,
-	params component.ExporterCreateSettings,
-	cfg component.ExporterConfig,
-) (component.TracesExporter, error) {
+	params exporter.CreateSettings,
+	cfg component.Config,
+) (exporter.Traces, error) {
 
 	oce, err := newExporter(cfg, params.Logger)
 	if err != nil {
