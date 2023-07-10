@@ -62,7 +62,9 @@ type clickHouse struct {
 	// Maintains the lookup map for fingerprints that are
 	// written to time series table. This map is used to eliminate the
 	// unnecessary writes to table for the records that already exist.
-	timeSeries map[uint64]struct{}
+	timeSeries      map[uint64]struct{}
+	prevShardCount  uint64
+	watcherInterval time.Duration
 
 	mWrittenTimeSeries prometheus.Counter
 }
@@ -72,6 +74,7 @@ type ClickHouseParams struct {
 	DropDatabase         bool
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
+	WatcherInterval      time.Duration
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -170,6 +173,15 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		}
 	}
 
+	// TODO(srikanthccv): Remove this once we have a better way to handle data and last write
+	removeTTL := fmt.Sprintf(`
+		ALTER TABLE %s.%s ON CLUSTER %s REMOVE TTL;`, database, TIME_SERIES_TABLE, CLUSTER)
+	if err = conn.Exec(context.Background(), removeTTL); err != nil {
+		if !strings.Contains(err.Error(), "Table doesn't have any table TTL expression, cannot remove.") {
+			return nil, err
+		}
+	}
+
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    l,
@@ -184,60 +196,48 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Name:      "written_time_series",
 			Help:      "Number of written time series.",
 		}),
+		watcherInterval: params.WatcherInterval,
 	}
 
 	go func() {
 		ctx := pprof.WithLabels(context.TODO(), pprof.Labels("component", "clickhouse_reloader"))
 		pprof.SetGoroutineLabels(ctx)
-		ch.runTimeSeriesReloader(ctx)
+		ch.shardCountWatcher(ctx)
 	}()
 
 	return ch, nil
 }
 
-// runTimeSeriesReloader periodically queries the time series table
-// and updates the timeSeries lookup map with new fingerprints.
-// One might wonder why is there a need to reload the data from clickhouse
-// when it just suffices to keep track of the fingerprint for the incoming
-// write requests. This is because there could be multiple instance of
-// metric exporters and they would only contain partial info with latter
-// approach.
-func (ch *clickHouse) runTimeSeriesReloader(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
+	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.%s`, ch.database, DISTRIBUTED_TIME_SERIES_TABLE)
+	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
 	for {
-		ch.timeSeriesRW.RLock()
-		timeSeries := make(map[uint64]struct{}, len(ch.timeSeries))
-		ch.timeSeriesRW.RUnlock()
 
 		err := func() error {
 			ch.l.Debug(q)
-			rows, err := ch.conn.Query(ctx, q)
+			row := ch.conn.QueryRow(ctx, q)
+			if row.Err() != nil {
+				return row.Err()
+			}
+
+			var shardCount uint64
+			err := row.Scan(&shardCount)
 			if err != nil {
 				return err
 			}
-			defer rows.Close()
 
-			var f uint64
-			for rows.Next() {
-				if err = rows.Scan(&f); err != nil {
-					return err
-				}
-				timeSeries[f] = struct{}{}
-			}
-			return rows.Err()
-		}()
-		if err == nil {
 			ch.timeSeriesRW.Lock()
-			n := len(timeSeries) - len(ch.timeSeries)
-			for f, m := range timeSeries {
-				ch.timeSeries[f] = m
+			if ch.prevShardCount != shardCount {
+				ch.l.Infof("Shard count changed from %d to %d. Resetting time series map.", ch.prevShardCount, shardCount)
+				ch.timeSeries = make(map[uint64]struct{})
 			}
+			ch.prevShardCount = shardCount
 			ch.timeSeriesRW.Unlock()
-			ch.l.Debugf("Loaded %d existing time series, %d were unknown to this instance.", len(timeSeries), n)
-		} else {
+			return nil
+		}()
+		if err != nil {
 			ch.l.Error(err)
 		}
 

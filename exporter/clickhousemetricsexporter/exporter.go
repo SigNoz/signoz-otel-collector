@@ -83,6 +83,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		DropDatabase:         false,
 		MaxOpenConns:         75,
 		MaxTimeSeriesInQuery: 50,
+		WatcherInterval:      cfg.WatcherInterval,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {

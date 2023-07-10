@@ -128,5 +128,6 @@ func createDefaultConfig() component.Config {
 			QueueSize:    10000,
 			NumConsumers: 5,
 		},
+		WatcherInterval: 30 * time.Second,
 	}
 }
