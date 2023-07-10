@@ -187,6 +187,12 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					}
 					prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)] = temporality
 
+					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+bucketStr] = temporality
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+countStr] = temporality
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+sumStr] = temporality
+					}
+
 					// handle individual metric based on type
 					switch metricType {
 					case pmetric.MetricTypeGauge:
