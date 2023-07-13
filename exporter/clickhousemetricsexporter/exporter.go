@@ -29,7 +29,6 @@ import (
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
-	"go.uber.org/zap"
 
 	"github.com/prometheus/prometheus/prompb"
 
@@ -47,18 +46,20 @@ const maxBatchByteSize = 3000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
-	namespace       string
-	externalLabels  map[string]string
-	endpointURL     *url.URL
-	client          *http.Client
-	wg              *sync.WaitGroup
-	closeChan       chan struct{}
-	concurrency     int
-	userAgentHeader string
-	clientSettings  *confighttp.HTTPClientSettings
-	settings        component.TelemetrySettings
-	ch              base.Storage
-	usageCollector  *usage.UsageCollector
+	namespace               string
+	externalLabels          map[string]string
+	endpointURL             *url.URL
+	client                  *http.Client
+	wg                      *sync.WaitGroup
+	closeChan               chan struct{}
+	concurrency             int
+	userAgentHeader         string
+	clientSettings          *confighttp.HTTPClientSettings
+	settings                component.TelemetrySettings
+	ch                      base.Storage
+	usageCollector          *usage.UsageCollector
+	metricNameToTemporality map[string]pmetric.AggregationTemporality
+	mux                     *sync.Mutex
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -107,17 +108,19 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	}
 
 	return &PrwExporter{
-		namespace:       cfg.Namespace,
-		externalLabels:  sanitizedLabels,
-		endpointURL:     endpointURL,
-		wg:              new(sync.WaitGroup),
-		closeChan:       make(chan struct{}),
-		userAgentHeader: userAgentHeader,
-		concurrency:     cfg.RemoteWriteQueue.NumConsumers,
-		clientSettings:  &cfg.HTTPClientSettings,
-		settings:        set.TelemetrySettings,
-		ch:              ch,
-		usageCollector:  collector,
+		namespace:               cfg.Namespace,
+		externalLabels:          sanitizedLabels,
+		endpointURL:             endpointURL,
+		wg:                      new(sync.WaitGroup),
+		closeChan:               make(chan struct{}),
+		userAgentHeader:         userAgentHeader,
+		concurrency:             cfg.RemoteWriteQueue.NumConsumers,
+		clientSettings:          &cfg.HTTPClientSettings,
+		settings:                set.TelemetrySettings,
+		ch:                      ch,
+		usageCollector:          collector,
+		metricNameToTemporality: make(map[string]pmetric.AggregationTemporality),
+		mux:                     new(sync.Mutex),
 	}, nil
 }
 
@@ -167,37 +170,31 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 				// TODO: decide if scope information should be exported as labels
 				for k := 0; k < metricSlice.Len(); k++ {
 					metric := metricSlice.At(k)
+					var temporality pmetric.AggregationTemporality
 
-					// check for valid type and temporality combination and for matching data field and type
-					if ok := validateMetrics(metric); !ok {
-						dropped++
-						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New("invalid temporality and type combination")))
-						serviceName, found := resource.Attributes().Get("service.name")
-						if !found {
-							serviceName = pcommon.NewValueStr("<missing-svc>")
-						}
-						metricType := metric.Type()
-						var numDataPoints int
-						var temporality pmetric.AggregationTemporality
-						switch metricType {
-						case pmetric.MetricTypeGauge:
-							numDataPoints = metric.Gauge().DataPoints().Len()
-						case pmetric.MetricTypeSum:
-							numDataPoints = metric.Sum().DataPoints().Len()
-							temporality = metric.Sum().AggregationTemporality()
-						case pmetric.MetricTypeHistogram:
-							numDataPoints = metric.Histogram().DataPoints().Len()
-							temporality = metric.Histogram().AggregationTemporality()
-						case pmetric.MetricTypeSummary:
-							numDataPoints = metric.Summary().DataPoints().Len()
-						default:
-						}
-						prwe.settings.Logger.Error("unsupported metric type and temporality combination", zap.Int("numDataPoints", numDataPoints), zap.Any("metricType", metricType), zap.Any("temporality", temporality), zap.String("service name", serviceName.AsString()))
-						continue
+					metricType := metric.Type()
+
+					switch metricType {
+					case pmetric.MetricTypeGauge:
+						temporality = pmetric.AggregationTemporalityUnspecified
+					case pmetric.MetricTypeSum:
+						temporality = metric.Sum().AggregationTemporality()
+					case pmetric.MetricTypeHistogram:
+						temporality = metric.Histogram().AggregationTemporality()
+					case pmetric.MetricTypeSummary:
+						temporality = pmetric.AggregationTemporalityUnspecified
+					default:
+					}
+					prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)] = temporality
+
+					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+bucketStr] = temporality
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+countStr] = temporality
+						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+sumStr] = temporality
 					}
 
 					// handle individual metric based on type
-					switch metric.Type() {
+					switch metricType {
 					case pmetric.MetricTypeGauge:
 						dataPoints := metric.Gauge().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
@@ -280,6 +277,13 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
+	prwe.mux.Lock()
+	// make a copy of metricNameToTemporality
+	metricNameToTemporality := make(map[string]pmetric.AggregationTemporality)
+	for k, v := range prwe.metricNameToTemporality {
+		metricNameToTemporality[k] = v
+	}
+	prwe.mux.Unlock()
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests, err := batchTimeSeries(tsMap, maxBatchByteSize)
@@ -307,7 +311,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 			defer wg.Done()
 
 			for request := range input {
-				err := prwe.ch.Write(ctx, request)
+				err := prwe.ch.Write(ctx, request, metricNameToTemporality)
 				if err != nil {
 					mu.Lock()
 					errs = append(errs, err)
