@@ -46,7 +46,6 @@ type TraceModel struct {
 	References        references         `json:"references,omitempty"`
 	StatusCode        int16              `json:"statusCode,omitempty"`
 	TagMap            map[string]string  `json:"tagMap,omitempty"`
-	ResourceTagsMap   map[string]string  `json:"resourceTagsMap,omitempty"`
 	StringTagMap      map[string]string  `json:"stringTagMap,omitempty"`
 	NumberTagMap      map[string]float64 `json:"numberTagMap,omitempty"`
 	BoolTagMap        map[string]bool    `json:"boolTagMap,omitempty"`
