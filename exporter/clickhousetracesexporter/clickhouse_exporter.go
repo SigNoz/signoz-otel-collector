@@ -362,6 +362,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			Kind:              int8(otelSpan.Kind()),
 			References:        references,
 			TagMap:            tagMap,
+			ResourceTagsMap:   resourceAttrs,
 			StringTagMap:      stringTagMap,
 			NumberTagMap:      numberTagMap,
 			BoolTagMap:        boolTagMap,
