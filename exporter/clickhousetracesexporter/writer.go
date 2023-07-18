@@ -318,7 +318,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 	)
 	if err != nil {
 		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not write to span attributes table due to error: ",  zap.Error(err),zap.Any("batch", logBatch))
+		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
 		return err
 	}
 
@@ -404,8 +404,10 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 	metrics := map[string]usage.Metric{}
 	for _, span := range batchSpans {
 		var serialized []byte
-
+		usageMap := span.TraceModel
+		usageMap.TagMap = map[string]string{}
 		serialized, err = json.Marshal(span.TraceModel)
+		serializedUsage, err := json.Marshal(usageMap)
 
 		if err != nil {
 			return err
@@ -417,7 +419,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 			return err
 		}
 
-		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serialized)))
+		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
 	}
 	start := time.Now()
 
