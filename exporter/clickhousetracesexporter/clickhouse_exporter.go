@@ -428,21 +428,21 @@ func (s *storage) Shutdown(_ context.Context) error {
 func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 	spanAttributes := []SpanAttribute{}
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "traceId",
+		Key:         "traceID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.TraceId,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "spanId",
+		Key:         "spanID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.SpanId,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "parentSpanId",
+		Key:         "parentSpanID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",

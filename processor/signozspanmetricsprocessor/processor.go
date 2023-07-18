@@ -302,7 +302,7 @@ func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resource
 
 // Start implements the component.Component interface.
 func (p *processorImp) Start(ctx context.Context, host component.Host) error {
-	p.logger.Info("Starting signozspanmetricsprocessor")
+	p.logger.Info("Starting signozspanmetricsprocessor with config", zap.Any("config", p.config))
 	exporters := host.GetExporters()
 
 	var availableMetricsExporters []string
@@ -461,12 +461,14 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mDBCallSum := ilm.Metrics().AppendEmpty()
 	mDBCallSum.SetName("signoz_db_latency_sum")
 	mDBCallSum.SetUnit("1")
-	mDBCallSum.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mDBCallSum.SetEmptySum().SetIsMonotonic(true)
+	mDBCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	mDBCallCount := ilm.Metrics().AppendEmpty()
 	mDBCallCount.SetName("signoz_db_latency_count")
 	mDBCallCount.SetUnit("1")
-	mDBCallCount.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mDBCallCount.SetEmptySum().SetIsMonotonic(true)
+	mDBCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	callSumDps := mDBCallSum.Sum().DataPoints()
 	callCountDps := mDBCallCount.Sum().DataPoints()
@@ -501,12 +503,14 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 	mExternalCallSum := ilm.Metrics().AppendEmpty()
 	mExternalCallSum.SetName("signoz_external_call_latency_sum")
 	mExternalCallSum.SetUnit("1")
-	mExternalCallSum.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mExternalCallSum.SetEmptySum().SetIsMonotonic(true)
+	mExternalCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	mExternalCallCount := ilm.Metrics().AppendEmpty()
 	mExternalCallCount.SetName("signoz_external_call_latency_count")
 	mExternalCallCount.SetUnit("1")
-	mExternalCallCount.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mExternalCallCount.SetEmptySum().SetIsMonotonic(true)
+	mExternalCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	callSumDps := mExternalCallSum.Sum().DataPoints()
 	callCountDps := mExternalCallCount.Sum().DataPoints()

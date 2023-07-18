@@ -16,6 +16,7 @@ package clickhousemetricsexporter
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
 	"go.opentelemetry.io/collector/component"
@@ -43,6 +44,8 @@ type Config struct {
 	// "Enabled" - A boolean field to enable/disable this option. Default is `false`.
 	// If enabled, all the resource attributes will be converted to metric labels by default.
 	ResourceToTelemetrySettings resourcetotelemetry.Settings `mapstructure:"resource_to_telemetry_conversion"`
+
+	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.
