@@ -31,10 +31,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/testdata"
@@ -44,7 +45,6 @@ import (
 // FIXME(srikanthccv): Enable the tests once this issue is fixed: https://github.com/SigNoz/signoz-otel-collector/issues/65
 func skip_Test_NewPRWExporter(t *testing.T) {
 	cfg := &Config{
-		ExporterSettings:   config.NewExporterSettings(component.NewID(typeStr)),
 		TimeoutSettings:    exporterhelper.TimeoutSettings{},
 		RetrySettings:      exporterhelper.RetrySettings{},
 		Namespace:          "",
@@ -55,7 +55,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := componenttest.NewNopExporterCreateSettings()
+	set := exportertest.NewNopCreateSettings()
 	set.BuildInfo = buildInfo
 
 	tests := []struct {
@@ -66,7 +66,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 		concurrency         int
 		externalLabels      map[string]string
 		returnErrorOnCreate bool
-		set                 component.ExporterCreateSettings
+		set                 exporter.CreateSettings
 	}{
 		{
 			name:                "invalid_URL",
@@ -137,17 +137,16 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 // FIXME(srikanthccv): Enable the tests once this issue is fixed: https://github.com/SigNoz/signoz-otel-collector/issues/65
 func skip_Test_Start(t *testing.T) {
 	cfg := &Config{
-		ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
-		TimeoutSettings:  exporterhelper.TimeoutSettings{},
-		RetrySettings:    exporterhelper.RetrySettings{},
-		Namespace:        "",
-		ExternalLabels:   map[string]string{},
+		TimeoutSettings: exporterhelper.TimeoutSettings{},
+		RetrySettings:   exporterhelper.RetrySettings{},
+		Namespace:       "",
+		ExternalLabels:  map[string]string{},
 	}
 	buildInfo := component.BuildInfo{
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := componenttest.NewNopExporterCreateSettings()
+	set := exportertest.NewNopCreateSettings()
 	set.BuildInfo = buildInfo
 	tests := []struct {
 		name                 string
@@ -156,7 +155,7 @@ func skip_Test_Start(t *testing.T) {
 		concurrency          int
 		externalLabels       map[string]string
 		returnErrorOnStartUp bool
-		set                  component.ExporterCreateSettings
+		set                  exporter.CreateSettings
 		endpoint             string
 		clientSettings       confighttp.HTTPClientSettings
 	}{
@@ -340,7 +339,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := componenttest.NewNopExporterCreateSettings()
+	set := exportertest.NewNopCreateSettings()
 	set.BuildInfo = buildInfo
 	// after this, instantiate a CortexExporter with the current HTTP client and endpoint set to passed in endpoint
 	prwe, err := NewPrwExporter(cfg, set)
@@ -618,8 +617,7 @@ func temp_dis_Test_PushMetrics(t *testing.T) {
 			defer server.Close()
 
 			cfg := &Config{
-				ExporterSettings: config.NewExporterSettings(component.NewID(typeStr)),
-				Namespace:        "",
+				Namespace: "",
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: server.URL,
 					// We almost read 0 bytes, so no need to tune ReadBufferSize.
@@ -635,7 +633,7 @@ func temp_dis_Test_PushMetrics(t *testing.T) {
 				Description: "OpenTelemetry Collector",
 				Version:     "1.0",
 			}
-			set := componenttest.NewNopExporterCreateSettings()
+			set := exportertest.NewNopCreateSettings()
 			set.BuildInfo = buildInfo
 			prwe, nErr := NewPrwExporter(cfg, set)
 			require.NoError(t, nErr)

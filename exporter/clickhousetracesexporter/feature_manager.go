@@ -13,13 +13,16 @@ const (
 	TimestampSortFeature = "TIMESTAMP_SORT_FEATURE"
 )
 
+var durationSortFeatureGate *featuregate.Gate
+var timestampSortFeatureGate *featuregate.Gate
+
 func init() {
-	featuregate.GetRegistry().MustRegisterID(
+	durationSortFeatureGate = featuregate.GlobalRegistry().MustRegister(
 		DurationSortFeature,
 		featuregate.StageBeta,
 		featuregate.WithRegisterDescription("It controls use of materialized view which optimizes span duration based sorting for trace list at cost of extra disk usage"),
 	)
-	featuregate.GetRegistry().MustRegisterID(
+	timestampSortFeatureGate = featuregate.GlobalRegistry().MustRegister(
 		TimestampSortFeature,
 		featuregate.StageBeta,
 		featuregate.WithRegisterDescription("It controls use of materialized view which optimizes span timestamp based sorting for trace list at cost of extra disk usage"),
@@ -27,7 +30,7 @@ func init() {
 }
 
 func initFeatures(db clickhouse.Conn, options *Options) error {
-	if featuregate.GetRegistry().IsEnabled(DurationSortFeature) {
+	if durationSortFeatureGate.IsEnabled() {
 		err := enableDurationSortFeature(db, options)
 		if err != nil {
 			return err
@@ -38,7 +41,7 @@ func initFeatures(db clickhouse.Conn, options *Options) error {
 			return err
 		}
 	}
-	if featuregate.GetRegistry().IsEnabled(TimestampSortFeature) {
+	if timestampSortFeatureGate.IsEnabled() {
 		err := enableTimestampSortFeature(db, options)
 		if err != nil {
 			return err

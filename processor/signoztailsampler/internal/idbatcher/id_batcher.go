@@ -14,7 +14,7 @@
 
 // Package idbatcher defines a pipeline of fixed size in which the
 // elements are batches of ids.
-package idbatcher // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/idbatcher"
+package idbatcher // import "github.com/SigNoz/signoz-otel-collector/processor/internal/idbatcher"
 
 import (
 	"errors"

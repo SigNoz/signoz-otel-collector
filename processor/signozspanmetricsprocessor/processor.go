@@ -28,6 +28,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -71,7 +72,7 @@ type processorImp struct {
 	instanceID string
 	config     Config
 
-	metricsExporter component.MetricsExporter
+	metricsExporter exporter.Metrics
 	nextConsumer    consumer.Traces
 
 	// Additional dimensions to add to metrics.
@@ -136,7 +137,7 @@ type histogramData struct {
 	exemplarsData []exemplarData
 }
 
-func newProcessor(logger *zap.Logger, instanceID string, config component.ProcessorConfig, nextConsumer consumer.Traces) (*processorImp, error) {
+func newProcessor(logger *zap.Logger, instanceID string, config component.Config, nextConsumer consumer.Traces) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor")
 	pConfig := config.(*Config)
 
@@ -160,7 +161,9 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Proces
 	}
 	dbCallDimensions = append(dbCallDimensions, pConfig.Dimensions...)
 
-	var externalCallDimensions []Dimension
+	var externalCallDimensions = []Dimension{
+		{Name: tagHTTPStatusCode},
+	}
 	externalCallDimensions = append(externalCallDimensions, pConfig.Dimensions...)
 
 	if pConfig.DimensionsCacheSize <= 0 {
@@ -299,14 +302,14 @@ func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resource
 
 // Start implements the component.Component interface.
 func (p *processorImp) Start(ctx context.Context, host component.Host) error {
-	p.logger.Info("Starting signozspanmetricsprocessor")
+	p.logger.Info("Starting signozspanmetricsprocessor with config", zap.Any("config", p.config))
 	exporters := host.GetExporters()
 
 	var availableMetricsExporters []string
 
 	// The available list of exporters come from any configured metrics pipelines' exporters.
 	for k, exp := range exporters[component.DataTypeMetrics] {
-		metricsExp, ok := exp.(component.MetricsExporter)
+		metricsExp, ok := exp.(exporter.Metrics)
 		if !ok {
 			return fmt.Errorf("the exporter %q isn't a metrics exporter", k.String())
 		}
@@ -458,12 +461,14 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mDBCallSum := ilm.Metrics().AppendEmpty()
 	mDBCallSum.SetName("signoz_db_latency_sum")
 	mDBCallSum.SetUnit("1")
-	mDBCallSum.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mDBCallSum.SetEmptySum().SetIsMonotonic(true)
+	mDBCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	mDBCallCount := ilm.Metrics().AppendEmpty()
 	mDBCallCount.SetName("signoz_db_latency_count")
 	mDBCallCount.SetUnit("1")
-	mDBCallCount.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mDBCallCount.SetEmptySum().SetIsMonotonic(true)
+	mDBCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	callSumDps := mDBCallSum.Sum().DataPoints()
 	callCountDps := mDBCallCount.Sum().DataPoints()
@@ -498,12 +503,14 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 	mExternalCallSum := ilm.Metrics().AppendEmpty()
 	mExternalCallSum.SetName("signoz_external_call_latency_sum")
 	mExternalCallSum.SetUnit("1")
-	mExternalCallSum.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mExternalCallSum.SetEmptySum().SetIsMonotonic(true)
+	mExternalCallSum.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	mExternalCallCount := ilm.Metrics().AppendEmpty()
 	mExternalCallCount.SetName("signoz_external_call_latency_count")
 	mExternalCallCount.SetUnit("1")
-	mExternalCallCount.SetEmptySum().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	mExternalCallCount.SetEmptySum().SetIsMonotonic(true)
+	mExternalCallCount.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 
 	callSumDps := mExternalCallSum.Sum().DataPoints()
 	callCountDps := mExternalCallCount.Sum().DataPoints()
