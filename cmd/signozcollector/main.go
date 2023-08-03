@@ -16,6 +16,11 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var Version = "dev"
+var Desc = "SigNoz OpenTelemetry Collector"
+
+const copyPath = "/etc/signozcol-config.yaml"
+
 func main() {
 
 	// Command line flags
@@ -33,23 +38,25 @@ func main() {
 		log.Fatalf("Failed to parse args %v", err)
 	}
 
-	collectorConfig, _ := f.GetString("config")
-	managerConfig, _ := f.GetString("manager-config")
-
-	// logger, err := zap.NewProduction()
 	logger, err := initZapLog()
 	if err != nil {
 		log.Fatalf("failed to initialize zap logger: %v", err)
 	}
 
+	collectorConfig, _ := f.GetString("config")
+	if err := copyConfigFile(collectorConfig); err != nil {
+		logger.Fatal("Failed to copy config file %v", zap.Error(err))
+	}
+	managerConfig, _ := f.GetString("manager-config")
+	fmt.Println("managerConfig", managerConfig)
+
 	ctx := context.Background()
 
 	coll := signozcol.New(
 		signozcol.WrappedCollectorSettings{
-			ConfigPaths: []string{collectorConfig},
-			// TODO: Build version from git tag
-			Version:      "0.66.5",
-			Desc:         "SigNoz OpenTelemetry Collector",
+			ConfigPaths:  []string{copyPath},
+			Version:      Version,
+			Desc:         Desc,
 			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
 			PollInterval: 200 * time.Millisecond,
 		},
@@ -98,4 +105,28 @@ func initZapLog() (*zap.Logger, error) {
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	logger, err := config.Build()
 	return logger, err
+}
+
+func copyConfigFile(configPath string) error {
+	// Check if file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("config file %s does not exist", configPath)
+	}
+
+	copy(configPath, copyPath)
+	return nil
+}
+
+func copy(src, dest string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source file %s: %w", src, err)
+	}
+
+	err = os.WriteFile(dest, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write to dest file %s: %w", dest, err)
+	}
+
+	return nil
 }

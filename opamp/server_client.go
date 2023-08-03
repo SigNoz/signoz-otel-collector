@@ -30,11 +30,12 @@ import (
 // 5. Sending the updated agent configuration to the Opamp server
 type serverClient struct {
 	baseClient
-	logger        *zap.Logger
-	opampClient   client.OpAMPClient
-	configManager *agentConfigManager
-	managerConfig AgentManagerConfig
-	instanceId    ulid.ULID
+	logger                *zap.Logger
+	opampClient           client.OpAMPClient
+	configManager         *agentConfigManager
+	managerConfig         AgentManagerConfig
+	instanceId            ulid.ULID
+	receivedInitialConfig bool
 }
 
 type NewServerClientOpts struct {
@@ -153,12 +154,15 @@ func (s *serverClient) Start(ctx context.Context) error {
 		s.logger.Error("Error while starting opamp client", zap.Error(err))
 		return err
 	}
-	err = s.coll.Run(ctx)
-	if err != nil {
-		return err
-	}
+	s.waitForInitialRemoteConfig()
 	go s.ensureRunning()
 	return nil
+}
+
+func (s *serverClient) waitForInitialRemoteConfig() {
+	for !s.receivedInitialConfig {
+		time.Sleep(1 * time.Second)
+	}
 }
 
 // Stop stops the Opamp client
@@ -175,6 +179,7 @@ func (s *serverClient) Stop(ctx context.Context) error {
 // onMessageFuncHandler is the callback function that is called when the Opamp client receives a message from the Opamp server
 func (s *serverClient) onMessageFuncHandler(ctx context.Context, msg *types.MessageData) {
 	if msg.RemoteConfig != nil {
+		s.receivedInitialConfig = true
 		if err := s.onRemoteConfigHandler(ctx, msg.RemoteConfig); err != nil {
 			s.logger.Error("error while onRemoteConfigHandler", zap.Error(err))
 		}

@@ -150,6 +150,9 @@ func (wCol *WrappedCollector) Shutdown() {
 		wCol.wg.Wait()
 		wCol.svc = nil
 		wCol.logger.Info("Collector service is shut down")
+	} else {
+		wCol.logger.Info("Collector service is not running")
+		wCol.errChan <- nil
 	}
 }
 
