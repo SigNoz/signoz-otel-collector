@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
-	"go.opentelemetry.io/collector/service"
+	"go.opentelemetry.io/collector/otelcol"
 	"go.uber.org/zap"
 )
 
@@ -48,7 +48,7 @@ func (c baseClient) ensureRunning() {
 		case <-c.stopped:
 			return
 		case <-time.After(c.coll.PollInterval):
-			if c.coll.GetState() == service.StateClosed {
+			if c.coll.GetState() == otelcol.StateClosed {
 				c.err <- fmt.Errorf("collector stopped unexpectedly")
 			}
 		}
