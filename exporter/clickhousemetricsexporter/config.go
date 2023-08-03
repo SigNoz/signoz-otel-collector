@@ -16,17 +16,16 @@ package clickhousemetricsexporter
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for Remote Write exporter.
 type Config struct {
-	config.ExporterSettings        `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 	exporterhelper.TimeoutSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
 	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
 	// QueueConfig allows users to fine tune the queues
@@ -45,6 +44,8 @@ type Config struct {
 	// "Enabled" - A boolean field to enable/disable this option. Default is `false`.
 	// If enabled, all the resource attributes will be converted to metric labels by default.
 	ResourceToTelemetrySettings resourcetotelemetry.Settings `mapstructure:"resource_to_telemetry_conversion"`
+
+	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.
@@ -62,7 +63,7 @@ type RemoteWriteQueue struct {
 	NumConsumers int `mapstructure:"num_consumers"`
 }
 
-var _ component.ExporterConfig = (*Config)(nil)
+var _ component.Config = (*Config)(nil)
 
 // Validate checks if the exporter configuration is valid
 func (cfg *Config) Validate() error {

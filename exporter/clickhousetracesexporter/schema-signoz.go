@@ -113,6 +113,7 @@ type Span struct {
 	StringTagMap       map[string]string  `json:"stringTagMap,omitempty"`
 	NumberTagMap       map[string]float64 `json:"numberTagMap,omitempty"`
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
+	ResourceTagsMap    map[string]string  `json:"resourceTagsMap,omitempty"`
 	HasError           bool               `json:"hasError,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
 	GRPCCode           string             `json:"gRPCCode,omitempty"`
@@ -122,6 +123,16 @@ type Span struct {
 	RPCMethod          string             `json:"rpcMethod,omitempty"`
 	ResponseStatusCode string             `json:"responseStatusCode,omitempty"`
 	Tenant             *string            `json:"-"`
+	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
+}
+
+type SpanAttribute struct {
+	Key         string
+	TagType     string
+	DataType    string
+	StringValue string
+	NumberValue float64
+	IsColumn    bool
 }
 
 func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {

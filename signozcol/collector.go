@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 
-	"go.opentelemetry.io/collector/service"
+	"go.opentelemetry.io/collector/otelcol"
 	"go.uber.org/zap"
 )
 
@@ -31,7 +31,7 @@ type WrappedCollector struct {
 	wg          sync.WaitGroup
 	errChan     chan error
 	mux         sync.Mutex
-	svc         *service.Collector
+	svc         *otelcol.Collector
 }
 
 type WrappedCollectorSettings struct {
@@ -67,7 +67,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	}
 
 	// Create a new instance of collector to be used
-	svc, err := service.New(*settings)
+	svc, err := otelcol.NewCollector(*settings)
 	if err != nil {
 		return fmt.Errorf("failed to create a new OTel collector service: %w", err)
 	}
@@ -103,7 +103,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	go func() {
 		for {
 			state := svc.GetState()
-			if state == service.Running {
+			if state == otelcol.StateRunning {
 				// TODO: collector may panic or exit unexpectedly, need to handle that
 				colErrorChannel <- nil
 				break
@@ -154,17 +154,17 @@ func (wCol *WrappedCollector) ErrorChan() <-chan error {
 	return wCol.errChan
 }
 
-func (wCol *WrappedCollector) GetState() service.State {
+func (wCol *WrappedCollector) GetState() otelcol.State {
 	wCol.mux.Lock()
 	defer wCol.mux.Unlock()
 
 	if wCol.svc != nil {
 		return wCol.svc.GetState()
 	}
-	return service.StateClosed
+	return otelcol.StateClosed
 }
 
-func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*service.CollectorSettings, error) {
+func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*otelcol.CollectorSettings, error) {
 	factories, err := components.Components()
 	if err != nil {
 		return nil, fmt.Errorf("error while setting up default factories: %w", err)
@@ -177,19 +177,19 @@ func newOtelColSettings(configPaths []string, version string, desc string, loggi
 	}
 
 	fmp := fileprovider.New()
-	configProviderSettings := service.ConfigProviderSettings{
+	configProviderSettings := otelcol.ConfigProviderSettings{
 		ResolverSettings: confmap.ResolverSettings{
 			URIs:       configPaths,
 			Providers:  map[string]confmap.Provider{fmp.Scheme(): fmp},
 			Converters: []confmap.Converter{expandconverter.New()},
 		},
 	}
-	provider, err := service.NewConfigProvider(configProviderSettings)
+	provider, err := otelcol.NewConfigProvider(configProviderSettings)
 	if err != nil {
 		return nil, err
 	}
 
-	return &service.CollectorSettings{
+	return &otelcol.CollectorSettings{
 		Factories:      factories,
 		BuildInfo:      buildInfo,
 		LoggingOptions: loggingOpts,

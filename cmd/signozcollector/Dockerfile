@@ -1,34 +1,30 @@
-# Builder stage
-FROM golang:1.18-alpine as build
-RUN apk --update add ca-certificates
+# use a minimal alpine image
+FROM alpine:3.17
 
-WORKDIR /src
-COPY . .
+# add ca-certificates in case you need them
+RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 
-ARG TARGETPLATFORM
-
-RUN export GOOS=$(echo ${TARGETPLATFORM} | cut -d / -f1) && \
-    export GOARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
-
-ENV OS111MODULE=on
-ENV CGO_ENABLED=0
-
-RUN cd cmd/signozcollector && go build -tags timetzdata -o /out/signoz-collector
-
-# Final stage
-FROM alpine:3.15
-
+# define arguments and default values
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 ARG USER_UID=10001
 
+# create a non-root user for running the collector
 USER ${USER_UID}
 
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /out/signoz-collector /
-COPY --from=build /src/exporter/clickhousetracesexporter/migrations /migrations
-COPY --from=build /src/exporter/clickhouselogsexporter/migrations /logsmigrations
+# copy the binaries from the multi-stage build
+COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
+
+# copy the config and migration files
+COPY config/default-config.yaml /etc/otel/config.yaml
+COPY exporter/clickhousetracesexporter/migrations /migrations
+COPY exporter/clickhouselogsexporter/migrations /logsmigrations
 
 ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
 
+# expose OTLP ports for the collector
 EXPOSE 4317 4318
-ENTRYPOINT ["/signoz-collector"]
+
+# run the binary as the entrypoint and pass the default config file as a flag
+ENTRYPOINT [ "/signoz-collector" ]
 CMD ["--config", "/etc/otel/config.yaml"]
