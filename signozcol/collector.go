@@ -31,7 +31,7 @@ type WrappedCollector struct {
 	wg           sync.WaitGroup
 	errChan      chan error
 	mux          sync.Mutex
-	svc          *service.Collector
+	svc          *otelcol.Collector
 	logger       *zap.Logger
 	PollInterval time.Duration
 }
@@ -45,7 +45,7 @@ type WrappedCollectorSettings struct {
 	Logger       *zap.Logger
 }
 
-var StateUknown = service.State(-1)
+var StateUknown = otelcol.State(-1)
 
 // New returns a new collector.
 func New(settings WrappedCollectorSettings) *WrappedCollector {
@@ -116,12 +116,8 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	go func() {
 		for {
 			state := svc.GetState()
-<<<<<<< HEAD
-			if state == service.StateRunning {
-				wCol.logger.Info("Collector service is running")
-=======
 			if state == otelcol.StateRunning {
->>>>>>> glue-up
+				wCol.logger.Info("Collector service is running")
 				// TODO: collector may panic or exit unexpectedly, need to handle that
 				colErrorChannel <- nil
 				break
@@ -182,11 +178,7 @@ func (wCol *WrappedCollector) GetState() otelcol.State {
 	if wCol.svc != nil {
 		return wCol.svc.GetState()
 	}
-<<<<<<< HEAD
 	return StateUknown
-=======
-	return otelcol.StateClosed
->>>>>>> glue-up
 }
 
 func newOtelColSettings(configPaths []string, version string, desc string, loggingOpts []zap.Option) (*otelcol.CollectorSettings, error) {
