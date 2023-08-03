@@ -2,6 +2,12 @@ package constants
 
 import "os"
 
+// Version is the current version of the collector.
+// This is set at build time.
+var Version = "dev"
+var Desc = "SigNoz OpenTelemetry Collector"
+var CopyPath = "/etc/signozcol-config.yaml"
+
 // AllowLbExporterConfig enables lb exporter capability in the collector instance
 var SupportLbExporterConfig = GetOrDefaultEnv("SUPPORT_LB_EXPORTER_CONFIG", "1")
 

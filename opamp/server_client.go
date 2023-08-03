@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -36,6 +37,7 @@ type serverClient struct {
 	managerConfig         AgentManagerConfig
 	instanceId            ulid.ULID
 	receivedInitialConfig bool
+	mux                   sync.Mutex
 }
 
 type NewServerClientOpts struct {
@@ -62,13 +64,15 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 		logger:        clientLogger,
 		configManager: configManager,
 		managerConfig: *args.Config,
+		mux:           sync.Mutex{},
 	}
+	svrClient.createInstanceId()
 
-	collectorremoteControlledConfig, err := NewDynamicConfig(args.CollectorConfgPath, svrClient.reload)
+	dynamicConfig, err := NewDynamicConfig(args.CollectorConfgPath, svrClient.reload, clientLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collector config: %v", err)
 	}
-	svrClient.configManager.Set(collectorremoteControlledConfig)
+	svrClient.configManager.Set(dynamicConfig)
 
 	svrClient.opampClient = client.NewWebSocket(clientLogger.Sugar())
 
@@ -96,7 +100,7 @@ func (s *serverClient) createAgentDescription() *protobufs.AgentDescription {
 	return &protobufs.AgentDescription{
 		IdentifyingAttributes: []*protobufs.KeyValue{
 			keyVal("service.name", "signoz-otel-collector"),
-			keyVal("service.version", "0.0.1"),
+			keyVal("service.version", constants.Version),
 		},
 		NonIdentifyingAttributes: []*protobufs.KeyValue{
 			keyVal("os.family", runtime.GOOS),
@@ -120,7 +124,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 		InstanceUid:    s.instanceId.String(),
 		Callbacks: types.CallbacksStruct{
 			OnConnectFunc: func() {
-				s.logger.Debug("Connected to the server.")
+				s.logger.Info("Connected to the server.")
 			},
 			OnConnectFailedFunc: func(err error) {
 				s.logger.Error("Failed to connect to the server: %v", zap.Error(err))
@@ -154,14 +158,23 @@ func (s *serverClient) Start(ctx context.Context) error {
 		s.logger.Error("Error while starting opamp client", zap.Error(err))
 		return err
 	}
+	// Wait for the initial remote config to be received
+	// before starting the collector.
 	s.waitForInitialRemoteConfig()
+	// Watch for any async errors from the collector and initiate a shutdown
 	go s.ensureRunning()
 	return nil
 }
 
 func (s *serverClient) waitForInitialRemoteConfig() {
-	for !s.receivedInitialConfig {
+	for {
 		time.Sleep(1 * time.Second)
+		s.mux.Lock()
+		if s.receivedInitialConfig {
+			s.mux.Unlock()
+			break
+		}
+		s.mux.Unlock()
 	}
 }
 
@@ -179,7 +192,10 @@ func (s *serverClient) Stop(ctx context.Context) error {
 // onMessageFuncHandler is the callback function that is called when the Opamp client receives a message from the Opamp server
 func (s *serverClient) onMessageFuncHandler(ctx context.Context, msg *types.MessageData) {
 	if msg.RemoteConfig != nil {
+		s.mux.Lock()
 		s.receivedInitialConfig = true
+		s.configManager.initialConfigReceived = true
+		s.mux.Unlock()
 		if err := s.onRemoteConfigHandler(ctx, msg.RemoteConfig); err != nil {
 			s.logger.Error("error while onRemoteConfigHandler", zap.Error(err))
 		}

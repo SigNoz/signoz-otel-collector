@@ -9,17 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	flag "github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-var Version = "dev"
-var Desc = "SigNoz OpenTelemetry Collector"
-
-const copyPath = "/etc/signozcol-config.yaml"
 
 func main() {
 
@@ -54,9 +50,9 @@ func main() {
 
 	coll := signozcol.New(
 		signozcol.WrappedCollectorSettings{
-			ConfigPaths:  []string{copyPath},
-			Version:      Version,
-			Desc:         Desc,
+			ConfigPaths:  []string{constants.CopyPath},
+			Version:      constants.Version,
+			Desc:         constants.Desc,
 			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
 			PollInterval: 200 * time.Millisecond,
 		},
@@ -99,7 +95,7 @@ func runInteractive(ctx context.Context, logger *zap.Logger, svc service.Service
 }
 
 func initZapLog() (*zap.Logger, error) {
-	config := zap.NewDevelopmentConfig()
+	config := zap.NewProductionConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
 	config.EncoderConfig.TimeKey = "timestamp"
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -113,7 +109,7 @@ func copyConfigFile(configPath string) error {
 		return fmt.Errorf("config file %s does not exist", configPath)
 	}
 
-	copy(configPath, copyPath)
+	copy(configPath, constants.CopyPath)
 	return nil
 }
 

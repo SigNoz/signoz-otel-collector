@@ -46,6 +46,7 @@ func (c baseClient) ensureRunning() {
 	for {
 		select {
 		case <-c.stopped:
+			c.logger.Info("Collector is stopped")
 			return
 		case <-time.After(c.coll.PollInterval):
 			if c.coll.GetState() == otelcol.StateClosed {

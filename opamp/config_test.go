@@ -3,6 +3,8 @@ package opamp
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseConfigInvalidPath(t *testing.T) {
@@ -48,9 +50,7 @@ func TestParseConfigAddsID(t *testing.T) {
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if cfg == nil {
-		t.Errorf("expected config")
-	}
+	assert.NotNil(t, cfg)
 	if cfg.ID == "" {
 		t.Errorf("expected agent ID to be set")
 	}

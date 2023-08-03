@@ -24,24 +24,28 @@ var k = koanf.New("::")
 // 2. Reloading the agent configuration when the file changes
 // 3. Providing the current agent configuration to the Opamp client
 type agentConfigManager struct {
-	agentConfig *remoteControlledConfig
-	logger      *zap.Logger
+	agentConfig           *remoteControlledConfig
+	logger                *zap.Logger
+	initialConfigReceived bool
 }
 
 type reloadFunc func([]byte) error
 
 type remoteControlledConfig struct {
-	path string
-
-	reloader reloadFunc
-
-	currentHash []byte
+	path        string     // path to the agent config file
+	reloader    reloadFunc // function to reload the agent config
+	currentHash []byte     // hash of the current agent config, used to determine if the config has changed
+	logger      *zap.Logger
 }
 
-func NewDynamicConfig(configPath string, reloader reloadFunc) (*remoteControlledConfig, error) {
+func NewDynamicConfig(configPath string, reloader reloadFunc, logger *zap.Logger) (*remoteControlledConfig, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	remoteControlledConfig := &remoteControlledConfig{
 		path:     configPath,
 		reloader: reloader,
+		logger:   logger.Named("dynamic-config"),
 	}
 
 	err := remoteControlledConfig.UpsertInstanceID()
@@ -82,6 +86,7 @@ service:
 	if err := os.WriteFile(m.path, bytes, 0644); err != nil {
 		return fmt.Errorf("failed to write config file %s: %w", m.path, err)
 	}
+	m.logger.Info("Added instance id to config file", zap.String("instance_id", instanceID))
 	return nil
 }
 
@@ -96,6 +101,9 @@ func (m *remoteControlledConfig) UpdateCurrentHash() error {
 }
 
 func NewAgentConfigManager(logger *zap.Logger) *agentConfigManager {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &agentConfigManager{
 		logger: logger.Named("agent-config-manager"),
 	}
@@ -137,12 +145,14 @@ func (a *agentConfigManager) Apply(remoteConfig *protobufs.AgentRemoteConfig) (b
 	remoteConfigMap := remoteConfig.GetConfig().GetConfigMap()
 
 	if remoteConfigMap == nil {
+		a.logger.Info("No remote config received")
 		return false, nil
 	}
 
 	remoteCollectorConfig, ok := remoteConfigMap[collectorConfigKey]
 
 	if !ok {
+		a.logger.Info("No remote collector config found with key", zap.String("key", collectorConfigKey))
 		return false, nil
 	}
 
@@ -153,10 +163,13 @@ func (a *agentConfigManager) Apply(remoteConfig *protobufs.AgentRemoteConfig) (b
 func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledConfig, newContents []byte) (changed bool, err error) {
 	newConfigHash := fileHash(newContents)
 
-	if bytes.Equal(currentConfig.currentHash, newConfigHash) {
+	// Always reload the config if this is the first config received.
+	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) {
+		a.logger.Info("Config has not changed")
 		return false, nil
 	}
 
+	a.logger.Info("Config has changed, reloading", zap.String("path", currentConfig.path))
 	err = currentConfig.reloader(newContents)
 	if err != nil {
 		return false, fmt.Errorf("failed to reload config: %s: %w", currentConfig.path, err)
