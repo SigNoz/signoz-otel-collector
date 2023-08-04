@@ -44,7 +44,6 @@ func main() {
 		logger.Fatal("Failed to copy config file %v", zap.Error(err))
 	}
 	managerConfig, _ := f.GetString("manager-config")
-	fmt.Println("managerConfig", managerConfig)
 
 	ctx := context.Background()
 

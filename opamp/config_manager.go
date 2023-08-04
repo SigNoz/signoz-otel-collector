@@ -145,7 +145,7 @@ func (a *agentConfigManager) Apply(remoteConfig *protobufs.AgentRemoteConfig) (b
 	remoteConfigMap := remoteConfig.GetConfig().GetConfigMap()
 
 	if remoteConfigMap == nil {
-		a.logger.Info("No remote config received")
+		a.logger.Debug("No remote config received")
 		return false, nil
 	}
 
@@ -179,6 +179,10 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 	if err != nil {
 		err = fmt.Errorf("failed hash compute for config %s: %w", currentConfig.path, err)
 		return true, err
+	}
+
+	if !a.initialConfigReceived {
+		a.initialConfigReceived = true
 	}
 
 	return true, nil

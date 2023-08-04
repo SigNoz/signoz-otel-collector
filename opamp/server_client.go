@@ -194,7 +194,6 @@ func (s *serverClient) onMessageFuncHandler(ctx context.Context, msg *types.Mess
 	if msg.RemoteConfig != nil {
 		s.mux.Lock()
 		s.receivedInitialConfig = true
-		s.configManager.initialConfigReceived = true
 		s.mux.Unlock()
 		if err := s.onRemoteConfigHandler(ctx, msg.RemoteConfig); err != nil {
 			s.logger.Error("error while onRemoteConfigHandler", zap.Error(err))
