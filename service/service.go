@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Service is the interface for the Opamp service
-// which manages the Opamp connection and collector
+// Service is the interface for the OpAMP service
+// which manages the OpAMP connection and collector
 // lifecycle
 //
 // main function will create a new service and call
@@ -27,12 +27,17 @@ type service struct {
 	client opamp.Client
 }
 
-func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, managerConfigPath string, collectorConfigPath string) (*service, error) {
+func New(
+	wrappedCollector *signozcol.WrappedCollector,
+	logger *zap.Logger,
+	managerConfigPath string,
+	collectorConfigPath string,
+) (*service, error) {
 
 	var client opamp.Client
 	var err error
 
-	// Running without Opamp
+	// Running without OpAMP connection
 	if managerConfigPath == "" {
 		client = opamp.NewSimpleClient(wrappedCollector, logger)
 	} else {
@@ -59,7 +64,7 @@ func New(wrappedCollector *signozcol.WrappedCollector, logger *zap.Logger, manag
 	}, err
 }
 
-// Start starts the (Opamp connection and) collector
+// Start starts the (OpAMP connection and) collector
 func (s *service) Start(ctx context.Context) error {
 	s.l.Info("Starting service")
 	if err := s.client.Start(ctx); err != nil {
@@ -69,7 +74,7 @@ func (s *service) Start(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown stops the (Opamp connection and) collector
+// Shutdown stops the (OpAMP connection and) collector
 func (s *service) Shutdown(ctx context.Context) error {
 	s.l.Info("Shutting down service")
 	if err := s.client.Stop(ctx); err != nil {

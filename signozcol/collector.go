@@ -128,7 +128,6 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				svc.Shutdown()
-				colErrorChannel <- ctx.Err()
 				return
 			default:
 			}

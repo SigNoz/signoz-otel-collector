@@ -168,6 +168,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 
 func (s *serverClient) waitForInitialRemoteConfig() {
 	for {
+		s.logger.Info("Waiting for initial remote config")
 		time.Sleep(1 * time.Second)
 		s.mux.Lock()
 		if s.receivedInitialConfig {

@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
+	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	flag "github.com/spf13/pflag"
+	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -29,6 +31,9 @@ func main() {
 
 	f.String("config", "", "File path for the collector configuration")
 	f.String("manager-config", "", "File path for the agent manager configuration")
+	f.String("copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
+	f.Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
+		"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
 	err := f.Parse(os.Args[1:])
 	if err != nil {
 		log.Fatalf("Failed to parse args %v", err)
@@ -40,16 +45,20 @@ func main() {
 	}
 
 	collectorConfig, _ := f.GetString("config")
-	if err := copyConfigFile(collectorConfig); err != nil {
-		logger.Fatal("Failed to copy config file %v", zap.Error(err))
-	}
 	managerConfig, _ := f.GetString("manager-config")
+	copyPath, _ := f.GetString("copy-path")
+	if managerConfig != "" {
+		if err := copyConfigFile(collectorConfig, copyPath); err != nil {
+			logger.Fatal("Failed to copy config file %v", zap.Error(err))
+		}
+		collectorConfig = copyPath
+	}
 
 	ctx := context.Background()
 
 	coll := signozcol.New(
 		signozcol.WrappedCollectorSettings{
-			ConfigPaths:  []string{constants.CopyPath},
+			ConfigPaths:  []string{collectorConfig},
 			Version:      constants.Version,
 			Desc:         constants.Desc,
 			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
@@ -102,14 +111,13 @@ func initZapLog() (*zap.Logger, error) {
 	return logger, err
 }
 
-func copyConfigFile(configPath string) error {
+func copyConfigFile(configPath string, copyPath string) error {
 	// Check if file exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return fmt.Errorf("config file %s does not exist", configPath)
 	}
 
-	copy(configPath, constants.CopyPath)
-	return nil
+	return copy(configPath, copyPath)
 }
 
 func copy(src, dest string) error {
