@@ -7,6 +7,6 @@ ALTER TABLE signoz_logs.logs ON CLUSTER cluster add index IF NOT EXISTS severity
 ALTER TABLE signoz_logs.logs ON CLUSTER cluster add index IF NOT EXISTS severity_text_idx (severity_text) TYPE set(25) GRANULARITY 4;
 
 
--- No point in addding index for trace_id, span_id as they are not set as they are always unique
+-- No point in addding index for trace_id, span_id as they are not set and they are always unique
 -- trace_flags can be a set so adding a default bloom filter
 ALTER TABLE signoz_logs.logs ON CLUSTER cluster add index IF NOT EXISTS trace_flags_idx (trace_flags) TYPE bloom_filter() GRANULARITY 4;
