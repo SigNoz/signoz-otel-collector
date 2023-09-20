@@ -5,8 +5,7 @@ FROM alpine:3.17
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 
 # define arguments and default values
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS TARGETARCH
 ARG USER_UID=10001
 
 # create a non-root user for running the collector
