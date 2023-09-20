@@ -39,6 +39,10 @@ import (
 // Crete new exporter.
 func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
+	if err := component.ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	configClickHouse := cfg.(*Config)
 
 	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
