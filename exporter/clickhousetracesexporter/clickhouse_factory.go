@@ -43,7 +43,7 @@ type Factory struct {
 
 // Writer writes spans to storage.
 type Writer interface {
-	WriteSpan(span *Span) error
+	WriteBatchOfSpans(span []*Span) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)
@@ -281,8 +281,6 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		attributeTable:    cfg.AttributeTable,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
-		delay:             cfg.WriteBatchDelay,
-		size:              cfg.WriteBatchSize,
 	})
 }
 
@@ -302,8 +300,6 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		attributeTable:    cfg.AttributeTable,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
-		delay:             cfg.WriteBatchDelay,
-		size:              cfg.WriteBatchSize,
 	})
 }
 
