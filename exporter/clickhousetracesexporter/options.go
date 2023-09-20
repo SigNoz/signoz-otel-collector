@@ -19,34 +19,31 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/spf13/viper"
 )
 
 const (
-	defaultDatasource               string        = "tcp://127.0.0.1:9000/?database=signoz_traces"
-	defaultTraceDatabase            string        = "signoz_traces"
-	defaultMigrations               string        = "/migrations"
-	defaultOperationsTable          string        = "distributed_signoz_operations"
-	defaultIndexTable               string        = "distributed_signoz_index_v2"
-	localIndexTable                 string        = "signoz_index_v2"
-	defaultErrorTable               string        = "distributed_signoz_error_index_v2"
-	defaultSpansTable               string        = "distributed_signoz_spans"
-	defaultAttributeTable           string        = "distributed_span_attributes"
-	defaultAttributeKeyTable        string        = "distributed_span_attributes_keys"
-	defaultDurationSortTable        string        = "durationSort"
-	defaultDurationSortMVTable      string        = "durationSortMV"
-	defaultArchiveSpansTable        string        = "signoz_archive_spans"
-	defaultClusterName              string        = "cluster"
-	defaultDependencyGraphTable     string        = "dependency_graph_minutes"
-	defaultDependencyGraphServiceMV string        = "dependency_graph_minutes_service_calls_mv"
-	defaultDependencyGraphDbMV      string        = "dependency_graph_minutes_db_calls_mv"
-	DependencyGraphMessagingMV      string        = "dependency_graph_minutes_messaging_calls_mv"
-	defaultWriteBatchDelay          time.Duration = 2 * time.Second
-	defaultWriteBatchSize           int           = 100000
-	defaultEncoding                 Encoding      = EncodingJSON
+	defaultDatasource               string   = "tcp://127.0.0.1:9000/?database=signoz_traces"
+	defaultTraceDatabase            string   = "signoz_traces"
+	defaultMigrations               string   = "/migrations"
+	defaultOperationsTable          string   = "distributed_signoz_operations"
+	defaultIndexTable               string   = "distributed_signoz_index_v2"
+	localIndexTable                 string   = "signoz_index_v2"
+	defaultErrorTable               string   = "distributed_signoz_error_index_v2"
+	defaultSpansTable               string   = "distributed_signoz_spans"
+	defaultAttributeTable           string   = "distributed_span_attributes"
+	defaultAttributeKeyTable        string   = "distributed_span_attributes_keys"
+	defaultDurationSortTable        string   = "durationSort"
+	defaultDurationSortMVTable      string   = "durationSortMV"
+	defaultArchiveSpansTable        string   = "signoz_archive_spans"
+	defaultClusterName              string   = "cluster"
+	defaultDependencyGraphTable     string   = "dependency_graph_minutes"
+	defaultDependencyGraphServiceMV string   = "dependency_graph_minutes_service_calls_mv"
+	defaultDependencyGraphDbMV      string   = "dependency_graph_minutes_db_calls_mv"
+	DependencyGraphMessagingMV      string   = "dependency_graph_minutes_messaging_calls_mv"
+	defaultEncoding                 Encoding = EncodingJSON
 )
 
 const (
@@ -57,8 +54,6 @@ const (
 	suffixOperationsTable = ".operations-table"
 	suffixIndexTable      = ".index-table"
 	suffixSpansTable      = ".spans-table"
-	suffixWriteBatchDelay = ".write-batch-delay"
-	suffixWriteBatchSize  = ".write-batch-size"
 	suffixEncoding        = ".encoding"
 )
 
@@ -84,8 +79,6 @@ type namespaceConfig struct {
 	DependencyGraphMessagingMV string
 	DependencyGraphTable       string
 	DockerMultiNodeCluster     bool
-	WriteBatchDelay            time.Duration
-	WriteBatchSize             int
 	Encoding                   Encoding
 	Connector                  Connector
 }
@@ -161,8 +154,6 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			DependencyGraphDbMV:        defaultDependencyGraphDbMV,
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
 			DockerMultiNodeCluster:     dockerMultiNodeCluster,
-			WriteBatchDelay:            defaultWriteBatchDelay,
-			WriteBatchSize:             defaultWriteBatchSize,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
 		},
@@ -178,8 +169,6 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 				OperationsTable: "",
 				IndexTable:      "",
 				SpansTable:      defaultArchiveSpansTable,
-				WriteBatchDelay: defaultWriteBatchDelay,
-				WriteBatchSize:  defaultWriteBatchSize,
 				Encoding:        defaultEncoding,
 				Connector:       defaultConnector,
 			}
@@ -233,18 +222,6 @@ func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
 		"Clickhouse spans table name.",
 	)
 
-	flagSet.Duration(
-		nsConfig.namespace+suffixWriteBatchDelay,
-		nsConfig.WriteBatchDelay,
-		"A duration after which spans are flushed to Clickhouse",
-	)
-
-	flagSet.Int(
-		nsConfig.namespace+suffixWriteBatchSize,
-		nsConfig.WriteBatchSize,
-		"A number of spans buffered before they are flushed to Clickhouse",
-	)
-
 	flagSet.String(
 		nsConfig.namespace+suffixEncoding,
 		string(nsConfig.Encoding),
@@ -267,8 +244,6 @@ func initFromViper(cfg *namespaceConfig, v *viper.Viper) {
 	cfg.IndexTable = v.GetString(cfg.namespace + suffixIndexTable)
 	cfg.SpansTable = v.GetString(cfg.namespace + suffixSpansTable)
 	cfg.OperationsTable = v.GetString(cfg.namespace + suffixOperationsTable)
-	cfg.WriteBatchDelay = v.GetDuration(cfg.namespace + suffixWriteBatchDelay)
-	cfg.WriteBatchSize = v.GetInt(cfg.namespace + suffixWriteBatchSize)
 	cfg.Encoding = Encoding(v.GetString(cfg.namespace + suffixEncoding))
 }
 
