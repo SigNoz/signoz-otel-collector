@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -52,11 +51,6 @@ type SpanWriter struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
-	delay             time.Duration
-	size              int
-	spans             chan *Span
-	finish            chan bool
-	done              sync.WaitGroup
 }
 
 type WriterOptions struct {
@@ -69,8 +63,6 @@ type WriterOptions struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
-	delay             time.Duration
-	size              int
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -88,89 +80,9 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeTable:    options.attributeTable,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
-		delay:             options.delay,
-		size:              options.size,
-		spans:             make(chan *Span, options.size),
-		finish:            make(chan bool),
 	}
-
-	go writer.backgroundWriter()
 
 	return writer
-}
-
-func (w *SpanWriter) backgroundWriter() {
-	batch := make([]*Span, 0, w.size)
-
-	timer := time.After(w.delay)
-	last := time.Now()
-
-	for {
-		w.done.Add(1)
-
-		flush := false
-		finish := false
-
-		select {
-		case span := <-w.spans:
-			batch = append(batch, span)
-			flush = len(batch) == cap(batch)
-		case <-timer:
-			timer = time.After(w.delay)
-			flush = time.Since(last) > w.delay && len(batch) > 0
-		case <-w.finish:
-			finish = true
-			flush = len(batch) > 0
-		}
-
-		if flush {
-			if err := w.writeBatch(batch); err != nil {
-				w.logger.Error("Could not write a batch of spans", zap.Error(err))
-			}
-
-			batch = make([]*Span, 0, w.size)
-			last = time.Now()
-		}
-
-		w.done.Done()
-
-		if finish {
-			break
-		}
-	}
-}
-
-func (w *SpanWriter) writeBatch(batch []*Span) error {
-
-	if w.spansTable != "" {
-		if err := w.writeModelBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to model table: ", zap.Any("batch", logBatch), zap.Error(err))
-			return err
-		}
-	}
-	if w.indexTable != "" {
-		if err := w.writeIndexBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to index table: ", zap.Any("batch", logBatch), zap.Error(err))
-			return err
-		}
-	}
-	if w.errorTable != "" {
-		if err := w.writeErrorBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to error table: ", zap.Any("batch", logBatch), zap.Error(err))
-			return err
-		}
-	}
-	if w.attributeTable != "" && w.attributeKeyTable != "" {
-		if err := w.writeTagBatch(batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
@@ -439,15 +351,42 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 	return nil
 }
 
-// WriteSpan writes the encoded span
-func (w *SpanWriter) WriteSpan(span *Span) error {
-	w.spans <- span
+// WriteBatchOfSpans writes the encoded batch of spans
+func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
+	if w.spansTable != "" {
+		if err := w.writeModelBatch(batch); err != nil {
+			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
+			w.logger.Error("Could not write a batch of spans to model table: ", zap.Any("batch", logBatch), zap.Error(err))
+			return err
+		}
+	}
+	if w.indexTable != "" {
+		if err := w.writeIndexBatch(batch); err != nil {
+			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
+			w.logger.Error("Could not write a batch of spans to index table: ", zap.Any("batch", logBatch), zap.Error(err))
+			return err
+		}
+	}
+	if w.errorTable != "" {
+		if err := w.writeErrorBatch(batch); err != nil {
+			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
+			w.logger.Error("Could not write a batch of spans to error table: ", zap.Any("batch", logBatch), zap.Error(err))
+			return err
+		}
+	}
+	if w.attributeTable != "" && w.attributeKeyTable != "" {
+		if err := w.writeTagBatch(batch); err != nil {
+			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
+			return err
+		}
+	}
 	return nil
 }
 
-// Close Implements io.Closer and closes the underlying storage
+// Close closes the writer
 func (w *SpanWriter) Close() error {
-	w.finish <- true
-	w.done.Wait()
+	if w.db != nil {
+		return w.db.Close()
+	}
 	return nil
 }
