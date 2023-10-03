@@ -17,7 +17,7 @@ func TestNopClientWithCollector(t *testing.T) {
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zap.ErrorLevel)},
 	})
 
-	client := NewSimpleClient(coll)
+	client := NewSimpleClient(coll, zap.NewNop())
 
 	err := client.Start(context.Background())
 	if err != nil {
@@ -42,7 +42,7 @@ func TestNopClientWithCollectorError(t *testing.T) {
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zap.ErrorLevel)},
 	})
 
-	client := NewSimpleClient(coll)
+	client := NewSimpleClient(coll, zap.NewNop())
 
 	err := client.Start(context.Background())
 	if err == nil {
@@ -67,7 +67,7 @@ func TestNopClientWithCollectorErrorRead(t *testing.T) {
 		LoggingOpts: []zap.Option{zap.AddStacktrace(zap.ErrorLevel)},
 	})
 
-	client := NewSimpleClient(coll)
+	client := NewSimpleClient(coll, zap.NewNop())
 
 	err := client.Start(context.Background())
 	if err == nil {
@@ -76,40 +76,5 @@ func TestNopClientWithCollectorErrorRead(t *testing.T) {
 
 	if coll.GetState() != otelcol.StateClosed {
 		t.Errorf("expected collector to be in closed state")
-	}
-
-	err = client.Error()
-	if err == nil {
-		t.Errorf("expected error")
-	}
-}
-
-func TestNopClientWithCollectorErrorChanMultipleTime(t *testing.T) {
-	coll := signozcol.New(signozcol.WrappedCollectorSettings{
-		ConfigPaths: []string{"testdata/invalid.yaml"},
-		Version:     "0.0.1",
-		Desc:        "test",
-		LoggingOpts: []zap.Option{zap.AddStacktrace(zap.ErrorLevel)},
-	})
-
-	client := NewSimpleClient(coll)
-
-	err := client.Start(context.Background())
-	if err == nil {
-		t.Errorf("expected error")
-	}
-
-	if coll.GetState() != otelcol.StateClosed {
-		t.Errorf("expected collector to be in closed state")
-	}
-
-	err = client.Error()
-	if err == nil {
-		t.Errorf("expected error")
-	}
-
-	err = client.Error()
-	if err != nil {
-		t.Errorf("expected no error")
 	}
 }
