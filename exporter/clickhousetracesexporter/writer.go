@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -167,19 +168,45 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
 		return err
 	}
+	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
+	mapOfSpanAttributeKeys := make(map[string]struct{})
+
+	// create map of span attributes of key, tagType, dataType, isColumn and value to avoid duplicates in batch
+	mapOfSpanAttributeValues := make(map[string]struct{})
+
 	for _, span := range batchSpans {
 		for _, spanAttribute := range span.SpanAttributes {
 
-			err = tagKeyStatement.Append(
-				spanAttribute.Key,
-				spanAttribute.TagType,
-				spanAttribute.DataType,
-				spanAttribute.IsColumn,
-			)
-			if err != nil {
-				w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Object("span", span))
-				return err
+			// form a map key of span attribute key, tagType, dataType, isColumn and value
+			mapOfSpanAttributeValueKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + strconv.FormatBool(spanAttribute.IsColumn) + spanAttribute.StringValue + strconv.FormatFloat(spanAttribute.NumberValue, 'f', -1, 64)
+
+			// check if mapOfSpanAttributeValueKey already exists in map
+			_, ok := mapOfSpanAttributeValues[mapOfSpanAttributeValueKey]
+			if ok {
+				continue
 			}
+			// add mapOfSpanAttributeValueKey to map
+			mapOfSpanAttributeValues[mapOfSpanAttributeValueKey] = struct{}{}
+
+			// form a map key of span attribute key, tagType, dataType and isColumn
+			mapOfSpanAttributeKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + strconv.FormatBool(spanAttribute.IsColumn)
+
+			// check if mapOfSpanAttributeKey already exists in map
+			_, ok = mapOfSpanAttributeKeys[mapOfSpanAttributeKey]
+			if !ok {
+				err = tagKeyStatement.Append(
+					spanAttribute.Key,
+					spanAttribute.TagType,
+					spanAttribute.DataType,
+					spanAttribute.IsColumn,
+				)
+				if err != nil {
+					w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Object("span", span))
+					return err
+				}
+			}
+			// add mapOfSpanAttributeKey to map
+			mapOfSpanAttributeKeys[mapOfSpanAttributeKey] = struct{}{}
 
 			if spanAttribute.DataType == "string" {
 				err = tagStatement.Append(
