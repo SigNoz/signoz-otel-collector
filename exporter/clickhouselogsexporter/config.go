@@ -58,7 +58,7 @@ func (cfg *Config) Validate() (err error) {
 func (cfg *Config) enforcedQueueSettings() exporterhelper.QueueSettings {
 	return exporterhelper.QueueSettings{
 		Enabled:      true,
-		NumConsumers: 1,
+		NumConsumers: exporterhelper.NewDefaultQueueSettings().NumConsumers,
 		QueueSize:    cfg.QueueSettings.QueueSize,
 	}
 }
