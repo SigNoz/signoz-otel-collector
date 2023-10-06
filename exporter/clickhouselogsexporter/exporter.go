@@ -461,6 +461,10 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
 	}
+	// enable migration file templating
+	m.EnableTemplating = true
+	
+	// run migrations
 	err = m.Up()
 	if err != nil && !strings.HasSuffix(err.Error(), "no change") {
 		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)

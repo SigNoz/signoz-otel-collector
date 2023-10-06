@@ -123,6 +123,10 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
 	}
+	// enable migration file templating
+	m.EnableTemplating = true
+	
+	// run migrations
 	err = m.Up()
 	f.logger.Info("Clickhouse Migrate finished", zap.Error(err))
 	return nil

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -32,7 +33,7 @@ import (
 
 const (
 	// The value of "type" key in configuration.
-	typeStr = "clickhousemetricswrite"
+	typeStr = constants.SignozMetricsExporter
 )
 
 var (

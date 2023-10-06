@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -28,7 +29,7 @@ import (
 
 const (
 	// The value of "type" key in configuration.
-	typeStr          = "clickhouselogsexporter"
+	typeStr          = constants.SignozLogsExporter
 	primaryNamespace = "clickhouselogs"
 	archiveNamespace = "clickhouselogs-archive"
 	databaseName     = "signoz_logs"
