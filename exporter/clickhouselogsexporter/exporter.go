@@ -203,6 +203,8 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 						attributes.IntValues,
 						attributes.FloatKeys,
 						attributes.FloatValues,
+						attributes.BoolKeys,
+						attributes.BoolValues,
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
@@ -257,6 +259,7 @@ type attributesToSliceResponse struct {
 	FloatKeys    []string
 	FloatValues  []float64
 	BoolKeys     []string
+	BoolValues   []bool
 }
 
 func getStringifiedBody(body pcommon.Value) string {
@@ -334,31 +337,28 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if forceStringValues {
 			// store everything as string
-			response.StringKeys = append(response.StringKeys, formatKey(k))
+			response.StringKeys = append(response.StringKeys, k)
 			response.StringValues = append(response.StringValues, v.AsString())
 		} else {
 			switch v.Type() {
 			case pcommon.ValueTypeInt:
-				response.IntKeys = append(response.IntKeys, formatKey(k))
+				response.IntKeys = append(response.IntKeys, k)
 				response.IntValues = append(response.IntValues, v.Int())
 			case pcommon.ValueTypeDouble:
-				response.FloatKeys = append(response.FloatKeys, formatKey(k))
+				response.FloatKeys = append(response.FloatKeys, k)
 				response.FloatValues = append(response.FloatValues, v.Double())
 			case pcommon.ValueTypeBool:
 				// add boolValues in future if it is required
-				response.BoolKeys = append(response.BoolKeys, formatKey(k))
+				response.BoolKeys = append(response.BoolKeys, k)
+				response.BoolValues = append(response.BoolValues, v.Bool())
 			default: // store it as string
-				response.StringKeys = append(response.StringKeys, formatKey(k))
+				response.StringKeys = append(response.StringKeys, k)
 				response.StringValues = append(response.StringValues, v.AsString())
 			}
 		}
 		return true
 	})
 	return response
-}
-
-func formatKey(k string) string {
-	return strings.ReplaceAll(k, ".", "_")
 }
 
 const (
@@ -380,8 +380,12 @@ const (
 							attributes_int64_key,
 							attributes_int64_value,
 							attributes_float64_key,
-							attributes_float64_value
+							attributes_float64_value,
+							attributes_bool_key,
+							attributes_bool_value
 							) VALUES (
+								?,
+								?,
 								?,
 								?,
 								?,
