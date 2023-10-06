@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/golang-migrate/migrate/v4"
@@ -125,10 +126,15 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 	}
 	// enable migration file templating
 	m.EnableTemplating = true
-	
+
 	// run migrations
 	err = m.Up()
-	f.logger.Info("Clickhouse Migrate finished", zap.Error(err))
+	if err != nil && !strings.HasSuffix(err.Error(), "no change") {
+		f.logger.Error("clickhouse Migrate failed to run", zap.Error(err))
+		return fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
+	}
+
+	f.logger.Info("Clickhouse Migrate finished")
 	return nil
 }
 
