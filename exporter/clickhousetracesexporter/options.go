@@ -89,6 +89,9 @@ type Connectors func(cfg *namespaceConfig) ([]clickhouse.Conn, error)
 func connectorFor(datasource string, cluster string) (clickhouse.Conn, error) {
 	ctx := context.Background()
 	dsnURL, err := url.Parse(datasource)
+	if err != nil {
+		return nil, err
+	}
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}

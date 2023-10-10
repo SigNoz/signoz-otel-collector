@@ -37,7 +37,6 @@ type Factory struct {
 	Options       *Options
 	conns         []clickhouse.Conn
 	archive_conns []clickhouse.Conn
-	datasource    string
 	makeWriter    writerMaker
 }
 
@@ -78,6 +77,7 @@ func ClickHouseNewFactory(migrations string, datasources []string, dockerMultiNo
 	}
 }
 
+// Round-robin connection-selection strategy.
 func (f *Factory) selectConn() clickhouse.Conn {
 	if len(f.conns) > 1 {
 		f.conns = append(f.conns[1:], f.conns[0])
@@ -124,13 +124,13 @@ func (f *Factory) Initialize(logger *zap.Logger) (clickhouse.Conn, error) {
 	f.logger.Info("Running migrations from path: ", zap.Any("test", f.Options.primary.Migrations))
 	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasources[0], f.Options.primary.Cluster)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
+		return nil, fmt.Errorf("failed to build Clickhouse migrate URL, error: %s", err)
 	}
 	m, err := migrate.New(
 		"file://"+f.Options.primary.Migrations,
 		clickhouseUrl)
 	if err != nil {
-		return nil, fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
+		return nil, fmt.Errorf("clickhouse migrate failed to run, error: %s", err)
 	}
 	err = m.Up()
 	f.logger.Info("Clickhouse Migrate finished", zap.Error(err))
@@ -241,7 +241,7 @@ func buildClickhouseMigrateURL(datasource string, cluster string) (string, error
 	}
 	host := parsedURL.Host
 	if host == "" {
-		return "", fmt.Errorf("Unable to parse host")
+		return "", fmt.Errorf("unable to parse host")
 
 	}
 	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
@@ -282,7 +282,7 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
-		db:                f.conns,
+		conns:             f.conns,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
@@ -301,7 +301,7 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 	cfg := f.Options.others[archiveNamespace]
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
-		db:                f.archive_conns,
+		conns:             f.archive_conns,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
