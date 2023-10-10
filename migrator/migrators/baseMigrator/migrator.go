@@ -139,3 +139,7 @@ func (m *BaseMigrator) Migrate(ctx context.Context, database string, migrationFo
 
 	return m.RunSqlMigrations(ctx, migrationFolder, database)
 }
+
+func (m *BaseMigrator) Close() error {
+	return m.DB.Close()
+}

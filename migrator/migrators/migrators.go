@@ -14,5 +14,6 @@ type MigratorConfig struct {
 
 type Migrator interface {
 	Migrate(context.Context) error
+	Close() error
 	Name() string
 }

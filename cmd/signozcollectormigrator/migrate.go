@@ -67,6 +67,8 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to create migration manager", zap.Error(err))
 	}
+	defer migrationManager.Close()
+
 	err = migrationManager.Migrate(context.Background())
 	if err != nil {
 		logger.Fatal("Failed to run migrations", zap.Error(err))

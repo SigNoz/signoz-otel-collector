@@ -83,4 +83,13 @@ func (m *MigrationManager) Migrate(ctx context.Context) error {
 	return nil
 }
 
+func (m *MigrationManager) Close() error {
+	for _, migrator := range m.Migrators {
+		if err := migrator.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 
