@@ -47,10 +47,6 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db, f.Options)
-	if err != nil {
-		return nil, err
-	}
 	spanWriter, err := f.CreateSpanWriter()
 	if err != nil {
 		return nil, err
