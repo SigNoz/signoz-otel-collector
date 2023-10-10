@@ -1,0 +1,21 @@
+receivers:
+   nop:
+
+processors:
+   nop:
+
+exporters:
+   clickhousetraces:
+      datasources: tcp://127.0.0.1:9000
+   clickhousetraces/full:
+      datasources:
+         - tcp://clickhouse:9000/?database=signoz_traces
+      docker_multi_node_cluster: true
+      low_cardinal_exception_grouping: true
+
+service:
+   pipelines:
+      logs:
+         receivers: [nop]
+         processors: [nop]
+         exporters: [clickhousetraces]
