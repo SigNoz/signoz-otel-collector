@@ -33,12 +33,12 @@ import (
 
 // Factory implements storage.Factory for Clickhouse backend.
 type Factory struct {
-	logger     *zap.Logger
-	Options    *Options
-	db         clickhouse.Conn
-	archive    clickhouse.Conn
-	datasource string
-	makeWriter writerMaker
+	logger        *zap.Logger
+	Options       *Options
+	conns         []clickhouse.Conn
+	archive_conns []clickhouse.Conn
+	datasource    string
+	makeWriter    writerMaker
 }
 
 // Writer writes spans to storage.
@@ -55,7 +55,7 @@ var (
 )
 
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeCluster bool) *Factory {
+func ClickHouseNewFactory(migrations string, datasources []string, dockerMultiNodeCluster bool) *Factory {
 	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
 	writeLatencyView := &view.View{
@@ -68,7 +68,7 @@ func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeC
 
 	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, primaryNamespace, archiveNamespace),
+		Options: NewOptions(migrations, datasources, dockerMultiNodeCluster, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -78,54 +78,63 @@ func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeC
 	}
 }
 
+func (f *Factory) selectConn() clickhouse.Conn {
+	if len(f.conns) > 1 {
+		f.conns = append(f.conns[1:], f.conns[0])
+	}
+	return f.conns[0]
+}
+
 // Initialize implements storage.Factory
-func (f *Factory) Initialize(logger *zap.Logger) error {
+func (f *Factory) Initialize(logger *zap.Logger) (clickhouse.Conn, error) {
 	f.logger = logger
 
-	db, err := f.connect(f.Options.getPrimary())
+	conns, err := f.connect(f.Options.getPrimary())
 	if err != nil {
-		return fmt.Errorf("error connecting to primary db: %v", err)
+		return nil, fmt.Errorf("error connecting to primary db: %v", err)
 	}
 
-	f.db = db
+	f.conns = conns
 
 	archiveConfig := f.Options.others[archiveNamespace]
 	if archiveConfig.Enabled {
-		archive, err := f.connect(archiveConfig)
+		archive_conns, err := f.connect(archiveConfig)
 		if err != nil {
-			return fmt.Errorf("error connecting to archive db: %v", err)
+			return nil, fmt.Errorf("error connecting to archive db: %v", err)
 		}
 
-		f.archive = archive
+		f.archive_conns = archive_conns
 	}
 
-	err = patchGroupByParenInMV(db, f)
+	init_conn := f.selectConn()
+
+	err = patchGroupByParenInMV(init_conn, f)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
 	if f.Options.primary.DockerMultiNodeCluster {
-		err = dropSchemaMigrationsTable(db, f)
+		err = dropSchemaMigrationsTable(init_conn, f)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	f.logger.Info("Running migrations from path: ", zap.Any("test", f.Options.primary.Migrations))
-	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasource, f.Options.primary.Cluster)
+	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasources[0], f.Options.primary.Cluster)
 	if err != nil {
-		return fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
+		return nil, fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
 	}
 	m, err := migrate.New(
 		"file://"+f.Options.primary.Migrations,
 		clickhouseUrl)
 	if err != nil {
-		return fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
+		return nil, fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
 	}
 	err = m.Up()
 	f.logger.Info("Clickhouse Migrate finished", zap.Error(err))
-	return nil
+	return init_conn, nil
 }
 
 func patchGroupByParenInMV(db clickhouse.Conn, f *Factory) error {
@@ -250,12 +259,12 @@ func buildClickhouseMigrateURL(datasource string, cluster string) (string, error
 	return clickhouseUrl, nil
 }
 
-func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
+func (f *Factory) connect(cfg *namespaceConfig) ([]clickhouse.Conn, error) {
 	if cfg.Encoding != EncodingJSON && cfg.Encoding != EncodingProto {
 		return nil, fmt.Errorf("unknown encoding %q, supported: %q, %q", cfg.Encoding, EncodingJSON, EncodingProto)
 	}
 
-	return cfg.Connector(cfg)
+	return cfg.Connectors(cfg)
 }
 
 // AddFlags implements plugin.Configurable
@@ -273,7 +282,7 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
-		db:                f.db,
+		db:                f.conns,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
@@ -286,13 +295,13 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 
 // CreateArchiveSpanWriter implements storage.ArchiveFactory
 func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
-	if f.archive == nil {
+	if f.archive_conns == nil {
 		return nil, nil
 	}
 	cfg := f.Options.others[archiveNamespace]
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
-		db:                f.archive,
+		db:                f.archive_conns,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
@@ -305,22 +314,22 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 
 // Close Implements io.Closer and closes the underlying storage
 func (f *Factory) Close() error {
-	if f.db != nil {
-		err := f.db.Close()
-		if err != nil {
-			return err
+	if len(f.conns) > 0 {
+		for _, conn := range f.conns {
+			if err := conn.Close(); err != nil {
+				return err
+			}
 		}
-
-		f.db = nil
+		f.conns = nil
 	}
 
-	if f.archive != nil {
-		err := f.archive.Close()
-		if err != nil {
-			return err
+	if len(f.archive_conns) > 0 {
+		for _, conn := range f.archive_conns {
+			if err := conn.Close(); err != nil {
+				return err
+			}
 		}
-
-		f.archive = nil
+		f.archive_conns = nil
 	}
 
 	return nil
