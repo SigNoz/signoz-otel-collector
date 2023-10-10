@@ -17,7 +17,6 @@ package clickhousetracesexporter
 import (
 	"context"
 
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -25,7 +24,7 @@ import (
 
 const (
 	// The value of "type" key in configuration.
-	typeStr          = constants.SignozTracesExporter
+	typeStr          = "clickhousetraces"
 	primaryNamespace = "clickhouse"
 	archiveNamespace = "clickhouse-archive"
 )
