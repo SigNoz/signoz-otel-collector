@@ -21,33 +21,6 @@ type BaseMigrator struct {
 	DB     driver.Conn
 }
 
-func createClickhouseConnection(dsn string) (driver.Conn, error) {
-	dsnURL, err := url.Parse(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse dsn: %w", err)
-	}
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-		options.Auth = auth
-	}
-	db, err := clickhouse.Open(options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open clickhouse connection: %w", err)
-	}
-
-	if err := db.Ping(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to ping clickhouse: %w", err)
-	}
-
-	return db, nil
-}
-
 func New(cfg migrators.MigratorConfig, logger *zap.Logger) (*BaseMigrator, error) {
 	dbConn, err := createClickhouseConnection(cfg.DSN)
 	if err != nil {
@@ -62,30 +35,21 @@ func New(cfg migrators.MigratorConfig, logger *zap.Logger) (*BaseMigrator, error
 	}, nil
 }
 
-func (m *BaseMigrator) buildClickhouseMigrateURL(database string) (string, error) {
-	var clickhouseUrl string
-	parsedURL, err := url.Parse(m.Cfg.DSN)
+func (m *BaseMigrator) Migrate(ctx context.Context, database string, migrationFolder string) error {
+	err := m.CreateDB(ctx, database)
 	if err != nil {
-		return "", err
+		return err
 	}
-	host := parsedURL.Host
-	if host == "" {
-		return "", fmt.Errorf("unable to parse host")
 
+	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
+	if m.Cfg.IsMultiNodeCluster {
+		err := m.DropSchemaMigrationsTable(ctx, database)
+		if err != nil {
+			return err
+		}
 	}
-	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
-	if err != nil {
-		return "", err
-	}
-	username := paramMap["username"]
-	password := paramMap["password"]
 
-	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, database, m.Cfg.ClusterName)
-	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, database, m.Cfg.ClusterName)
-	}
-	return clickhouseUrl, nil
+	return m.RunSqlMigrations(ctx, migrationFolder, database)
 }
 
 func (m *BaseMigrator) CreateDB(ctx context.Context, database string) error {
@@ -123,23 +87,59 @@ func (m *BaseMigrator) RunSqlMigrations(ctx context.Context, migrationFolder, da
 	return nil
 }
 
-func (m *BaseMigrator) Migrate(ctx context.Context, database string, migrationFolder string) error {
-	err := m.CreateDB(ctx, database)
-	if err != nil {
-		return err
-	}
-
-	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
-	if m.Cfg.IsMultiNodeCluster {
-		err := m.DropSchemaMigrationsTable(ctx, database)
-		if err != nil {
-			return err
-		}
-	}
-
-	return m.RunSqlMigrations(ctx, migrationFolder, database)
-}
-
 func (m *BaseMigrator) Close() error {
 	return m.DB.Close()
+}
+
+func (m *BaseMigrator) buildClickhouseMigrateURL(database string) (string, error) {
+	var clickhouseUrl string
+	parsedURL, err := url.Parse(m.Cfg.DSN)
+	if err != nil {
+		return "", err
+	}
+	host := parsedURL.Host
+	if host == "" {
+		return "", fmt.Errorf("unable to parse host")
+
+	}
+	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
+	if err != nil {
+		return "", err
+	}
+	username := paramMap["username"]
+	password := paramMap["password"]
+
+	if len(username) > 0 && len(password) > 0 {
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, database, m.Cfg.ClusterName)
+	} else {
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, database, m.Cfg.ClusterName)
+	}
+	return clickhouseUrl, nil
+}
+
+func createClickhouseConnection(dsn string) (driver.Conn, error) {
+	dsnURL, err := url.Parse(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse dsn: %w", err)
+	}
+	options := &clickhouse.Options{
+		Addr: []string{dsnURL.Host},
+	}
+	if dsnURL.Query().Get("username") != "" {
+		auth := clickhouse.Auth{
+			Username: dsnURL.Query().Get("username"),
+			Password: dsnURL.Query().Get("password"),
+		}
+		options.Auth = auth
+	}
+	db, err := clickhouse.Open(options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open clickhouse connection: %w", err)
+	}
+
+	if err := db.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to ping clickhouse: %w", err)
+	}
+
+	return db, nil
 }
