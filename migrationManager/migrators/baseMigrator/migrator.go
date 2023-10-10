@@ -36,23 +36,27 @@ func New(cfg migrators.MigratorConfig, logger *zap.Logger) (*BaseMigrator, error
 }
 
 func (m *BaseMigrator) Migrate(ctx context.Context, database string, migrationFolder string) error {
-	err := m.CreateDB(ctx, database)
+	err := m.createDB(ctx, database)
 	if err != nil {
 		return err
 	}
 
 	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
 	if m.Cfg.IsMultiNodeCluster {
-		err := m.DropSchemaMigrationsTable(ctx, database)
+		err := m.dropSchemaMigrationsTable(ctx, database)
 		if err != nil {
 			return err
 		}
 	}
 
-	return m.RunSqlMigrations(ctx, migrationFolder, database)
+	return m.runSqlMigrations(ctx, migrationFolder, database)
 }
 
-func (m *BaseMigrator) CreateDB(ctx context.Context, database string) error {
+func (m *BaseMigrator) Close() error {
+	return m.DB.Close()
+}
+
+func (m *BaseMigrator) createDB(ctx context.Context, database string) error {
 	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s;", database, m.Cfg.ClusterName)
 	err := m.DB.Exec(ctx, q)
 	if err != nil {
@@ -61,7 +65,7 @@ func (m *BaseMigrator) CreateDB(ctx context.Context, database string) error {
 	return nil
 }
 
-func (m *BaseMigrator) DropSchemaMigrationsTable(ctx context.Context, database string) error {
+func (m *BaseMigrator) dropSchemaMigrationsTable(ctx context.Context, database string) error {
 	err := m.DB.Exec(ctx, fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s;`, database, "schema_migrations", m.Cfg.ClusterName))
 	if err != nil {
 		return fmt.Errorf("error dropping schema_migrations table: %v", err)
@@ -69,7 +73,7 @@ func (m *BaseMigrator) DropSchemaMigrationsTable(ctx context.Context, database s
 	return nil
 }
 
-func (m *BaseMigrator) RunSqlMigrations(ctx context.Context, migrationFolder, database string) error {
+func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, database string) error {
 	clickhouseUrl, err := m.buildClickhouseMigrateURL(database)
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse migrate url, err: %s", err)
@@ -85,10 +89,6 @@ func (m *BaseMigrator) RunSqlMigrations(ctx context.Context, migrationFolder, da
 		return fmt.Errorf("clickhouse migrate failed to run, error: %s", err)
 	}
 	return nil
-}
-
-func (m *BaseMigrator) Close() error {
-	return m.DB.Close()
 }
 
 func (m *BaseMigrator) buildClickhouseMigrateURL(database string) (string, error) {
