@@ -7,9 +7,11 @@ import (
 // MigratorConfig stores the configuration for a migrator
 // Currently all migrators use the same config
 type MigratorConfig struct {
-	DSN                string
-	ClusterName        string
-	IsMultiNodeCluster bool
+	DSN                            string
+	ClusterName                    string
+	IsMultiNodeCluster             bool
+	IsDurationSortFeatureDisabled  bool
+	IsTimestampSortFeatureDisabled bool
 }
 
 type Migrator interface {
