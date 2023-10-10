@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/SigNoz/signoz-otel-collector/migrator/migrators"
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrator/migrators/baseMigrator"
-	"github.com/SigNoz/signoz-otel-collector/migrator/migrators/logs"
-	"github.com/SigNoz/signoz-otel-collector/migrator/migrators/metrics"
-	"github.com/SigNoz/signoz-otel-collector/migrator/migrators/traces"
+	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators"
+	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
+	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/logs"
+	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/metrics"
+	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/traces"
 	"go.uber.org/zap"
 )
 
@@ -17,7 +17,7 @@ type MigrationManager struct {
 	logger    *zap.Logger
 }
 
-func NewMigrationManager(dsn string, clusterName string, isMultiNodeCluster bool) (*MigrationManager, error) {
+func New(dsn string, clusterName string, isMultiNodeCluster bool) (*MigrationManager, error) {
 	logger := zap.L().With(zap.String("component", "migrationManager"))
 	migratorConfig := migrators.MigratorConfig{
 		DSN:                dsn,
@@ -91,5 +91,3 @@ func (m *MigrationManager) Close() error {
 	}
 	return nil
 }
-
-

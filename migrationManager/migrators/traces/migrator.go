@@ -3,13 +3,13 @@ package traces
 import (
 	"context"
 
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrator/migrators/baseMigrator"
+	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
 )
 
 const (
 	name            = "traces"
 	database        = "signoz_traces"
-	migrationFolder = "migrator/migrators/traces/migrations"
+	migrationFolder = "migrationManager/migrators/traces/migrations"
 )
 
 type TracesMigrator struct {

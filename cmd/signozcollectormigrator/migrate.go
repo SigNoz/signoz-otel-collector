@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/SigNoz/signoz-otel-collector/migrator"
+	migrationmanager "github.com/SigNoz/signoz-otel-collector/migrationManager"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -63,13 +63,13 @@ func main() {
 		logger.Fatal("dsn and clusterName are required fields")
 	}
 
-	migrationManager, err := migrator.NewMigrationManager(dsn, clusterName, multiNodeCluster)
+	manager, err := migrationmanager.New(dsn, clusterName, multiNodeCluster)
 	if err != nil {
 		logger.Fatal("Failed to create migration manager", zap.Error(err))
 	}
-	defer migrationManager.Close()
+	defer manager.Close()
 
-	err = migrationManager.Migrate(context.Background())
+	err = manager.Migrate(context.Background())
 	if err != nil {
 		logger.Fatal("Failed to run migrations", zap.Error(err))
 	}
