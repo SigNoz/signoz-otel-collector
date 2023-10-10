@@ -1,0 +1,18 @@
+package migrators
+
+import (
+	"context"
+)
+
+// MigratorConfig stores the configuration for a migrator
+// Currently all migrators use the same config
+type MigratorConfig struct {
+	DSN                string
+	ClusterName        string
+	IsMultiNodeCluster bool
+}
+
+type Migrator interface {
+	Migrate(context.Context) error
+	Name() string
+}
