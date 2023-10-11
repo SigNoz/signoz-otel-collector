@@ -36,7 +36,7 @@ func main() {
 	}
 
 	f.String("dsn", "", "Clickhouse DSN")
-	f.String("cluster-name", "", "Cluster name to use while running migrations")
+	f.String("cluster-name", "cluster", "Cluster name to use while running migrations")
 	f.Bool("multi-node-cluster", false, "True if the dsn points to a multi node clickhouse cluster, false otherwise. Defaults to false.")
 	f.Bool("disable-duration-sort-feature", false, "Flag to disable the duration sort feature. Defaults to false.")
 	f.Bool("disable-timestamp-sort-feature", false, "Flag to disable the timestamp sort feature. Defaults to false.")
@@ -71,10 +71,10 @@ func main() {
 		logger.Fatal("Failed to get disable timestamp sort feature flag from args", zap.Error(err))
 	}
 
-	if dsn == "" || clusterName == "" {
-		logger.Fatal("dsn and clusterName are required fields")
+	if dsn == "" {
+		logger.Fatal("dsn is a required field")
 	}
-	
+
 	// set cluster env so that golang-migrate can use it
 	// the value of this env would replace all occurences of {{.SIGNOZ_CLUSTER}} in the migration files
 	os.Setenv("SIGNOZ_CLUSTER", clusterName)
