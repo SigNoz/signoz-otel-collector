@@ -7,4 +7,4 @@ CREATE TABLE IF NOT EXISTS signoz_traces.span_attributes_keys ON CLUSTER {{.SIGN
 ORDER BY (tagKey, tagType, dataType, isColumn);
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_span_attributes_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_traces.span_attributes_keys
-ENGINE = Distributed("cluster", "signoz_traces", span_attributes_keys, cityHash64(rand()));
+ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", "signoz_traces", span_attributes_keys, cityHash64(rand()));

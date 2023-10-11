@@ -63,4 +63,4 @@ WHERE dest != '' and kind != 2
 GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name;
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_dependency_graph_minutes_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_traces.dependency_graph_minutes_v2
-ENGINE = Distributed("cluster", "signoz_traces", dependency_graph_minutes_v2, cityHash64(rand()));
+ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", "signoz_traces", dependency_graph_minutes_v2, cityHash64(rand()));

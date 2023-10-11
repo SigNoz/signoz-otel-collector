@@ -29,4 +29,4 @@ ORDER BY  name;
 DROP TABLE IF EXISTS signoz_logs.distributed_logs_attribute_keys ON CLUSTER {{.SIGNOZ_CLUSTER}};
 
 CREATE TABLE IF NOT EXISTS signoz_logs.distributed_logs_atrribute_keys  ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_logs.logs_atrribute_keys
-ENGINE = Distributed("cluster", "signoz_logs", logs_atrribute_keys, cityHash64(datatype));
+ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", "signoz_logs", logs_atrribute_keys, cityHash64(datatype));

@@ -74,6 +74,10 @@ func main() {
 	if dsn == "" || clusterName == "" {
 		logger.Fatal("dsn and clusterName are required fields")
 	}
+	
+	// set cluster env so that golang-migrate can use it
+	// the value of this env would replace all occurences of {{.SIGNOZ_CLUSTER}} in the migration files
+	os.Setenv("SIGNOZ_CLUSTER", clusterName)
 
 	managerConfig := migrationmanager.NewConfig(
 		dsn,
