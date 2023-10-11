@@ -1,7 +1,7 @@
 -- We are dropping logs_attribute_keys as we are renaming logs_atrribute_keys in the next line
-DROP TABLE IF EXISTS signoz_logs.logs_attribute_keys on CLUSTER cluster;
+DROP TABLE IF EXISTS signoz_logs.logs_attribute_keys on CLUSTER {{.SIGNOZ_CLUSTER}};
 
-RENAME TABLE IF EXISTS signoz_logs.logs_atrribute_keys TO signoz_logs.logs_attribute_keys on CLUSTER cluster;
+RENAME TABLE IF EXISTS signoz_logs.logs_atrribute_keys TO signoz_logs.logs_attribute_keys on CLUSTER {{.SIGNOZ_CLUSTER}};
 
 
 -- Materialized view
