@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	migrationmanager "github.com/SigNoz/signoz-otel-collector/migrationManager"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

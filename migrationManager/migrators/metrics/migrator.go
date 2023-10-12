@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/basemigrator"
 )
 
 const (
 	name            = "metrics"
 	database        = "signoz_metrics"
-	migrationFolder = "migrationManager/migrators/metrics/migrations"
+	migrationFolder = "migrationmanager/migrators/metrics/migrations"
 )
 
 type MetricsMigrator struct {

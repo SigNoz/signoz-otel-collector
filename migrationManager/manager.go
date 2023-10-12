@@ -1,14 +1,14 @@
-package migrator
+package migrationmanager
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators"
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
-	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/logs"
-	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/metrics"
-	"github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/traces"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/basemigrator"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/logs"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/metrics"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/traces"
 	"go.uber.org/zap"
 )
 
@@ -18,7 +18,7 @@ type MigrationManager struct {
 }
 
 func New(dsn string, clusterName string, isDurationSortFeatureDisabled bool, isTimestampSortFeatureDisabled bool) (*MigrationManager, error) {
-	logger := zap.L().With(zap.String("component", "migrationManager"))
+	logger := zap.L().With(zap.String("component", "migrationmanager"))
 	cfg := migrators.MigratorConfig{
 		DSN:                            dsn,
 		ClusterName:                    clusterName,

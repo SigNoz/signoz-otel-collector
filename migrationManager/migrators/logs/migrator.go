@@ -3,13 +3,13 @@ package logs
 import (
 	"context"
 
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/basemigrator"
 )
 
 const (
 	name            = "logs"
 	database        = "signoz_logs"
-	migrationFolder = "migrationManager/migrators/logs/migrations"
+	migrationFolder = "migrationmanager/migrators/logs/migrations"
 )
 
 type LogsMigrator struct {

@@ -10,7 +10,7 @@ USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
 COPY .build/${TARGETOS}-${TARGETARCH}/signoz-schema-migrator /signoz-schema-migrator
-COPY migrationManager ./migrationManager
+COPY migrationmanager ./migrationmanager
 
 # run the binary as the entrypoint and pass the default dsn as a flag
 ENTRYPOINT [ "/signoz-schema-migrator" ]

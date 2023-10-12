@@ -6,13 +6,13 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
-	basemigrator "github.com/SigNoz/signoz-otel-collector/migrationManager/migrators/baseMigrator"
+	"github.com/SigNoz/signoz-otel-collector/migrationmanager/migrators/basemigrator"
 )
 
 const (
 	name            = "traces"
 	database        = "signoz_traces"
-	migrationFolder = "migrationManager/migrators/traces/migrations"
+	migrationFolder = "migrationmanager/migrators/traces/migrations"
 )
 
 type TracesMigrator struct {
