@@ -73,13 +73,7 @@ func main() {
 	// the value of this env would replace all occurences of {{.SIGNOZ_CLUSTER}} in the migration files
 	os.Setenv("SIGNOZ_CLUSTER", clusterName)
 
-	managerConfig := migrationmanager.NewConfig(
-		dsn,
-		clusterName,
-		disableDurationSortFeature,
-		disableTimestampSortFeature,
-	)
-	manager, err := migrationmanager.New(managerConfig)
+	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature)
 	if err != nil {
 		logger.Fatal("Failed to create migration manager", zap.Error(err))
 	}

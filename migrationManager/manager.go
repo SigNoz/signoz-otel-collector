@@ -17,40 +17,26 @@ type MigrationManager struct {
 	logger    *zap.Logger
 }
 
-type Config struct {
-	migrators.MigratorConfig
-}
-
-func NewConfig(
-	dsn string,
-	clusterName string,
-	isDurationSortFeatureDisabled bool,
-	isTimestampSortFeatureDisabled bool,
-) Config {
-	return Config{
-		MigratorConfig: migrators.MigratorConfig{
-			DSN:                            dsn,
-			ClusterName:                    clusterName,
-			IsDurationSortFeatureDisabled:  isDurationSortFeatureDisabled,
-			IsTimestampSortFeatureDisabled: isTimestampSortFeatureDisabled,
-		},
-	}
-}
-
-func New(cfg Config) (*MigrationManager, error) {
+func New(dsn string, clusterName string, isDurationSortFeatureDisabled bool, isTimestampSortFeatureDisabled bool) (*MigrationManager, error) {
 	logger := zap.L().With(zap.String("component", "migrationManager"))
+	cfg := migrators.MigratorConfig{
+		DSN:                            dsn,
+		ClusterName:                    clusterName,
+		IsDurationSortFeatureDisabled:  isDurationSortFeatureDisabled,
+		IsTimestampSortFeatureDisabled: isTimestampSortFeatureDisabled,
+	}
 
-	logsMigrator, err := createNewMigrator("logs", cfg.MigratorConfig)
+	logsMigrator, err := createNewMigrator("logs", cfg)
 	if err != nil {
 		logger.Error("Failed to create logs migrator", zap.Error(err))
 		return nil, err
 	}
-	metricsMigrator, err := createNewMigrator("metrics", cfg.MigratorConfig)
+	metricsMigrator, err := createNewMigrator("metrics", cfg)
 	if err != nil {
 		logger.Error("Failed to create metrics migrator", zap.Error(err))
 		return nil, err
 	}
-	tracesMigrator, err := createNewMigrator("traces", cfg.MigratorConfig)
+	tracesMigrator, err := createNewMigrator("traces", cfg)
 	if err != nil {
 		logger.Error("Failed to create traces migrator", zap.Error(err))
 		return nil, err
