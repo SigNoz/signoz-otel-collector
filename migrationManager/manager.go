@@ -1,4 +1,4 @@
-package migrationmanager
+package migrator
 
 import (
 	"context"
