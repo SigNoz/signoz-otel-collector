@@ -23,6 +23,7 @@ func init() {
 		log.Fatalf("Failed to initialize zap logger %v", err)
 	}
 	// replace global logger
+	// TODO(dhawal1248): move away from global logger
 	zap.ReplaceGlobals(logger)
 }
 
