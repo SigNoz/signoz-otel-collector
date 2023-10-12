@@ -2,8 +2,7 @@ version: "3.8"
 
 services:
   otel-collector-migrator:
-    image: signoz/signoz-otel-collector-migrator:templatize-migrations
-    container_name: otel-migrator
+    image: signoz/signoz-schema-migrator:templatize-migrations
     extra_hosts:
       - signoz-host:host-gateway
     command:

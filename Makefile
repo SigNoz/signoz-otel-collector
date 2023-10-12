@@ -1,7 +1,7 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
 IMAGE_NAME ?= signoz-otel-collector
-MIGRATOR_IMAGE_NAME ?= signoz-otel-collector-migrator
+MIGRATOR_IMAGE_NAME ?= signoz-schema-migrator
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
