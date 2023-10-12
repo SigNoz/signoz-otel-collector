@@ -35,7 +35,7 @@ test:
 .PHONY: build
 build:
 	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
-	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-collector-migrator -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollectormigrator
+	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozschemamigrator
 
 .PHONY: amd64
 amd64:
@@ -75,22 +75,22 @@ build-signoz-collector:
 		--no-cache -f cmd/signozcollector/Dockerfile --progress plain \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
-.PHONY: build-signoz-collector-migrator
-build-signoz-collector-migrator:
+.PHONY: build-signoz-schema-migrator
+build-signoz-schema-migrator:
 	@echo "------------------"
 	@echo  "--> Build signoz collector migrator docker image"
 	@echo "------------------"
 	docker build --build-arg TARGETPLATFORM="linux/amd64" \
-		--no-cache -f cmd/signozcollectormigrator/Dockerfile --progress plain \
+		--no-cache -f cmd/signozschemamigrator/Dockerfile --progress plain \
 		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
 
-.PHONY: build-and-push-signoz-collector-migrator
-build-and-push-signoz-collector-migrator:
+.PHONY: build-and-push-signoz-schema-migrator
+build-and-push-signoz-schema-migrator:
 	@echo "------------------"
 	@echo  "--> Build and push signoz collector migrator docker image"
 	@echo "------------------"
 	docker buildx build --platform linux/amd64,linux/arm64 --progress plain \
-		--no-cache --push -f cmd/signozcollectormigrator/Dockerfile \
+		--no-cache --push -f cmd/signozschemamigrator/Dockerfile \
 		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
 
 .PHONY: lint

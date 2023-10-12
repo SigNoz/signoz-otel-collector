@@ -9,9 +9,9 @@ ARG USER_UID=10001
 USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
-COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector-migrator /signoz-collector-migrator
+COPY .build/${TARGETOS}-${TARGETARCH}/signoz-schema-migrator /signoz-schema-migrator
 COPY migrationManager ./migrationManager
 
 # run the binary as the entrypoint and pass the default dsn as a flag
-ENTRYPOINT [ "/signoz-collector-migrator" ]
+ENTRYPOINT [ "/signoz-schema-migrator" ]
 CMD ["--dsn", "tcp://host.docker.internal:9000"]
