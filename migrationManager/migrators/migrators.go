@@ -9,7 +9,6 @@ import (
 type MigratorConfig struct {
 	DSN                            string
 	ClusterName                    string
-	IsMultiNodeCluster             bool
 	IsDurationSortFeatureDisabled  bool
 	IsTimestampSortFeatureDisabled bool
 }

@@ -37,7 +37,6 @@ func main() {
 
 	f.String("dsn", "", "Clickhouse DSN")
 	f.String("cluster-name", "cluster", "Cluster name to use while running migrations")
-	f.Bool("multi-node-cluster", false, "True if the dsn points to a multi node clickhouse cluster, false otherwise. Defaults to false.")
 	f.Bool("disable-duration-sort-feature", false, "Flag to disable the duration sort feature. Defaults to false.")
 	f.Bool("disable-timestamp-sort-feature", false, "Flag to disable the timestamp sort feature. Defaults to false.")
 
@@ -54,11 +53,6 @@ func main() {
 	clusterName, err := f.GetString("cluster-name")
 	if err != nil {
 		logger.Fatal("Failed to get cluster name from args", zap.Error(err))
-	}
-
-	multiNodeCluster, err := f.GetBool("multi-node-cluster")
-	if err != nil {
-		logger.Fatal("Failed to get multi node cluster flag from args", zap.Error(err))
 	}
 
 	disableDurationSortFeature, err := f.GetBool("disable-duration-sort-feature")
@@ -82,7 +76,6 @@ func main() {
 	managerConfig := migrationmanager.NewConfig(
 		dsn,
 		clusterName,
-		multiNodeCluster,
 		disableDurationSortFeature,
 		disableTimestampSortFeature,
 	)

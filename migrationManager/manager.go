@@ -24,7 +24,6 @@ type Config struct {
 func NewConfig(
 	dsn string,
 	clusterName string,
-	isMultiNodeCluster bool,
 	isDurationSortFeatureDisabled bool,
 	isTimestampSortFeatureDisabled bool,
 ) Config {
@@ -32,7 +31,6 @@ func NewConfig(
 		MigratorConfig: migrators.MigratorConfig{
 			DSN:                            dsn,
 			ClusterName:                    clusterName,
-			IsMultiNodeCluster:             isMultiNodeCluster,
 			IsDurationSortFeatureDisabled:  isDurationSortFeatureDisabled,
 			IsTimestampSortFeatureDisabled: isTimestampSortFeatureDisabled,
 		},

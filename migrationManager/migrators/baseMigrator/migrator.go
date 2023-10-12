@@ -41,14 +41,6 @@ func (m *BaseMigrator) Migrate(ctx context.Context, database string, migrationFo
 		return err
 	}
 
-	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
-	if m.Cfg.IsMultiNodeCluster {
-		err := m.dropSchemaMigrationsTable(ctx, database)
-		if err != nil {
-			return err
-		}
-	}
-
 	return m.runSqlMigrations(ctx, migrationFolder, database)
 }
 
