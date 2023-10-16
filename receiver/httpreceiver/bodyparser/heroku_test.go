@@ -84,6 +84,7 @@ func TestHerokuParse(t *testing.T) {
 		name    string
 		PayLoad string
 		Logs    func() plog.Logs
+		count   int
 		isError bool
 	}{
 		{
@@ -125,7 +126,7 @@ func TestHerokuParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := d.Parse([]byte(tt.PayLoad))
+			res, _ := d.Parse([]byte(tt.PayLoad))
 			logs := tt.Logs()
 			assert.Equal(t, logs, res)
 		})

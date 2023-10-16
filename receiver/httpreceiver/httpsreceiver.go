@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -25,12 +24,7 @@ const (
 	defaultEndpoint = ":54321"
 
 	defaultServerTimeout = 20 * time.Second
-	// responseErrNextConsumer = "Internal Server Error"
 )
-
-// var (
-// 	errNextConsumerRespBody = initJSONResponse(responseErrNextConsumer)
-// )
 
 // NewFactory creates a factory for httpreceiver
 func NewFactory() receiver.Factory {
@@ -184,7 +178,7 @@ func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logs := r.parser.Parse(body)
+	logs, totalCount := r.parser.Parse(body)
 
 	err = r.logsConsumer.ConsumeLogs(ctx, logs)
 	if err != nil {
@@ -192,11 +186,10 @@ func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Printf("Received logs: %d\n", logs.LogRecordCount)
 	r.obsrecv.EndMetricsOp(
 		ctx,
 		metadata.Type,
-		logs.LogRecordCount(),
+		totalCount,
 		err)
 
 }

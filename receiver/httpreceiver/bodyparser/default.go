@@ -9,7 +9,7 @@ import (
 type Default struct {
 }
 
-func (l *Default) Parse(body []byte) plog.Logs {
+func (l *Default) Parse(body []byte) (plog.Logs, int) {
 	// split by newline and return
 	// TODO: add configuration for multiline
 	ld := plog.NewLogs()
@@ -20,5 +20,5 @@ func (l *Default) Parse(body []byte) plog.Logs {
 	for _, log := range loglines {
 		sl.LogRecords().AppendEmpty().Body().SetStr(log)
 	}
-	return ld
+	return ld, len(loglines)
 }

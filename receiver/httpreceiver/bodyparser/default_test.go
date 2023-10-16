@@ -43,7 +43,7 @@ func TestDefaultParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := d.Parse([]byte(tt.PayLoad))
+			res, _ := d.Parse([]byte(tt.PayLoad))
 			logs := tt.Logs()
 			assert.Equal(t, logs, res)
 		})

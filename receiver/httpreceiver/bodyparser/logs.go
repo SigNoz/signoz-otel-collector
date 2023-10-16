@@ -3,7 +3,7 @@ package bodyparser
 import "go.opentelemetry.io/collector/pdata/plog"
 
 type Parser interface {
-	Parse(body []byte) plog.Logs
+	Parse(body []byte) (plog.Logs, int)
 }
 
 func GetBodyParser(source string) Parser {

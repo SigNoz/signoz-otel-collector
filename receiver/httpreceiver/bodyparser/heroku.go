@@ -39,7 +39,7 @@ type log struct {
 	body      string
 }
 
-func (l *Heroku) Parse(body []byte) plog.Logs {
+func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 	data := string(body)
 
 	loglines := octectCountingSplitter(data)
@@ -91,7 +91,7 @@ func (l *Heroku) Parse(body []byte) plog.Logs {
 			rec.Attributes().PutStr("msgid", log.msgid)
 		}
 	}
-	return ld
+	return ld, len(loglines)
 
 }
 
