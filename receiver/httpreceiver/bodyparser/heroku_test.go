@@ -122,6 +122,26 @@ func TestHerokuParse(t *testing.T) {
 				return ld
 			},
 		},
+		{
+			name:    "Test 3 - empty",
+			PayLoad: ``,
+			Logs: func() plog.Logs {
+				ld := plog.NewLogs()
+				return ld
+			},
+		},
+		{
+			name:    "Test 4 - wrong pattern",
+			PayLoad: `28 Setting up own telemetry...`,
+			Logs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("Setting up own telemetry...")
+				return ld
+			},
+		},
 	}
 
 	for _, tt := range tests {

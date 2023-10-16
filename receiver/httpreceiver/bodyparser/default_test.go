@@ -39,6 +39,14 @@ func TestDefaultParse(t *testing.T) {
 				return ld
 			},
 		},
+		{
+			name:    "Test 3 - empty",
+			PayLoad: "",
+			Logs: func() plog.Logs {
+				ld := plog.NewLogs()
+				return ld
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -75,20 +75,24 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 	ld := plog.NewLogs()
 	for resource, logbodies := range resdata {
 		rl := ld.ResourceLogs().AppendEmpty()
-		rl.Resource().Attributes().EnsureCapacity(5)
-		rl.Resource().Attributes().PutStr("priority", resource.priority)
-		rl.Resource().Attributes().PutStr("version", resource.version)
-		rl.Resource().Attributes().PutStr("hostname", resource.hostname)
-		rl.Resource().Attributes().PutStr("appname", resource.appname)
-		rl.Resource().Attributes().PutStr("procid", resource.procid)
+		if resource != (rAttrs{}) {
+			rl.Resource().Attributes().EnsureCapacity(5)
+			rl.Resource().Attributes().PutStr("priority", resource.priority)
+			rl.Resource().Attributes().PutStr("version", resource.version)
+			rl.Resource().Attributes().PutStr("hostname", resource.hostname)
+			rl.Resource().Attributes().PutStr("appname", resource.appname)
+			rl.Resource().Attributes().PutStr("procid", resource.procid)
+		}
 
 		sl := rl.ScopeLogs().AppendEmpty()
 		for _, log := range logbodies {
 			rec := sl.LogRecords().AppendEmpty()
 			rec.Body().SetStr(log.body)
-			rec.Attributes().EnsureCapacity(2)
-			rec.Attributes().PutStr("timestamp", log.timestamp)
-			rec.Attributes().PutStr("msgid", log.msgid)
+			if log.timestamp != "" {
+				rec.Attributes().EnsureCapacity(2)
+				rec.Attributes().PutStr("timestamp", log.timestamp)
+				rec.Attributes().PutStr("msgid", log.msgid)
+			}
 		}
 	}
 	return ld, len(loglines)
