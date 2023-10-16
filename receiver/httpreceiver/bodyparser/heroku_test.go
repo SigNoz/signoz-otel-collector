@@ -4,13 +4,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
 func TestOctectCountingSplitter(t *testing.T) {
 	t.Parallel()
-
-	// cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
-	// require.NoError(t, err)
 
 	tests := []struct {
 		name     string
@@ -65,6 +63,71 @@ func TestOctectCountingSplitter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res := octectCountingSplitter(tt.PayLoad)
 			assert.Equal(t, tt.LogLines, res)
+		})
+	}
+}
+
+func AddDefaultResources(rl plog.ResourceLogs) {
+	attrs := rl.Resource().Attributes()
+	attrs.EnsureCapacity(5)
+	attrs.PutStr("priority", "190")
+	attrs.PutStr("version", "1")
+	attrs.PutStr("hostname", "host")
+	attrs.PutStr("appname", "app")
+	attrs.PutStr("procid", "otel-collector.1")
+}
+
+func TestHerokuParse(t *testing.T) {
+	t.Parallel()
+	d := NewHeroku()
+	tests := []struct {
+		name    string
+		PayLoad string
+		Logs    func() plog.Logs
+		isError bool
+	}{
+		{
+			name:    "Test 1",
+			PayLoad: `151 <190>1 2023-10-12T07:25:48.393741+00:00 host app otel-collector.1 - 2023-10-12T07:25:48.393Z	info	service/telemetry.go:104	Setting up own telemetry...`,
+			Logs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				AddDefaultResources(rl)
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("2023-10-12T07:25:48.393Z	info	service/telemetry.go:104	Setting up own telemetry...")
+				log.Attributes().PutStr("timestamp", "2023-10-12T07:25:48.393741+00:00")
+				log.Attributes().PutStr("msgid", "-")
+				return ld
+			},
+		},
+		{
+			name: "Test 2 - multiline",
+			PayLoad: `151 <190>1 2023-10-12T07:25:48.393741+00:00 host app otel-collector.1 - 2023-10-12T07:25:48.393Z	info	service/telemetry.go:104	Setting up own telemetry...
+			189 <190>1 2023-10-12T07:25:48.393855+00:00 host app otel-collector.1 - 2023-10-12T07:25:48.393Z	info	service/telemetry.go:127	Serving Prometheus metrics	{"address": ":8888", "level": "Basic"}`,
+			Logs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				AddDefaultResources(rl)
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("2023-10-12T07:25:48.393Z	info	service/telemetry.go:104	Setting up own telemetry...")
+				log.Attributes().PutStr("timestamp", "2023-10-12T07:25:48.393741+00:00")
+				log.Attributes().PutStr("msgid", "-")
+				log1 := sl.LogRecords().AppendEmpty()
+				log1.Body().SetStr(`2023-10-12T07:25:48.393Z	info	service/telemetry.go:127	Serving Prometheus metrics	{"address": ":8888", "level": "Basic"}`)
+				log1.Attributes().PutStr("timestamp", "2023-10-12T07:25:48.393855+00:00")
+				log1.Attributes().PutStr("msgid", "-")
+				return ld
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := d.Parse([]byte(tt.PayLoad))
+			logs := tt.Logs()
+			assert.Equal(t, logs, res)
 		})
 	}
 }

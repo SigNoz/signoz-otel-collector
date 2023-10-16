@@ -25,34 +25,73 @@ func NewHeroku() *Heroku {
 		names:  names,
 	}
 }
-func (l *Heroku) Parse(body []byte, records plog.LogRecordSlice) {
+
+type rAttrs struct {
+	priority string
+	version  string
+	hostname string
+	appname  string
+	procid   string
+}
+type log struct {
+	timestamp string
+	msgid     string
+	body      string
+}
+
+func (l *Heroku) Parse(body []byte) plog.Logs {
 	data := string(body)
-	result := []map[string]interface{}{}
-	logStrings := octectCountingSplitter(data)
-	for _, logString := range logStrings {
-		res := l.parser.FindStringSubmatch(logString)
-		tresult := map[string]interface{}{}
-		for index, name := range l.names {
-			tresult[name] = res[index]
-		}
-		result = append(result, tresult)
-	}
 
-	records.EnsureCapacity(len(logStrings))
+	loglines := octectCountingSplitter(data)
 
-	for _, event := range result {
-		lr := records.AppendEmpty()
+	resdata := map[rAttrs][]log{}
+	for _, line := range loglines {
+		parsedLog := l.parser.FindStringSubmatch(line)
 
-		attrs := lr.Attributes()
-		attrs.EnsureCapacity(7)
-
-		for k, val := range event {
-			if k != "msg" && k != "" {
-				attrs.PutStr(k, val.(string))
+		if len(parsedLog) != len(l.names) {
+			//TODO: do something here to conver that it wasn't parsed
+			resdata[rAttrs{}] = append(resdata[rAttrs{}], log{
+				body: line,
+			})
+		} else {
+			d := rAttrs{
+				priority: parsedLog[1],
+				version:  parsedLog[2],
+				hostname: parsedLog[4],
+				appname:  parsedLog[5],
+				procid:   parsedLog[6],
 			}
+
+			resdata[d] = append(resdata[d], log{
+				// for timestamp as of now not parsing and leaving it to the user if they want to map it to actual timestamp
+				// can change it later if required
+				timestamp: parsedLog[3],
+				msgid:     parsedLog[7],
+				body:      parsedLog[8],
+			})
 		}
-		lr.Body().SetStr(event["msg"].(string))
 	}
+
+	ld := plog.NewLogs()
+	for resource, logbodies := range resdata {
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().EnsureCapacity(5)
+		rl.Resource().Attributes().PutStr("priority", resource.priority)
+		rl.Resource().Attributes().PutStr("version", resource.version)
+		rl.Resource().Attributes().PutStr("hostname", resource.hostname)
+		rl.Resource().Attributes().PutStr("appname", resource.appname)
+		rl.Resource().Attributes().PutStr("procid", resource.procid)
+
+		sl := rl.ScopeLogs().AppendEmpty()
+		for _, log := range logbodies {
+			rec := sl.LogRecords().AppendEmpty()
+			rec.Body().SetStr(log.body)
+			rec.Attributes().EnsureCapacity(2)
+			rec.Attributes().PutStr("timestamp", log.timestamp)
+			rec.Attributes().PutStr("msgid", log.msgid)
+		}
+	}
+	return ld
 
 }
 

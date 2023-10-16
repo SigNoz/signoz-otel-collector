@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/obsreport"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/receiver"
 )
 
@@ -185,22 +184,19 @@ func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ld := plog.NewLogs()
-	rl := ld.ResourceLogs().AppendEmpty()
-	sl := rl.ScopeLogs().AppendEmpty()
-	r.parser.Parse(body, sl.LogRecords())
+	logs := r.parser.Parse(body)
 
-	err = r.logsConsumer.ConsumeLogs(ctx, ld)
+	err = r.logsConsumer.ConsumeLogs(ctx, logs)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Received logs: %d\n", sl.LogRecords().Len())
+	log.Printf("Received logs: %d\n", logs.LogRecordCount)
 	r.obsrecv.EndMetricsOp(
 		ctx,
 		metadata.Type,
-		sl.LogRecords().Len(),
+		logs.LogRecordCount(),
 		err)
 
 }
