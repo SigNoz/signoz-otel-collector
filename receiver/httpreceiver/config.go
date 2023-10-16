@@ -1,4 +1,4 @@
-package httpreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signalfxreceiver"
+package httpreceiver
 
 import (
 	"errors"
