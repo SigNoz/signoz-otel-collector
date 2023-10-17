@@ -52,10 +52,18 @@ func TestOctectCountingSplitter(t *testing.T) {
 			},
 		},
 		{
-			name:    "Test 1",
+			name:    "Test 5",
 			PayLoad: `250 <190>1 2023-10-13T10:48:11.04591+00:00 host app web.1 - 10.1.23.40 - - [13/Oct/2023:10:48:11 +0000] "GET / HTTP/1.1" 200 7450 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"`,
 			LogLines: []string{
 				`<190>1 2023-10-13T10:48:11.04591+00:00 host app web.1 - 10.1.23.40 - - [13/Oct/2023:10:48:11 +0000] "GET / HTTP/1.1" 200 7450 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"`},
+		},
+		{
+			name: "Test 6 - extra newline",
+			PayLoad: `9 <1>1 - -
+			`,
+			LogLines: []string{
+				`<1>1 - -`,
+			},
 		},
 	}
 

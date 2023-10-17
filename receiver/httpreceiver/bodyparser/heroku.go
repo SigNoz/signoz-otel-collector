@@ -105,9 +105,6 @@ func octectCountingSplitter(data string) []string {
 	index := 0
 	lx := len(data)
 	for {
-		if index >= lx {
-			break
-		}
 		lenghStr := ""
 
 		// ignore tabs and spaces
@@ -116,6 +113,10 @@ func octectCountingSplitter(data string) []string {
 				break
 			}
 			index++
+		}
+
+		if index >= lx {
+			break
 		}
 
 		for i := index; i < lx; i++ {
