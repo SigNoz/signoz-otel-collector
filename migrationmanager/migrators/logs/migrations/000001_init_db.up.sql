@@ -24,7 +24,7 @@ TTL toDateTime(timestamp / 1000000000) + INTERVAL 604800 SECOND DELETE;
 
 
 
-CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} (
+CREATE TABLE xx IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} (
 name String,
 datatype String
 )ENGINE = ReplacingMergeTree

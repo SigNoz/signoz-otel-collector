@@ -33,7 +33,7 @@ func main() {
 
 	f.Usage = func() {
 		fmt.Println(f.FlagUsages())
-		os.Exit(0)
+		os.Exit(1)
 	}
 
 	f.String("dsn", "", "Clickhouse DSN")
