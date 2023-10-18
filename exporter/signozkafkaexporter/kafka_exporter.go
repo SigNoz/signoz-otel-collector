@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Shopify/sarama"
+	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -36,8 +37,13 @@ func (ke kafkaErrors) Error() string {
 	return fmt.Sprintf("Failed to deliver %d messages due to %s", ke.count, ke.err)
 }
 
-func (e *kafkaTracesProducer) tracesPusher(_ context.Context, td ptrace.Traces) error {
-	messages, err := e.marshaler.Marshal(td, e.topic)
+func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces) error {
+	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
+	if err != nil {
+		return consumererror.NewPermanent(err)
+	}
+	kafkaTopic := fmt.Sprintf("%s_traces", kafkaTopicPrefix)
+	messages, err := e.marshaler.Marshal(td, kafkaTopic)
 	if err != nil {
 		return consumererror.NewPermanent(err)
 	}
@@ -66,8 +72,13 @@ type kafkaMetricsProducer struct {
 	logger    *zap.Logger
 }
 
-func (e *kafkaMetricsProducer) metricsDataPusher(_ context.Context, md pmetric.Metrics) error {
-	messages, err := e.marshaler.Marshal(md, e.topic)
+func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric.Metrics) error {
+	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
+	if err != nil {
+		return consumererror.NewPermanent(err)
+	}
+	kafkaTopic := fmt.Sprintf("%s_metrics", kafkaTopicPrefix)
+	messages, err := e.marshaler.Marshal(md, kafkaTopic)
 	if err != nil {
 		return consumererror.NewPermanent(err)
 	}
@@ -96,8 +107,13 @@ type kafkaLogsProducer struct {
 	logger    *zap.Logger
 }
 
-func (e *kafkaLogsProducer) logsDataPusher(_ context.Context, ld plog.Logs) error {
-	messages, err := e.marshaler.Marshal(ld, e.topic)
+func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
+	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
+	if err != nil {
+		return consumererror.NewPermanent(err)
+	}
+	kafkaTopic := fmt.Sprintf("%s_logs", kafkaTopicPrefix)
+	messages, err := e.marshaler.Marshal(ld, kafkaTopic)
 	if err != nil {
 		return consumererror.NewPermanent(err)
 	}

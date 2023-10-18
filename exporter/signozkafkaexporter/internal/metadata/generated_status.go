@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	Type             = "kafka"
+	Type             = "signozkafkaexporter"
 	TracesStability  = component.StabilityLevelBeta
 	MetricsStability = component.StabilityLevelBeta
 	LogsStability    = component.StabilityLevelBeta

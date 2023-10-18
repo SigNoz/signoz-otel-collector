@@ -116,6 +116,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
@@ -206,6 +207,7 @@ func Components() (otelcol.Factories, error) {
 		jaegerexporter.NewFactory(),
 		jaegerthrifthttpexporter.NewFactory(),
 		kafkaexporter.NewFactory(),
+		signozkafkaexporter.NewFactory(),
 		loadbalancingexporter.NewFactory(),
 		opencensusexporter.NewFactory(),
 		parquetexporter.NewFactory(),
