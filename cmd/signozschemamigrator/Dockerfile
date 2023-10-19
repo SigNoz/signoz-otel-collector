@@ -14,4 +14,4 @@ COPY migrationmanager ./migrationmanager
 
 # run the binary as the entrypoint and pass the default dsn as a flag
 ENTRYPOINT [ "/signoz-schema-migrator" ]
-CMD ["--dsn", "tcp://host.docker.internal:9000"]
+CMD ["--dsn", "tcp://localhost:9000"]
