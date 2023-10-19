@@ -9,6 +9,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.3.0
+	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v0.6.0
 	github.com/knadh/koanf v1.5.0
@@ -40,6 +41,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage v0.79.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.79.0
@@ -269,7 +271,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.10.0 // indirect
 	github.com/gophercloud/gophercloud v1.2.0 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/grobie/gomemcache v0.0.0-20180201122607-1f779c573665 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2 // indirect
