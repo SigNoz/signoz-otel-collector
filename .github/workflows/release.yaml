@@ -25,9 +25,13 @@ jobs:
           cd .build/linux-amd64
           sha256sum signoz-collector > signoz-collector-linux-amd64.sha256
           tar -czvf signoz-collector-linux-amd64.tar.gz signoz-collector
+          sha256sum signoz-schema-migrator > signoz-schema-migrator-linux-amd64.sha256
+          tar -czvf signoz-schema-migrator-linux-amd64.tar.gz signoz-schema-migrator
           cd ../linux-arm64
           sha256sum signoz-collector > signoz-collector-linux-arm64.sha256
           tar -czvf signoz-collector-linux-arm64.tar.gz signoz-collector
+          sha256sum signoz-schema-migrator > signoz-schema-migrator-linux-arm64.sha256
+          tar -czvf signoz-schema-migrator-linux-arm64.tar.gz signoz-schema-migrator
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v1
         with:
@@ -36,4 +40,8 @@ jobs:
             .build/linux-amd64/signoz-collector-linux-amd64.tar.gz
             .build/linux-arm64/signoz-collector-linux-arm64.sha256
             .build/linux-arm64/signoz-collector-linux-arm64.tar.gz
+            .build/linux-amd64/signoz-schema-migrator-linux-amd64.sha256
+            .build/linux-amd64/signoz-schema-migrator-linux-amd64.tar.gz
+            .build/linux-arm64/signoz-schema-migrator-linux-arm64.sha256
+            .build/linux-arm64/signoz-schema-migrator-linux-arm64.tar.gz
           generate_release_notes: true
