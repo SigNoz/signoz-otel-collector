@@ -26,7 +26,7 @@ func NewHeroku() *Heroku {
 	}
 }
 
-type rAttrs struct {
+type resourceAttrs struct {
 	priority string
 	version  string
 	hostname string
@@ -44,17 +44,17 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 
 	loglines := octectCountingSplitter(data)
 
-	resdata := map[rAttrs][]log{}
+	results := map[resourceAttrs][]log{}
 	for _, line := range loglines {
 		parsedLog := l.parser.FindStringSubmatch(line)
 
 		if len(parsedLog) != len(l.names) {
-			//TODO: do something here to conver that it wasn't parsed
-			resdata[rAttrs{}] = append(resdata[rAttrs{}], log{
+			//TODO: do something here to convey that it wasn't parsed (unlikely to happen)
+			results[resourceAttrs{}] = append(results[resourceAttrs{}], log{
 				body: line,
 			})
 		} else {
-			d := rAttrs{
+			d := resourceAttrs{
 				priority: parsedLog[1],
 				version:  parsedLog[2],
 				hostname: parsedLog[4],
@@ -62,7 +62,7 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 				procid:   parsedLog[6],
 			}
 
-			resdata[d] = append(resdata[d], log{
+			results[d] = append(results[d], log{
 				// for timestamp as of now not parsing and leaving it to the user if they want to map it to actual timestamp
 				// can change it later if required
 				timestamp: parsedLog[3],
@@ -73,9 +73,9 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 	}
 
 	ld := plog.NewLogs()
-	for resource, logbodies := range resdata {
+	for resource, logbodies := range results {
 		rl := ld.ResourceLogs().AppendEmpty()
-		if resource != (rAttrs{}) {
+		if resource != (resourceAttrs{}) {
 			rl.Resource().Attributes().EnsureCapacity(5)
 			rl.Resource().Attributes().PutStr("priority", resource.priority)
 			rl.Resource().Attributes().PutStr("version", resource.version)
@@ -103,23 +103,23 @@ func octectCountingSplitter(data string) []string {
 	strings := []string{}
 
 	index := 0
-	lx := len(data)
+	length := len(data)
 	for {
 		lenghStr := ""
 
 		// ignore tabs and spaces
 		for {
-			if index >= lx || (data[index] != ' ' && data[index] != '\t' && data[index] != '\n') {
+			if index >= length || (data[index] != ' ' && data[index] != '\t' && data[index] != '\n') {
 				break
 			}
 			index++
 		}
 
-		if index >= lx {
+		if index >= length {
 			break
 		}
 
-		for i := index; i < lx; i++ {
+		for i := index; i < length; i++ {
 			if data[i] == ' ' {
 				break
 			}
