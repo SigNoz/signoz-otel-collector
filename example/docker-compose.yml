@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  otel-collector-migrator:
+  schema-migrator:
     image: signoz/signoz-schema-migrator:templatize-migrations
     extra_hosts:
       - signoz-host:host-gateway
@@ -29,5 +29,5 @@ services:
       - "13133" # health_check extension
       - "55679" # zpages extension
     depends_on:
-      otel-collector-migrator:
+      schema-migrator:
         condition: service_completed_successfully

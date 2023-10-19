@@ -78,7 +78,7 @@ build-signoz-collector:
 .PHONY: build-signoz-schema-migrator
 build-signoz-schema-migrator:
 	@echo "------------------"
-	@echo  "--> Build signoz collector migrator docker image"
+	@echo  "--> Build schema migrator docker image"
 	@echo "------------------"
 	docker build --build-arg TARGETPLATFORM="linux/amd64" \
 		--no-cache -f cmd/signozschemamigrator/Dockerfile --progress plain \
@@ -87,7 +87,7 @@ build-signoz-schema-migrator:
 .PHONY: build-and-push-signoz-schema-migrator
 build-and-push-signoz-schema-migrator:
 	@echo "------------------"
-	@echo  "--> Build and push signoz collector migrator docker image"
+	@echo  "--> Build and push schema migrator docker image"
 	@echo "------------------"
 	docker buildx build --platform linux/amd64,linux/arm64 --progress plain \
 		--no-cache --push -f cmd/signozschemamigrator/Dockerfile \

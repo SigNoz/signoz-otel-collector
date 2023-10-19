@@ -109,7 +109,6 @@ extensions:
 exporters:
   clickhousetraces:
     datasource: tcp://signoz-host:9000/?database=signoz_traces
-    migrations: exporter/clickhousetracesexporter/migrations
   clickhousemetricswrite:
     endpoint: tcp://signoz-host:9000/?database=signoz_metrics
     resource_to_telemetry_conversion:

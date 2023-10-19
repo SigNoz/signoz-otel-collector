@@ -29,7 +29,7 @@ func init() {
 
 func main() {
 	logger := zap.L().With(zap.String("component", "migrate cli"))
-	f := pflag.NewFlagSet("Collector Migrator CLI Options", pflag.ExitOnError)
+	f := pflag.NewFlagSet("Schema Migrator CLI Options", pflag.ExitOnError)
 
 	f.Usage = func() {
 		fmt.Println(f.FlagUsages())
