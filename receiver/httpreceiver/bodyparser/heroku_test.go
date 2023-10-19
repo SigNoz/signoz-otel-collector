@@ -3,11 +3,12 @@ package bodyparser
 import (
 	"testing"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func TestOctectCountingSplitter(t *testing.T) {
+func TestOctetCountingSplitter(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -69,7 +70,7 @@ func TestOctectCountingSplitter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := octectCountingSplitter(tt.PayLoad)
+			res := octetCountingSplitter(tt.PayLoad)
 			assert.Equal(t, tt.LogLines, res)
 		})
 	}
@@ -156,7 +157,7 @@ func TestHerokuParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _ := d.Parse([]byte(tt.PayLoad))
 			logs := tt.Logs()
-			assert.Equal(t, logs, res)
+			assert.NoError(t, plogtest.CompareLogs(logs, res, plogtest.IgnoreObservedTimestamp()))
 		})
 	}
 }

@@ -2,7 +2,9 @@ package bodyparser
 
 import (
 	"strings"
+	"time"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
@@ -21,7 +23,9 @@ func (l *Default) Parse(body []byte) (plog.Logs, int) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	loglines := strings.Split(data, "\n")
 	for _, log := range loglines {
-		sl.LogRecords().AppendEmpty().Body().SetStr(log)
+		l := sl.LogRecords().AppendEmpty()
+		l.Body().SetStr(log)
+		l.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Now().UTC()))
 	}
 	return ld, len(loglines)
 }

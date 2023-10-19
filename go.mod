@@ -41,6 +41,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage v0.79.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.79.0

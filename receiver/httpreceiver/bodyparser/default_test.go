@@ -3,6 +3,7 @@ package bodyparser
 import (
 	"testing"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
@@ -53,7 +54,7 @@ func TestDefaultParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _ := d.Parse([]byte(tt.PayLoad))
 			logs := tt.Logs()
-			assert.Equal(t, logs, res)
+			assert.NoError(t, plogtest.CompareLogs(logs, res, plogtest.IgnoreObservedTimestamp()))
 		})
 	}
 }

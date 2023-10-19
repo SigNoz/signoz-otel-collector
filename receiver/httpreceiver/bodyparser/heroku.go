@@ -3,7 +3,9 @@ package bodyparser
 import (
 	"regexp"
 	"strconv"
+	"time"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
@@ -42,7 +44,7 @@ type log struct {
 func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 	data := string(body)
 
-	loglines := octectCountingSplitter(data)
+	loglines := octetCountingSplitter(data)
 
 	results := map[resourceAttrs][]log{}
 	for _, line := range loglines {
@@ -88,6 +90,8 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 		for _, log := range logbodies {
 			rec := sl.LogRecords().AppendEmpty()
 			rec.Body().SetStr(log.body)
+			rec.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Now().UTC()))
+
 			if log.timestamp != "" {
 				rec.Attributes().EnsureCapacity(2)
 				rec.Attributes().PutStr("timestamp", log.timestamp)
@@ -99,13 +103,13 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 
 }
 
-func octectCountingSplitter(data string) []string {
+func octetCountingSplitter(data string) []string {
 	strings := []string{}
 
 	index := 0
 	length := len(data)
 	for {
-		lenghStr := ""
+		lengthStr := ""
 
 		// ignore tabs and spaces
 		for {
@@ -124,10 +128,10 @@ func octectCountingSplitter(data string) []string {
 				break
 			}
 			index++
-			lenghStr += string(data[i])
+			lengthStr += string(data[i])
 		}
 
-		length, _ := strconv.Atoi(lenghStr)
+		length, _ := strconv.Atoi(lengthStr)
 		end := index + length
 		strings = append(strings, data[index+1:end])
 		index = end
