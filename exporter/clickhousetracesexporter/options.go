@@ -48,7 +48,7 @@ const (
 
 const (
 	suffixEnabled         = ".enabled"
-	suffixDatasource      = ".datasource"
+	suffixDatasources     = ".datasources"
 	suffixTraceDatabase   = ".trace-database"
 	suffixMigrations      = ".migrations"
 	suffixOperationsTable = ".operations-table"
@@ -61,7 +61,7 @@ const (
 type namespaceConfig struct {
 	namespace                  string
 	Enabled                    bool
-	Datasource                 string
+	Datasources                []string
 	Migrations                 string
 	TraceDatabase              string
 	OperationsTable            string
@@ -80,15 +80,18 @@ type namespaceConfig struct {
 	DependencyGraphTable       string
 	DockerMultiNodeCluster     bool
 	Encoding                   Encoding
-	Connector                  Connector
+	Connectors                 Connectors
 }
 
 // Connecto defines how to connect to the database
-type Connector func(cfg *namespaceConfig) (clickhouse.Conn, error)
+type Connectors func(cfg *namespaceConfig) ([]clickhouse.Conn, error)
 
-func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
+func connectorFor(datasource string, cluster string) (clickhouse.Conn, error) {
 	ctx := context.Background()
-	dsnURL, err := url.Parse(cfg.Datasource)
+	dsnURL, err := url.Parse(datasource)
+	if err != nil {
+		return nil, err
+	}
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}
@@ -108,11 +111,23 @@ func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, dsnURL.Query().Get("database"), cfg.Cluster)
+	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, dsnURL.Query().Get("database"), cluster)
 	if err := db.Exec(ctx, query); err != nil {
 		return nil, err
 	}
 	return db, nil
+}
+
+func defaultConnectors(cfg *namespaceConfig) ([]clickhouse.Conn, error) {
+	connectors := make([]clickhouse.Conn, 0, len(cfg.Datasources))
+	for _, ds := range cfg.Datasources {
+		conn, err := connectorFor(ds, cfg.Cluster)
+		if err != nil {
+			return nil, err
+		}
+		connectors = append(connectors, conn)
+	}
+	return connectors, nil
 }
 
 // Options store storage plugin related configs
@@ -123,10 +138,10 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(migrations string, datasources []string, dockerMultiNodeCluster bool, primaryNamespace string, otherNamespaces ...string) *Options {
 
-	if datasource == "" {
-		datasource = defaultDatasource
+	if len(datasources) == 0 {
+		datasources = []string{defaultDatasource}
 	}
 	if migrations == "" {
 		migrations = defaultMigrations
@@ -136,7 +151,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 		primary: &namespaceConfig{
 			namespace:                  primaryNamespace,
 			Enabled:                    true,
-			Datasource:                 datasource,
+			Datasources:                datasources,
 			Migrations:                 migrations,
 			TraceDatabase:              defaultTraceDatabase,
 			OperationsTable:            defaultOperationsTable,
@@ -155,7 +170,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
 			DockerMultiNodeCluster:     dockerMultiNodeCluster,
 			Encoding:                   defaultEncoding,
-			Connector:                  defaultConnector,
+			Connectors:                 defaultConnectors,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -164,13 +179,13 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 		if namespace == archiveNamespace {
 			options.others[namespace] = &namespaceConfig{
 				namespace:       namespace,
-				Datasource:      datasource,
+				Datasources:     datasources,
 				Migrations:      migrations,
 				OperationsTable: "",
 				IndexTable:      "",
 				SpansTable:      defaultArchiveSpansTable,
 				Encoding:        defaultEncoding,
-				Connector:       defaultConnector,
+				Connectors:      defaultConnectors,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}
@@ -188,6 +203,19 @@ func (opt *Options) AddFlags(flagSet *flag.FlagSet) {
 	}
 }
 
+type stringSliceValue struct {
+	slice *[]string
+}
+
+func (ssv *stringSliceValue) String() string {
+	return fmt.Sprintf("%v", *ssv.slice)
+}
+
+func (ssv *stringSliceValue) Set(value string) error {
+	*ssv.slice = append(*ssv.slice, value)
+	return nil
+}
+
 func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
 	if nsConfig.namespace == archiveNamespace {
 		flagSet.Bool(
@@ -196,10 +224,11 @@ func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
 			"Enable archive storage")
 	}
 
-	flagSet.String(
-		nsConfig.namespace+suffixDatasource,
-		nsConfig.Datasource,
-		"Clickhouse datasource string.",
+	var datasources []string
+	flagSet.Var(
+		&stringSliceValue{&datasources},
+		nsConfig.namespace+suffixDatasources,
+		"Clickhouse datasource string. Can be specified multiple times.",
 	)
 
 	if nsConfig.namespace != archiveNamespace {
@@ -230,21 +259,45 @@ func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
 }
 
 // InitFromViper initializes Options with properties from viper
-func (opt *Options) InitFromViper(v *viper.Viper) {
-	initFromViper(opt.primary, v)
-	for _, cfg := range opt.others {
-		initFromViper(cfg, v)
+func (opt *Options) InitFromViper(v *viper.Viper) error {
+	if err := initFromViper(opt.primary, v); err != nil {
+		return err
 	}
+	for _, cfg := range opt.others {
+		if err := initFromViper(cfg, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func initFromViper(cfg *namespaceConfig, v *viper.Viper) {
+func initFromViper(cfg *namespaceConfig, v *viper.Viper) error {
 	cfg.Enabled = v.GetBool(cfg.namespace + suffixEnabled)
-	cfg.Datasource = v.GetString(cfg.namespace + suffixDatasource)
+	datasources := v.Get(cfg.namespace + suffixDatasources)
+	if datasources != nil {
+		switch ds := datasources.(type) {
+		case string:
+			cfg.Datasources = []string{ds}
+		case []interface{}:
+			var dsSlice []string
+			for _, d := range ds {
+				if s, ok := d.(string); ok {
+					dsSlice = append(dsSlice, s)
+				} else {
+					return fmt.Errorf("invalid type for %s: %T", cfg.namespace+suffixDatasources, d)
+				}
+			}
+			cfg.Datasources = dsSlice
+		default:
+			return fmt.Errorf("invalid type for %s: %T", cfg.namespace+suffixDatasources, datasources)
+		}
+	}
 	cfg.TraceDatabase = v.GetString(cfg.namespace + suffixTraceDatabase)
 	cfg.IndexTable = v.GetString(cfg.namespace + suffixIndexTable)
 	cfg.SpansTable = v.GetString(cfg.namespace + suffixSpansTable)
 	cfg.OperationsTable = v.GetString(cfg.namespace + suffixOperationsTable)
 	cfg.Encoding = Encoding(v.GetString(cfg.namespace + suffixEncoding))
+	return nil
 }
 
 // GetPrimary returns the primary namespace configuration

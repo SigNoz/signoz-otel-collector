@@ -41,13 +41,13 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
+	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasources, configClickHouse.DockerMultiNodeCluster)
 
-	err := f.Initialize(logger)
+	conn, err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db, f.Options)
+	err = initFeatures(conn, f.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 	}
 
 	collector := usage.NewUsageCollector(
-		f.db,
+		conn,
 		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
 		UsageExporter,

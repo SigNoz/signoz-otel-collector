@@ -1,0 +1,50 @@
+// Copyright 2020, OpenTelemetry Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package clickhousetracesexporter
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/otelcol/otelcoltest"
+)
+
+func TestLoadConfig(t *testing.T) {
+	factories, err := otelcoltest.NopFactories()
+	require.NoError(t, err)
+
+	factory := NewFactory()
+	factories.Exporters[typeStr] = factory
+	cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", "config.yaml"), factories)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	assert.Equal(t, len(cfg.Exporters), 2)
+
+	defaultCfg := factory.CreateDefaultConfig()
+	defaultCfg.(*Config).Datasources = []string{"tcp://127.0.0.1:9000"}
+	r0 := cfg.Exporters[component.NewID(typeStr)]
+	assert.Equal(t, r0, defaultCfg)
+
+	r1 := cfg.Exporters[component.NewIDWithName(typeStr, "full")].(*Config)
+	assert.Equal(t, r1, &Config{
+		Datasources:                  []string{"tcp://clickhouse:9000/?database=signoz_traces"},
+		DockerMultiNodeCluster:       true,
+		LowCardinalExceptionGrouping: true,
+	})
+}

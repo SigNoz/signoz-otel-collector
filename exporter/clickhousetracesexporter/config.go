@@ -20,9 +20,9 @@ import (
 
 // Config defines configuration for tracing exporter.
 type Config struct {
-	Options    `mapstructure:",squash"`
-	Datasource string `mapstructure:"datasource"`
-	Migrations string `mapstructure:"migrations"`
+	Options     `mapstructure:",squash"`
+	Datasources []string `mapstructure:"datasources"`
+	Migrations  string   `mapstructure:"migrations"`
 	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
 	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster"`
 	// LowCardinalExceptionGrouping is a flag to enable exception grouping by serviceName + exceptionType. Default is false.
