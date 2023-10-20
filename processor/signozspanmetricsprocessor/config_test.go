@@ -42,18 +42,21 @@ func TestLoadConfig(t *testing.T) {
 		wantDimensions              []Dimension
 		wantDimensionsCacheSize     int
 		wantAggregationTemporality  string
+		wantMetricsFlushInterval    time.Duration
 	}{
 		{
 			configFile:                 "config-2-pipelines.yaml",
 			wantMetricsExporter:        "prometheus",
 			wantAggregationTemporality: cumulative,
 			wantDimensionsCacheSize:    500,
+			wantMetricsFlushInterval:   30 * time.Second,
 		},
 		{
 			configFile:                 "config-3-pipelines.yaml",
 			wantMetricsExporter:        "otlp/spanmetrics",
 			wantAggregationTemporality: cumulative,
 			wantDimensionsCacheSize:    defaultDimensionsCacheSize,
+			wantMetricsFlushInterval:   60 * time.Second,
 		},
 		{
 			configFile:          "config-full.yaml",
@@ -73,6 +76,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 			wantDimensionsCacheSize:    1500,
 			wantAggregationTemporality: delta,
+			wantMetricsFlushInterval:   60 * time.Second,
 		},
 	}
 	for _, tc := range testcases {
@@ -104,6 +108,7 @@ func TestLoadConfig(t *testing.T) {
 					Dimensions:              tc.wantDimensions,
 					DimensionsCacheSize:     tc.wantDimensionsCacheSize,
 					AggregationTemporality:  tc.wantAggregationTemporality,
+					MetricsFlushInterval:    tc.wantMetricsFlushInterval,
 				},
 				cfg.Processors[component.NewID(typeStr)],
 			)

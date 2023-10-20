@@ -28,6 +28,7 @@ processors:
   signozspanmetrics:
     metrics_exporter: prometheus
     dimensions_cache_size: 500
+    metrics_flush_interval: 30s
 service:
   pipelines:
     traces:

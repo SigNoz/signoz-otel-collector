@@ -858,9 +858,7 @@ func TestProcessorDuplicateDimensions(t *testing.T) {
 	}
 
 	// Test
-	next := new(consumertest.TracesSink)
 	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
-	p.tracesConsumer = next
 	assert.Error(t, err)
 	assert.Nil(t, p)
 }
