@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 
@@ -388,7 +389,7 @@ func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) 
 func (p *processorImp) exportMetrics(ctx context.Context) {
 	p.lock.Lock()
 
-	m := p.buildMetrics()
+	m, err := p.buildMetrics()
 
 	// Exemplars are only relevant to this batch of traces, so must be cleared within the lock,
 	// regardless of error while building metrics, before the next batch of spans is received.
@@ -396,6 +397,11 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 
 	// This component no longer needs to read the metrics once built, so it is safe to unlock.
 	p.lock.Unlock()
+
+	if err != nil {
+		p.logCardinalityInfo()
+		p.logger.Error("Failed to build metrics", zap.Error(err))
+	}
 
 	if err := p.metricsConsumer.ConsumeMetrics(ctx, m); err != nil {
 		p.logger.Error("Failed ConsumeMetrics", zap.Error(err))
@@ -405,16 +411,23 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 
 // buildMetrics collects the computed raw metrics data, builds the metrics object and
 // writes the raw metrics data into the metrics object.
-func (p *processorImp) buildMetrics() pmetric.Metrics {
+func (p *processorImp) buildMetrics() (pmetric.Metrics, error) {
 	m := pmetric.NewMetrics()
 	ilm := m.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty()
 	ilm.Scope().SetName("signozspanmetricsprocessor")
 
-	p.collectCallMetrics(ilm)
-	p.collectLatencyMetrics(ilm)
-
-	p.collectExternalCallMetrics(ilm)
-	p.collectDBCallMetrics(ilm)
+	if err := p.collectCallMetrics(ilm); err != nil {
+		return pmetric.Metrics{}, err
+	}
+	if err := p.collectLatencyMetrics(ilm); err != nil {
+		return pmetric.Metrics{}, err
+	}
+	if err := p.collectExternalCallMetrics(ilm); err != nil {
+		return pmetric.Metrics{}, err
+	}
+	if err := p.collectDBCallMetrics(ilm); err != nil {
+		return pmetric.Metrics{}, err
+	}
 
 	p.metricKeyToDimensions.RemoveEvictedItems()
 	p.callMetricKeyToDimensions.RemoveEvictedItems()
@@ -448,7 +461,7 @@ func (p *processorImp) buildMetrics() pmetric.Metrics {
 	}
 	p.resetExemplarData()
 
-	return m
+	return m, nil
 }
 
 func (p *processorImp) logCardinalityInfo() {
@@ -464,7 +477,7 @@ func (p *processorImp) logCardinalityInfo() {
 
 // collectLatencyMetrics collects the raw latency metrics, writing the data
 // into the given instrumentation library metrics.
-func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) {
+func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	mLatency := ilm.Metrics().AppendEmpty()
 	mLatency.SetName("signoz_latency")
 	mLatency.SetUnit("ms")
@@ -484,17 +497,17 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) {
 
 		dimensions, err := p.getDimensionsByMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
-			return
+			return err
 		}
 
 		dimensions.CopyTo(dpLatency.Attributes())
 	}
+	return nil
 }
 
 // collectDBCallMetrics collects the raw latency sum and count metrics, writing the data
 // into the given instrumentation library metrics.
-func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) {
+func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mDBCallSum := ilm.Metrics().AppendEmpty()
 	mDBCallSum.SetName("signoz_db_latency_sum")
 	mDBCallSum.SetUnit("1")
@@ -526,16 +539,16 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) {
 
 		dimensions, err := p.getDimensionsByDBCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
-			return
+			return err
 		}
 
 		dimensions.CopyTo(dpDBCallSum.Attributes())
 		dimensions.CopyTo(dpDBCallCount.Attributes())
 	}
+	return nil
 }
 
-func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) {
+func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mExternalCallSum := ilm.Metrics().AppendEmpty()
 	mExternalCallSum.SetName("signoz_external_call_latency_sum")
 	mExternalCallSum.SetUnit("1")
@@ -567,18 +580,18 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) {
 
 		dimensions, err := p.getDimensionsByExternalCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
-			return
+			return err
 		}
 
 		dimensions.CopyTo(dpExternalCallSum.Attributes())
 		dimensions.CopyTo(dpExternalCallCount.Attributes())
 	}
+	return nil
 }
 
 // collectCallMetrics collects the raw call count metrics, writing the data
 // into the given instrumentation library metrics.
-func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) {
+func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mCalls := ilm.Metrics().AppendEmpty()
 	mCalls.SetName("signoz_calls_total")
 	mCalls.SetEmptySum().SetIsMonotonic(true)
@@ -594,11 +607,12 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) {
 
 		dimensions, err := p.getDimensionsByCallMetricKey(key)
 		if err != nil {
-			return
+			return err
 		}
 
 		dimensions.CopyTo(dpCalls.Attributes())
 	}
+	return nil
 }
 
 // getDimensionsByMetricKey gets dimensions from `metricKeyToDimensions` cache.
@@ -782,7 +796,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
-		resourceAttr.PutStr(signozID, p.instanceID)
+		resourceAttr.PutStr(semconv.AttributeServiceInstanceID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()
 		for j := 0; j < ilsSlice.Len(); j++ {

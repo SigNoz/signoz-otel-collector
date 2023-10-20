@@ -83,9 +83,6 @@ type Config struct {
 
 	// MetricsEmitInterval is the time period between when metrics are flushed or emitted to the configured MetricsExporter.
 	MetricsFlushInterval time.Duration `mapstructure:"metrics_flush_interval"`
-
-	// Namespace is the namespace to use for the metrics.
-	Namespace string `mapstructure:"namespace"`
 }
 
 // GetAggregationTemporality converts the string value given in the config into a AggregationTemporality.
