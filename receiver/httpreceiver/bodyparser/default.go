@@ -11,13 +11,13 @@ import (
 type Default struct {
 }
 
-func (l *Default) Parse(body []byte) (plog.Logs, int) {
+func (l *Default) Parse(body []byte) (plog.Logs, int, error) {
 	// split by newline and return
 	// TODO: add configuration for multiline
 	ld := plog.NewLogs()
 	data := string(body)
 	if data == "" {
-		return ld, 0
+		return ld, 0, nil
 	}
 	rl := ld.ResourceLogs().AppendEmpty()
 	sl := rl.ScopeLogs().AppendEmpty()
@@ -27,5 +27,5 @@ func (l *Default) Parse(body []byte) (plog.Logs, int) {
 		l.Body().SetStr(log)
 		l.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Now().UTC()))
 	}
-	return ld, len(loglines)
+	return ld, len(loglines), nil
 }

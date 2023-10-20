@@ -41,7 +41,7 @@ type log struct {
 	body      string
 }
 
-func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
+func (l *Heroku) Parse(body []byte) (plog.Logs, int, error) {
 	data := string(body)
 
 	loglines := octetCountingSplitter(data)
@@ -99,7 +99,7 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 			}
 		}
 	}
-	return ld, len(loglines)
+	return ld, len(loglines), nil
 
 }
 

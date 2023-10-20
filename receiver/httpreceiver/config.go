@@ -12,6 +12,7 @@ import (
 const (
 	heroku = "heroku"
 	google = "google"
+	json   = "json"
 )
 
 // Config defines configuration for the https receiver.
@@ -41,7 +42,7 @@ func (rCfg *Config) Validate() error {
 	}
 
 	// validate source
-	if rCfg.Source != heroku && rCfg.Source != google && rCfg.Source != "" {
+	if rCfg.Source != heroku && rCfg.Source != google && rCfg.Source != json && rCfg.Source != "" {
 		return fmt.Errorf("source must be one of %s or %s or empty", heroku, google)
 	}
 

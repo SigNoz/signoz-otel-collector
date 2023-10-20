@@ -178,7 +178,11 @@ func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logs, totalCount := r.parser.Parse(body)
+	logs, totalCount, err := r.parser.Parse(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err = r.logsConsumer.ConsumeLogs(ctx, logs)
 	if err != nil {
