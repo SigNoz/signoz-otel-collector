@@ -16,8 +16,9 @@ package signozspanmetricsprocessor
 
 import (
 	"context"
+	"time"
 
-	"github.com/google/uuid"
+	"github.com/tilinna/clock"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
@@ -46,12 +47,19 @@ func createDefaultConfig() component.Config {
 		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
 		DimensionsCacheSize:    defaultDimensionsCacheSize,
 		skipSanitizeLabel:      dropSanitizationFeatureGate.IsEnabled(),
+		MetricsFlushInterval:   60 * time.Second,
 	}
 }
 
-func createTracesProcessor(_ context.Context, params processor.CreateSettings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
-	// TODO(srikanthccv): use the instanceID from params when it is added
-	instanceUUID, _ := uuid.NewRandom()
-	instanceID := instanceUUID.String()
-	return newProcessor(params.Logger, instanceID, cfg, nextConsumer)
+func createTracesProcessor(ctx context.Context, params processor.CreateSettings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
+	p, err := newProcessor(params.Logger, signozID, cfg, metricsTicker(ctx, cfg))
+	if err != nil {
+		return nil, err
+	}
+	p.tracesConsumer = nextConsumer
+	return p, nil
+}
+
+func metricsTicker(ctx context.Context, cfg component.Config) *clock.Ticker {
+	return clock.FromContext(ctx).NewTicker(cfg.(*Config).MetricsFlushInterval)
 }

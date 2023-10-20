@@ -145,7 +145,8 @@ func TestProcessorShutdown(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	assert.NoError(t, err)
 	err = p.Shutdown(context.Background())
 
@@ -166,7 +167,8 @@ func TestConfigureLatencyBounds(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 
 	// Verify
 	assert.NoError(t, err)
@@ -181,7 +183,8 @@ func TestProcessorCapabilities(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	assert.NoError(t, err)
 	caps := p.Capabilities()
 
@@ -464,8 +467,8 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 	return &processorImp{
 		logger:          logger,
 		config:          Config{AggregationTemporality: temporality},
-		metricsExporter: mexp,
-		nextConsumer:    tcon,
+		metricsConsumer: mexp,
+		tracesConsumer:  tcon,
 
 		startTimestamp:         pcommon.NewTimestampFromTime(time.Now()),
 		histograms:             make(map[metricKey]*histogramData),
@@ -855,7 +858,8 @@ func TestProcessorDuplicateDimensions(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	assert.Error(t, err)
 	assert.Nil(t, p)
 }
@@ -979,7 +983,8 @@ func TestProcessorUpdateExemplars(t *testing.T) {
 	spanID := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).SpanID()
 	key := metricKey("metricKey")
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	value := float64(42)
 
 	// ----- call -------------------------------------------------------------
