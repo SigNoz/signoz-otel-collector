@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER {{.SIGNOZ_CLUST
 ) ENGINE MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
-TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE
+TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE
 SETTINGS index_granularity = 8192;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER {{.SIGNOZ_CLUSTER}}
