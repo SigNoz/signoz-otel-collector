@@ -7,7 +7,7 @@ processors:
 exporters:
     clickhousemetricswrite:
         endpoint: "localhost:8888"
-        remote_write_queue:
+        sending_queue:
             queue_size: 5
             num_consumers: -1
 

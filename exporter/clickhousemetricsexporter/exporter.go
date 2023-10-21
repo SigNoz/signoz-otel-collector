@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package prometheusremotewriteexporter implements an exporter that sends Prometheus remote write requests.
 package clickhousemetricsexporter
 
 import (
@@ -20,9 +19,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/http"
-	"net/url"
-	"strings"
 	"sync"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
@@ -35,26 +31,20 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-const maxBatchByteSize = 3000000
+const maxBatchByteSize = 314572800
 
-// PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
-type PrwExporter struct {
-	namespace               string
-	externalLabels          map[string]string
-	endpointURL             *url.URL
-	client                  *http.Client
+// ClickHouseExporter converts OTLP metrics to Prometheus remote write TimeSeries and
+// writes to ClickHouse
+type ClickHouseExporter struct {
 	wg                      *sync.WaitGroup
 	closeChan               chan struct{}
 	concurrency             int
-	userAgentHeader         string
-	clientSettings          *confighttp.HTTPClientSettings
 	settings                component.TelemetrySettings
 	ch                      base.Storage
 	usageCollector          *usage.UsageCollector
@@ -62,28 +52,13 @@ type PrwExporter struct {
 	mux                     *sync.Mutex
 }
 
-// NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
-// client parameter cannot be nil.
-func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, error) {
-
-	sanitizedLabels, err := validateAndSanitizeExternalLabels(cfg.ExternalLabels)
-	if err != nil {
-		return nil, err
-	}
-
-	endpointURL, err := url.ParseRequestURI(cfg.HTTPClientSettings.Endpoint)
-	if err != nil {
-		return nil, errors.New("invalid endpoint")
-	}
-
-	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
-
+// NewClickHouseExporter initializes a new ClickHouseExporter instance
+func NewClickHouseExporter(cfg *Config, set exporter.CreateSettings) (*ClickHouseExporter, error) {
 	params := &ClickHouseParams{
-		DSN:                  cfg.HTTPClientSettings.Endpoint,
-		DropDatabase:         false,
-		MaxOpenConns:         75,
-		MaxTimeSeriesInQuery: 50,
-		WatcherInterval:      cfg.WatcherInterval,
+		DSN:             cfg.Endpoint,
+		MaxOpenConns:    75,
+		WatcherInterval: cfg.WatcherInterval,
+		Cluster:         cfg.Cluster,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
@@ -107,15 +82,10 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		return nil, err
 	}
 
-	return &PrwExporter{
-		namespace:               cfg.Namespace,
-		externalLabels:          sanitizedLabels,
-		endpointURL:             endpointURL,
+	return &ClickHouseExporter{
 		wg:                      new(sync.WaitGroup),
 		closeChan:               make(chan struct{}),
-		userAgentHeader:         userAgentHeader,
-		concurrency:             cfg.RemoteWriteQueue.NumConsumers,
-		clientSettings:          &cfg.HTTPClientSettings,
+		concurrency:             cfg.NumConsumers,
 		settings:                set.TelemetrySettings,
 		ch:                      ch,
 		usageCollector:          collector,
@@ -124,34 +94,32 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	}, nil
 }
 
-// Start creates the prometheus client
-func (prwe *PrwExporter) Start(_ context.Context, host component.Host) (err error) {
-	prwe.client, err = prwe.clientSettings.ToClient(host, prwe.settings)
-	return err
+func (che *ClickHouseExporter) Start(_ context.Context, host component.Host) (err error) {
+	return nil
 }
 
 // Shutdown stops the exporter from accepting incoming calls(and return error), and wait for current export operations
 // to finish before returning
-func (prwe *PrwExporter) Shutdown(context.Context) error {
+func (che *ClickHouseExporter) Shutdown(context.Context) error {
 	// shutdown usage reporting.
-	if prwe.usageCollector != nil {
-		prwe.usageCollector.Stop()
+	if che.usageCollector != nil {
+		che.usageCollector.Stop()
 	}
 
-	close(prwe.closeChan)
-	prwe.wg.Wait()
+	close(che.closeChan)
+	che.wg.Wait()
 	return nil
 }
 
-// PushMetrics converts metrics to Prometheus remote write TimeSeries and send to remote endpoint. It maintain a map of
+// PushMetrics converts metrics to Prometheus remote write TimeSeries and write to ClickHouse. It maintain a map of
 // TimeSeries, validates and handles each individual metric, adding the converted TimeSeries to the map, and finally
 // exports the map.
-func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
-	prwe.wg.Add(1)
-	defer prwe.wg.Done()
+func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	che.wg.Add(1)
+	defer che.wg.Done()
 
 	select {
-	case <-prwe.closeChan:
+	case <-che.closeChan:
 		return errors.New("shutdown has been called")
 	default:
 		tsMap := map[string]*prompb.TimeSeries{}
@@ -162,7 +130,6 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 			resourceMetrics := resourceMetricsSlice.At(i)
 			resource := resourceMetrics.Resource()
 			scopeMetricsSlice := resourceMetrics.ScopeMetrics()
-			// TODO: add resource attributes as labels, probably in next PR
 			for j := 0; j < scopeMetricsSlice.Len(); j++ {
 				scopeMetrics := scopeMetricsSlice.At(j)
 				metricSlice := scopeMetrics.Metrics()
@@ -185,25 +152,25 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
 					}
-					prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)] = temporality
+					che.metricNameToTemporality[getPromMetricName(metric)] = temporality
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+bucketStr] = temporality
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+countStr] = temporality
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+sumStr] = temporality
+						che.metricNameToTemporality[getPromMetricName(metric)+bucketStr] = temporality
+						che.metricNameToTemporality[getPromMetricName(metric)+countStr] = temporality
+						che.metricNameToTemporality[getPromMetricName(metric)+sumStr] = temporality
 					}
 
 					// handle individual metric based on type
 					switch metricType {
 					case pmetric.MetricTypeGauge:
 						dataPoints := metric.Gauge().DataPoints()
-						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
+						if err := che.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
 					case pmetric.MetricTypeSum:
 						dataPoints := metric.Sum().DataPoints()
-						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
+						if err := che.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
@@ -214,7 +181,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							errs = multierr.Append(errs, consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name())))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
-							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, tsMap)
 						}
 					case pmetric.MetricTypeSummary:
 						dataPoints := metric.Summary().DataPoints()
@@ -223,7 +190,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							errs = multierr.Append(errs, consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name())))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
-							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, tsMap)
 						}
 					default:
 						dropped++
@@ -233,7 +200,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 			}
 		}
 
-		if exportErrors := prwe.export(ctx, tsMap); len(exportErrors) != 0 {
+		if exportErrors := che.export(ctx, tsMap); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
 			errs = multierr.Append(errs, multierr.Combine(exportErrors...))
 		}
@@ -265,25 +232,25 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 	return sanitizedLabels, nil
 }
 
-func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
+func (che *ClickHouseExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
 	if dataPoints.Len() == 0 {
 		return consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 	}
 	for x := 0; x < dataPoints.Len(); x++ {
-		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, tsMap)
 	}
 	return nil
 }
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
-func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
-	prwe.mux.Lock()
+func (che *ClickHouseExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
+	che.mux.Lock()
 	// make a copy of metricNameToTemporality
 	metricNameToTemporality := make(map[string]pmetric.AggregationTemporality)
-	for k, v := range prwe.metricNameToTemporality {
+	for k, v := range che.metricNameToTemporality {
 		metricNameToTemporality[k] = v
 	}
-	prwe.mux.Unlock()
+	che.mux.Unlock()
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests, err := batchTimeSeries(tsMap, maxBatchByteSize)
@@ -301,7 +268,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	concurrencyLimit := int(math.Min(float64(prwe.concurrency), float64(len(requests))))
+	concurrencyLimit := int(math.Min(float64(che.concurrency), float64(len(requests))))
 	wg.Add(concurrencyLimit) // used to wait for workers to be finished
 
 	// Run concurrencyLimit of workers until there
@@ -311,7 +278,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 			defer wg.Done()
 
 			for request := range input {
-				err := prwe.ch.Write(ctx, request, metricNameToTemporality)
+				err := che.ch.Write(ctx, request, metricNameToTemporality)
 				if err != nil {
 					mu.Lock()
 					errs = append(errs, err)

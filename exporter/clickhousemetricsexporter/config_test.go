@@ -22,9 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/configopaque"
-	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 
@@ -58,29 +55,12 @@ func Test_loadConfig(t *testing.T) {
 				MaxInterval:     1 * time.Minute,
 				MaxElapsedTime:  10 * time.Minute,
 			},
-			RemoteWriteQueue: RemoteWriteQueue{
+			QueueSettings: exporterhelper.QueueSettings{
 				Enabled:      true,
 				QueueSize:    2000,
 				NumConsumers: 10,
 			},
-			Namespace:      "test-space",
-			ExternalLabels: map[string]string{"key1": "value1", "key2": "value2"},
-			HTTPClientSettings: confighttp.HTTPClientSettings{
-				Endpoint: "localhost:8888",
-				TLSSetting: configtls.TLSClientSetting{
-					TLSSetting: configtls.TLSSetting{
-						CAFile: "/var/lib/mycert.pem", // This is subject to change, but currently I have no idea what else to put here lol
-					},
-					Insecure: false,
-				},
-				ReadBufferSize:  0,
-				WriteBufferSize: 512 * 1024,
-				Timeout:         5 * time.Second,
-				Headers: map[string]configopaque.String{
-					"Prometheus-Remote-Write-Version": "0.1.0",
-					"X-Scope-OrgID":                   "234",
-				},
-			},
+			Endpoint:                    "localhost:8888",
 			ResourceToTelemetrySettings: resourcetotelemetry.Settings{Enabled: true},
 			WatcherInterval:             30 * time.Second,
 		})
@@ -104,15 +84,4 @@ func TestNegativeNumConsumers(t *testing.T) {
 	factories.Exporters[typeStr] = factory
 	_, err = otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "negative_num_consumers.yaml"), factories)
 	assert.Error(t, err)
-}
-
-func TestDisabledQueue(t *testing.T) {
-	factories, err := otelcoltest.NopFactories()
-	assert.NoError(t, err)
-
-	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
-	cfg, err := otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "disabled_queue.yaml"), factories)
-	assert.NoError(t, err)
-	assert.False(t, cfg.Exporters[component.NewID(typeStr)].(*Config).RemoteWriteQueue.Enabled)
 }

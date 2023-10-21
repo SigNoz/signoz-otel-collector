@@ -19,13 +19,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
@@ -41,10 +39,7 @@ import (
 )
 
 const (
-	namespace                        = "promhouse"
-	subsystem                        = "clickhouse"
 	nameLabel                        = "__name__"
-	CLUSTER                          = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
@@ -57,10 +52,9 @@ const (
 
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
-	conn                 clickhouse.Conn
-	l                    *logrus.Entry
-	database             string
-	maxTimeSeriesInQuery int
+	conn     clickhouse.Conn
+	l        *logrus.Entry
+	database string
 
 	timeSeriesRW sync.RWMutex
 	// Maintains the lookup map for fingerprints that are
@@ -69,16 +63,13 @@ type clickHouse struct {
 	timeSeries      map[uint64]struct{}
 	prevShardCount  uint64
 	watcherInterval time.Duration
-
-	mWrittenTimeSeries prometheus.Counter
 }
 
 type ClickHouseParams struct {
-	DSN                  string
-	DropDatabase         bool
-	MaxOpenConns         int
-	MaxTimeSeriesInQuery int
-	WatcherInterval      time.Duration
+	DSN             string
+	MaxOpenConns    int
+	WatcherInterval time.Duration
+	Cluster         string
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -99,7 +90,6 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	}
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
-			// Database: "",
 			Username: dsnURL.Query().Get("username"),
 			Password: dsnURL.Query().Get("password"),
 		}
@@ -112,36 +102,26 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	}
 
 	ch := &clickHouse{
-		conn:                 conn,
-		l:                    l,
-		database:             database,
-		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
+		conn:     conn,
+		l:        l,
+		database: database,
 
-		timeSeries: make(map[uint64]struct{}, 8192),
-
-		mWrittenTimeSeries: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "written_time_series",
-			Help:      "Number of written time series.",
-		}),
+		timeSeries:      make(map[uint64]struct{}, 8192),
 		watcherInterval: params.WatcherInterval,
 	}
 
 	go func() {
-		ctx := pprof.WithLabels(context.TODO(), pprof.Labels("component", "clickhouse_reloader"))
-		pprof.SetGoroutineLabels(ctx)
-		ch.shardCountWatcher(ctx)
+		ch.shardCountWatcher(context.Background(), params.Cluster)
 	}()
 
 	return ch, nil
 }
 
-func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
+func (ch *clickHouse) shardCountWatcher(ctx context.Context, cluster string) {
 	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
+	q := `SELECT count() FROM system.clusters WHERE cluster='` + cluster + `'`
 	for {
 
 		err := func() error {
@@ -177,14 +157,6 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
-}
-
-func (ch *clickHouse) Describe(c chan<- *prometheus.Desc) {
-	ch.mWrittenTimeSeries.Describe(c)
-}
-
-func (ch *clickHouse) Collect(c chan<- prometheus.Metric) {
-	ch.mWrittenTimeSeries.Collect(c)
 }
 
 func (ch *clickHouse) GetDBConn() interface{} {
@@ -254,10 +226,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	err := func() error {
 		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
-		}
 
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
@@ -295,10 +263,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	// Write to time_series_v3 table
 	err = func() error {
 		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
-		}
 
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels) VALUES (?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
 		if err != nil {
@@ -394,7 +358,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	n := len(newTimeSeries)
 	if n != 0 {
-		ch.mWrittenTimeSeries.Add(float64(n))
 		ch.l.Debugf("Wrote %d new time series.", n)
 	}
 	return nil
