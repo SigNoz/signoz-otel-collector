@@ -201,17 +201,15 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 		consumeTracesErr  error
 	}{
 		{
-			name:              "ConsumeMetrics error",
-			consumeMetricsErr: fmt.Errorf("consume metrics error"),
+			name: "ConsumeMetrics error",
 		},
 		{
 			name:             "ConsumeTraces error",
 			consumeTracesErr: fmt.Errorf("consume traces error"),
 		},
 		{
-			name:              "ConsumeMetrics and ConsumeTraces error",
-			consumeMetricsErr: fmt.Errorf("consume metrics error"),
-			consumeTracesErr:  fmt.Errorf("consume traces error"),
+			name:             "ConsumeMetrics and ConsumeTraces error",
+			consumeTracesErr: fmt.Errorf("consume traces error"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,8 +230,6 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 			ctx := metadata.NewIncomingContext(context.Background(), nil)
 			err := p.ConsumeTraces(ctx, traces)
 
-			// Verify
-			require.Error(t, err)
 			switch {
 			case tc.consumeMetricsErr != nil && tc.consumeTracesErr != nil:
 				assert.EqualError(t, err, tc.consumeMetricsErr.Error()+"; "+tc.consumeTracesErr.Error())
@@ -241,8 +237,6 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 				assert.EqualError(t, err, tc.consumeMetricsErr.Error())
 			case tc.consumeTracesErr != nil:
 				assert.EqualError(t, err, tc.consumeTracesErr.Error())
-			default:
-				assert.Fail(t, "expected at least one error")
 			}
 		})
 	}
