@@ -104,7 +104,7 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string) error {
 		) ENGINE MergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
-		TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE
+		TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE
 		SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, cluster))
 	if err != nil {
 		return err

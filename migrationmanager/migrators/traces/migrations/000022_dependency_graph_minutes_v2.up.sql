@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes_v2 ON CLUSTER 
 ) ENGINE AggregatingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name)
-TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE;
+TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;
 
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.dependency_graph_minutes_service_calls_mv_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}

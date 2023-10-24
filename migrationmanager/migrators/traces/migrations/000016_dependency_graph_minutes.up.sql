@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes ON CLUSTER {{.
 ) ENGINE AggregatingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest)
-TTL toDateTime(timestamp) + INTERVAL 604800 SECOND DELETE;
+TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;
 
 
 
