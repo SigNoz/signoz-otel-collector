@@ -5,6 +5,6 @@ import "go.opentelemetry.io/collector/pdata/plog"
 type GCloud struct {
 }
 
-func (l *GCloud) Parse(body []byte) (plog.Logs, int) {
-	return plog.Logs{}, 0
+func (l *GCloud) Parse(body []byte) (plog.Logs, int, error) {
+	return plog.Logs{}, 0, nil
 }

@@ -67,6 +67,15 @@ func TestLoadConfig(t *testing.T) {
 				Source: "google",
 			},
 		},
+		{
+			id: component.NewIDWithName(metadata.Type, "json"),
+			expected: &Config{
+				HTTPServerSettings: confighttp.HTTPServerSettings{
+					Endpoint: ":54321",
+				},
+				Source: "json",
+			},
+		},
 	}
 
 	for _, tt := range tests {

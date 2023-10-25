@@ -52,7 +52,7 @@ func TestDefaultParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, _ := d.Parse([]byte(tt.PayLoad))
+			res, _, _ := d.Parse([]byte(tt.PayLoad))
 			logs := tt.Logs()
 			assert.NoError(t, plogtest.CompareLogs(logs, res, plogtest.IgnoreObservedTimestamp()))
 		})
