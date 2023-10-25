@@ -60,6 +60,11 @@ type Config struct {
 
 	// Controls the way the messages are marked as consumed
 	MessageMarking MessageMarking `mapstructure:"message_marking"`
+
+	// Controls sarama client's Consumer.Fetch config if set.
+	ConsumerFetchMinBytes int32 `mapstructure:"consumer_fetch_min_bytes"`
+	ConsumerFetchDefaultBytes int32 `mapstructure:"consumer_fetch_default_bytes"`
+	ConsumerFetchMaxBytes int32 `mapstructure:"consumer_fetch_max_bytes"`
 }
 
 const (

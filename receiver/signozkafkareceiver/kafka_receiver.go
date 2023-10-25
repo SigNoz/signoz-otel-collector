@@ -81,6 +81,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 	}
 
 	c := sarama.NewConfig()
+	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -174,6 +175,7 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 	}
 
 	c := sarama.NewConfig()
+	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -262,6 +264,7 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 
 func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
 	c := sarama.NewConfig()
+	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -671,4 +674,17 @@ func toSaramaInitialOffset(initialOffset string) (int64, error) {
 	default:
 		return 0, errInvalidInitialOffset
 	}
+}
+
+func setSaramaConsumerFetchConfig(sc *sarama.Config, c *Config) *sarama.Config {
+	if c.ConsumerFetchMinBytes != 0 {
+		sc.Consumer.Fetch.Min = c.ConsumerFetchMinBytes
+	}
+	if c.ConsumerFetchDefaultBytes != 0 {
+		sc.Consumer.Fetch.Default = c.ConsumerFetchDefaultBytes
+	}
+	if c.ConsumerFetchMaxBytes != 0 {
+		sc.Consumer.Fetch.Max = c.ConsumerFetchMaxBytes
+	}
+	return sc
 }
