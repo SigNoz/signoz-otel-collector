@@ -121,6 +121,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httpreceiver"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 )
 
 func Components() (otelcol.Factories, error) {
@@ -191,6 +192,7 @@ func Components() (otelcol.Factories, error) {
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
 		httpreceiver.NewFactory(),
+		signozkafkareceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
