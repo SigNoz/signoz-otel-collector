@@ -2,7 +2,10 @@ package bodyparser
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +32,7 @@ func TestJSONLogParser(t *testing.T) {
 				sl := rl.ScopeLogs().AppendEmpty()
 				log := sl.LogRecords().AppendEmpty()
 				log.Body().SetStr("hello world")
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -56,6 +60,7 @@ func TestJSONLogParser(t *testing.T) {
 				var spanID [8]byte
 				copy(spanID[:], spanIdByte)
 				log.SetSpanID(pcommon.SpanID(spanID))
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -85,6 +90,7 @@ func TestJSONLogParser(t *testing.T) {
 				log.Attributes().PutBool("boolean", true)
 				log.Attributes().PutStr("map", `{"ab":"cd"}`)
 				log.Attributes().PutStr("slice", `["x1","x2"]`)
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -104,6 +110,7 @@ func TestJSONLogParser(t *testing.T) {
 				sl := rl.ScopeLogs().AppendEmpty()
 				log := sl.LogRecords().AppendEmpty()
 				log.Body().SetStr("hello world")
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -119,6 +126,7 @@ func TestJSONLogParser(t *testing.T) {
 				log.Attributes().EnsureCapacity(2)
 				log.SetSeverityText("info")
 				log.SetSeverityNumber(9)
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -133,6 +141,7 @@ func TestJSONLogParser(t *testing.T) {
 				log.Body().SetStr("hello world")
 				log.Attributes().EnsureCapacity(2)
 				log.SetFlags(plog.LogRecordFlags(1))
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				return ld
 			},
 		},
@@ -145,10 +154,41 @@ func TestJSONLogParser(t *testing.T) {
 				sl := rl.ScopeLogs().AppendEmpty()
 				log := sl.LogRecords().AppendEmpty()
 				log.Body().SetStr("hello world")
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
 				rl1 := ld.ResourceLogs().AppendEmpty()
 				sl1 := rl1.ScopeLogs().AppendEmpty()
 				log1 := sl1.LogRecords().AppendEmpty()
 				log1.Body().SetStr("hello world 2")
+				log1.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
+				return ld
+			},
+		},
+		{
+			name:    "Test 9 - random keys in top level",
+			payLoad: `[{"message":"hello world", "attribute1": "val1", "attribute2": 10}]`,
+			expectedLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("hello world")
+				log.Attributes().EnsureCapacity(2)
+				log.Attributes().PutStr("attribute1", "val1")
+				log.Attributes().PutDouble("attribute2", 10)
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, 0)))
+				return ld
+			},
+		},
+		{
+			name:    "Test 10 - timestamp",
+			payLoad: `[{"message":"hello world", "timestamp": 1697701904681048000}]`,
+			expectedLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("hello world")
+				log.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, int64(float64(1697701904681048000)))))
 				return ld
 			},
 		},
@@ -157,6 +197,8 @@ func TestJSONLogParser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _, err := d.Parse([]byte(tt.payLoad))
+			b, _ := json.Marshal(res)
+			fmt.Println(string(b))
 			if tt.isError {
 				assert.Error(t, err)
 			} else {

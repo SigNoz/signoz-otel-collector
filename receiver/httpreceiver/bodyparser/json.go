@@ -14,6 +14,7 @@ type JSON struct {
 }
 
 type JSONLog struct {
+	Timestamp      int64                  `json:"timestamp"`
 	TraceID        string                 `json:"trace_id"`
 	SpanID         string                 `json:"span_id"`
 	TraceFlags     int                    `json:"trace_flags"`
@@ -30,14 +31,85 @@ func NewJsonBodyParser() *JSON {
 
 func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 
-	data := []JSONLog{}
+	data := []map[string]interface{}{}
 	err := json.Unmarshal(body, &data)
 	if err != nil {
-		return plog.NewLogs(), 0, err
+		return plog.NewLogs(), 0, fmt.Errorf("error unmarshalling data:%w", err)
+	}
+
+	jsonLogArray := []JSONLog{}
+	for _, log := range data {
+		jsonLog := JSONLog{}
+		for key, val := range log {
+			switch key {
+			case "timestamp":
+				// nanosecond epoch
+				data, ok := val.(float64)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("timestamp must be a uint64 nanoseconds since Unix epoch")
+				}
+				jsonLog.Timestamp = int64(data)
+			case "trace_id":
+				data, ok := val.(string)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("trace_id must be a hex string")
+				}
+				jsonLog.TraceID = data
+			case "span_id":
+				data, ok := val.(string)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("span_id must be a hex string")
+				}
+				jsonLog.SpanID = data
+			case "trace_flags":
+				data, ok := val.(float64)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("trace_flags must be a number")
+				}
+				jsonLog.TraceFlags = int(data)
+			case "severity_text":
+				data, ok := val.(string)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("severity_text must be a string")
+				}
+				jsonLog.SeverityText = data
+			case "severity_number":
+				data, ok := val.(float64)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("severity_number must be a number")
+				}
+				jsonLog.SeverityNumber = int(data)
+			case "attributes":
+				data, ok := val.(map[string]interface{})
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("attributes must be a map")
+				}
+				jsonLog.Attributes = data
+			case "resources":
+				data, ok := val.(map[string]interface{})
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("resources must be a map")
+				}
+				jsonLog.Resources = data
+			case "message", "body":
+				data, ok := val.(string)
+				if !ok {
+					return plog.NewLogs(), 0, fmt.Errorf("%s must be a string", key)
+				}
+				jsonLog.Body = data
+			default:
+				// if there is any other key present convert it to an attribute
+				if jsonLog.Attributes == nil {
+					jsonLog.Attributes = map[string]interface{}{}
+				}
+				jsonLog.Attributes[key] = val
+			}
+		}
+		jsonLogArray = append(jsonLogArray, jsonLog)
 	}
 
 	ld := plog.NewLogs()
-	for _, log := range data {
+	for _, log := range jsonLogArray {
 		rl := ld.ResourceLogs().AppendEmpty()
 		rAttrLen := len(log.Resources)
 		rl.Resource().Attributes().EnsureCapacity(rAttrLen)
@@ -70,6 +142,7 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 			copy(spanID[:], spanIdByte)
 			rec.SetSpanID(pcommon.SpanID(spanID))
 		}
+		rec.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(0, log.Timestamp)))
 		rec.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Now().UTC()))
 		rec.SetSeverityText(log.SeverityText)
 		rec.SetSeverityNumber(plog.SeverityNumber(log.SeverityNumber))
