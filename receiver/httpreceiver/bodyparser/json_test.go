@@ -2,8 +2,6 @@ package bodyparser
 
 import (
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -197,8 +195,6 @@ func TestJSONLogParser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _, err := d.Parse([]byte(tt.payLoad))
-			b, _ := json.Marshal(res)
-			fmt.Println(string(b))
 			if tt.isError {
 				assert.Error(t, err)
 			} else {
