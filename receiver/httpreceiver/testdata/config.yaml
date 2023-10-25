@@ -10,3 +10,5 @@ httpreceiver/heroku:
   source: heroku
 httpreceiver/google:
   source: google
+httpreceiver/json:
+  source: json

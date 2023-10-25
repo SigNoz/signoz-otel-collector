@@ -3,6 +3,7 @@ package bodyparser
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -23,7 +24,7 @@ type JSONLog struct {
 	Body           string                 `json:"body"`
 }
 
-func NewJSON() *JSON {
+func NewJsonBodyParser() *JSON {
 	return &JSON{}
 }
 
@@ -41,20 +42,20 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 		rAttrLen := len(log.Resources)
 		rl.Resource().Attributes().EnsureCapacity(rAttrLen)
 		for k, v := range log.Resources {
-			l.AddResourceAttribute(rl, k, v)
+			l.AddAttribute(rl.Resource().Attributes(), k, v)
 		}
 		sl := rl.ScopeLogs().AppendEmpty()
 		rec := sl.LogRecords().AppendEmpty()
 		attrLen := len(log.Attributes)
 		rec.Attributes().EnsureCapacity(attrLen)
 		for k, v := range log.Attributes {
-			l.AddAttribute(rec, k, v)
+			l.AddAttribute(rec.Attributes(), k, v)
 		}
 		rec.Body().SetStr(log.Body)
 		if log.TraceID != "" {
 			traceIdByte, err := hex.DecodeString(log.TraceID)
 			if err != nil {
-				return plog.Logs{}, 0, err
+				return plog.Logs{}, 0, fmt.Errorf("error decoding trace_id:%w", err)
 			}
 			var traceID [16]byte
 			copy(traceID[:], traceIdByte)
@@ -63,7 +64,7 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 		if log.SpanID != "" {
 			spanIdByte, err := hex.DecodeString(log.SpanID)
 			if err != nil {
-				return plog.Logs{}, 0, err
+				return plog.Logs{}, 0, fmt.Errorf("error decoding span_id:%w", err)
 			}
 			var spanID [8]byte
 			copy(spanID[:], spanIdByte)
@@ -77,42 +78,22 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 	return ld, len(data), nil
 }
 
-func (l *JSON) AddAttribute(log plog.LogRecord, key string, value interface{}) {
+func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
 	switch value.(type) {
 	case string:
-		log.Attributes().PutStr(key, value.(string))
+		attrs.PutStr(key, value.(string))
 	case int, int8, int16, int32, int64:
-		log.Attributes().PutInt(key, value.(int64))
+		attrs.PutInt(key, value.(int64))
 	case uint, uint8, uint16, uint32, uint64:
-		log.Attributes().PutInt(key, int64(value.(uint64)))
+		attrs.PutInt(key, int64(value.(uint64)))
 	case float32, float64:
-		log.Attributes().PutDouble(key, value.(float64))
+		attrs.PutDouble(key, value.(float64))
 	case bool:
-		log.Attributes().PutBool(key, value.(bool))
+		attrs.PutBool(key, value.(bool))
 	default:
 		// ignoring the error for now
 		bytes, _ := json.Marshal(value)
-		log.Attributes().PutStr(key, string(bytes))
-	}
-
-}
-
-func (l *JSON) AddResourceAttribute(log plog.ResourceLogs, key string, value interface{}) {
-	switch value.(type) {
-	case string:
-		log.Resource().Attributes().PutStr(key, value.(string))
-	case int, int8, int16, int32, int64:
-		log.Resource().Attributes().PutInt(key, value.(int64))
-	case uint, uint8, uint16, uint32, uint64:
-		log.Resource().Attributes().PutInt(key, int64(value.(uint64)))
-	case float32, float64:
-		log.Resource().Attributes().PutDouble(key, value.(float64))
-	case bool:
-		log.Resource().Attributes().PutBool(key, value.(bool))
-	default:
-		// ignoring the error for now
-		bytes, _ := json.Marshal(value)
-		log.Resource().Attributes().PutStr(key, string(bytes))
+		attrs.PutStr(key, string(bytes))
 	}
 
 }

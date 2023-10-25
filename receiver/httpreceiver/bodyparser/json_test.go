@@ -12,18 +12,18 @@ import (
 
 func TestJSONLogParser(t *testing.T) {
 	t.Parallel()
-	d := NewJSON()
+	d := NewJsonBodyParser()
 	tests := []struct {
-		name    string
-		PayLoad string
-		Logs    func() plog.Logs
-		count   int
-		isError bool
+		name         string
+		payLoad      string
+		expectedLogs func() plog.Logs
+		count        int
+		isError      bool
 	}{
 		{
 			name:    "Test 1",
-			PayLoad: `[{"body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -34,13 +34,13 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 2  - wrong structure",
-			PayLoad: `{"body":"hello world"}`,
+			payLoad: `{"body":"hello world"}`,
 			isError: true,
 		},
 		{
 			name:    "Test 3 - proper trace_id and span_id",
-			PayLoad: `[{"trace_id": "000000000000000045f6f14f5b4cc85a", "span_id": "1010f0feffbfeb95", "body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"trace_id": "000000000000000045f6f14f5b4cc85a", "span_id": "1010f0feffbfeb95", "body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -61,18 +61,18 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 3 - incorrect trace_id",
-			PayLoad: `[{"trace_id": "0000000000045f6f14f5b4cc85a", "body":"hello world"}]`,
+			payLoad: `[{"trace_id": "0000000000045f6f14f5b4cc85a", "body":"hello world"}]`,
 			isError: true,
 		},
 		{
 			name:    "Test 3 - incorrect span",
-			PayLoad: `[{"span_id": "1010f0feffsbfeb95", "body":"hello world"}]`,
+			payLoad: `[{"span_id": "1010f0feffsbfeb95", "body":"hello world"}]`,
 			isError: true,
 		},
 		{
 			name:    "Test 4 - attributes",
-			PayLoad: `[{"attributes": {"str": "hello", "int": 10, "float": 10.0, "boolean": true, "map": {"ab": "cd"}, "slice": ["x1", "x2"]}, "body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"attributes": {"str": "hello", "int": 10, "float": 10.0, "boolean": true, "map": {"ab": "cd"}, "slice": ["x1", "x2"]}, "body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -90,8 +90,8 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 5 - resources",
-			PayLoad: `[{"resources": {"str": "hello", "int": 10, "float": 10.0, "boolean": true, "map": {"ab": "cd"}, "slice": ["x1", "x2"]}, "body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"resources": {"str": "hello", "int": 10, "float": 10.0, "boolean": true, "map": {"ab": "cd"}, "slice": ["x1", "x2"]}, "body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				rl.Resource().Attributes().EnsureCapacity(6)
@@ -109,8 +109,8 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 6 - severity",
-			PayLoad: `[{"severity_text": "info", "severity_number": 9, "body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"severity_text": "info", "severity_number": 9, "body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -124,8 +124,8 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 7 - flags",
-			PayLoad: `[{"trace_flags": 1, "body":"hello world"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"trace_flags": 1, "body":"hello world"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -138,8 +138,8 @@ func TestJSONLogParser(t *testing.T) {
 		},
 		{
 			name:    "Test 8 - multiple logs",
-			PayLoad: `[{"body":"hello world"}, {"body":"hello world 2"}]`,
-			Logs: func() plog.Logs {
+			payLoad: `[{"body":"hello world"}, {"body":"hello world 2"}]`,
+			expectedLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				sl := rl.ScopeLogs().AppendEmpty()
@@ -156,11 +156,11 @@ func TestJSONLogParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, _, err := d.Parse([]byte(tt.PayLoad))
+			res, _, err := d.Parse([]byte(tt.payLoad))
 			if tt.isError {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, plogtest.CompareLogs(tt.Logs(), res, plogtest.IgnoreObservedTimestamp()))
+				assert.NoError(t, plogtest.CompareLogs(tt.expectedLogs(), res, plogtest.IgnoreObservedTimestamp()))
 			}
 		})
 	}

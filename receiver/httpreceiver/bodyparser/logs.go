@@ -11,9 +11,9 @@ func GetBodyParser(source string) Parser {
 	// case "google":
 	// 	return &GCloud{}
 	case "json":
-		return NewJSON()
+		return NewJsonBodyParser()
 	case "heroku":
-		return NewHeroku()
+		return NewHerokuBodyParser()
 	default:
 		return &Default{}
 	}
