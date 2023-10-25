@@ -14,12 +14,8 @@ USER ${USER_UID}
 # copy the binaries from the multi-stage build
 COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
 
-# copy the config and migration files
+# copy the config file
 COPY config/default-config.yaml /etc/otel/config.yaml
-COPY exporter/clickhousetracesexporter/migrations /migrations
-COPY exporter/clickhouselogsexporter/migrations /logsmigrations
-
-ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
 
 # expose OTLP ports for the collector
 EXPOSE 4317 4318

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -30,9 +29,6 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -428,82 +424,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	if err := db.Ping(ctx); err != nil {
 		return nil, err
 	}
-
-	q := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s;", databaseName, CLUSTER)
-	err = db.Exec(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create database, err: %s", err)
-	}
-
-	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
-	if cfg.DockerMultiNodeCluster {
-		err = dropSchemaMigrationsTable(db)
-		if err != nil {
-			logger.Error("Error dropping schema_migrations table", zap.Error(err))
-			return nil, err
-		}
-	}
-
-	// do the migration here
-
-	// get the migrations folder
-	mgsFolder := os.Getenv("LOG_MIGRATIONS_FOLDER")
-	if mgsFolder == "" {
-		mgsFolder = migrationsFolder
-	}
-
-	logger.Info("Running migrations from path: ", zap.Any("test", mgsFolder))
-	clickhouseUrl, err := buildClickhouseMigrateURL(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build Clickhouse migrate URL, error: %s", err)
-	}
-	m, err := migrate.New("file://"+mgsFolder, clickhouseUrl)
-	if err != nil {
-		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
-	}
-	err = m.Up()
-	if err != nil && !strings.HasSuffix(err.Error(), "no change") {
-		return nil, fmt.Errorf("clickhouse Migrate failed to run, error: %s", err)
-	}
-
-	logger.Info("Clickhouse Migrate finished")
 	return db, nil
-}
-
-func dropSchemaMigrationsTable(db clickhouse.Conn) error {
-	err := db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s;`,
-		databaseName, "schema_migrations", CLUSTER))
-	if err != nil {
-		return fmt.Errorf("error dropping schema_migrations table: %v", err)
-	}
-	return nil
-}
-
-func buildClickhouseMigrateURL(cfg *Config) (string, error) {
-	// return fmt.Sprintf("clickhouse://localhost:9000?database=default&x-multi-statement=true"), nil
-	var clickhouseUrl string
-	parsedURL, err := url.Parse(cfg.DSN)
-	if err != nil {
-		return "", err
-	}
-	host := parsedURL.Host
-	if host == "" {
-		return "", fmt.Errorf("unable to parse host")
-
-	}
-	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
-	if err != nil {
-		return "", err
-	}
-	username := paramMap["username"]
-	password := paramMap["password"]
-
-	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, databaseName, CLUSTER)
-	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, databaseName, CLUSTER)
-	}
-	return clickhouseUrl, nil
 }
 
 func renderInsertLogsSQL(cfg *Config) string {
