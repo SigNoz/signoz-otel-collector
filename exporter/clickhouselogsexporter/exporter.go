@@ -342,8 +342,7 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 				response.FloatValues = append(response.FloatValues, v.Double())
 			case pcommon.ValueTypeBool:
 				// add boolValues in future if it is required
-				response.BoolKeys = append(response.BoolKeys, formatKey(k))
-				// store it as a string in clickhouse
+				// store it as a string in clickhouse for now
 				response.StringKeys = append(response.StringKeys, formatKey(k))
 				response.StringValues = append(response.StringValues, v.AsString())
 			default: // store it as string
