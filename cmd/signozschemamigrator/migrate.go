@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/migrationmanager"
 	"github.com/spf13/pflag"
@@ -72,7 +73,22 @@ func main() {
 
 	// set cluster env so that golang-migrate can use it
 	// the value of this env would replace all occurences of {{.SIGNOZ_CLUSTER}} in the migration files
+	// TODO: remove this log after dirtry migration issue is fixed
+	logger.Info("Setting env var SIGNOZ_CLUSTER", zap.String("cluster-name", clusterName))
 	os.Setenv("SIGNOZ_CLUSTER", clusterName)
+	// TODO: remove this section after dirtry migration issue is fixed
+	clusterNameFromEnv := ""
+	for _, kvp := range os.Environ() {
+		kvParts := strings.SplitN(kvp, "=", 2)
+		if kvParts[0] == "SIGNOZ_CLUSTER" {
+			clusterNameFromEnv = kvParts[1]
+			break
+		}
+	}
+	if clusterName == "" {
+		logger.Fatal("Failed to set env var SIGNOZ_CLUSTER")
+	}
+	logger.Info("Successfully set env var SIGNOZ_CLUSTER ", zap.String("cluster-name", clusterNameFromEnv))
 
 	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature)
 	if err != nil {
