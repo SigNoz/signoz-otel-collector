@@ -94,85 +94,6 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
 	}
 
-	var queries []string
-	if params.DropDatabase {
-		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s ON CLUSTER %s;`, database, CLUSTER))
-	}
-	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, database, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			value Float64 Codec(Gorilla, LZ4)
-		)
-		ENGINE = MergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, `SET allow_experimental_object_type = 1`)
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s(
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	// Add temporality column to time_series table
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality LowCardinality(String) DEFAULT 'Unspecified' CODEC(ZSTD(5))`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality LowCardinality(String) DEFAULT 'Unspecified' CODEC(ZSTD(5))`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
-
-	// Add set index on temporality column
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD INDEX IF NOT EXISTS temporality_index temporality TYPE SET(3) GRANULARITY 1`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	// Create a new table
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			env LowCardinality(String) DEFAULT 'default',
-			temporality LowCardinality(String) DEFAULT 'Unspecified',
-			metric_name LowCardinality(String),
-			fingerprint UInt64 CODEC(Delta, ZSTD),
-			timestamp_ms Int64 CODEC(Delta, ZSTD),
-			labels String CODEC(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (env, temporality, metric_name, fingerprint);`, database, TIME_SERIES_TABLE_V3, CLUSTER))
-
-	// Create a new distributed table
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(env, temporality, metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE_V3, CLUSTER, database, TIME_SERIES_TABLE_V3, CLUSTER, database, TIME_SERIES_TABLE_V3))
-
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}
@@ -186,26 +107,8 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		options.Auth = auth
 	}
 	conn, err := clickhouse.Open(options)
-
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
-	}
-
-	for _, q := range queries {
-		q = strings.TrimSpace(q)
-		l.Infof("Executing:\n%s\n", q)
-		if err = conn.Exec(context.Background(), q); err != nil {
-			return nil, err
-		}
-	}
-
-	// TODO(srikanthccv): Remove this once we have a better way to handle data and last write
-	removeTTL := fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s REMOVE TTL;`, database, TIME_SERIES_TABLE, CLUSTER)
-	if err = conn.Exec(context.Background(), removeTTL); err != nil {
-		if !strings.Contains(err.Error(), "Table doesn't have any table TTL expression, cannot remove.") {
-			return nil, err
-		}
 	}
 
 	ch := &clickHouse{

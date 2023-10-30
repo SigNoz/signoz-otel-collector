@@ -1,5 +1,5 @@
 # use a minimal alpine image
-FROM alpine:3.17
+FROM alpine:3.18.3
 
 # add ca-certificates in case you need them
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
@@ -14,12 +14,8 @@ USER ${USER_UID}
 # copy the binaries from the multi-stage build
 COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
 
-# copy the config and migration files
+# copy the config file
 COPY config/default-config.yaml /etc/otel/config.yaml
-COPY exporter/clickhousetracesexporter/migrations /migrations
-COPY exporter/clickhouselogsexporter/migrations /logsmigrations
-
-ENV LOG_MIGRATIONS_FOLDER="/logsmigrations"
 
 # expose OTLP ports for the collector
 EXPOSE 4317 4318

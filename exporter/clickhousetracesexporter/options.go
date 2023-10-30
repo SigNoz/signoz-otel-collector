@@ -26,17 +26,17 @@ import (
 
 const (
 	defaultDatasource               string   = "tcp://127.0.0.1:9000/?database=signoz_traces"
-	defaultTraceDatabase            string   = "signoz_traces"
+	DefaultTraceDatabase            string   = "signoz_traces"
 	defaultMigrations               string   = "/migrations"
 	defaultOperationsTable          string   = "distributed_signoz_operations"
-	defaultIndexTable               string   = "distributed_signoz_index_v2"
-	localIndexTable                 string   = "signoz_index_v2"
+	DefaultIndexTable               string   = "distributed_signoz_index_v2"
+	LocalIndexTable                 string   = "signoz_index_v2"
 	defaultErrorTable               string   = "distributed_signoz_error_index_v2"
 	defaultSpansTable               string   = "distributed_signoz_spans"
 	defaultAttributeTable           string   = "distributed_span_attributes"
 	defaultAttributeKeyTable        string   = "distributed_span_attributes_keys"
-	defaultDurationSortTable        string   = "durationSort"
-	defaultDurationSortMVTable      string   = "durationSortMV"
+	DefaultDurationSortTable        string   = "durationSort"
+	DefaultDurationSortMVTable      string   = "durationSortMV"
 	defaultArchiveSpansTable        string   = "signoz_archive_spans"
 	defaultClusterName              string   = "cluster"
 	defaultDependencyGraphTable     string   = "dependency_graph_minutes"
@@ -138,16 +138,16 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			Enabled:                    true,
 			Datasource:                 datasource,
 			Migrations:                 migrations,
-			TraceDatabase:              defaultTraceDatabase,
+			TraceDatabase:              DefaultTraceDatabase,
 			OperationsTable:            defaultOperationsTable,
-			IndexTable:                 defaultIndexTable,
-			LocalIndexTable:            localIndexTable,
+			IndexTable:                 DefaultIndexTable,
+			LocalIndexTable:            LocalIndexTable,
 			ErrorTable:                 defaultErrorTable,
 			SpansTable:                 defaultSpansTable,
 			AttributeTable:             defaultAttributeTable,
 			AttributeKeyTable:          defaultAttributeKeyTable,
-			DurationSortTable:          defaultDurationSortTable,
-			DurationSortMVTable:        defaultDurationSortMVTable,
+			DurationSortTable:          DefaultDurationSortTable,
+			DurationSortMVTable:        DefaultDurationSortMVTable,
 			Cluster:                    defaultClusterName,
 			DependencyGraphTable:       defaultDependencyGraphTable,
 			DependencyGraphServiceMV:   defaultDependencyGraphServiceMV,
@@ -247,7 +247,7 @@ func initFromViper(cfg *namespaceConfig, v *viper.Viper) {
 	cfg.Encoding = Encoding(v.GetString(cfg.namespace + suffixEncoding))
 }
 
-// GetPrimary returns the primary namespace configuration
+// getPrimary returns the primary namespace configuration
 func (opt *Options) getPrimary() *namespaceConfig {
 	return opt.primary
 }

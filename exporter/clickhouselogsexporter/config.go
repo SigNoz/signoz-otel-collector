@@ -25,9 +25,7 @@ import (
 type Config struct {
 	exporterhelper.TimeoutSettings `mapstructure:",squash"`
 	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
-	// QueueSettings is a subset of exporterhelper.QueueSettings,
-	// because only QueueSize is user-settable.
-	QueueSettings QueueSettings `mapstructure:"sending_queue"`
+	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
@@ -35,12 +33,6 @@ type Config struct {
 	DSN string `mapstructure:"dsn"`
 	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
 	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
-}
-
-// QueueSettings is a subset of exporterhelper.QueueSettings.
-type QueueSettings struct {
-	// QueueSize set the length of the sending queue
-	QueueSize int `mapstructure:"queue_size"`
 }
 
 var (
@@ -53,12 +45,4 @@ func (cfg *Config) Validate() (err error) {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
 	return err
-}
-
-func (cfg *Config) enforcedQueueSettings() exporterhelper.QueueSettings {
-	return exporterhelper.QueueSettings{
-		Enabled:      true,
-		NumConsumers: 1,
-		QueueSize:    cfg.QueueSettings.QueueSize,
-	}
 }
