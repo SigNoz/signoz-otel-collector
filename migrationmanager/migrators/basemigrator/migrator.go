@@ -76,7 +76,7 @@ func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, da
 	}
 	if m.Cfg.VerboseLoggingEnabled {
 		// set logger on migrator only if verbose logging is enabled to avoid noise in logs
-		migrator.Log = newZapLoggerAdapter(m.Logger, m.Cfg.VerboseLoggingEnabled)
+		migrator.Log = newZapLoggerAdapter(m.Logger)
 	}
 	migrator.EnableTemplating = true
 
