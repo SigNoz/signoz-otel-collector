@@ -74,10 +74,7 @@ func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, da
 	if err != nil {
 		return fmt.Errorf("failed to create migrator, err: %s", err)
 	}
-	if m.Cfg.VerboseLoggingEnabled {
-		// set logger on migrator only if verbose logging is enabled to avoid noise in logs
-		migrator.Log = newZapLoggerAdapter(m.Logger)
-	}
+	migrator.Log = newZapLoggerAdapter(m.Logger, m.Cfg.VerboseLoggingEnabled)
 	migrator.EnableTemplating = true
 
 	err = migrator.Up()

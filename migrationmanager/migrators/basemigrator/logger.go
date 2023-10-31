@@ -8,11 +8,13 @@ import (
 
 type zapLoggerAdapter struct {
 	*zap.Logger
+	VerboseLoggingEnabled bool
 }
 
-func newZapLoggerAdapter(logger *zap.Logger) *zapLoggerAdapter {
+func newZapLoggerAdapter(logger *zap.Logger, verboseLoggingEnabled bool) *zapLoggerAdapter {
 	return &zapLoggerAdapter{
-		Logger:                logger,
+		Logger:               logger,
+		VerboseLoggingEnabled: verboseLoggingEnabled,
 	}
 }
 
@@ -21,5 +23,5 @@ func (l *zapLoggerAdapter) Printf(format string, v ...interface{}) {
 }
 
 func (l *zapLoggerAdapter) Verbose() bool {
-	return true
+	return l.VerboseLoggingEnabled
 }
