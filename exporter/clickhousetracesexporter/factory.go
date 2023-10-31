@@ -30,9 +30,10 @@ const (
 )
 
 func createDefaultConfig() component.Config {
-	// opts := NewOptions(primaryNamespace, archiveNamespace)
 	return &Config{
-		// Options:          *opts,
+		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
+		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
+		RetrySettings:   exporterhelper.NewDefaultRetrySettings(),
 	}
 }
 
