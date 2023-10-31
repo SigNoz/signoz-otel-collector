@@ -1,4 +1,4 @@
-type: httpreceiver
+type: httplogreceiver
 
 status:
   class: receiver

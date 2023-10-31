@@ -7,6 +7,6 @@ import (
 )
 
 const (
-	Type          = "httpreceiver"
+	Type          = "httplogreceiver"
 	LogsStability = component.StabilityLevelAlpha
 )

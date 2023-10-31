@@ -1,4 +1,4 @@
-package httpreceiver
+package httplogreceiver
 
 import (
 	"context"
