@@ -75,7 +75,10 @@ func main() {
 	// the value of this env would replace all occurences of {{.SIGNOZ_CLUSTER}} in the migration files
 	// TODO: remove this log after dirtry migration issue is fixed
 	logger.Info("Setting env var SIGNOZ_CLUSTER", zap.String("cluster-name", clusterName))
-	os.Setenv("SIGNOZ_CLUSTER", clusterName)
+	err = os.Setenv("SIGNOZ_CLUSTER", clusterName)
+	if err != nil {
+		logger.Fatal("Failed to set env var SIGNOZ_CLUSTER", zap.Error(err))
+	}
 	// TODO: remove this section after dirtry migration issue is fixed
 	clusterNameFromEnv := ""
 	for _, kvp := range os.Environ() {
