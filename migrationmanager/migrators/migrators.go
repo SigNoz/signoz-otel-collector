@@ -11,6 +11,7 @@ type MigratorConfig struct {
 	ClusterName                    string
 	IsDurationSortFeatureDisabled  bool
 	IsTimestampSortFeatureDisabled bool
+	VerboseLoggingEnabled          bool
 }
 
 type Migrator interface {
