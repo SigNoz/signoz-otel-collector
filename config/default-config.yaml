@@ -54,6 +54,15 @@ exporters:
   clickhousetraces:
     datasource: tcp://localhost:9000/?database=signoz_traces
     migrations: exporter/clickhousetracesexporter/migrations
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      queue_size: 100
+      num_consumers: 5
   clickhousemetricswrite:
     endpoint: tcp://localhost:9000/?database=signoz_metrics
     resource_to_telemetry_conversion:

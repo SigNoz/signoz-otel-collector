@@ -15,7 +15,10 @@
 package clickhousetracesexporter
 
 import (
+	"fmt"
+
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for tracing exporter.
@@ -26,12 +29,26 @@ type Config struct {
 	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
 	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster"`
 	// LowCardinalExceptionGrouping is a flag to enable exception grouping by serviceName + exceptionType. Default is false.
-	LowCardinalExceptionGrouping bool `mapstructure:"low_cardinal_exception_grouping"`
+	LowCardinalExceptionGrouping   bool `mapstructure:"low_cardinal_exception_grouping"`
+	exporterhelper.TimeoutSettings `mapstructure:",squash"`
+	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
 }
 
 var _ component.Config = (*Config)(nil)
 
 // Validate checks if the exporter configuration is valid
 func (cfg *Config) Validate() error {
+	if cfg.QueueSettings.QueueSize < 0 {
+		return fmt.Errorf("remote write queue size can't be negative")
+	}
+
+	if cfg.QueueSettings.Enabled && cfg.QueueSettings.QueueSize == 0 {
+		return fmt.Errorf("a 0 size queue will drop all the data")
+	}
+
+	if cfg.QueueSettings.NumConsumers < 0 {
+		return fmt.Errorf("remote write consumer number can't be negative")
+	}
 	return nil
 }
