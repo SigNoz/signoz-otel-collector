@@ -129,8 +129,8 @@ github.com/Shopify/sarama v1.38.1/go.mod h1:iwv9a67Ha8VNa+TifujYoWGxWnu2kNVAQdSd
 github.com/Shopify/toxiproxy/v2 v2.5.0 h1:i4LPT+qrSlKNtQf5QliVjdP08GyAH8+BUIc9gT0eahc=
 github.com/Showmax/go-fqdn v1.0.0 h1:0rG5IbmVliNT5O19Mfuvna9LL7zlHyRfsSvBPZmF9tM=
 github.com/Showmax/go-fqdn v1.0.0/go.mod h1:SfrFBzmDCtCGrnHhoDjuvFnKsWjEQX/Q9ARZvOrJAko=
-github.com/SigNoz/golang-migrate/v4 v4.16.2 h1:m9VrCeVDtYR1ZpIuEYApKze9iVsMbvXBavcaXSZMdBY=
-github.com/SigNoz/golang-migrate/v4 v4.16.2/go.mod h1:LOW45ixsVo/YpAn8NajhG5o+QSwMEFgsHOf5KK7obF4=
+github.com/SigNoz/golang-migrate/v4 v4.16.3 h1:81UY10Su6o1mqAzXQw3R9vRjs/S2ak/vJCs8lEyKsaY=
+github.com/SigNoz/golang-migrate/v4 v4.16.3/go.mod h1:LOW45ixsVo/YpAn8NajhG5o+QSwMEFgsHOf5KK7obF4=
 github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d/go.mod h1:3eOhrUMpNV+6aFIbp5/iudMxNCF27Vw2OZgy4xEx0Fg=
 github.com/VividCortex/gohistogram v1.0.0 h1:6+hBz+qvs0JOrrNhhmR7lFxo5sINxBCGXrdtl/UvroE=
 github.com/alecthomas/assert/v2 v2.2.2 h1:Z/iVC0xZfWTaFNE6bA3z07T86hd45Xe2eLt6WVy2bbk=
