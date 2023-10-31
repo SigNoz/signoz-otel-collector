@@ -199,6 +199,8 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 						attributes.IntValues,
 						attributes.FloatKeys,
 						attributes.FloatValues,
+						attributes.BoolKeys,
+						attributes.BoolValues,
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
@@ -253,6 +255,7 @@ type attributesToSliceResponse struct {
 	FloatKeys    []string
 	FloatValues  []float64
 	BoolKeys     []string
+	BoolValues   []bool
 }
 
 func getStringifiedBody(body pcommon.Value) string {
@@ -341,8 +344,8 @@ func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response
 				response.FloatKeys = append(response.FloatKeys, formatKey(k))
 				response.FloatValues = append(response.FloatValues, v.Double())
 			case pcommon.ValueTypeBool:
-				// add boolValues in future if it is required
 				response.BoolKeys = append(response.BoolKeys, formatKey(k))
+				response.BoolValues = append(response.BoolValues, v.Bool())
 			default: // store it as string
 				response.StringKeys = append(response.StringKeys, formatKey(k))
 				response.StringValues = append(response.StringValues, v.AsString())
@@ -376,8 +379,12 @@ const (
 							attributes_int64_key,
 							attributes_int64_value,
 							attributes_float64_key,
-							attributes_float64_value
+							attributes_float64_value,
+							attributes_bool_key,
+							attributes_bool_value
 							) VALUES (
+								?,
+								?,
 								?,
 								?,
 								?,
