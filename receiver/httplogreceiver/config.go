@@ -1,4 +1,4 @@
-package httpreceiver
+package httplogreceiver
 
 import (
 	"errors"
@@ -25,7 +25,7 @@ type Config struct {
 // Validate verifies that the endpoint is valid and the configured port is not 0
 func (rCfg *Config) Validate() error {
 	if rCfg.HTTPServerSettings.Endpoint == "" {
-		return errors.New("must specify an endpoint for the httpreceiver")
+		return errors.New("must specify an endpoint for the httplogreceiver")
 	}
 
 	// validate port
