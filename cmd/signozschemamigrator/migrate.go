@@ -41,6 +41,7 @@ func main() {
 	f.String("cluster-name", "cluster", "Cluster name to use while running migrations")
 	f.Bool("disable-duration-sort-feature", false, "Flag to disable the duration sort feature. Defaults to false.")
 	f.Bool("disable-timestamp-sort-feature", false, "Flag to disable the timestamp sort feature. Defaults to false.")
+	f.Bool("verbose", false, "Flag to enable verbose logging. Defaults to false.")
 
 	err := f.Parse(os.Args[1:])
 	if err != nil {
@@ -65,6 +66,11 @@ func main() {
 	disableTimestampSortFeature, err := f.GetBool("disable-timestamp-sort-feature")
 	if err != nil {
 		logger.Fatal("Failed to get disable timestamp sort feature flag from args", zap.Error(err))
+	}
+
+	verboseLoggingEnabled, err := f.GetBool("verbose")
+	if err != nil {
+		logger.Fatal("Failed to get verbose flag from args", zap.Error(err))
 	}
 
 	if dsn == "" {
@@ -93,7 +99,7 @@ func main() {
 	}
 	logger.Info("Successfully set env var SIGNOZ_CLUSTER ", zap.String("cluster-name", clusterNameFromEnv))
 
-	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature)
+	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature, verboseLoggingEnabled)
 	if err != nil {
 		logger.Fatal("Failed to create migration manager", zap.Error(err))
 	}
