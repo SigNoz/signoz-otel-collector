@@ -414,7 +414,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	// setting max open connections = num consumers
+	// setting maxOpenConnections = numConsumers to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxOpenConnections := cfg.QueueSettings.NumConsumers
 
 	options := &clickhouse.Options{
