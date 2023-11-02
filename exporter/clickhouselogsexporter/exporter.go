@@ -413,9 +413,15 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	if err != nil {
 		return nil, err
 	}
+
+	// setting max open connections = num consumers
+	maxOpenConnections := cfg.QueueSettings.NumConsumers
+
 	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
+		Addr:         []string{dsnURL.Host},
+		MaxOpenConns: maxOpenConnections,
 	}
+
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
 			Username: dsnURL.Query().Get("username"),
