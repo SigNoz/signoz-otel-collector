@@ -1,4 +1,4 @@
-package httpreceiver
+package httplogreceiver
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SigNoz/signoz-otel-collector/receiver/httpreceiver/bodyparser"
-	"github.com/SigNoz/signoz-otel-collector/receiver/httpreceiver/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver/bodyparser"
+	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver/internal/metadata"
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -26,7 +26,7 @@ const (
 	defaultServerTimeout = 20 * time.Second
 )
 
-// NewFactory creates a factory for httpreceiver
+// NewFactory creates a factory for httplogreceiver
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(metadata.Type, createDefaultConfig, receiver.WithLogs(createLogsReceiver, metadata.LogsStability))
 }
@@ -69,9 +69,9 @@ func createLogsReceiver(
 
 var receiverLock sync.Mutex
 
-var receivers = map[*Config]*httpreceiver{}
+var receivers = map[*Config]*httplogreceiver{}
 
-type httpreceiver struct {
+type httplogreceiver struct {
 	settings     receiver.CreateSettings
 	config       *Config
 	logsConsumer consumer.Logs
@@ -81,11 +81,11 @@ type httpreceiver struct {
 	parser       bodyparser.Parser
 }
 
-// New creates the httpreceiver receiver with the given configuration.
+// New creates the httplogreceiver receiver with the given configuration.
 func newReceiver(
 	settings receiver.CreateSettings,
 	config Config,
-) (*httpreceiver, error) {
+) (*httplogreceiver, error) {
 	transport := "http"
 	if config.TLSSetting != nil {
 		transport = "https"
@@ -99,7 +99,7 @@ func newReceiver(
 		return nil, err
 	}
 
-	r := &httpreceiver{
+	r := &httplogreceiver{
 		settings: settings,
 		config:   &config,
 		obsrecv:  obsrecv,
@@ -109,14 +109,14 @@ func newReceiver(
 	return r, nil
 }
 
-func (r *httpreceiver) RegisterLogsConsumer(lc consumer.Logs) {
+func (r *httplogreceiver) RegisterLogsConsumer(lc consumer.Logs) {
 	r.logsConsumer = lc
 }
 
 // Start tells the receiver to start its processing.
 // By convention the consumer of the received data is set when the receiver
 // instance is created.
-func (r *httpreceiver) Start(_ context.Context, host component.Host) error {
+func (r *httplogreceiver) Start(_ context.Context, host component.Host) error {
 	if r.logsConsumer == nil {
 		return component.ErrNilNextConsumer
 	}
@@ -156,7 +156,7 @@ func (r *httpreceiver) Start(_ context.Context, host component.Host) error {
 
 // Shutdown tells the receiver that should stop reception,
 // giving it a chance to perform any necessary clean-up.
-func (r *httpreceiver) Shutdown(context.Context) error {
+func (r *httplogreceiver) Shutdown(context.Context) error {
 	if r.server == nil {
 		return nil
 	}
@@ -165,7 +165,7 @@ func (r *httpreceiver) Shutdown(context.Context) error {
 	return err
 }
 
-func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
+func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 	ctx := r.obsrecv.StartMetricsOp(req.Context())
 
 	if req.Method != "POST" {
@@ -178,7 +178,11 @@ func (r *httpreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logs, totalCount := r.parser.Parse(body)
+	logs, totalCount, err := r.parser.Parse(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err = r.logsConsumer.ConsumeLogs(ctx, logs)
 	if err != nil {

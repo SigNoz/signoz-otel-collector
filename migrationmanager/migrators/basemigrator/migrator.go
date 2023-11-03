@@ -74,6 +74,7 @@ func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, da
 	if err != nil {
 		return fmt.Errorf("failed to create migrator, err: %s", err)
 	}
+	migrator.Log = newZapLoggerAdapter(m.Logger, m.Cfg.VerboseLoggingEnabled)
 	migrator.EnableTemplating = true
 
 	err = migrator.Up()

@@ -39,9 +39,13 @@ import (
 // Crete new exporter.
 func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
+	if err := component.ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
+	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
 
 	err := f.Initialize(logger)
 	if err != nil {
@@ -405,6 +409,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 	err := s.Writer.WriteBatchOfSpans(batchOfSpans)
 	if err != nil {
 		zap.S().Error("Error in writing spans to clickhouse: ", err)
+		return err
 	}
 	return nil
 }

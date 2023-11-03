@@ -1,10 +1,10 @@
-package httpreceiver
+package httplogreceiver
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SigNoz/signoz-otel-collector/receiver/httpreceiver/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -67,6 +67,15 @@ func TestLoadConfig(t *testing.T) {
 				Source: "google",
 			},
 		},
+		{
+			id: component.NewIDWithName(metadata.Type, "json"),
+			expected: &Config{
+				HTTPServerSettings: confighttp.HTTPServerSettings{
+					Endpoint: ":54321",
+				},
+				Source: "json",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -90,7 +99,7 @@ func TestCreateInvalidHTTPEndpoint(t *testing.T) {
 	cfg.Endpoint = ""
 
 	err := cfg.Validate()
-	assert.EqualError(t, err, "must specify an endpoint for the httpreceiver")
+	assert.EqualError(t, err, "must specify an endpoint for the httplogreceiver")
 }
 
 func TestCreateNoPortEndpoint(t *testing.T) {

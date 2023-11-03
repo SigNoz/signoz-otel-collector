@@ -1,4 +1,4 @@
-package httpreceiver
+package httplogreceiver
 
 import (
 	"errors"
@@ -12,6 +12,7 @@ import (
 const (
 	heroku = "heroku"
 	google = "google"
+	json   = "json"
 )
 
 // Config defines configuration for the https receiver.
@@ -24,7 +25,7 @@ type Config struct {
 // Validate verifies that the endpoint is valid and the configured port is not 0
 func (rCfg *Config) Validate() error {
 	if rCfg.HTTPServerSettings.Endpoint == "" {
-		return errors.New("must specify an endpoint for the httpreceiver")
+		return errors.New("must specify an endpoint for the httplogreceiver")
 	}
 
 	// validate port
@@ -41,7 +42,7 @@ func (rCfg *Config) Validate() error {
 	}
 
 	// validate source
-	if rCfg.Source != heroku && rCfg.Source != google && rCfg.Source != "" {
+	if rCfg.Source != heroku && rCfg.Source != google && rCfg.Source != json && rCfg.Source != "" {
 		return fmt.Errorf("source must be one of %s or %s or empty", heroku, google)
 	}
 

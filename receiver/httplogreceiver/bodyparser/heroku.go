@@ -14,7 +14,7 @@ type Heroku struct {
 	names  []string
 }
 
-func NewHeroku() *Heroku {
+func NewHerokuBodyParser() *Heroku {
 	regex, err := regexp.Compile(`^<(?P<priority>\d|\d{2}|1[1-8]\d|19[01])>(?P<version>\d{1,2})\s(?P<timestamp>-|[^\s]+)\s(?P<hostname>[\S]{1,255})\s(?P<appname>[\S]{1,48})\s(?P<procid>[\S]{1,128})\s(?P<msgid>[\S]{1,32})(?:\s(?P<msg>.+))?$`)
 	if err != nil {
 		panic(err)
@@ -41,7 +41,7 @@ type log struct {
 	body      string
 }
 
-func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
+func (l *Heroku) Parse(body []byte) (plog.Logs, int, error) {
 	data := string(body)
 
 	loglines := octetCountingSplitter(data)
@@ -99,7 +99,7 @@ func (l *Heroku) Parse(body []byte) (plog.Logs, int) {
 			}
 		}
 	}
-	return ld, len(loglines)
+	return ld, len(loglines), nil
 
 }
 
