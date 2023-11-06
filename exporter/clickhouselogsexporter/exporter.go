@@ -413,7 +413,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		return nil, err
 	}
 
-	// setting maxOpenIdleConnections = numConsumers to avoid `prepareBatch:clickhouse: acquire conn timeout` error
+	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
 
 	options := &clickhouse.Options{

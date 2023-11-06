@@ -79,6 +79,7 @@ type namespaceConfig struct {
 	DependencyGraphMessagingMV string
 	DependencyGraphTable       string
 	DockerMultiNodeCluster     bool
+	NumConsumers               int
 	Encoding                   Encoding
 	Connector                  Connector
 }
@@ -88,9 +89,14 @@ type Connector func(cfg *namespaceConfig) (clickhouse.Conn, error)
 
 func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	ctx := context.Background()
+	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout`
+	// error when using multiple consumers along with usage exporter
+	maxOpenIdleConnections := cfg.NumConsumers + 1
 	dsnURL, err := url.Parse(cfg.Datasource)
 	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
+		Addr:         []string{dsnURL.Host},
+		MaxOpenConns: maxOpenIdleConnections + 5,
+		MaxIdleConns: maxOpenIdleConnections,
 	}
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
@@ -123,7 +129,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, primaryNamespace string, otherNamespaces ...string) *Options {
 
 	if datasource == "" {
 		datasource = defaultDatasource
@@ -154,6 +160,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			DependencyGraphDbMV:        defaultDependencyGraphDbMV,
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
 			DockerMultiNodeCluster:     dockerMultiNodeCluster,
+			NumConsumers:               numConsumers,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
 		},
