@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"sync"
@@ -80,7 +79,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		UsageExporter,
 	)
 	if err != nil {
-		log.Fatalf("Error creating usage collector for logs : %v", err)
+		return nil, fmt.Errorf("error creating usage collector for logs : %v", err)
 	}
 
 	collector.Start()
@@ -413,9 +412,16 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	if err != nil {
 		return nil, err
 	}
+
+	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
+	maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
+
 	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
+		Addr:         []string{dsnURL.Host},
+		MaxOpenConns: maxOpenIdleConnections + 5,
+		MaxIdleConns: maxOpenIdleConnections,
 	}
+
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
 			Username: dsnURL.Query().Get("username"),

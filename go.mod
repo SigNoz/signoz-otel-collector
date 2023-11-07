@@ -3,7 +3,7 @@ module github.com/SigNoz/signoz-otel-collector
 go 1.21
 
 require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.0.12
+	github.com/ClickHouse/clickhouse-go/v2 v2.15.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
@@ -162,14 +162,18 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.3.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.0.0 // indirect
+	github.com/ClickHouse/ch-go v0.58.2 // indirect
 	github.com/IBM/sarama v1.41.2 // indirect
 	github.com/JohnCGriffin/overflow v0.0.0-20211019200055-46fa312c352c // indirect
 	github.com/apache/arrow/go/v12 v12.0.1 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.6.1 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/hetznercloud/hcloud-go/v2 v2.0.0 // indirect
 	github.com/knadh/koanf/v2 v2.0.1 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/kafka v0.88.0 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
 	go.opentelemetry.io/collector v0.88.0 // indirect
 	go.opentelemetry.io/collector/config/configauth v0.88.0 // indirect
 	go.opentelemetry.io/collector/config/configcompression v0.88.0 // indirect
@@ -217,7 +221,7 @@ require (
 	github.com/Showmax/go-fqdn v1.0.0 // indirect
 	github.com/alecthomas/participle/v2 v2.1.0 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/andybalholm/brotli v1.0.4 // indirect
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/antonmedv/expr v1.15.3 // indirect
 	github.com/apache/pulsar-client-go v0.8.1 // indirect
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220120090717-25e59572242e // indirect
@@ -413,7 +417,7 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/openzipkin/zipkin-go v0.4.2 // indirect
 	github.com/ovh/go-ovh v1.4.1 // indirect
-	github.com/paulmach/orb v0.4.0 // indirect
+	github.com/paulmach/orb v0.10.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
