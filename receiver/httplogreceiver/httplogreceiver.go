@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/obsreport"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.opentelemetry.io/collector/receiver"
 )
 
@@ -77,7 +77,7 @@ type httplogreceiver struct {
 	logsConsumer consumer.Logs
 	server       *http.Server
 	shutdownWG   sync.WaitGroup
-	obsrecv      *obsreport.Receiver
+	obsrecv      *receiverhelper.ObsReport
 	parser       bodyparser.Parser
 }
 
@@ -90,7 +90,7 @@ func newReceiver(
 	if config.TLSSetting != nil {
 		transport = "https"
 	}
-	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             settings.ID,
 		Transport:              transport,
 		ReceiverCreateSettings: settings,
