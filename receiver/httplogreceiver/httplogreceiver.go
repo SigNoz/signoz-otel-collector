@@ -15,8 +15,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/obsreport"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
 
 const (
@@ -77,7 +77,7 @@ type httplogreceiver struct {
 	logsConsumer consumer.Logs
 	server       *http.Server
 	shutdownWG   sync.WaitGroup
-	obsrecv      *obsreport.Receiver
+	obsrecv      *receiverhelper.ObsReport
 	parser       bodyparser.Parser
 }
 
@@ -90,7 +90,7 @@ func newReceiver(
 	if config.TLSSetting != nil {
 		transport = "https"
 	}
-	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             settings.ID,
 		Transport:              transport,
 		ReceiverCreateSettings: settings,
@@ -168,6 +168,11 @@ func (r *httplogreceiver) Shutdown(context.Context) error {
 func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 	ctx := r.obsrecv.StartMetricsOp(req.Context())
 
+	// return this header if present. This is done to support vercel.
+	if req.Header.Get("x-vercel-verify") != "" {
+		w.Header().Add("x-vercel-verify", req.Header.Get("x-vercel-verify"))
+	}
+
 	if req.Method != "POST" {
 		return
 	}
@@ -195,5 +200,4 @@ func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		metadata.Type,
 		totalCount,
 		err)
-
 }
