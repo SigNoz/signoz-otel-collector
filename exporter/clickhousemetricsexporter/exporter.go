@@ -223,6 +223,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
+					case pmetric.MetricTypeExponentialHistogram:
+						// TODO(srikanthccv): implement
 					default:
 						dropped++
 						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New("unsupported metric type")))
