@@ -204,7 +204,7 @@ func TestJSONLogParser(t *testing.T) {
 	}
 }
 
-var testGetZerosForEpochNanoData = []struct {
+var testGetEpochNanoData = []struct {
 	Name       string
 	Epoch      int64
 	Multiplier int64
@@ -222,8 +222,8 @@ var testGetZerosForEpochNanoData = []struct {
 	},
 }
 
-func TestGetZerosForEpochNano(t *testing.T) {
-	for _, tt := range testGetZerosForEpochNanoData {
+func TestGetEpochNano(t *testing.T) {
+	for _, tt := range testGetEpochNanoData {
 		t.Run(tt.Name, func(t *testing.T) {
 			res := getEpochNano(tt.Epoch)
 			assert.Equal(t, tt.Result, res)
