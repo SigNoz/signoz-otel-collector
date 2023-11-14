@@ -211,25 +211,22 @@ var testGetZerosForEpochNanoData = []struct {
 	Result     int64
 }{
 	{
-		Name:       "Test 1",
-		Epoch:      1680712080000,
-		Multiplier: 1000000,
-		Result:     1680712080000000000,
+		Name:   "Test 1",
+		Epoch:  1680712080000,
+		Result: 1680712080000000000,
 	},
 	{
-		Name:       "Test 2",
-		Epoch:      1680712080000000000,
-		Multiplier: 1,
-		Result:     1680712080000000000,
+		Name:   "Test 2",
+		Epoch:  1680712080000000000,
+		Result: 1680712080000000000,
 	},
 }
 
 func TestGetZerosForEpochNano(t *testing.T) {
 	for _, tt := range testGetZerosForEpochNanoData {
 		t.Run(tt.Name, func(t *testing.T) {
-			multiplier := getZerosForEpochNano(tt.Epoch)
-			assert.Equal(t, multiplier, tt.Multiplier)
-			assert.Equal(t, tt.Epoch*multiplier, tt.Result)
+			res := getEpochNano(tt.Epoch)
+			assert.Equal(t, tt.Result, res)
 		})
 	}
 }

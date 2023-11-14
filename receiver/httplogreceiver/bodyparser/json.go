@@ -49,8 +49,7 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 				if !ok {
 					return plog.NewLogs(), 0, fmt.Errorf("timestamp must be a uint64 nanoseconds since Unix epoch")
 				}
-				intVal := int64(data)
-				jsonLog.Timestamp = intVal * getZerosForEpochNano(intVal)
+				jsonLog.Timestamp = getEpochNano(int64(data))
 			case "trace_id":
 				data, ok := val.(string)
 				if !ok {
@@ -173,8 +172,9 @@ func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
 
 }
 
-// getZerosForEpochNano returns the number of zeros to be appended to the epoch time for converting it to nanoseconds
-func getZerosForEpochNano(epoch int64) int64 {
+// getEpochNano returns epoch in  nanoseconds
+func getEpochNano(epoch int64) int64 {
+	epochCopy := epoch
 	count := 0
 	if epoch == 0 {
 		count = 1
@@ -184,5 +184,5 @@ func getZerosForEpochNano(epoch int64) int64 {
 			count++
 		}
 	}
-	return int64(math.Pow(10, float64(19-count)))
+	return epochCopy * int64(math.Pow(10, float64(19-count)))
 }
