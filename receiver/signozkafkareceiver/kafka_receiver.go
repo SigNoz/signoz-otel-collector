@@ -9,16 +9,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/obsreport"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
+	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 )
 
 const (
@@ -100,7 +100,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 		}
 		c.Version = version
 	}
-	if err := kafkaexporter.ConfigureAuthentication(config.Authentication, c); err != nil {
+	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
@@ -121,7 +121,8 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
+	
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
 		ReceiverCreateSettings: c.settings,
@@ -194,7 +195,7 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 		}
 		c.Version = version
 	}
-	if err := kafkaexporter.ConfigureAuthentication(config.Authentication, c); err != nil {
+	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
@@ -215,7 +216,7 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
 		ReceiverCreateSettings: c.settings,
@@ -288,7 +289,7 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 		}
 		c.Version = version
 	}
-	if err = kafkaexporter.ConfigureAuthentication(config.Authentication, c); err != nil {
+	if err = kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
@@ -336,7 +337,7 @@ func getLogsUnmarshaler(encoding string, unmarshalers map[string]LogsUnmarshaler
 func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
 		ReceiverCreateSettings: c.settings,
@@ -393,7 +394,7 @@ type tracesConsumerGroupHandler struct {
 
 	logger *zap.Logger
 
-	obsrecv *obsreport.Receiver
+	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking
@@ -408,7 +409,7 @@ type metricsConsumerGroupHandler struct {
 
 	logger *zap.Logger
 
-	obsrecv *obsreport.Receiver
+	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking
@@ -423,7 +424,7 @@ type logsConsumerGroupHandler struct {
 
 	logger *zap.Logger
 
-	obsrecv *obsreport.Receiver
+	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking

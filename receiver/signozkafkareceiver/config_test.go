@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
+	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
@@ -38,7 +39,7 @@ func TestLoadConfig(t *testing.T) {
 				ClientID:      "otel-collector",
 				GroupID:       "otel-collector",
 				InitialOffset: "latest",
-				Authentication: kafkaexporter.Authentication{
+				Authentication: kafka.Authentication{
 					TLS: &configtls.TLSClientSetting{
 						TLSSetting: configtls.TLSSetting{
 							CAFile:   "ca.pem",
@@ -70,7 +71,7 @@ func TestLoadConfig(t *testing.T) {
 				ClientID:      "otel-collector",
 				GroupID:       "otel-collector",
 				InitialOffset: "earliest",
-				Authentication: kafkaexporter.Authentication{
+				Authentication: kafka.Authentication{
 					TLS: &configtls.TLSClientSetting{
 						TLSSetting: configtls.TLSSetting{
 							CAFile:   "ca.pem",
