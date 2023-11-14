@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -48,7 +49,8 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 				if !ok {
 					return plog.NewLogs(), 0, fmt.Errorf("timestamp must be a uint64 nanoseconds since Unix epoch")
 				}
-				jsonLog.Timestamp = int64(data)
+				intVal := int64(data)
+				jsonLog.Timestamp = intVal * getZerosForEpochNano(intVal)
 			case "trace_id":
 				data, ok := val.(string)
 				if !ok {
@@ -169,4 +171,18 @@ func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
 		attrs.PutStr(key, string(bytes))
 	}
 
+}
+
+// getZerosForEpochNano returns the number of zeros to be appended to the epoch time for converting it to nanoseconds
+func getZerosForEpochNano(epoch int64) int64 {
+	count := 0
+	if epoch == 0 {
+		count = 1
+	} else {
+		for epoch != 0 {
+			epoch /= 10
+			count++
+		}
+	}
+	return int64(math.Pow(10, float64(19-count)))
 }

@@ -203,3 +203,33 @@ func TestJSONLogParser(t *testing.T) {
 		})
 	}
 }
+
+var testGetZerosForEpochNanoData = []struct {
+	Name       string
+	Epoch      int64
+	Multiplier int64
+	Result     int64
+}{
+	{
+		Name:       "Test 1",
+		Epoch:      1680712080000,
+		Multiplier: 1000000,
+		Result:     1680712080000000000,
+	},
+	{
+		Name:       "Test 2",
+		Epoch:      1680712080000000000,
+		Multiplier: 1,
+		Result:     1680712080000000000,
+	},
+}
+
+func TestGetZerosForEpochNano(t *testing.T) {
+	for _, tt := range testGetZerosForEpochNanoData {
+		t.Run(tt.Name, func(t *testing.T) {
+			multiplier := getZerosForEpochNano(tt.Epoch)
+			assert.Equal(t, multiplier, tt.Multiplier)
+			assert.Equal(t, tt.Epoch*multiplier, tt.Result)
+		})
+	}
+}
