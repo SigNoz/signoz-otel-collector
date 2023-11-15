@@ -422,12 +422,12 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	}
 
 	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	// maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
+	maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
 
 	options := &clickhouse.Options{
 		Addr:         []string{dsnURL.Host},
-		MaxOpenConns: cfg.QueueSettings.NumConsumers - 1,
-		// MaxIdleConns: maxOpenIdleConnections,
+		MaxOpenConns: cfg.QueueSettings.NumConsumers + 5,
+		MaxIdleConns: maxOpenIdleConnections,
 	}
 
 	if dsnURL.Query().Get("username") != "" {
