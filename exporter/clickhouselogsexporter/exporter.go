@@ -426,7 +426,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 
 	options := &clickhouse.Options{
 		Addr:         []string{dsnURL.Host},
-		MaxOpenConns: cfg.QueueSettings.NumConsumers + 5,
+		MaxOpenConns: maxOpenIdleConnections + 5,
 		MaxIdleConns: maxOpenIdleConnections,
 	}
 
