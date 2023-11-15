@@ -1,4 +1,4 @@
-kafka:
+signozkafkareceiver:
   topic: spans
   brokers:
     - "foo:123"
@@ -14,7 +14,7 @@ kafka:
     retry:
       max: 10
       backoff: 5s
-kafka/logs:
+signozkafkareceiver/logs:
   topic: logs
   encoding: direct
   brokers:
