@@ -1,4 +1,4 @@
-kafka:
+signozkafkaexporter:
   topic: spans
   brokers:
     - "foo:123"

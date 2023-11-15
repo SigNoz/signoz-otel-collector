@@ -12,6 +12,7 @@ import (
 	"github.com/Shopify/sarama/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -136,7 +137,8 @@ func TestTracesPusher(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, p.Close(context.Background()))
 	})
-	err := p.tracesPusher(context.Background(), testdata.GenerateTracesTwoSpansSameResource())
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.tracesPusher(ctx, testdata.GenerateTracesTwoSpansSameResource())
 	require.NoError(t, err)
 }
 
@@ -155,7 +157,8 @@ func TestTracesPusher_err(t *testing.T) {
 		require.NoError(t, p.Close(context.Background()))
 	})
 	td := testdata.GenerateTracesTwoSpansSameResource()
-	err := p.tracesPusher(context.Background(), td)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.tracesPusher(ctx, td)
 	assert.EqualError(t, err, expErr.Error())
 }
 
@@ -166,7 +169,8 @@ func TestTracesPusher_marshal_error(t *testing.T) {
 		logger:    zap.NewNop(),
 	}
 	td := testdata.GenerateTracesTwoSpansSameResource()
-	err := p.tracesPusher(context.Background(), td)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.tracesPusher(ctx, td)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), expErr.Error())
 }
@@ -183,7 +187,8 @@ func TestMetricsDataPusher(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, p.Close(context.Background()))
 	})
-	err := p.metricsDataPusher(context.Background(), testdata.GenerateMetricsTwoMetrics())
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.metricsDataPusher(ctx, testdata.GenerateMetricsTwoMetrics())
 	require.NoError(t, err)
 }
 
@@ -202,7 +207,8 @@ func TestMetricsDataPusher_err(t *testing.T) {
 		require.NoError(t, p.Close(context.Background()))
 	})
 	md := testdata.GenerateMetricsTwoMetrics()
-	err := p.metricsDataPusher(context.Background(), md)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.metricsDataPusher(ctx, md)
 	assert.EqualError(t, err, expErr.Error())
 }
 
@@ -213,7 +219,8 @@ func TestMetricsDataPusher_marshal_error(t *testing.T) {
 		logger:    zap.NewNop(),
 	}
 	md := testdata.GenerateMetricsTwoMetrics()
-	err := p.metricsDataPusher(context.Background(), md)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.metricsDataPusher(ctx, md)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), expErr.Error())
 }
@@ -230,7 +237,8 @@ func TestLogsDataPusher(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, p.Close(context.Background()))
 	})
-	err := p.logsDataPusher(context.Background(), testdata.GenerateLogsOneLogRecord())
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.logsDataPusher(ctx, testdata.GenerateLogsOneLogRecord())
 	require.NoError(t, err)
 }
 
@@ -249,7 +257,8 @@ func TestLogsDataPusher_err(t *testing.T) {
 		require.NoError(t, p.Close(context.Background()))
 	})
 	ld := testdata.GenerateLogsOneLogRecord()
-	err := p.logsDataPusher(context.Background(), ld)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.logsDataPusher(ctx, ld)
 	assert.EqualError(t, err, expErr.Error())
 }
 
@@ -260,7 +269,8 @@ func TestLogsDataPusher_marshal_error(t *testing.T) {
 		logger:    zap.NewNop(),
 	}
 	ld := testdata.GenerateLogsOneLogRecord()
-	err := p.logsDataPusher(context.Background(), ld)
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.logsDataPusher(ctx, ld)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), expErr.Error())
 }
