@@ -121,25 +121,33 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	e.wg.Add(1)
 	defer e.wg.Done()
 
+	var statement driver.Batch
+	var tagStatement driver.Batch
+	var err error
+
+	defer func() {
+		if statement != nil {
+			_ = statement.Abort()
+		}
+		if tagStatement != nil {
+			_ = tagStatement.Abort()
+		}
+	}()
+
 	select {
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
 	default:
 		start := time.Now()
-		statement, err := e.db.PrepareBatch(ctx, e.insertLogsSQL)
+		statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL)
 		if err != nil {
 			return fmt.Errorf("PrepareBatch:%w", err)
 		}
 
-		tagStatement, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES))
+		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES))
 		if err != nil {
 			return fmt.Errorf("PrepareTagBatch:%w", err)
 		}
-
-		defer func() {
-			_ = statement.Abort()
-			_ = tagStatement.Abort()
-		}()
 
 		metrics := map[string]usage.Metric{}
 
@@ -414,12 +422,12 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	}
 
 	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
+	// maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
 
 	options := &clickhouse.Options{
 		Addr:         []string{dsnURL.Host},
-		MaxOpenConns: maxOpenIdleConnections + 5,
-		MaxIdleConns: maxOpenIdleConnections,
+		MaxOpenConns: cfg.QueueSettings.NumConsumers - 1,
+		// MaxIdleConns: maxOpenIdleConnections,
 	}
 
 	if dsnURL.Query().Get("username") != "" {
