@@ -351,7 +351,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				tenant := "default"
 				collectUsage := true
 				for _, val := range timeSeries[fingerprint] {
-					if val.Name == nameLabel && strings.HasPrefix(val.Value, "signoz_") {
+					if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
 						collectUsage = false
 						break
 					}
