@@ -139,12 +139,12 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		return errors.New("shutdown has been called")
 	default:
 		start := time.Now()
-		statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL)
+		statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareBatch:%w", err)
 		}
 
-		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES))
+		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareTagBatch:%w", err)
 		}
