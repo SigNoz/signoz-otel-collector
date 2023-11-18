@@ -17,13 +17,14 @@ type MigrationManager struct {
 	logger    *zap.Logger
 }
 
-func New(dsn string, clusterName string, isDurationSortFeatureDisabled bool, isTimestampSortFeatureDisabled bool) (*MigrationManager, error) {
+func New(dsn string, clusterName string, isDurationSortFeatureDisabled, isTimestampSortFeatureDisabled, verboseLoggingEnabled bool) (*MigrationManager, error) {
 	logger := zap.L().With(zap.String("component", "migrationmanager"))
 	cfg := migrators.MigratorConfig{
 		DSN:                            dsn,
 		ClusterName:                    clusterName,
 		IsDurationSortFeatureDisabled:  isDurationSortFeatureDisabled,
 		IsTimestampSortFeatureDisabled: isTimestampSortFeatureDisabled,
+		VerboseLoggingEnabled:          verboseLoggingEnabled,
 	}
 
 	logsMigrator, err := createNewMigrator("logs", cfg)
