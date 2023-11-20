@@ -227,7 +227,9 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						// TODO(srikanthccv): implement
 					default:
 						dropped++
-						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New("unsupported metric type")))
+						name := metric.Name()
+						typ := metric.Type().String()
+						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New(fmt.Sprintf("unsupported metric type %s for %s", typ, name))))
 					}
 				}
 			}
