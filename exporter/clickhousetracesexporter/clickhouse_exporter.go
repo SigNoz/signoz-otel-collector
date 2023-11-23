@@ -376,7 +376,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		Tenant: &tenant,
 	}
 
-	if span.StatusCode == 2 {
+	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
 	populateOtherDimensions(attributes, span)
