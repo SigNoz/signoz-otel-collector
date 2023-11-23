@@ -31,6 +31,8 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -39,14 +41,18 @@ import (
 )
 
 const (
-	namespace                     = "promhouse"
-	subsystem                     = "clickhouse"
-	nameLabel                     = "__name__"
-	CLUSTER                       = "cluster"
-	DISTRIBUTED_TIME_SERIES_TABLE = "distributed_time_series_v2"
-	DISTRIBUTED_SAMPLES_TABLE     = "distributed_samples_v2"
-	TIME_SERIES_TABLE             = "time_series_v2"
-	SAMPLES_TABLE                 = "samples_v2"
+	namespace                        = "promhouse"
+	subsystem                        = "clickhouse"
+	nameLabel                        = "__name__"
+	CLUSTER                          = "cluster"
+	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
+	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
+	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
+	TIME_SERIES_TABLE                = "time_series_v2"
+	TIME_SERIES_TABLE_V3             = "time_series_v3"
+	SAMPLES_TABLE                    = "samples_v2"
+	temporalityLabel                 = "__temporality__"
+	envLabel                         = "env"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -60,7 +66,9 @@ type clickHouse struct {
 	// Maintains the lookup map for fingerprints that are
 	// written to time series table. This map is used to eliminate the
 	// unnecessary writes to table for the records that already exist.
-	timeSeries map[uint64]struct{}
+	timeSeries      map[uint64]struct{}
+	prevShardCount  uint64
+	watcherInterval time.Duration
 
 	mWrittenTimeSeries prometheus.Counter
 }
@@ -70,6 +78,7 @@ type ClickHouseParams struct {
 	DropDatabase         bool
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
+	WatcherInterval      time.Duration
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -85,56 +94,6 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
 	}
 
-	var queries []string
-	if params.DropDatabase {
-		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s ON CLUSTER %s;`, database, CLUSTER))
-	}
-	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, database, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			value Float64 Codec(Gorilla, LZ4)
-		)
-		ENGINE = MergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, `SET allow_experimental_object_type = 1`)
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s(
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
-
 	options := &clickhouse.Options{
 		Addr: []string{dsnURL.Host},
 	}
@@ -148,17 +107,8 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		options.Auth = auth
 	}
 	conn, err := clickhouse.Open(options)
-
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
-	}
-
-	for _, q := range queries {
-		q = strings.TrimSpace(q)
-		l.Infof("Executing:\n%s\n", q)
-		if err = conn.Exec(context.Background(), q); err != nil {
-			return nil, err
-		}
 	}
 
 	ch := &clickHouse{
@@ -175,60 +125,48 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Name:      "written_time_series",
 			Help:      "Number of written time series.",
 		}),
+		watcherInterval: params.WatcherInterval,
 	}
 
 	go func() {
 		ctx := pprof.WithLabels(context.TODO(), pprof.Labels("component", "clickhouse_reloader"))
 		pprof.SetGoroutineLabels(ctx)
-		ch.runTimeSeriesReloader(ctx)
+		ch.shardCountWatcher(ctx)
 	}()
 
 	return ch, nil
 }
 
-// runTimeSeriesReloader periodically queries the time series table
-// and updates the timeSeries lookup map with new fingerprints.
-// One might wonder why is there a need to reload the data from clickhouse
-// when it just suffices to keep track of the fingerprint for the incoming
-// write requests. This is because there could be multiple instance of
-// metric exporters and they would only contain partial info with latter
-// approach.
-func (ch *clickHouse) runTimeSeriesReloader(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
+	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := fmt.Sprintf(`SELECT DISTINCT fingerprint FROM %s.%s`, ch.database, DISTRIBUTED_TIME_SERIES_TABLE)
+	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
 	for {
-		ch.timeSeriesRW.RLock()
-		timeSeries := make(map[uint64]struct{}, len(ch.timeSeries))
-		ch.timeSeriesRW.RUnlock()
 
 		err := func() error {
 			ch.l.Debug(q)
-			rows, err := ch.conn.Query(ctx, q)
+			row := ch.conn.QueryRow(ctx, q)
+			if row.Err() != nil {
+				return row.Err()
+			}
+
+			var shardCount uint64
+			err := row.Scan(&shardCount)
 			if err != nil {
 				return err
 			}
-			defer rows.Close()
 
-			var f uint64
-			for rows.Next() {
-				if err = rows.Scan(&f); err != nil {
-					return err
-				}
-				timeSeries[f] = struct{}{}
-			}
-			return rows.Err()
-		}()
-		if err == nil {
 			ch.timeSeriesRW.Lock()
-			n := len(timeSeries) - len(ch.timeSeries)
-			for f, m := range timeSeries {
-				ch.timeSeries[f] = m
+			if ch.prevShardCount != shardCount {
+				ch.l.Infof("Shard count changed from %d to %d. Resetting time series map.", ch.prevShardCount, shardCount)
+				ch.timeSeries = make(map[uint64]struct{})
 			}
+			ch.prevShardCount = shardCount
 			ch.timeSeriesRW.Unlock()
-			ch.l.Debugf("Loaded %d existing time series, %d were unknown to this instance.", len(timeSeries), n)
-		} else {
+			return nil
+		}()
+		if err != nil {
 			ch.l.Error(err)
 		}
 
@@ -253,14 +191,15 @@ func (ch *clickHouse) GetDBConn() interface{} {
 	return ch.conn
 }
 
-func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) error {
+func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToTemporality map[string]pmetric.AggregationTemporality) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
-	fingerprintToName := make(map[uint64]string)
+	fingerprintToName := make(map[uint64]map[string]string)
 
 	for i, ts := range data.Timeseries {
 		var metricName string
+		var env string = "default"
 		labelsOverridden := make(map[string]*prompb.Label)
 		for _, label := range ts.Labels {
 			labelsOverridden[label.Name] = &prompb.Label{
@@ -270,16 +209,32 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			if label.Name == nameLabel {
 				metricName = label.Value
 			}
+			if label.Name == semconv.AttributeDeploymentEnvironment || label.Name == sanitize(semconv.AttributeDeploymentEnvironment) {
+				env = label.Value
+			}
 		}
 		var labels []*prompb.Label
 		for _, l := range labelsOverridden {
 			labels = append(labels, l)
 		}
+		// add temporality label
+		if metricName != "" {
+			if t, ok := metricNameToTemporality[metricName]; ok {
+				labels = append(labels, &prompb.Label{
+					Name:  temporalityLabel,
+					Value: t.String(),
+				})
+			}
+		}
 		timeseries.SortLabels(labels)
 		f := timeseries.Fingerprint(labels)
 		fingerprints[i] = f
 		timeSeries[f] = labels
-		fingerprintToName[f] = metricName
+		if _, ok := fingerprintToName[f]; !ok {
+			fingerprintToName[f] = make(map[string]string)
+		}
+		fingerprintToName[f][nameLabel] = metricName
+		fingerprintToName[f][env] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
 		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
@@ -304,7 +259,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
 			return err
 		}
@@ -312,7 +267,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 			err = statement.Append(
-				fingerprintToName[fingerprint],
+				fingerprintToName[fingerprint][nameLabel],
+				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
 				timestamp,
 				fingerprint,
 				encodedLabels,
@@ -327,6 +283,48 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 		ctx, _ = tag.New(ctx,
 			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	// Write to time_series_v3 table
+	err = func() error {
+		ctx := context.Background()
+		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
+		if err != nil {
+			return err
+		}
+
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels) VALUES (?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
+		if err != nil {
+			return err
+		}
+		timestamp := model.Now().Time().UnixMilli()
+		for fingerprint, labels := range newTimeSeries {
+			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+			err = statement.Append(
+				fingerprintToName[fingerprint][envLabel],
+				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
+				fingerprintToName[fingerprint][nameLabel],
+				fingerprint,
+				timestamp,
+				encodedLabels,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, TIME_SERIES_TABLE_V3),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
@@ -353,7 +351,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				tenant := "default"
 				collectUsage := true
 				for _, val := range timeSeries[fingerprint] {
-					if val.Name == nameLabel && strings.HasPrefix(val.Value, "signoz_") {
+					if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
 						collectUsage = false
 						break
 					}
@@ -367,7 +365,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest) erro
 				}
 
 				err = statement.Append(
-					fingerprintToName[fingerprint],
+					fingerprintToName[fingerprint][nameLabel],
 					fingerprint,
 					s.Timestamp,
 					s.Value,

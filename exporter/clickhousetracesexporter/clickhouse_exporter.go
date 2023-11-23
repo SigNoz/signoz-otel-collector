@@ -39,15 +39,15 @@ import (
 // Crete new exporter.
 func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
-	configClickHouse := cfg.(*Config)
-
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
-
-	err := f.Initialize(logger)
-	if err != nil {
+	if err := component.ValidateConfig(cfg); err != nil {
 		return nil, err
 	}
-	err = initFeatures(f.db, f.Options)
+
+	configClickHouse := cfg.(*Config)
+
+	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
+
+	err := f.Initialize(logger)
 	if err != nil {
 		return nil, err
 	}
@@ -385,6 +385,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 	rss := td.ResourceSpans()
+	var batchOfSpans []*Span
 	for i := 0; i < rss.Len(); i++ {
 		// fmt.Printf("ResourceSpans #%d\n", i)
 		rs := rss.At(i)
@@ -400,16 +401,16 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-				// traceID := hex.EncodeToString(span.TraceID())
 				structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
-				err := s.Writer.WriteSpan(structuredSpan)
-				if err != nil {
-					zap.S().Error("Error in writing spans to clickhouse: ", err)
-				}
+				batchOfSpans = append(batchOfSpans, structuredSpan)
 			}
 		}
 	}
-
+	err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+	if err != nil {
+		zap.S().Error("Error in writing spans to clickhouse: ", err)
+		return err
+	}
 	return nil
 }
 
@@ -428,21 +429,21 @@ func (s *storage) Shutdown(_ context.Context) error {
 func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 	spanAttributes := []SpanAttribute{}
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "traceId",
+		Key:         "traceID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.TraceId,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "spanId",
+		Key:         "spanID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.SpanId,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "parentSpanId",
+		Key:         "parentSpanID",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",

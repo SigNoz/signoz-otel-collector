@@ -89,6 +89,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/simpleprometheusreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/skywalkingreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlqueryreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlserverreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver"
@@ -115,9 +116,12 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
+	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 )
 
 func Components() (otelcol.Factories, error) {
@@ -180,12 +184,15 @@ func Components() (otelcol.Factories, error) {
 		sqlqueryreceiver.NewFactory(),
 		sqlserverreceiver.NewFactory(),
 		simpleprometheusreceiver.NewFactory(),
+		skywalkingreceiver.NewFactory(),
 		statsdreceiver.NewFactory(),
 		syslogreceiver.NewFactory(),
 		tcplogreceiver.NewFactory(),
 		udplogreceiver.NewFactory(),
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
+		httplogreceiver.NewFactory(),
+		signozkafkareceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
@@ -204,6 +211,7 @@ func Components() (otelcol.Factories, error) {
 		jaegerexporter.NewFactory(),
 		jaegerthrifthttpexporter.NewFactory(),
 		kafkaexporter.NewFactory(),
+		signozkafkaexporter.NewFactory(),
 		loadbalancingexporter.NewFactory(),
 		opencensusexporter.NewFactory(),
 		parquetexporter.NewFactory(),
