@@ -28,6 +28,15 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
+type MetricMeta struct {
+	Name        string
+	Temporality pmetric.AggregationTemporality
+	Description string
+	Unit        string
+	Typ         pmetric.MetricType
+	IsMonotonic bool
+}
+
 // Storage represents generic storage.
 type Storage interface {
 	// Read runs queries in the storage and returns the same amount of matrixes.
@@ -35,7 +44,7 @@ type Storage interface {
 	// Read(context.Context, []Query) (*prompb.ReadResponse, error)
 
 	// Write puts data into storage.
-	Write(context.Context, *prompb.WriteRequest, map[string]pmetric.AggregationTemporality) error
+	Write(context.Context, *prompb.WriteRequest, map[string]MetricMeta) error
 
 	// Returns the DB conn.
 	GetDBConn() interface{}
