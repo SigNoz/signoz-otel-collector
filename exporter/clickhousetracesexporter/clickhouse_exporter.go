@@ -18,12 +18,14 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -71,7 +73,15 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
-	storage := storage{Writer: spanWriter, usageCollector: collector, config: storageConfig{lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping}}
+	storage := storage{
+		Writer:         spanWriter,
+		usageCollector: collector,
+		config: storageConfig{
+			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
+		},
+		wg:        new(sync.WaitGroup),
+		closeChan: make(chan struct{}),
+	}
 
 	return &storage, nil
 }
@@ -80,6 +90,8 @@ type storage struct {
 	Writer         Writer
 	usageCollector *usage.UsageCollector
 	config         storageConfig
+	wg             *sync.WaitGroup
+	closeChan      chan struct{}
 }
 
 type storageConfig struct {
@@ -377,39 +389,48 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+	s.wg.Add(1)
+	defer s.wg.Done()
 
-	rss := td.ResourceSpans()
-	var batchOfSpans []*Span
-	for i := 0; i < rss.Len(); i++ {
-		// fmt.Printf("ResourceSpans #%d\n", i)
-		rs := rss.At(i)
+	select {
+	case <-s.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		rss := td.ResourceSpans()
+		var batchOfSpans []*Span
+		for i := 0; i < rss.Len(); i++ {
+			rs := rss.At(i)
 
-		serviceName := ServiceNameForResource(rs.Resource())
+			serviceName := ServiceNameForResource(rs.Resource())
 
-		ilss := rs.ScopeSpans()
-		for j := 0; j < ilss.Len(); j++ {
-			// fmt.Printf("InstrumentationLibrarySpans #%d\n", j)
-			ils := ilss.At(j)
+			ilss := rs.ScopeSpans()
+			for j := 0; j < ilss.Len(); j++ {
+				ils := ilss.At(j)
 
-			spans := ils.Spans()
+				spans := ils.Spans()
 
-			for k := 0; k < spans.Len(); k++ {
-				span := spans.At(k)
-				structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
-				batchOfSpans = append(batchOfSpans, structuredSpan)
+				for k := 0; k < spans.Len(); k++ {
+					span := spans.At(k)
+					structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
+					batchOfSpans = append(batchOfSpans, structuredSpan)
+				}
 			}
 		}
+		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+		if err != nil {
+			zap.S().Error("Error in writing spans to clickhouse: ", err)
+			return err
+		}
+		return nil
 	}
-	err := s.Writer.WriteBatchOfSpans(batchOfSpans)
-	if err != nil {
-		zap.S().Error("Error in writing spans to clickhouse: ", err)
-		return err
-	}
-	return nil
 }
 
 // Shutdown will shutdown the exporter.
 func (s *storage) Shutdown(_ context.Context) error {
+
+	close(s.closeChan)
+	s.wg.Wait()
+
 	if s.usageCollector != nil {
 		s.usageCollector.Stop()
 	}
