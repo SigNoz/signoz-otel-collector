@@ -26,14 +26,15 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/tilinna/clock"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/cache"
@@ -72,8 +73,8 @@ type processorImp struct {
 	instanceID string
 	config     Config
 
-	metricsExporter exporter.Metrics
-	nextConsumer    consumer.Traces
+	metricsConsumer consumer.Metrics
+	tracesConsumer  consumer.Traces
 
 	// Additional dimensions to add to metrics.
 	dimensions             []dimension // signoz_latency metric
@@ -108,6 +109,12 @@ type processorImp struct {
 
 	attrsCardinality    map[string]map[string]struct{}
 	excludePatternRegex map[string]*regexp.Regexp
+
+	ticker  *clock.Ticker
+	done    chan struct{}
+	started bool
+
+	shutdownOnce sync.Once
 }
 
 type dimension struct {
@@ -137,7 +144,7 @@ type histogramData struct {
 	exemplarsData []exemplarData
 }
 
-func newProcessor(logger *zap.Logger, instanceID string, config component.Config, nextConsumer consumer.Traces) (*processorImp, error) {
+func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor")
 	pConfig := config.(*Config)
 
@@ -207,7 +214,6 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 		callLatencyBounds:                 bounds,
 		dbCallLatencyBounds:               bounds,
 		externalCallLatencyBounds:         bounds,
-		nextConsumer:                      nextConsumer,
 		dimensions:                        newDimensions(pConfig.Dimensions),
 		callDimensions:                    newDimensions(callDimensions),
 		dbCallDimensions:                  newDimensions(dbCallDimensions),
@@ -219,6 +225,8 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensionsCache,
 		attrsCardinality:                  make(map[string]map[string]struct{}),
 		excludePatternRegex:               excludePatternRegex,
+		ticker:                            ticker,
+		done:                              make(chan struct{}),
 	}, nil
 }
 
@@ -305,7 +313,7 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	p.logger.Info("Starting signozspanmetricsprocessor with config", zap.Any("config", p.config))
 	exporters := host.GetExporters()
 
-	var availableMetricsExporters []string
+	availableMetricsExporters := make([]string, 0, len(exporters[component.DataTypeMetrics]))
 
 	// The available list of exporters come from any configured metrics pipelines' exporters.
 	for k, exp := range exporters[component.DataTypeMetrics] {
@@ -321,22 +329,43 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 			zap.Any("available-exporters", availableMetricsExporters),
 		)
 		if k.String() == p.config.MetricsExporter {
-			p.metricsExporter = metricsExp
+			p.metricsConsumer = metricsExp
 			p.logger.Info("Found exporter", zap.String("signozspanmetrics-exporter", p.config.MetricsExporter))
 			break
 		}
 	}
-	if p.metricsExporter == nil {
+	if p.metricsConsumer == nil {
 		return fmt.Errorf("failed to find metrics exporter: '%s'; please configure metrics_exporter from one of: %+v",
 			p.config.MetricsExporter, availableMetricsExporters)
 	}
 	p.logger.Info("Started signozspanmetricsprocessor")
+
+	p.started = true
+	go func() {
+		for {
+			select {
+			case <-p.done:
+				return
+			case <-p.ticker.C:
+				p.exportMetrics(ctx)
+			}
+		}
+	}()
+
 	return nil
 }
 
 // Shutdown implements the component.Component interface.
 func (p *processorImp) Shutdown(ctx context.Context) error {
 	p.logger.Info("Shutting down signozspanmetricsprocessor")
+	p.shutdownOnce.Do(func() {
+		if p.started {
+			p.logger.Info("Stopping ticker")
+			p.ticker.Stop()
+			p.done <- struct{}{}
+			p.started = false
+		}
+	})
 	return nil
 }
 
@@ -349,14 +378,16 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	// Forward trace data unmodified and propagate both metrics and trace pipeline errors, if any.
-	return multierr.Combine(p.tracesToMetrics(ctx, traces), p.nextConsumer.ConsumeTraces(ctx, traces))
+	p.lock.Lock()
+	p.aggregateMetrics(traces)
+	p.lock.Unlock()
+
+	// Forward trace data unmodified and propagate trace pipeline errors, if any.
+	return p.tracesConsumer.ConsumeTraces(ctx, traces)
 }
 
-func (p *processorImp) tracesToMetrics(ctx context.Context, traces ptrace.Traces) error {
+func (p *processorImp) exportMetrics(ctx context.Context) {
 	p.lock.Lock()
-
-	p.aggregateMetrics(traces)
 
 	m, err := p.buildMetrics()
 
@@ -369,14 +400,13 @@ func (p *processorImp) tracesToMetrics(ctx context.Context, traces ptrace.Traces
 
 	if err != nil {
 		p.logCardinalityInfo()
-		return err
+		p.logger.Error("Failed to build metrics", zap.Error(err))
 	}
 
-	if err = p.metricsExporter.ConsumeMetrics(ctx, m); err != nil {
-		return err
+	if err := p.metricsConsumer.ConsumeMetrics(ctx, m); err != nil {
+		p.logger.Error("Failed ConsumeMetrics", zap.Error(err))
+		return
 	}
-
-	return nil
 }
 
 // buildMetrics collects the computed raw metrics data, builds the metrics object and
@@ -403,6 +433,27 @@ func (p *processorImp) buildMetrics() (pmetric.Metrics, error) {
 	p.callMetricKeyToDimensions.RemoveEvictedItems()
 	p.dbCallMetricKeyToDimensions.RemoveEvictedItems()
 	p.externalCallMetricKeyToDimensions.RemoveEvictedItems()
+
+	for key := range p.histograms {
+		if !p.metricKeyToDimensions.Contains(key) {
+			delete(p.histograms, key)
+		}
+	}
+	for key := range p.callHistograms {
+		if !p.callMetricKeyToDimensions.Contains(key) {
+			delete(p.callHistograms, key)
+		}
+	}
+	for key := range p.dbCallHistograms {
+		if !p.dbCallMetricKeyToDimensions.Contains(key) {
+			delete(p.dbCallHistograms, key)
+		}
+	}
+	for key := range p.externalCallHistograms {
+		if !p.externalCallMetricKeyToDimensions.Contains(key) {
+			delete(p.externalCallHistograms, key)
+		}
+	}
 
 	// If delta metrics, reset accumulated data
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
@@ -446,7 +497,6 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 
 		dimensions, err := p.getDimensionsByMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -489,7 +539,6 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 		dimensions, err := p.getDimensionsByDBCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -531,7 +580,6 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 		dimensions, err := p.getDimensionsByExternalCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -748,7 +796,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
-		resourceAttr.PutStr(signozID, p.instanceID)
+		resourceAttr.PutStr(semconv.AttributeServiceInstanceID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()
 		for j := 0; j < ilsSlice.Len(); j++ {
