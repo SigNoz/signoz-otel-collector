@@ -193,6 +193,9 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						Unit:        metric.Unit(),
 						Typ:         metricType,
 					}
+					if metricType == pmetric.MetricTypeSum {
+						meta.IsMonotonic = metric.Sum().IsMonotonic()
+					}
 					prwe.metricNameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
@@ -203,6 +206,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							Description: metric.Description(),
 							Unit:        metric.Unit(),
 							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
 						}
 						prwe.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
 							Name:        metricName,
@@ -210,11 +214,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							Description: metric.Description(),
 							Unit:        metric.Unit(),
 							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
 						}
-					}
-
-					if metricType == pmetric.MetricTypeSum {
-						meta.IsMonotonic = metric.Sum().IsMonotonic()
 					}
 
 					// handle individual metric based on type
