@@ -278,6 +278,9 @@ func getStringifiedBody(body pcommon.Value) string {
 
 func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse) error {
 	for i, v := range attrs.StringKeys {
+		if strings.Contains(v, ".") {
+			continue
+		}
 		err := statement.Append(
 			time.Now(),
 			v,
@@ -292,6 +295,9 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		}
 	}
 	for i, v := range attrs.IntKeys {
+		if strings.Contains(v, ".") {
+			continue
+		}
 		err := statement.Append(
 			time.Now(),
 			v,
@@ -306,6 +312,9 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		}
 	}
 	for i, v := range attrs.FloatKeys {
+		if strings.Contains(v, ".") {
+			continue
+		}
 		err := statement.Append(
 			time.Now(),
 			v,
@@ -320,6 +329,9 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		}
 	}
 	for _, v := range attrs.BoolKeys {
+		if strings.Contains(v, ".") {
+			continue
+		}
 		err := statement.Append(
 			time.Now(),
 			v,
@@ -338,26 +350,52 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
+		// for keys containing . we will keep the _ name as well for sometime.
+		if strings.Contains(k, ".") {
+			if forceStringValues {
+				// store everything as string
+				response.StringKeys = append(response.StringKeys, formatKey(k))
+				response.StringValues = append(response.StringValues, v.AsString())
+			} else {
+				switch v.Type() {
+				case pcommon.ValueTypeInt:
+					response.IntKeys = append(response.IntKeys, formatKey(k))
+					response.IntValues = append(response.IntValues, v.Int())
+				case pcommon.ValueTypeDouble:
+					response.FloatKeys = append(response.FloatKeys, formatKey(k))
+					response.FloatValues = append(response.FloatValues, v.Double())
+				case pcommon.ValueTypeBool:
+					response.BoolKeys = append(response.BoolKeys, formatKey(k))
+					response.BoolValues = append(response.BoolValues, v.Bool())
+				default: // store it as string
+					response.StringKeys = append(response.StringKeys, formatKey(k))
+					response.StringValues = append(response.StringValues, v.AsString())
+				}
+			}
+		}
+
+		// Support for . , remove the above section once done.
 		if forceStringValues {
 			// store everything as string
-			response.StringKeys = append(response.StringKeys, formatKey(k))
+			response.StringKeys = append(response.StringKeys, k)
 			response.StringValues = append(response.StringValues, v.AsString())
 		} else {
 			switch v.Type() {
 			case pcommon.ValueTypeInt:
-				response.IntKeys = append(response.IntKeys, formatKey(k))
+				response.IntKeys = append(response.IntKeys, k)
 				response.IntValues = append(response.IntValues, v.Int())
 			case pcommon.ValueTypeDouble:
-				response.FloatKeys = append(response.FloatKeys, formatKey(k))
+				response.FloatKeys = append(response.FloatKeys, k)
 				response.FloatValues = append(response.FloatValues, v.Double())
 			case pcommon.ValueTypeBool:
-				response.BoolKeys = append(response.BoolKeys, formatKey(k))
+				response.BoolKeys = append(response.BoolKeys, k)
 				response.BoolValues = append(response.BoolValues, v.Bool())
 			default: // store it as string
-				response.StringKeys = append(response.StringKeys, formatKey(k))
+				response.StringKeys = append(response.StringKeys, k)
 				response.StringValues = append(response.StringValues, v.AsString())
 			}
 		}
+
 		return true
 	})
 	return response
