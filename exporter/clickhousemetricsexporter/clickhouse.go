@@ -31,7 +31,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/pdata/pmetric"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
@@ -191,7 +190,7 @@ func (ch *clickHouse) GetDBConn() interface{} {
 	return ch.conn
 }
 
-func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToTemporality map[string]pmetric.AggregationTemporality) error {
+func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
@@ -219,10 +218,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		// add temporality label
 		if metricName != "" {
-			if t, ok := metricNameToTemporality[metricName]; ok {
+			if t, ok := metricNameToMeta[metricName]; ok {
 				labels = append(labels, &prompb.Label{
 					Name:  temporalityLabel,
-					Value: t.String(),
+					Value: t.Temporality.String(),
 				})
 			}
 		}
@@ -259,19 +258,24 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
 			return err
 		}
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 			err = statement.Append(
 				fingerprintToName[fingerprint][nameLabel],
-				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
+				meta.Temporality.String(),
 				timestamp,
 				fingerprint,
 				encodedLabels,
+				meta.Description,
+				meta.Unit,
+				meta.Typ.String(),
+				meta.IsMonotonic,
 			)
 			if err != nil {
 				return err
@@ -300,20 +304,25 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			return err
 		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels) VALUES (?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
 		if err != nil {
 			return err
 		}
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 			err = statement.Append(
 				fingerprintToName[fingerprint][envLabel],
-				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
+				meta.Temporality.String(),
 				fingerprintToName[fingerprint][nameLabel],
 				fingerprint,
 				timestamp,
 				encodedLabels,
+				meta.Description,
+				meta.Unit,
+				meta.Typ.String(),
+				meta.IsMonotonic,
 			)
 			if err != nil {
 				return err

@@ -46,20 +46,20 @@ const maxBatchByteSize = 3000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
-	namespace               string
-	externalLabels          map[string]string
-	endpointURL             *url.URL
-	client                  *http.Client
-	wg                      *sync.WaitGroup
-	closeChan               chan struct{}
-	concurrency             int
-	userAgentHeader         string
-	clientSettings          *confighttp.HTTPClientSettings
-	settings                component.TelemetrySettings
-	ch                      base.Storage
-	usageCollector          *usage.UsageCollector
-	metricNameToTemporality map[string]pmetric.AggregationTemporality
-	mux                     *sync.Mutex
+	namespace        string
+	externalLabels   map[string]string
+	endpointURL      *url.URL
+	client           *http.Client
+	wg               *sync.WaitGroup
+	closeChan        chan struct{}
+	concurrency      int
+	userAgentHeader  string
+	clientSettings   *confighttp.HTTPClientSettings
+	settings         component.TelemetrySettings
+	ch               base.Storage
+	usageCollector   *usage.UsageCollector
+	metricNameToMeta map[string]base.MetricMeta
+	mux              *sync.Mutex
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -108,19 +108,19 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	}
 
 	return &PrwExporter{
-		namespace:               cfg.Namespace,
-		externalLabels:          sanitizedLabels,
-		endpointURL:             endpointURL,
-		wg:                      new(sync.WaitGroup),
-		closeChan:               make(chan struct{}),
-		userAgentHeader:         userAgentHeader,
-		concurrency:             cfg.RemoteWriteQueue.NumConsumers,
-		clientSettings:          &cfg.HTTPClientSettings,
-		settings:                set.TelemetrySettings,
-		ch:                      ch,
-		usageCollector:          collector,
-		metricNameToTemporality: make(map[string]pmetric.AggregationTemporality),
-		mux:                     new(sync.Mutex),
+		namespace:        cfg.Namespace,
+		externalLabels:   sanitizedLabels,
+		endpointURL:      endpointURL,
+		wg:               new(sync.WaitGroup),
+		closeChan:        make(chan struct{}),
+		userAgentHeader:  userAgentHeader,
+		concurrency:      cfg.RemoteWriteQueue.NumConsumers,
+		clientSettings:   &cfg.HTTPClientSettings,
+		settings:         set.TelemetrySettings,
+		ch:               ch,
+		usageCollector:   collector,
+		metricNameToMeta: make(map[string]base.MetricMeta),
+		mux:              new(sync.Mutex),
 	}, nil
 }
 
@@ -185,12 +185,37 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
 					}
-					prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)] = temporality
+					metricName := getPromMetricName(metric, prwe.namespace)
+					meta := base.MetricMeta{
+						Name:        metricName,
+						Temporality: temporality,
+						Description: metric.Description(),
+						Unit:        metric.Unit(),
+						Typ:         metricType,
+					}
+					if metricType == pmetric.MetricTypeSum {
+						meta.IsMonotonic = metric.Sum().IsMonotonic()
+					}
+					prwe.metricNameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+bucketStr] = temporality
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+countStr] = temporality
-						prwe.metricNameToTemporality[getPromMetricName(metric, prwe.namespace)+sumStr] = temporality
+						prwe.metricNameToMeta[metricName+bucketStr] = meta
+						prwe.metricNameToMeta[metricName+countStr] = base.MetricMeta{
+							Name:        metricName,
+							Temporality: temporality,
+							Description: metric.Description(),
+							Unit:        metric.Unit(),
+							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
+						}
+						prwe.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
+							Name:        metricName,
+							Temporality: temporality,
+							Description: metric.Description(),
+							Unit:        metric.Unit(),
+							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
+						}
 					}
 
 					// handle individual metric based on type
@@ -277,10 +302,10 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
 	prwe.mux.Lock()
-	// make a copy of metricNameToTemporality
-	metricNameToTemporality := make(map[string]pmetric.AggregationTemporality)
-	for k, v := range prwe.metricNameToTemporality {
-		metricNameToTemporality[k] = v
+	// make a copy of metricNameToMeta
+	metricNameToMeta := make(map[string]base.MetricMeta)
+	for k, v := range prwe.metricNameToMeta {
+		metricNameToMeta[k] = v
 	}
 	prwe.mux.Unlock()
 	var errs []error
@@ -310,7 +335,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 			defer wg.Done()
 
 			for request := range input {
-				err := prwe.ch.Write(ctx, request, metricNameToTemporality)
+				err := prwe.ch.Write(ctx, request, metricNameToMeta)
 				if err != nil {
 					mu.Lock()
 					errs = append(errs, err)
