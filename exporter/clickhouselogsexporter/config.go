@@ -33,6 +33,7 @@ type Config struct {
 	DSN string `mapstructure:"dsn"`
 	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
 	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
+	MaxThreads             int  `mapstructure:"max_threads"`
 }
 
 var (
@@ -43,6 +44,9 @@ var (
 func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
+	}
+	if cfg.MaxThreads < 0 {
+		err = multierr.Append(err, errors.New("max_threads must be positive"))
 	}
 	return err
 }

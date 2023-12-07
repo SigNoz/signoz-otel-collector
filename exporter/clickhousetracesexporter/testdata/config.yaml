@@ -21,6 +21,7 @@ exporters:
       enabled: true
       queue_size: 100
       num_consumers: 5
+    max_threads: 1
 
 service:
   pipelines:

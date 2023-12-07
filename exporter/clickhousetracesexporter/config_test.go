@@ -51,5 +51,6 @@ func Test_loadConfig(t *testing.T) {
 				NumConsumers: 5,
 				QueueSize:    100,
 			},
+			MaxThreads: 1,
 		})
 }

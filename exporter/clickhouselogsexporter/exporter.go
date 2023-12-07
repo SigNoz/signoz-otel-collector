@@ -430,6 +430,12 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		MaxIdleConns: maxOpenIdleConnections,
 	}
 
+	if cfg.MaxThreads != 0 {
+		options.Settings = clickhouse.Settings{
+			"max_threads": cfg.MaxThreads,
+		}
+	}
+
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
 			Username: dsnURL.Query().Get("username"),
@@ -445,7 +451,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.DialTimeout = dialTimeout
 	}
-	
+
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err

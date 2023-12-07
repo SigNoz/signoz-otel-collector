@@ -46,6 +46,8 @@ type Config struct {
 	ResourceToTelemetrySettings resourcetotelemetry.Settings `mapstructure:"resource_to_telemetry_conversion"`
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
+
+	MaxThreads int `mapstructure:"max_threads"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.
@@ -77,6 +79,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.RemoteWriteQueue.NumConsumers < 0 {
 		return fmt.Errorf("remote write consumer number can't be negative")
+	}
+
+	if cfg.MaxThreads < 0 {
+		return fmt.Errorf("max threads can't be negative")
 	}
 	return nil
 }
