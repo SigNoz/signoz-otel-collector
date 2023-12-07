@@ -80,6 +80,9 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 		return nil, errUnrecognizedEncoding
 	}
 
+	// set sarama library's logger to get detailed logs from the library
+	sarama.Logger = zap.NewStdLog(set.Logger)
+	
 	c := sarama.NewConfig()
 	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
@@ -175,6 +178,9 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 		return nil, errUnrecognizedEncoding
 	}
 
+	// set sarama library's logger to get detailed logs from the library
+	sarama.Logger = zap.NewStdLog(set.Logger)
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
@@ -264,6 +270,9 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 }
 
 func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
+	// set sarama library's logger to get detailed logs from the library
+	sarama.Logger = zap.NewStdLog(set.Logger)
+	
 	c := sarama.NewConfig()
 	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
