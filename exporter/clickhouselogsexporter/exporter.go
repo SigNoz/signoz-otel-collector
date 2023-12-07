@@ -451,7 +451,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.DialTimeout = dialTimeout
 	}
-
+	
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err
