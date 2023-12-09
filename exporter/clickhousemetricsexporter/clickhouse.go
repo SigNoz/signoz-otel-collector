@@ -48,6 +48,7 @@ const (
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
 	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
+	TIME_SERIES_TABLE                = "time_series_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
 )
