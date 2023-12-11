@@ -3,6 +3,7 @@ package opamp
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
@@ -23,10 +24,13 @@ type baseClient struct {
 	stopped chan bool
 	coll    *signozcol.WrappedCollector
 	logger  *zap.Logger
+
+	reloadMux   sync.Mutex
+	isReloading bool
 }
 
 // Error returns the error channel
-func (c baseClient) Error() <-chan error {
+func (c *baseClient) Error() <-chan error {
 	return c.err
 }
 
@@ -41,7 +45,7 @@ func (c baseClient) Error() <-chan error {
 // happen if a component reports a fatal error or some other
 // async error occurs
 // See https://github.com/open-telemetry/opentelemetry-collector/blob/8d425480b0dd1270b408582d9e21dd644299cd7e/service/host.go#L34-L39
-func (c baseClient) ensureRunning() {
+func (c *baseClient) ensureRunning() {
 	c.logger.Info("Ensuring collector is running")
 	for {
 		select {
@@ -49,7 +53,7 @@ func (c baseClient) ensureRunning() {
 			c.logger.Info("Collector is stopped")
 			return
 		case <-time.After(c.coll.PollInterval):
-			if c.coll.GetState() == otelcol.StateClosed {
+			if c.coll.GetState() == otelcol.StateClosed && !c.isReloading {
 				c.err <- fmt.Errorf("collector stopped unexpectedly")
 			}
 		}
