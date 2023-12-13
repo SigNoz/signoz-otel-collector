@@ -106,5 +106,6 @@ func createDefaultConfig() component.Config {
 		},
 		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
 		WatcherInterval: 30 * time.Second,
+		WriteTSToV4:     false,
 	}
 }

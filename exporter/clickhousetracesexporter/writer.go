@@ -18,12 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -89,10 +89,17 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 
 	ctx := context.Background()
-	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTable))
+	var statement driver.Batch
+	var err error
+
+	defer func() {
+		if statement != nil {
+			_ = statement.Abort()
+		}
+	}()
+	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTable), driver.WithReleaseConnection())
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for index table: ", zap.Any("batch", logBatch), zap.Error(err))
+		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
 		return err
 	}
 
@@ -156,16 +163,26 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 
 	ctx := context.Background()
-	tagStatement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable))
+	var tagKeyStatement driver.Batch
+	var tagStatement driver.Batch
+	var err error
+
+	defer func() {
+		if tagKeyStatement != nil {
+			_ = tagKeyStatement.Abort()
+		}
+		if tagStatement != nil {
+			_ = tagStatement.Abort()
+		}
+	}()
+	tagStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable), driver.WithReleaseConnection())
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err))
 		return err
 	}
-	tagKeyStatement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable))
+	tagKeyStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable), driver.WithReleaseConnection())
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err))
 		return err
 	}
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
@@ -256,8 +273,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
 	)
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err))
 		return err
 	}
 
@@ -271,8 +287,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
 	)
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err), zap.Any("batch", logBatch))
+		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err))
 		return err
 	}
 
@@ -282,10 +297,17 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 
 	ctx := context.Background()
-	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.errorTable))
+	var statement driver.Batch
+	var err error
+
+	defer func() {
+		if statement != nil {
+			_ = statement.Abort()
+		}
+	}()
+	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.errorTable), driver.WithReleaseConnection())
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for error table: ", zap.Any("batch", logBatch), zap.Error(err))
+		w.logger.Error("Could not prepare batch for error table: ", zap.Error(err))
 		return err
 	}
 
@@ -333,10 +355,18 @@ func stringToBool(s string) bool {
 
 func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 	ctx := context.Background()
-	statement, err := w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.spansTable))
+	var statement driver.Batch
+	var err error
+
+	defer func() {
+		if statement != nil {
+			_ = statement.Abort()
+		}
+	}()
+
+	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.spansTable), driver.WithReleaseConnection())
 	if err != nil {
-		logBatch := batchSpans[:int(math.Min(10, float64(len(batchSpans))))]
-		w.logger.Error("Could not prepare batch for model table: ", zap.Any("batch", logBatch), zap.Error(err))
+		w.logger.Error("Could not prepare batch for model table: ", zap.Error(err))
 		return err
 	}
 
@@ -382,22 +412,19 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
 	if w.spansTable != "" {
 		if err := w.writeModelBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to model table: ", zap.Any("batch", logBatch), zap.Error(err))
+			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
 	}
 	if w.indexTable != "" {
 		if err := w.writeIndexBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to index table: ", zap.Any("batch", logBatch), zap.Error(err))
+			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			return err
 		}
 	}
 	if w.errorTable != "" {
 		if err := w.writeErrorBatch(batch); err != nil {
-			logBatch := batch[:int(math.Min(10, float64(len(batch))))]
-			w.logger.Error("Could not write a batch of spans to error table: ", zap.Any("batch", logBatch), zap.Error(err))
+			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			return err
 		}
 	}

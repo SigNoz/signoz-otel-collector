@@ -25,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 
 	"github.com/prometheus/prometheus/prompb"
 
@@ -42,14 +43,15 @@ const maxBatchByteSize = 314572800
 // ClickHouseExporter converts OTLP metrics to Prometheus remote write TimeSeries and
 // writes to ClickHouse
 type ClickHouseExporter struct {
-	wg                      *sync.WaitGroup
-	closeChan               chan struct{}
-	concurrency             int
-	settings                component.TelemetrySettings
-	ch                      base.Storage
-	usageCollector          *usage.UsageCollector
-	metricNameToTemporality map[string]pmetric.AggregationTemporality
-	mux                     *sync.Mutex
+	wg               *sync.WaitGroup
+	closeChan        chan struct{}
+	concurrency      int
+	settings         component.TelemetrySettings
+	ch               base.Storage
+	usageCollector   *usage.UsageCollector
+	metricNameToMeta map[string]base.MetricMeta
+	mux              *sync.Mutex
+	logger           *zap.Logger
 }
 
 // NewClickHouseExporter initializes a new ClickHouseExporter instance
@@ -58,6 +60,7 @@ func NewClickHouseExporter(cfg *Config, set exporter.CreateSettings) (*ClickHous
 		DSN:             cfg.Endpoint,
 		MaxOpenConns:    75,
 		WatcherInterval: cfg.WatcherInterval,
+		WriteTSToV4:     cfg.WriteTSToV4,
 		Cluster:         cfg.Cluster,
 	}
 	ch, err := NewClickHouse(params)
@@ -83,14 +86,15 @@ func NewClickHouseExporter(cfg *Config, set exporter.CreateSettings) (*ClickHous
 	}
 
 	return &ClickHouseExporter{
-		wg:                      new(sync.WaitGroup),
-		closeChan:               make(chan struct{}),
-		concurrency:             cfg.NumConsumers,
-		settings:                set.TelemetrySettings,
-		ch:                      ch,
-		usageCollector:          collector,
-		metricNameToTemporality: make(map[string]pmetric.AggregationTemporality),
-		mux:                     new(sync.Mutex),
+		wg:               new(sync.WaitGroup),
+		closeChan:        make(chan struct{}),
+		concurrency:      cfg.QueueSettings.NumConsumers,
+		settings:         set.TelemetrySettings,
+		ch:               ch,
+		usageCollector:   collector,
+		metricNameToMeta: make(map[string]base.MetricMeta),
+		mux:              new(sync.Mutex),
+		logger:           set.Logger,
 	}, nil
 }
 
@@ -152,12 +156,37 @@ func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metri
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
 					}
-					che.metricNameToTemporality[getPromMetricName(metric)] = temporality
+					metricName := getPromMetricName(metric)
+					meta := base.MetricMeta{
+						Name:        metricName,
+						Temporality: temporality,
+						Description: metric.Description(),
+						Unit:        metric.Unit(),
+						Typ:         metricType,
+					}
+					if metricType == pmetric.MetricTypeSum {
+						meta.IsMonotonic = metric.Sum().IsMonotonic()
+					}
+					che.metricNameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						che.metricNameToTemporality[getPromMetricName(metric)+bucketStr] = temporality
-						che.metricNameToTemporality[getPromMetricName(metric)+countStr] = temporality
-						che.metricNameToTemporality[getPromMetricName(metric)+sumStr] = temporality
+						che.metricNameToMeta[metricName+bucketStr] = meta
+						che.metricNameToMeta[metricName+countStr] = base.MetricMeta{
+							Name:        metricName,
+							Temporality: temporality,
+							Description: metric.Description(),
+							Unit:        metric.Unit(),
+							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
+						}
+						che.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
+							Name:        metricName,
+							Temporality: temporality,
+							Description: metric.Description(),
+							Unit:        metric.Unit(),
+							Typ:         pmetric.MetricTypeSum,
+							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
+						}
 					}
 
 					// handle individual metric based on type
@@ -178,7 +207,7 @@ func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metri
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							errs = multierr.Append(errs, consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name())))
+							che.logger.Warn("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, tsMap)
@@ -187,14 +216,18 @@ func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metri
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							errs = multierr.Append(errs, consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name())))
+							che.logger.Warn("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, tsMap)
 						}
+					case pmetric.MetricTypeExponentialHistogram:
+						// TODO(srikanthccv): implement
 					default:
 						dropped++
-						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New("unsupported metric type")))
+						name := metric.Name()
+						typ := metric.Type().String()
+						che.logger.Warn("Unsupported metric type", zap.String("name", name), zap.String("type", typ))
 					}
 				}
 			}
@@ -233,9 +266,6 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 }
 
 func (che *ClickHouseExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
-	if dataPoints.Len() == 0 {
-		return consumererror.NewPermanent(fmt.Errorf("empty data points. %s is dropped", metric.Name()))
-	}
 	for x := 0; x < dataPoints.Len(); x++ {
 		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, tsMap)
 	}
@@ -245,10 +275,10 @@ func (che *ClickHouseExporter) addNumberDataPointSlice(dataPoints pmetric.Number
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (che *ClickHouseExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
 	che.mux.Lock()
-	// make a copy of metricNameToTemporality
-	metricNameToTemporality := make(map[string]pmetric.AggregationTemporality)
-	for k, v := range che.metricNameToTemporality {
-		metricNameToTemporality[k] = v
+	// make a copy of metricNameToMeta
+	metricNameToMeta := make(map[string]base.MetricMeta)
+	for k, v := range che.metricNameToMeta {
+		metricNameToMeta[k] = v
 	}
 	che.mux.Unlock()
 	var errs []error
@@ -278,7 +308,7 @@ func (che *ClickHouseExporter) export(ctx context.Context, tsMap map[string]*pro
 			defer wg.Done()
 
 			for request := range input {
-				err := che.ch.Write(ctx, request, metricNameToTemporality)
+				err := che.ch.Write(ctx, request, metricNameToMeta)
 				if err != nil {
 					mu.Lock()
 					errs = append(errs, err)

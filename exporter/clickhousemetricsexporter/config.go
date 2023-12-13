@@ -42,6 +42,8 @@ type Config struct {
 	// WatcherInterval is the interval at which the exporter will check for changes in the
 	// shard count
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
+
+	WriteTSToV4 bool `mapstructure:"write_ts_to_v4"`
 }
 
 var _ component.Config = (*Config)(nil)

@@ -36,6 +36,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -145,7 +146,8 @@ func TestProcessorShutdown(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	assert.NoError(t, err)
 	err = p.Shutdown(context.Background())
 
@@ -166,7 +168,8 @@ func TestConfigureLatencyBounds(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 
 	// Verify
 	assert.NoError(t, err)
@@ -181,7 +184,8 @@ func TestProcessorCapabilities(t *testing.T) {
 
 	// Test
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	assert.NoError(t, err)
 	caps := p.Capabilities()
 
@@ -197,17 +201,15 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 		consumeTracesErr  error
 	}{
 		{
-			name:              "ConsumeMetrics error",
-			consumeMetricsErr: fmt.Errorf("consume metrics error"),
+			name: "ConsumeMetrics error",
 		},
 		{
 			name:             "ConsumeTraces error",
 			consumeTracesErr: fmt.Errorf("consume traces error"),
 		},
 		{
-			name:              "ConsumeMetrics and ConsumeTraces error",
-			consumeMetricsErr: fmt.Errorf("consume metrics error"),
-			consumeTracesErr:  fmt.Errorf("consume traces error"),
+			name:             "ConsumeMetrics and ConsumeTraces error",
+			consumeTracesErr: fmt.Errorf("consume traces error"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -228,8 +230,6 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 			ctx := metadata.NewIncomingContext(context.Background(), nil)
 			err := p.ConsumeTraces(ctx, traces)
 
-			// Verify
-			require.Error(t, err)
 			switch {
 			case tc.consumeMetricsErr != nil && tc.consumeTracesErr != nil:
 				assert.EqualError(t, err, tc.consumeMetricsErr.Error()+"; "+tc.consumeTracesErr.Error())
@@ -237,8 +237,6 @@ func TestProcessorConsumeTracesErrors(t *testing.T) {
 				assert.EqualError(t, err, tc.consumeMetricsErr.Error())
 			case tc.consumeTracesErr != nil:
 				assert.EqualError(t, err, tc.consumeTracesErr.Error())
-			default:
-				assert.Fail(t, "expected at least one error")
 			}
 		})
 	}
@@ -464,8 +462,8 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 	return &processorImp{
 		logger:          logger,
 		config:          Config{AggregationTemporality: temporality},
-		metricsExporter: mexp,
-		nextConsumer:    tcon,
+		metricsConsumer: mexp,
+		tracesConsumer:  tcon,
 
 		startTimestamp:         pcommon.NewTimestampFromTime(time.Now()),
 		histograms:             make(map[metricKey]*histogramData),
@@ -823,10 +821,10 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 		{
 			name: "resource attribute contains instance ID",
 			optionalDims: []dimension{
-				{name: signozID},
+				{name: semconv.AttributeServiceInstanceID},
 			},
 			resourceAttrMap: map[string]interface{}{
-				signozID: testID,
+				semconv.AttributeServiceInstanceID: testID,
 			},
 			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000test-instance-id",
 		},
@@ -854,8 +852,7 @@ func TestProcessorDuplicateDimensions(t *testing.T) {
 	}
 
 	// Test
-	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
 	assert.Error(t, err)
 	assert.Nil(t, p)
 }
@@ -979,7 +976,8 @@ func TestProcessorUpdateExemplars(t *testing.T) {
 	spanID := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).SpanID()
 	key := metricKey("metricKey")
 	next := new(consumertest.TracesSink)
-	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, next)
+	p, err := newProcessor(zaptest.NewLogger(t), testID, cfg, nil)
+	p.tracesConsumer = next
 	value := float64(42)
 
 	// ----- call -------------------------------------------------------------

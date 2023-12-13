@@ -63,6 +63,7 @@ func Test_loadConfig(t *testing.T) {
 			Endpoint:                    "localhost:8888",
 			ResourceToTelemetrySettings: resourcetotelemetry.Settings{Enabled: true},
 			WatcherInterval:             30 * time.Second,
+			WriteTSToV4:                 false,
 		})
 }
 
