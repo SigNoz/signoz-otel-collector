@@ -46,6 +46,8 @@ type Config struct {
 	ResourceToTelemetrySettings resourcetotelemetry.Settings `mapstructure:"resource_to_telemetry_conversion"`
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
+
+	WriteTSToV4 bool `mapstructure:"write_ts_to_v4"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.
