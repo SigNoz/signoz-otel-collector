@@ -29,6 +29,7 @@ import (
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 
 	"github.com/prometheus/prometheus/prompb"
 
@@ -60,6 +61,7 @@ type PrwExporter struct {
 	usageCollector   *usage.UsageCollector
 	metricNameToMeta map[string]base.MetricMeta
 	mux              *sync.Mutex
+	logger           *zap.Logger
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -84,6 +86,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxOpenConns:         75,
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
+		WriteTSToV4:          cfg.WriteTSToV4,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
@@ -121,6 +124,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		usageCollector:   collector,
 		metricNameToMeta: make(map[string]base.MetricMeta),
 		mux:              new(sync.Mutex),
+		logger:           set.Logger,
 	}, nil
 }
 
@@ -236,6 +240,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
+							prwe.logger.Warn("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
@@ -244,6 +249,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
+							prwe.logger.Warn("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
@@ -254,7 +260,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dropped++
 						name := metric.Name()
 						typ := metric.Type().String()
-						errs = multierr.Append(errs, consumererror.NewPermanent(errors.New(fmt.Sprintf("unsupported metric type %s for %s", typ, name))))
+						prwe.logger.Warn("Unsupported metric type", zap.String("name", name), zap.String("type", typ))
 					}
 				}
 			}

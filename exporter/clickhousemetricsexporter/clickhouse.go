@@ -46,10 +46,9 @@ const (
 	CLUSTER                          = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
 	TIME_SERIES_TABLE                = "time_series_v2"
-	TIME_SERIES_TABLE_V3             = "time_series_v3"
-	SAMPLES_TABLE                    = "samples_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
 )
@@ -68,6 +67,7 @@ type clickHouse struct {
 	timeSeries      map[uint64]struct{}
 	prevShardCount  uint64
 	watcherInterval time.Duration
+	writeTSToV4     bool
 
 	mWrittenTimeSeries prometheus.Counter
 }
@@ -78,6 +78,7 @@ type ClickHouseParams struct {
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
+	WriteTSToV4          bool
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -125,6 +126,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Help:      "Number of written time series.",
 		}),
 		watcherInterval: params.WatcherInterval,
+		writeTSToV4:     params.WriteTSToV4,
 	}
 
 	go func() {
@@ -252,12 +254,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	ch.timeSeriesRW.Unlock()
 
 	err := func() error {
-		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
-		}
-
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
 		if err != nil {
 			return err
@@ -296,15 +292,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	// Write to time_series_v3 table
+	// Write to distributed_time_series_v3 table
 	err = func() error {
-		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
-		}
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3))
 		if err != nil {
 			return err
 		}
@@ -333,7 +324,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
 			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-			tag.Upsert(tableKey, TIME_SERIES_TABLE_V3),
+			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V3),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
@@ -399,6 +390,51 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	for k, v := range metrics {
 		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+	}
+
+	// write to distributed_time_series_v4 table
+	if ch.writeTSToV4 {
+		err = func() error {
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4))
+			if err != nil {
+				return err
+			}
+			// timestamp in milliseconds with nearest hour precision
+			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
+
+			for fingerprint, labels := range timeSeries {
+				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				err = statement.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					meta.Description,
+					meta.Unit,
+					meta.Typ.String(),
+					meta.IsMonotonic,
+					fingerprint,
+					unixMilli,
+					encodedLabels,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			start := time.Now()
+			err = statement.Send()
+			ctx, _ = tag.New(ctx,
+				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
+			)
+			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+			return err
+		}()
+
+		if err != nil {
+			return err
+		}
 	}
 
 	n := len(newTimeSeries)

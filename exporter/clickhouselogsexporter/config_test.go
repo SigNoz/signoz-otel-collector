@@ -39,13 +39,13 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, len(cfg.Exporters), 2)
 
 	defaultCfg := factory.CreateDefaultConfig()
-	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000"
+	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000/?dial_timeout=5s"
 	r0 := cfg.Exporters[component.NewID(typeStr)]
 	assert.Equal(t, r0, defaultCfg)
 
 	r1 := cfg.Exporters[component.NewIDWithName(typeStr, "full")].(*Config)
 	assert.Equal(t, r1, &Config{
-		DSN: "tcp://127.0.0.1:9000",
+		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
 		TimeoutSettings: exporterhelper.TimeoutSettings{
 			Timeout: 5 * time.Second,
 		},

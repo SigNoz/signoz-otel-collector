@@ -478,6 +478,15 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.Auth = auth
 	}
+
+	if dsnURL.Query().Get("dial_timeout") != "" {
+		dialTimeout, err := time.ParseDuration(dsnURL.Query().Get("dial_timeout"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse dial_timeout from dsn: %w", err)
+		}
+		options.DialTimeout = dialTimeout
+	}
+	
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err
