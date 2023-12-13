@@ -26,10 +26,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
+	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -396,6 +398,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 	case <-s.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		processingTimeStart := time.Now()
 		rss := td.ResourceSpans()
 		var batchOfSpans []*Span
 		for i := 0; i < rss.Len(); i++ {
@@ -421,6 +424,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err
 		}
+		stats.Record(ctx, tracesExporterProcessingTime.M(float64(time.Since(processingTimeStart).Milliseconds())))
 		return nil
 	}
 }

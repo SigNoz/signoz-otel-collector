@@ -18,6 +18,8 @@ var (
 
 	statPartitionStart = stats.Int64("kafka_receiver_partition_start", "Number of started partitions", stats.UnitDimensionless)
 	statPartitionClose = stats.Int64("kafka_receiver_partition_close", "Number of finished partitions", stats.UnitDimensionless)
+
+	statMessageProcessingTime = stats.Float64("kafka_receiver_message_processing_milliseconds", "Time spent processing a message", stats.UnitMilliseconds)
 )
 
 // MetricViews return metric views for Kafka receiver.
@@ -64,11 +66,21 @@ func MetricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
+	processingTimeDistribution := view.Distribution(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1750, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+	messageProcessingTimeMillis := &view.View{
+		Name:        statMessageProcessingTime.Name(),
+		Measure:     statMessageProcessingTime,
+		Description: statMessageProcessingTime.Description(),
+		TagKeys:     tagKeys,
+		Aggregation: processingTimeDistribution,
+	}
+
 	return []*view.View{
 		countMessages,
 		lastValueOffset,
 		lastValueOffsetLag,
 		countPartitionStart,
 		countPartitionClose,
+		messageProcessingTimeMillis,
 	}
 }

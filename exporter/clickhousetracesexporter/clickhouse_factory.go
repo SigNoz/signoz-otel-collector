@@ -45,6 +45,7 @@ type writerMaker func(WriterOptions) (Writer, error)
 
 var (
 	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
+	tracesExporterProcessingTime = stats.Float64("signoz_traces_exporter_processing_time_millis", "Time spent processing a span by the traces exporter", stats.UnitMilliseconds)
 	exporterKey        = tag.MustNewKey("exporter")
 	tableKey           = tag.MustNewKey("table")
 )
@@ -60,8 +61,17 @@ func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeC
 		TagKeys:     []tag.Key{exporterKey, tableKey},
 		Aggregation: writeLatencyDistribution,
 	}
+	processingTimeDistribution := view.Distribution(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1750, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+	processingTimeView := &view.View{
+		Name:        tracesExporterProcessingTime.Name(),
+		Measure:     tracesExporterProcessingTime,
+		Description: tracesExporterProcessingTime.Description(),
+		TagKeys:     []tag.Key{exporterKey, tableKey},
+		Aggregation: processingTimeDistribution,
+	}
 
 	view.Register(writeLatencyView)
+	view.Register(processingTimeView)
 	return &Factory{
 		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, numConsumers, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
