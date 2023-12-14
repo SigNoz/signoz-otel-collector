@@ -410,29 +410,62 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
+	ctx := context.Background()
 	if w.spansTable != "" {
+		st := time.Now()
 		if err := w.writeModelBatch(batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "write_model_batch"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(st).Milliseconds())),
+		)
 	}
 	if w.indexTable != "" {
+		st := time.Now()
 		if err := w.writeIndexBatch(batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			return err
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "write_index_batch"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(st).Milliseconds())),
+		)
 	}
 	if w.errorTable != "" {
+		st := time.Now()
 		if err := w.writeErrorBatch(batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			return err
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "write_error_batch"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(st).Milliseconds())),
+		)
 	}
 	if w.attributeTable != "" && w.attributeKeyTable != "" {
+		st := time.Now()
 		if err := w.writeTagBatch(batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
 			return err
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "write_tag_batch"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(st).Milliseconds())),
+		)
 	}
 	return nil
 }
