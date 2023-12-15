@@ -127,10 +127,16 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 	defer func() {
 		if statement != nil {
-			_ = statement.Abort()
+			err := statement.Abort()
+			if err != nil {
+				fmt.Printf("abort err %s\n", err.Error())
+			}
 		}
 		if tagStatement != nil {
-			_ = tagStatement.Abort()
+			err := tagStatement.Abort()
+			if err != nil {
+				fmt.Printf("abort err %s\n", err.Error())
+			}
 		}
 	}()
 
@@ -151,6 +157,17 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 		metrics := map[string]usage.Metric{}
 
+		countMap := map[string]int{}
+
+		add := func(name string) {
+			if _, ok := countMap[name]; ok {
+				countMap[name] += 1
+			} else {
+				countMap[name] = 1
+			}
+		}
+		totalCount := 0
+
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
 			logs := ld.ResourceLogs().At(i)
 			res := logs.Resource()
@@ -166,6 +183,17 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 				rs := logs.ScopeLogs().At(j).LogRecords()
 				for k := 0; k < rs.Len(); k++ {
 					r := rs.At(k)
+
+					if strings.Contains(r.Body().AsString(), "signoz-ingestion") {
+						servicename, ok := res.Attributes().Get("service_name")
+						if ok {
+							add(servicename.AsString())
+						} else {
+							fmt.Printf("couldn't get servicename")
+						}
+
+					}
+					totalCount++
 
 					// capturing the metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
@@ -216,6 +244,14 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 				}
 			}
 		}
+
+		if len(countMap) > 0 {
+			fmt.Printf("-----------------\n---Batch details-----\ntotal = %d\n", totalCount)
+			for k, v := range countMap {
+				fmt.Println(k, v)
+			}
+		}
+
 		dbWriteStart := time.Now()
 		err = statement.Send()
 		stats.RecordWithTags(ctx,
@@ -248,6 +284,9 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		)
 		if err != nil {
 			return err
+		}
+		if len(countMap) > 0 {
+			fmt.Println("batch pushed\n")
 		}
 
 		return err
@@ -445,7 +484,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.DialTimeout = dialTimeout
 	}
-	
+
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err
