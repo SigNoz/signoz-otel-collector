@@ -192,7 +192,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 						if ok {
 							add(servicename.AsString())
 						} else {
-							fmt.Printf("couldn't get servicename")
+							add("unknown")
 						}
 
 					}
