@@ -126,16 +126,19 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	var err error
 
 	defer func() {
-		if statement != nil {
-			err := statement.Abort()
-			if err != nil {
-				fmt.Printf("abort err %s\n", err.Error())
+		if err != nil {
+			fmt.Println("running aborts")
+			if statement != nil {
+				err := statement.Abort()
+				if err != nil {
+					fmt.Printf("abort err %s\n", err.Error())
+				}
 			}
-		}
-		if tagStatement != nil {
-			err := tagStatement.Abort()
-			if err != nil {
-				fmt.Printf("abort err %s\n", err.Error())
+			if tagStatement != nil {
+				err := tagStatement.Abort()
+				if err != nil {
+					fmt.Printf("abort err %s\n", err.Error())
+				}
 			}
 		}
 	}()
