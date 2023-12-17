@@ -83,7 +83,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
-	
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
@@ -125,7 +125,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	
+
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
@@ -273,7 +273,7 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
-	
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerFetchConfig(c, &config)
 	c.ClientID = config.ClientID
@@ -494,6 +494,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 				}
 				return err
 			}
+			c.logger.Debug("Kafka message unmarshalled", zap.Int("records", traces.SpanCount()))
 
 			spanCount := traces.SpanCount()
 			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
@@ -570,6 +571,8 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 				}
 				return err
 			}
+
+			c.logger.Debug("Kafka message unmarshalled", zap.Int("records", metrics.MetricCount()))
 
 			dataPointCount := metrics.DataPointCount()
 			err = c.nextConsumer.ConsumeMetrics(session.Context(), metrics)
@@ -650,6 +653,7 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 				}
 				return err
 			}
+			c.logger.Debug("Kafka message unmarshalled", zap.Int("records", logs.LogRecordCount()))
 
 			err = c.nextConsumer.ConsumeLogs(session.Context(), logs)
 			// TODO
