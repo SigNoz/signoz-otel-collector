@@ -64,7 +64,7 @@ exporters:
       queue_size: 100
       num_consumers: 5
   clickhousemetricswrite:
-    endpoint: tcp://localhost:9000/?database=signoz_metrics
+    endpoint: tcp://localhost:9000/signoz_metrics?max_idle_conns=15
     resource_to_telemetry_conversion:
       enabled: true
   prometheus:
