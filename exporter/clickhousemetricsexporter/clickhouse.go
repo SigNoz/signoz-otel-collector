@@ -18,13 +18,11 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
@@ -47,6 +45,7 @@ const (
 	TIME_SERIES_TABLE                = "time_series_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
+	database                         = "signoz_metrics"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -63,44 +62,23 @@ type clickHouse struct {
 	prevShardCount  uint64
 	watcherInterval time.Duration
 	writeTSToV4     bool
-
-	mWrittenTimeSeries prometheus.Counter
 }
 
 type ClickHouseParams struct {
-	DSN                  string
-	DropDatabase         bool
-	MaxOpenConns         int
-	MaxTimeSeriesInQuery int
-	WatcherInterval      time.Duration
-	WriteTSToV4          bool
-	Cluster              string
+	DSN             string
+	WatcherInterval time.Duration
+	WriteTSToV4     bool
+	Cluster         string
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	l := logrus.WithField("component", "clickhouse")
 
-	dsnURL, err := url.Parse(params.DSN)
-
+	options, err := clickhouse.ParseDSN(params.DSN)
 	if err != nil {
-		return nil, err
-	}
-	database := dsnURL.Query().Get("database")
-	if database == "" {
-		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
+		return nil, fmt.Errorf("could not parse clickhouse DSN: %s", err)
 	}
 
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-
-		options.Auth = auth
-	}
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)

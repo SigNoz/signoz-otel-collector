@@ -16,7 +16,6 @@ package clickhousemetricsexporter
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math"
 	"sync"
@@ -58,7 +57,6 @@ type ClickHouseExporter struct {
 func NewClickHouseExporter(cfg *Config, set exporter.CreateSettings) (*ClickHouseExporter, error) {
 	params := &ClickHouseParams{
 		DSN:             cfg.Endpoint,
-		MaxOpenConns:    75,
 		WatcherInterval: cfg.WatcherInterval,
 		WriteTSToV4:     cfg.WriteTSToV4,
 		Cluster:         cfg.Cluster,
@@ -223,6 +221,7 @@ func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metri
 						}
 					case pmetric.MetricTypeExponentialHistogram:
 						// TODO(srikanthccv): implement
+						che.logger.Info("received exponential histogram metric", zap.String("name", metric.Name()))
 					default:
 						dropped++
 						name := metric.Name()
@@ -246,25 +245,6 @@ func (che *ClickHouseExporter) PushMetrics(ctx context.Context, md pmetric.Metri
 	}
 }
 
-func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[string]string, error) {
-	sanitizedLabels := make(map[string]string)
-	for key, value := range externalLabels {
-		if key == "" || value == "" {
-			return nil, fmt.Errorf("prometheus remote write: external labels configuration contains an empty key or value")
-		}
-
-		// Sanitize label keys to meet Prometheus Requirements
-		if len(key) > 2 && key[:2] == "__" {
-			key = "__" + sanitize(key[2:])
-		} else {
-			key = sanitize(key)
-		}
-		sanitizedLabels[key] = value
-	}
-
-	return sanitizedLabels, nil
-}
-
 func (che *ClickHouseExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
 	for x := 0; x < dataPoints.Len(); x++ {
 		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, tsMap)
@@ -272,7 +252,6 @@ func (che *ClickHouseExporter) addNumberDataPointSlice(dataPoints pmetric.Number
 	return nil
 }
 
-// export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (che *ClickHouseExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
 	che.mux.Lock()
 	// make a copy of metricNameToMeta
