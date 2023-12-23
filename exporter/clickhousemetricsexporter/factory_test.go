@@ -21,8 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exportertest"
 )
@@ -39,17 +37,7 @@ func Test_createDefaultConfig(t *testing.T) {
 func skip_Test_createMetricsExporter(t *testing.T) {
 
 	invalidConfig := createDefaultConfig().(*Config)
-	invalidConfig.HTTPClientSettings = confighttp.HTTPClientSettings{}
 	invalidTLSConfig := createDefaultConfig().(*Config)
-	invalidTLSConfig.HTTPClientSettings.TLSSetting = configtls.TLSClientSetting{
-		TLSSetting: configtls.TLSSetting{
-			CAFile:   "non-existent file",
-			CertFile: "",
-			KeyFile:  "",
-		},
-		Insecure:   false,
-		ServerName: "",
-	}
 	tests := []struct {
 		name                string
 		cfg                 component.Config

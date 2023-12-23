@@ -18,14 +18,11 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
@@ -40,10 +37,7 @@ import (
 )
 
 const (
-	namespace                        = "promhouse"
-	subsystem                        = "clickhouse"
 	nameLabel                        = "__name__"
-	CLUSTER                          = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
 	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
@@ -51,14 +45,14 @@ const (
 	TIME_SERIES_TABLE                = "time_series_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
+	database                         = "signoz_metrics"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
-	conn                 clickhouse.Conn
-	l                    *logrus.Entry
-	database             string
-	maxTimeSeriesInQuery int
+	conn     clickhouse.Conn
+	l        *logrus.Entry
+	database string
 
 	timeSeriesRW sync.RWMutex
 	// Maintains the lookup map for fingerprints that are
@@ -68,81 +62,50 @@ type clickHouse struct {
 	prevShardCount  uint64
 	watcherInterval time.Duration
 	writeTSToV4     bool
-
-	mWrittenTimeSeries prometheus.Counter
 }
 
 type ClickHouseParams struct {
-	DSN                  string
-	DropDatabase         bool
-	MaxOpenConns         int
-	MaxTimeSeriesInQuery int
-	WatcherInterval      time.Duration
-	WriteTSToV4          bool
+	DSN             string
+	WatcherInterval time.Duration
+	WriteTSToV4     bool
+	Cluster         string
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	l := logrus.WithField("component", "clickhouse")
 
-	dsnURL, err := url.Parse(params.DSN)
-
+	options, err := clickhouse.ParseDSN(params.DSN)
 	if err != nil {
-		return nil, err
-	}
-	database := dsnURL.Query().Get("database")
-	if database == "" {
-		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
+		return nil, fmt.Errorf("could not parse clickhouse DSN: %s", err)
 	}
 
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			// Database: "",
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-
-		options.Auth = auth
-	}
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
 	ch := &clickHouse{
-		conn:                 conn,
-		l:                    l,
-		database:             database,
-		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
+		conn:     conn,
+		l:        l,
+		database: database,
 
-		timeSeries: make(map[uint64]struct{}, 8192),
-
-		mWrittenTimeSeries: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "written_time_series",
-			Help:      "Number of written time series.",
-		}),
+		timeSeries:      make(map[uint64]struct{}, 8192),
 		watcherInterval: params.WatcherInterval,
 		writeTSToV4:     params.WriteTSToV4,
 	}
 
 	go func() {
-		ctx := pprof.WithLabels(context.TODO(), pprof.Labels("component", "clickhouse_reloader"))
-		pprof.SetGoroutineLabels(ctx)
-		ch.shardCountWatcher(ctx)
+		ch.shardCountWatcher(context.Background(), params.Cluster)
 	}()
 
 	return ch, nil
 }
 
-func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
+func (ch *clickHouse) shardCountWatcher(ctx context.Context, cluster string) {
 	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
+	q := `SELECT count() FROM system.clusters WHERE cluster='` + cluster + `'`
 	for {
 
 		err := func() error {
@@ -178,14 +141,6 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
-}
-
-func (ch *clickHouse) Describe(c chan<- *prometheus.Desc) {
-	ch.mWrittenTimeSeries.Describe(c)
-}
-
-func (ch *clickHouse) Collect(c chan<- prometheus.Metric) {
-	ch.mWrittenTimeSeries.Collect(c)
 }
 
 func (ch *clickHouse) GetDBConn() interface{} {
@@ -439,7 +394,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	n := len(newTimeSeries)
 	if n != 0 {
-		ch.mWrittenTimeSeries.Add(float64(n))
 		ch.l.Debugf("Wrote %d new time series.", n)
 	}
 	return nil

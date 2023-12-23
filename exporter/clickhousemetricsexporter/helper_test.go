@@ -244,27 +244,11 @@ func Test_createLabelSet(t *testing.T) {
 			[]string{label31, value31, label32},
 			getPromLabels(label11, value11, label12, value12, label31, value31),
 		},
-		{
-			"valid_external_labels",
-			getResource(),
-			lbs1,
-			exlbs1,
-			[]string{label31, value31, label32, value32},
-			getPromLabels(label11, value11, label12, value12, label41, value41, label31, value31, label32, value32),
-		},
-		{
-			"overwritten_external_labels",
-			getResource(),
-			lbs1,
-			exlbs2,
-			[]string{label31, value31, label32, value32},
-			getPromLabels(label11, value11, label12, value12, label31, value31, label32, value32),
-		},
 	}
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.ElementsMatch(t, tt.want, createAttributes(tt.resource, tt.orig, tt.externalLabels, tt.extras...))
+			assert.ElementsMatch(t, tt.want, createAttributes(tt.resource, tt.orig, tt.extras...))
 		})
 	}
 }
@@ -276,25 +260,16 @@ func Test_getPromMetricName(t *testing.T) {
 	tests := []struct {
 		name   string
 		metric pmetric.Metric
-		ns     string
 		want   string
 	}{
 		{
 			"empty_case",
 			invalidMetrics[empty],
-			ns1,
-			"test_ns_",
+			"",
 		},
 		{
 			"normal_case",
 			validMetrics1[validDoubleGauge],
-			ns1,
-			"test_ns_" + validDoubleGauge,
-		},
-		{
-			"empty_namespace",
-			validMetrics1[validDoubleGauge],
-			"",
 			validDoubleGauge,
 		},
 		{
@@ -302,20 +277,18 @@ func Test_getPromMetricName(t *testing.T) {
 			// See https://github.com/open-telemetry/opentelemetry-collector/pull/2993 for context
 			"no_counter_suffix",
 			validMetrics1[validIntSum],
-			ns1,
-			"test_ns_" + validIntSum,
+			validIntSum,
 		},
 		{
 			"dirty_string",
 			validMetrics2[validIntGaugeDirty],
-			"7" + ns1,
-			"key_7test_ns__" + validIntGauge + "_",
+			"key_" + validIntGauge + "_",
 		},
 	}
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, getPromMetricName(tt.metric, tt.ns))
+			assert.Equal(t, tt.want, getPromMetricName(tt.metric))
 		})
 	}
 }
