@@ -15,7 +15,6 @@
 package clickhousemetricsexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter"
 
 import (
-	"errors"
 	"log"
 	"math"
 	"sort"
@@ -249,9 +248,9 @@ func getPromMetricName(metric pmetric.Metric, ns string) string {
 }
 
 // batchTimeSeries splits series into multiple batch write requests.
-func batchTimeSeries(tsMap map[string]*prompb.TimeSeries, maxBatchByteSize int) ([]*prompb.WriteRequest, error) {
+func batchTimeSeries(tsMap map[string]*prompb.TimeSeries, maxBatchByteSize int) []*prompb.WriteRequest {
 	if len(tsMap) == 0 {
-		return nil, errors.New("invalid tsMap: cannot be empty map")
+		return nil
 	}
 
 	var requests []*prompb.WriteRequest
@@ -278,7 +277,7 @@ func batchTimeSeries(tsMap map[string]*prompb.TimeSeries, maxBatchByteSize int) 
 		requests = append(requests, wrapped)
 	}
 
-	return requests, nil
+	return requests
 }
 
 // convertTimeStamp converts OTLP timestamp in ns to timestamp in ms
