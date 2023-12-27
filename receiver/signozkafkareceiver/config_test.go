@@ -59,6 +59,14 @@ func TestLoadConfig(t *testing.T) {
 					Enable:   true,
 					Interval: 1 * time.Second,
 				},
+				SaramaConsumerConfig: SaramaConsumerConfig{
+					ConsumerFetchMinBytes: 1,
+					ConsumerFetchDefaultBytes: 64,
+					ConsumerFetchMaxBytes: 128,
+					MaxProcessingTime: 500 * time.Millisecond,
+					MessagesChannelSize: 1024,
+					GroupSessionTimeout: 30 * time.Second,
+				},
 			},
 		},
 		{
