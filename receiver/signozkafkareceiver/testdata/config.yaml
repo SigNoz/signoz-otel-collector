@@ -14,6 +14,13 @@ signozkafkareceiver:
     retry:
       max: 10
       backoff: 5s
+  sarama_consumer_config:
+    fetch_min_bytes: 1
+    fetch_default_bytes: 64
+    fetch_max_bytes: 128
+    max_processing_time: 500ms
+    messages_channel_size: 1024
+    consumer_group_session_timeout: 30s
 signozkafkareceiver/logs:
   topic: logs
   encoding: direct

@@ -32,6 +32,17 @@ type MessageMarking struct {
 	OnError bool `mapstructure:"on_error"`
 }
 
+type SaramaConsumerConfig struct {
+	// Controls sarama client's Consumer.Fetch config if set.
+	ConsumerFetchMinBytes     int32 `mapstructure:"fetch_min_bytes"`
+	ConsumerFetchDefaultBytes int32 `mapstructure:"fetch_default_bytes"`
+	ConsumerFetchMaxBytes     int32 `mapstructure:"fetch_max_bytes"`
+
+	MaxProcessingTime   time.Duration `mapstructure:"max_processing_time"`
+	GroupSessionTimeout time.Duration `mapstructure:"consumer_group_session_timeout"`
+	MessagesChannelSize int           `mapstructure:"messages_channel_size"`
+}
+
 // Config defines configuration for Kafka receiver.
 type Config struct {
 	// The list of kafka brokers (default localhost:9092)
@@ -62,10 +73,7 @@ type Config struct {
 	// Controls the way the messages are marked as consumed
 	MessageMarking MessageMarking `mapstructure:"message_marking"`
 
-	// Controls sarama client's Consumer.Fetch config if set.
-	ConsumerFetchMinBytes int32 `mapstructure:"consumer_fetch_min_bytes"`
-	ConsumerFetchDefaultBytes int32 `mapstructure:"consumer_fetch_default_bytes"`
-	ConsumerFetchMaxBytes int32 `mapstructure:"consumer_fetch_max_bytes"`
+	SaramaConsumerConfig SaramaConsumerConfig `mapstructure:"sarama_consumer_config"`
 }
 
 const (
