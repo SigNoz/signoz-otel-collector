@@ -524,6 +524,8 @@ require (
 )
 
 replace (
+
+	github.com/ClickHouse/clickhouse-go/v2 v2.15.0 => github.com/SigNoz/clickhouse-go/v2 v2.15.1
 	github.com/golang-migrate/migrate/v4 => github.com/SigNoz/golang-migrate/v4 v4.16.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
