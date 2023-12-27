@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/IBM/sarama"
 	"go.opencensus.io/stats"
@@ -82,7 +83,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
-	
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
@@ -134,6 +135,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		return err
 	}
 	consumerGroup := &tracesConsumerGroupHandler{
+		id:                c.settings.ID,
 		logger:            c.settings.Logger,
 		unmarshaler:       c.unmarshaler,
 		nextConsumer:      c.nextConsumer,
@@ -231,6 +233,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		return err
 	}
 	metricsConsumerGroup := &metricsConsumerGroupHandler{
+		id:                c.settings.ID,
 		logger:            c.settings.Logger,
 		unmarshaler:       c.unmarshaler,
 		nextConsumer:      c.nextConsumer,
@@ -356,6 +359,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 	}
 
 	logsConsumerGroup := &logsConsumerGroupHandler{
+		id:                c.settings.ID,
 		logger:            c.settings.Logger,
 		unmarshaler:       c.unmarshaler,
 		nextConsumer:      c.nextConsumer,
@@ -469,6 +473,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !ok {
 				return nil
 			}
+			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
@@ -509,6 +514,10 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
+			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			if err != nil {
+				c.logger.Error("failed to record processing time", zap.Error(err))
+			}
 
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
@@ -545,6 +554,7 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			if !ok {
 				return nil
 			}
+			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
@@ -584,6 +594,10 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			}
 			if !c.autocommitEnabled {
 				session.Commit()
+			}
+			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			if err != nil {
+				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
 
 		// Should return when `session.Context()` is done.
@@ -625,6 +639,7 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			if !ok {
 				return nil
 			}
+			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
@@ -634,9 +649,10 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 
 			ctx := c.obsrecv.StartLogsOp(session.Context())
+			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
 			_ = stats.RecordWithTags(
 				ctx,
-				[]tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())},
+				statsTags,
 				statMessageCount.M(1),
 				statMessageOffset.M(message.Offset),
 				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
@@ -665,6 +681,10 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 			if !c.autocommitEnabled {
 				session.Commit()
+			}
+			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			if err != nil {
+				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
 
 		// Should return when `session.Context()` is done.
