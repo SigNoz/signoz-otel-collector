@@ -121,6 +121,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	e.wg.Add(1)
 	defer e.wg.Done()
 
+	processingStartTime := time.Now()
 	var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -224,6 +225,10 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 				}
 			}
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{tag.Upsert(exporterKey, string(component.DataTypeLogs)), tag.Upsert(stageKey, "prepare_loop")},
+			logsExporterStageProcessingTime.M(float64(time.Since(start).Milliseconds())),
+		)
 		dbWriteStart := time.Now()
 		err = statement.Send()
 		stats.RecordWithTags(ctx,
@@ -254,6 +259,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			},
 			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),
 		)
+		stats.Record(ctx, logsExporterProcessingTime.M(float64(time.Since(processingStartTime).Milliseconds())))
 		if err != nil {
 			return err
 		}

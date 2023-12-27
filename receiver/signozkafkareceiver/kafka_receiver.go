@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/IBM/sarama"
 	"go.opencensus.io/stats"
@@ -469,6 +470,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !ok {
 				return nil
 			}
+			processingStartTime := time.Now()
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
@@ -495,6 +497,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 
 			spanCount := traces.SpanCount()
 			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
+			_ = stats.RecordWithTags(ctx, statsTags, statMessageProcessingTime.M(float64(time.Since(processingStartTime).Milliseconds())))
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))

@@ -26,11 +26,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
+	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -396,6 +399,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 	case <-s.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		processingTimeStart := time.Now()
 		rss := td.ResourceSpans()
 		var batchOfSpans []*Span
 		for i := 0; i < rss.Len(); i++ {
@@ -416,11 +420,27 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
+		stats.RecordWithTags(ctx, 
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "resource_span_loop"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(processingTimeStart).Milliseconds())),
+		)
+		st := time.Now()
 		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err
 		}
+		stats.RecordWithTags(ctx,
+			[]tag.Mutator{
+				tag.Upsert(exporterKey, string(component.DataTypeTraces)), 
+				tag.Upsert(stageKey, "write_batch_of_spans"),
+			}, 
+			tracesExporterStageProcessingTime.M(float64(time.Since(st).Milliseconds())),
+		)
+		stats.Record(ctx, tracesExporterProcessingTime.M(float64(time.Since(processingTimeStart).Milliseconds())))
 		return nil
 	}
 }

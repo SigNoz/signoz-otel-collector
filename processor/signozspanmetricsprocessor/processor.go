@@ -27,6 +27,7 @@ import (
 	"unicode"
 
 	"github.com/tilinna/clock"
+	"go.opencensus.io/stats"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
@@ -378,9 +379,11 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
+	spanMetricsProcessingStartTime := time.Now()
 	p.lock.Lock()
 	p.aggregateMetrics(traces)
 	p.lock.Unlock()
+	stats.Record(ctx, spanMetricsProcessingTimeMillis.M(float64(time.Since(spanMetricsProcessingStartTime).Milliseconds())))
 
 	// Forward trace data unmodified and propagate trace pipeline errors, if any.
 	return p.tracesConsumer.ConsumeTraces(ctx, traces)

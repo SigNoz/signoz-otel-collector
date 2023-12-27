@@ -37,9 +37,12 @@ const (
 )
 
 var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
+	writeLatencyMillis              = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
+	logsExporterProcessingTime      = stats.Float64("signoz_logs_exporter_processing_time_millis", "Time spent processing a log record by the logs exporter", stats.UnitMilliseconds)
+	logsExporterStageProcessingTime = stats.Float64("signoz_logs_exporter_stage_processing_time_millis", "Time spent processing a log record by a stage of the logs exporter", stats.UnitMilliseconds)
+	exporterKey                     = tag.MustNewKey("exporter")
+	stageKey                        = tag.MustNewKey("stage")
+	tableKey                        = tag.MustNewKey("table")
 )
 
 // NewFactory creates a factory for Elastic exporter.
@@ -54,7 +57,26 @@ func NewFactory() exporter.Factory {
 		Aggregation: writeLatencyDistribution,
 	}
 
+	processingTimeDistribution := view.Distribution(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1750, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+	processingTimeView := &view.View{
+		Name:        logsExporterProcessingTime.Name(),
+		Measure:     logsExporterProcessingTime,
+		Description: logsExporterProcessingTime.Description(),
+		TagKeys:     []tag.Key{exporterKey},
+		Aggregation: processingTimeDistribution,
+	}
+
+	stageProcessingTimeView := &view.View{
+		Name:        logsExporterStageProcessingTime.Name(),
+		Measure:     logsExporterStageProcessingTime,
+		Description: logsExporterStageProcessingTime.Description(),
+		TagKeys:     []tag.Key{exporterKey, stageKey},
+		Aggregation: processingTimeDistribution,
+	}
+
 	view.Register(writeLatencyView)
+	view.Register(processingTimeView)
+	view.Register(stageProcessingTimeView)
 
 	return exporter.NewFactory(
 		typeStr,
