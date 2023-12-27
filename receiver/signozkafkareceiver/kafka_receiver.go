@@ -84,7 +84,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 	sarama.Logger = zap.NewStdLog(set.Logger)
 	
 	c := sarama.NewConfig()
-	c = setSaramaConsumerFetchConfig(c, &config)
+	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -182,7 +182,7 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 	sarama.Logger = zap.NewStdLog(set.Logger)
 
 	c := sarama.NewConfig()
-	c = setSaramaConsumerFetchConfig(c, &config)
+	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -274,7 +274,7 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 	sarama.Logger = zap.NewStdLog(set.Logger)
 	
 	c := sarama.NewConfig()
-	c = setSaramaConsumerFetchConfig(c, &config)
+	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -686,7 +686,7 @@ func toSaramaInitialOffset(initialOffset string) (int64, error) {
 	}
 }
 
-func setSaramaConsumerFetchConfig(sc *sarama.Config, c *Config) *sarama.Config {
+func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) *sarama.Config {
 	if c.ConsumerFetchMinBytes != 0 {
 		sc.Consumer.Fetch.Min = c.ConsumerFetchMinBytes
 	}
@@ -695,6 +695,15 @@ func setSaramaConsumerFetchConfig(sc *sarama.Config, c *Config) *sarama.Config {
 	}
 	if c.ConsumerFetchMaxBytes != 0 {
 		sc.Consumer.Fetch.Max = c.ConsumerFetchMaxBytes
+	}
+	if c.MaxProcessingTime != 0 {
+		sc.Consumer.MaxProcessingTime = c.MaxProcessingTime
+	}
+	if c.GroupSessionTimeout != 0 {
+		sc.Consumer.Group.Session.Timeout = c.GroupSessionTimeout
+	}
+	if c.MessagesChannelSize != 0 {
+		sc.ChannelBufferSize = c.MessagesChannelSize
 	}
 	return sc
 }
