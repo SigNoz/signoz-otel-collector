@@ -122,6 +122,7 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 		var prodErr sarama.ProducerErrors
 		if errors.As(err, &prodErr) {
 			if len(prodErr) > 0 {
+				e.logger.Error("Failed to deliver messages", zap.String("topic", kafkaTopic), zap.Int("logCount", ld.LogRecordCount()), zap.String("error", prodErr[0].Err.Error()))
 				return kafkaErrors{len(prodErr), prodErr[0].Err.Error()}
 			}
 		}
@@ -147,6 +148,12 @@ func newSaramaProducer(config Config) (sarama.SyncProducer, error) {
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Producer.MaxMessageBytes = config.Producer.MaxMessageBytes
 	c.Producer.Flush.MaxMessages = config.Producer.FlushMaxMessages
+	if int32(config.Producer.MaxMessageBytes) > sarama.MaxRequestSize {
+		// If the user has set a MaxMessageBytes that is larger than the MaxRequestSize, then
+		// set the MaxRequestSize to the MaxMessageBytes.
+		// If we dont do this, then sarama will reject messages > 100MB with a packet encoding error.
+		sarama.MaxRequestSize = int32(config.Producer.MaxMessageBytes)
+	}
 
 	if config.ProtocolVersion != "" {
 		version, err := sarama.ParseKafkaVersion(config.ProtocolVersion)
