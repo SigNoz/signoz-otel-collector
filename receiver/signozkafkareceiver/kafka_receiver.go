@@ -718,6 +718,12 @@ func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) *sarama
 	}
 	if c.ConsumerFetchMaxBytes != 0 {
 		sc.Consumer.Fetch.Max = c.ConsumerFetchMaxBytes
+		if c.ConsumerFetchMaxBytes > sarama.MaxResponseSize {
+			// If the user has set a Consumer.Fetch.Max that is larger than the MaxResponseSize, then
+			// set the MaxResponseSize to the Consumer.Fetch.Max.
+			// If we dont do this, then sarama will reject messages > 100MB with a packet decoding error.
+			sarama.MaxResponseSize = c.ConsumerFetchMaxBytes
+		}
 	}
 	if c.MaxProcessingTime != 0 {
 		sc.Consumer.MaxProcessingTime = c.MaxProcessingTime
