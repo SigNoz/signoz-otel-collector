@@ -147,6 +147,12 @@ func newSaramaProducer(config Config) (sarama.SyncProducer, error) {
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Producer.MaxMessageBytes = config.Producer.MaxMessageBytes
 	c.Producer.Flush.MaxMessages = config.Producer.FlushMaxMessages
+	if int32(config.Producer.MaxMessageBytes) > sarama.MaxRequestSize {
+		// If the user has set a MaxMessageBytes that is larger than the MaxRequestSize, then
+		// set the MaxRequestSize to the MaxMessageBytes.
+		// If we dont do this, then sarama will reject messages > 100MB with a packet encoding error.
+		sarama.MaxRequestSize = int32(config.Producer.MaxMessageBytes)
+	}
 
 	if config.ProtocolVersion != "" {
 		version, err := sarama.ParseKafkaVersion(config.ProtocolVersion)
