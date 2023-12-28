@@ -122,6 +122,7 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 		var prodErr sarama.ProducerErrors
 		if errors.As(err, &prodErr) {
 			if len(prodErr) > 0 {
+				e.logger.Error("Failed to deliver messages", zap.String("topic", kafkaTopic), zap.Int("logCount", ld.LogRecordCount()), zap.String("error", prodErr[0].Err.Error()))
 				return kafkaErrors{len(prodErr), prodErr[0].Err.Error()}
 			}
 		}
