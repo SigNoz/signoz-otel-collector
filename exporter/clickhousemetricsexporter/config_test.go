@@ -83,7 +83,7 @@ func Test_loadConfig(t *testing.T) {
 			},
 			ResourceToTelemetrySettings: resourcetotelemetry.Settings{Enabled: true},
 			WatcherInterval:             30 * time.Second,
-			WriteTSToV4:                 false,
+			WriteTSToV4:                 true,
 		})
 }
 
