@@ -25,6 +25,7 @@ import (
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
@@ -40,17 +41,19 @@ import (
 )
 
 const (
-	namespace                        = "promhouse"
-	subsystem                        = "clickhouse"
-	nameLabel                        = "__name__"
-	CLUSTER                          = "cluster"
-	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
-	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
-	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
-	TIME_SERIES_TABLE                = "time_series_v2"
-	temporalityLabel                 = "__temporality__"
-	envLabel                         = "env"
+	namespace                              = "promhouse"
+	subsystem                              = "clickhouse"
+	nameLabel                              = "__name__"
+	CLUSTER                                = "cluster"
+	DISTRIBUTED_TIME_SERIES_TABLE          = "distributed_time_series_v2"
+	DISTRIBUTED_TIME_SERIES_TABLE_V3       = "distributed_time_series_v3"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4       = "distributed_time_series_v4"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR   = "distributed_time_series_v4_6hr"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4_1_DAY = "distributed_time_series_v4_1_day"
+	DISTRIBUTED_SAMPLES_TABLE              = "distributed_samples_v2"
+	TIME_SERIES_TABLE                      = "time_series_v2"
+	temporalityLabel                       = "__temporality__"
+	envLabel                               = "env"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -235,7 +238,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			fingerprintToName[f] = make(map[string]string)
 		}
 		fingerprintToName[f][nameLabel] = metricName
-		fingerprintToName[f][env] = env
+		fingerprintToName[f][envLabel] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
 		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
@@ -399,8 +402,20 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			statement6hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli_6hr, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR))
+			if err != nil {
+				return err
+			}
+			statement24hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli_24hr, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_1_DAY))
+			if err != nil {
+				return err
+			}
 			// timestamp in milliseconds with nearest hour precision
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
+			// timestamp in milliseconds with nearest 6hr precision
+			unixMilli6hr := model.Now().Time().UnixMilli() / 21600000 * 21600000
+			// timestamp in milliseconds with nearest 24hr precision
+			unixMilli24hr := model.Now().Time().UnixMilli() / 86400000 * 86400000
 
 			for fingerprint, labels := range timeSeries {
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -420,15 +435,51 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				if err != nil {
 					return err
 				}
+				err = statement6hr.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					meta.Description,
+					meta.Unit,
+					meta.Typ.String(),
+					meta.IsMonotonic,
+					fingerprint,
+					unixMilli6hr,
+					encodedLabels,
+				)
+				if err != nil {
+					return err
+				}
+				err = statement24hr.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					meta.Description,
+					meta.Unit,
+					meta.Typ.String(),
+					meta.IsMonotonic,
+					fingerprint,
+					unixMilli24hr,
+					encodedLabels,
+				)
+				if err != nil {
+					return err
+				}
 			}
 
-			start := time.Now()
-			err = statement.Send()
-			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
-			)
-			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+			err = func(statements []driver.Batch) error {
+				for _, statement := range statements {
+					start := time.Now()
+					err = statement.Send()
+					ctx, _ = tag.New(ctx,
+						tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+						tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
+					)
+					stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+					return err
+				}
+				return nil
+			}([]driver.Batch{statement, statement6hr, statement24hr})
 			return err
 		}()
 
