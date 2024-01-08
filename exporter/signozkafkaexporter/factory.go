@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
@@ -36,6 +39,13 @@ const (
 	defaultCompression = "none"
 	// default from sarama.NewConfig()
 	defaultFluxMaxMessages = 0
+)
+
+var (
+	kafkaRecordsProduced = stats.Int64("kafka_records_produced", "The number of records produced to Kafka", stats.UnitDimensionless)
+
+	tagTopic     = tag.MustNewKey("topic")
+	tagComponent = tag.MustNewKey("component")
 )
 
 // FactoryOption applies changes to kafkaExporterFactory.
@@ -70,6 +80,15 @@ func WithLogsMarshalers(logsMarshalers ...LogsMarshaler) FactoryOption {
 
 // NewFactory creates Kafka exporter factory.
 func NewFactory(options ...FactoryOption) exporter.Factory {
+	kafkaRecordsProducedView := &view.View{
+		Name:        kafkaRecordsProduced.Name(),
+		Measure:     kafkaRecordsProduced,
+		Description: kafkaRecordsProduced.Description(),
+		TagKeys:     []tag.Key{tagTopic, tagComponent},
+		Aggregation: view.Sum(),
+	}
+	view.Register(kafkaRecordsProducedView)
+
 	f := &kafkaExporterFactory{
 		tracesMarshalers:  tracesMarshalers(),
 		metricsMarshalers: metricsMarshalers(),
