@@ -42,7 +42,9 @@ const (
 )
 
 var (
-	kafkaRecordsProduced = stats.Int64("kafka_records_produced", "The number of records produced to Kafka", stats.UnitDimensionless)
+	kafkaMetricsProduced = stats.Int64("kafka_metric_data_points_produced", "The number of metric data points produced to Kafka", stats.UnitDimensionless)
+	kafkaSpansProduced   = stats.Int64("kafka_spans_produced", "The number of spans produced to Kafka", stats.UnitDimensionless)
+	kafkaLogsProduced    = stats.Int64("kafka_log_records_produced", "The number of log records to Kafka", stats.UnitDimensionless)
 
 	tagTenantId  = tag.MustNewKey("tenantId")
 	tagComponent = tag.MustNewKey("component")
@@ -80,14 +82,29 @@ func WithLogsMarshalers(logsMarshalers ...LogsMarshaler) FactoryOption {
 
 // NewFactory creates Kafka exporter factory.
 func NewFactory(options ...FactoryOption) exporter.Factory {
-	kafkaRecordsProducedView := &view.View{
-		Name:        kafkaRecordsProduced.Name(),
-		Measure:     kafkaRecordsProduced,
-		Description: kafkaRecordsProduced.Description(),
+	kafkaMetricsProducedView := &view.View{
+		Name:        kafkaMetricsProduced.Name(),
+		Measure:     kafkaMetricsProduced,
+		Description: kafkaMetricsProduced.Description(),
 		TagKeys:     []tag.Key{tagTenantId, tagComponent},
 		Aggregation: view.Sum(),
 	}
-	view.Register(kafkaRecordsProducedView)
+	kafkaSpansProducedView := &view.View{
+		Name:        kafkaSpansProduced.Name(),
+		Measure:     kafkaSpansProduced,
+		Description: kafkaSpansProduced.Description(),
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
+		Aggregation: view.Sum(),
+	}
+	kafkaLogsProducedView := &view.View{
+		Name:        kafkaLogsProduced.Name(),
+		Measure:     kafkaLogsProduced,
+		Description: kafkaLogsProduced.Description(),
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
+		Aggregation: view.Sum(),
+	}
+
+	view.Register(kafkaMetricsProducedView, kafkaSpansProducedView, kafkaLogsProducedView)
 
 	f := &kafkaExporterFactory{
 		tracesMarshalers:  tracesMarshalers(),
