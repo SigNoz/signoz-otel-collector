@@ -60,10 +60,10 @@ func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces
 		return err
 	}
 	stats.RecordWithTags(ctx, []tag.Mutator{
-		tag.Upsert(tagTopic, kafkaTopic),
+		tag.Upsert(tagTenantId, kafkaTopicPrefix),
 		tag.Upsert(tagComponent, "traces"),
 	},
-	kafkaRecordsProduced.M(int64(td.SpanCount())))
+		kafkaRecordsProduced.M(int64(td.SpanCount())))
 	return nil
 }
 
@@ -100,10 +100,10 @@ func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric
 		return err
 	}
 	stats.RecordWithTags(ctx, []tag.Mutator{
-		tag.Upsert(tagTopic, kafkaTopic),
+		tag.Upsert(tagTenantId, kafkaTopicPrefix),
 		tag.Upsert(tagComponent, "metrics"),
 	},
-	kafkaRecordsProduced.M(int64(md.DataPointCount())))
+		kafkaRecordsProduced.M(int64(md.DataPointCount())))
 	return nil
 }
 
@@ -141,10 +141,10 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 		return err
 	}
 	stats.RecordWithTags(ctx, []tag.Mutator{
-		tag.Upsert(tagTopic, kafkaTopic),
+		tag.Upsert(tagTenantId, kafkaTopicPrefix),
 		tag.Upsert(tagComponent, "logs"),
 	},
-	kafkaRecordsProduced.M(int64(ld.LogRecordCount())))
+		kafkaRecordsProduced.M(int64(ld.LogRecordCount())))
 	return nil
 }
 

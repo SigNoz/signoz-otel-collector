@@ -44,7 +44,7 @@ const (
 var (
 	kafkaRecordsProduced = stats.Int64("kafka_records_produced", "The number of records produced to Kafka", stats.UnitDimensionless)
 
-	tagTopic     = tag.MustNewKey("topic")
+	tagTenantId  = tag.MustNewKey("tenantId")
 	tagComponent = tag.MustNewKey("component")
 )
 
@@ -84,7 +84,7 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 		Name:        kafkaRecordsProduced.Name(),
 		Measure:     kafkaRecordsProduced,
 		Description: kafkaRecordsProduced.Description(),
-		TagKeys:     []tag.Key{tagTopic, tagComponent},
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
 		Aggregation: view.Sum(),
 	}
 	view.Register(kafkaRecordsProducedView)
