@@ -51,6 +51,7 @@ const (
 	DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR   = "distributed_time_series_v4_6hr"
 	DISTRIBUTED_TIME_SERIES_TABLE_V4_1_DAY = "distributed_time_series_v4_1_day"
 	DISTRIBUTED_SAMPLES_TABLE              = "distributed_samples_v2"
+	DISTRIBUTED_SAMPLES_TABLE_V4           = "distributed_samples_v4"
 	TIME_SERIES_TABLE                      = "time_series_v2"
 	temporalityLabel                       = "__temporality__"
 	envLabel                               = "env"
@@ -393,6 +394,47 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	for k, v := range metrics {
 		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+	}
+
+	// write to distributed_samples_v4 table
+	if ch.writeTSToV4 {
+		err = func() error {
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4))
+			if err != nil {
+				return err
+			}
+
+			for i, ts := range data.Timeseries {
+				fingerprint := fingerprints[i]
+				for _, s := range ts.Samples {
+					metricName := fingerprintToName[fingerprint][nameLabel]
+					err = statement.Append(
+						fingerprintToName[fingerprint][envLabel],
+						metricNameToMeta[metricName].Temporality.String(),
+						metricName,
+						fingerprint,
+						s.Timestamp,
+						s.Value,
+					)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
+			start := time.Now()
+			err = statement.Send()
+			ctx, _ = tag.New(ctx,
+				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+				tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE_V4),
+			)
+			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+			return err
+		}()
+
+		if err != nil {
+			return err
+		}
 	}
 
 	// write to distributed_time_series_v4 table

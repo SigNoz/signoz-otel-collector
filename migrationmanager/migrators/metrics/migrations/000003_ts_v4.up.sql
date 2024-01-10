@@ -17,4 +17,4 @@ ENGINE = ReplacingMergeTree
         TTL toDateTime(unix_milli/1000) + INTERVAL 2592000 SECOND DELETE
         SETTINGS ttl_only_drop_parts = 1;
 
-CREATE TABLE IF NOT EXISTS signoz_metrics.distributed_time_series_v4 ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_metrics.time_series_v4 ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", signoz_metrics, time_series_v4, cityHash64(env, temporality, metric_name, fingerprint, unix_milli));
+CREATE TABLE IF NOT EXISTS signoz_metrics.distributed_time_series_v4 ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_metrics.time_series_v4 ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", signoz_metrics, time_series_v4, cityHash64(env, temporality, metric_name, fingerprint));
