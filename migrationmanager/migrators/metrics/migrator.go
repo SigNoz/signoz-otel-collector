@@ -37,14 +37,14 @@ func (m *MetricsMigrator) Migrate(ctx context.Context) error {
 	// Why?
 	// The table shard key had incorrectly been set to (env, temporality, metric_name, fingerprint, unix_milli) instead of (env, temporality, metric_name, fingerprint)
 	var showCreateTable string
-	if err = m.DB.QueryRow(context.Background(), fmt.Sprintf("SHOW CREATE TABLE %s.%s ON CLUSTER %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, m.Cfg.ClusterName)).Scan(&showCreateTable); err != nil {
+	if err = m.DB.QueryRow(context.Background(), fmt.Sprintf("SHOW CREATE TABLE %s.%s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4)).Scan(&showCreateTable); err != nil {
 		return fmt.Errorf("failed to get create table statement for %s.%s, err: %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, err)
 	}
 
 	// drop table and it will be recreated with correct shard key
 	if strings.Contains(showCreateTable, "cityHash64(env, temporality, metric_name, fingerprint, unix_milli)") {
 		// drop table
-		if err = m.DB.Exec(context.Background(), fmt.Sprintf("DROP TABLE %s.%s ON CLUSTER %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, m.Cfg.ClusterName)); err != nil {
+		if err = m.DB.Exec(context.Background(), fmt.Sprintf("DROP TABLE IF EXISTS %s.%s ON CLUSTER %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, m.Cfg.ClusterName)); err != nil {
 			return fmt.Errorf("failed to drop table %s.%s, err: %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, err)
 		}
 		// create table

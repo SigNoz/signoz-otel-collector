@@ -41,20 +41,20 @@ import (
 )
 
 const (
-	namespace                              = "promhouse"
-	subsystem                              = "clickhouse"
-	nameLabel                              = "__name__"
-	CLUSTER                                = "cluster"
-	DISTRIBUTED_TIME_SERIES_TABLE          = "distributed_time_series_v2"
-	DISTRIBUTED_TIME_SERIES_TABLE_V3       = "distributed_time_series_v3"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4       = "distributed_time_series_v4"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR   = "distributed_time_series_v4_6hr"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4_1_DAY = "distributed_time_series_v4_1_day"
-	DISTRIBUTED_SAMPLES_TABLE              = "distributed_samples_v2"
-	DISTRIBUTED_SAMPLES_TABLE_V4           = "distributed_samples_v4"
-	TIME_SERIES_TABLE                      = "time_series_v2"
-	temporalityLabel                       = "__temporality__"
-	envLabel                               = "env"
+	namespace                             = "promhouse"
+	subsystem                             = "clickhouse"
+	nameLabel                             = "__name__"
+	CLUSTER                               = "cluster"
+	DISTRIBUTED_TIME_SERIES_TABLE         = "distributed_time_series_v2"
+	DISTRIBUTED_TIME_SERIES_TABLE_V3      = "distributed_time_series_v3"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4      = "distributed_time_series_v4"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR  = "distributed_time_series_v4_6hrs"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4_1DAY = "distributed_time_series_v4_1day"
+	DISTRIBUTED_SAMPLES_TABLE             = "distributed_samples_v2"
+	DISTRIBUTED_SAMPLES_TABLE_V4          = "distributed_samples_v4"
+	TIME_SERIES_TABLE                     = "time_series_v2"
+	temporalityLabel                      = "__temporality__"
+	envLabel                              = "env"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -79,6 +79,7 @@ type clickHouse struct {
 type ClickHouseParams struct {
 	DSN                  string
 	DropDatabase         bool
+	MaxIdleConns         int
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
@@ -99,7 +100,10 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	}
 
 	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
+		Addr:         []string{dsnURL.Host},
+		MaxIdleConns: params.MaxIdleConns,
+		MaxOpenConns: params.MaxOpenConns,
+		DialTimeout:  1 * time.Minute,
 	}
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
@@ -110,6 +114,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 		options.Auth = auth
 	}
+	l.Debugf("Connecting to ClickHouse with options: %+v", options)
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
@@ -258,7 +263,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	ch.timeSeriesRW.Unlock()
 
 	err := func() error {
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -299,7 +304,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	// Write to distributed_time_series_v3 table
 	err = func() error {
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -342,7 +347,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	err = func() error {
 		ctx := context.Background()
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -399,7 +404,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	// write to distributed_samples_v4 table
 	if ch.writeTSToV4 {
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4))
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
@@ -440,15 +445,15 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	// write to distributed_time_series_v4 table
 	if ch.writeTSToV4 {
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4))
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
-			statement6hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli_6hr, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR))
+			statement6hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
-			statement24hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli_24hr, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_1_DAY))
+			statement24hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_1DAY), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
