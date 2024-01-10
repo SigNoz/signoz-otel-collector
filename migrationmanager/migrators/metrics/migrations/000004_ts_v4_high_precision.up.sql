@@ -39,3 +39,39 @@ ENGINE = ReplacingMergeTree
         SETTINGS ttl_only_drop_parts = 1;
 
 CREATE TABLE IF NOT EXISTS signoz_metrics.distributed_time_series_v4_1day ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_metrics.time_series_v4_1day ENGINE = Distributed("{{.SIGNOZ_CLUSTER}}", signoz_metrics, time_series_v4_1day, cityHash64(env, temporality, metric_name, fingerprint));
+
+-- mat views
+
+-- unix_milli rounded nearest 6 hours
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_metrics.time_series_v4_6hrs_mv ON CLUSTER {{.SIGNOZ_CLUSTER}}
+TO signoz_metrics.time_series_v4_6hrs
+AS SELECT
+    env,
+    temporality,
+    metric_name,
+    description,
+    unit,
+    type,
+    is_monotonic,
+    fingerprint,
+    unix_milli/21600000*21600000 AS unix_milli,
+    labels
+FROM signoz_metrics.time_series_v4;
+
+-- unix_milli rounded nearest 1 day
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_metrics.time_series_v4_1day_mv ON CLUSTER {{.SIGNOZ_CLUSTER}}
+TO signoz_metrics.time_series_v4_1day
+AS SELECT
+    env,
+    temporality,
+    metric_name,
+    description,
+    unit,
+    type,
+    is_monotonic,
+    fingerprint,
+    unix_milli/86400000*86400000 AS unix_milli,
+    labels
+FROM signoz_metrics.time_series_v4;

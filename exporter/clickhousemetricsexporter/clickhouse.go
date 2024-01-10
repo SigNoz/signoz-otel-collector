@@ -41,20 +41,18 @@ import (
 )
 
 const (
-	namespace                             = "promhouse"
-	subsystem                             = "clickhouse"
-	nameLabel                             = "__name__"
-	CLUSTER                               = "cluster"
-	DISTRIBUTED_TIME_SERIES_TABLE         = "distributed_time_series_v2"
-	DISTRIBUTED_TIME_SERIES_TABLE_V3      = "distributed_time_series_v3"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4      = "distributed_time_series_v4"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR  = "distributed_time_series_v4_6hrs"
-	DISTRIBUTED_TIME_SERIES_TABLE_V4_1DAY = "distributed_time_series_v4_1day"
-	DISTRIBUTED_SAMPLES_TABLE             = "distributed_samples_v2"
-	DISTRIBUTED_SAMPLES_TABLE_V4          = "distributed_samples_v4"
-	TIME_SERIES_TABLE                     = "time_series_v2"
-	temporalityLabel                      = "__temporality__"
-	envLabel                              = "env"
+	namespace                        = "promhouse"
+	subsystem                        = "clickhouse"
+	nameLabel                        = "__name__"
+	CLUSTER                          = "cluster"
+	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
+	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
+	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
+	DISTRIBUTED_SAMPLES_TABLE_V4     = "distributed_samples_v4"
+	TIME_SERIES_TABLE                = "time_series_v2"
+	temporalityLabel                 = "__temporality__"
+	envLabel                         = "env"
 )
 
 // clickHouse implements storage interface for the ClickHouse.
@@ -114,7 +112,6 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 		options.Auth = auth
 	}
-	l.Debugf("Connecting to ClickHouse with options: %+v", options)
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
@@ -449,20 +446,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
-			statement6hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_6HR), driver.WithReleaseConnection())
-			if err != nil {
-				return err
-			}
-			statement24hr, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4_1DAY), driver.WithReleaseConnection())
-			if err != nil {
-				return err
-			}
 			// timestamp in milliseconds with nearest hour precision
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
-			// timestamp in milliseconds with nearest 6hr precision
-			unixMilli6hr := model.Now().Time().UnixMilli() / 21600000 * 21600000
-			// timestamp in milliseconds with nearest 24hr precision
-			unixMilli24hr := model.Now().Time().UnixMilli() / 86400000 * 86400000
 
 			for fingerprint, labels := range timeSeries {
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -482,51 +467,15 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				if err != nil {
 					return err
 				}
-				err = statement6hr.Append(
-					fingerprintToName[fingerprint][envLabel],
-					meta.Temporality.String(),
-					fingerprintToName[fingerprint][nameLabel],
-					meta.Description,
-					meta.Unit,
-					meta.Typ.String(),
-					meta.IsMonotonic,
-					fingerprint,
-					unixMilli6hr,
-					encodedLabels,
-				)
-				if err != nil {
-					return err
-				}
-				err = statement24hr.Append(
-					fingerprintToName[fingerprint][envLabel],
-					meta.Temporality.String(),
-					fingerprintToName[fingerprint][nameLabel],
-					meta.Description,
-					meta.Unit,
-					meta.Typ.String(),
-					meta.IsMonotonic,
-					fingerprint,
-					unixMilli24hr,
-					encodedLabels,
-				)
-				if err != nil {
-					return err
-				}
 			}
 
-			err = func(statements []driver.Batch) error {
-				for _, statement := range statements {
-					start := time.Now()
-					err = statement.Send()
-					ctx, _ = tag.New(ctx,
-						tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-						tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
-					)
-					stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-					return err
-				}
-				return nil
-			}([]driver.Batch{statement, statement6hr, statement24hr})
+			start := time.Now()
+			err = statement.Send()
+			ctx, _ = tag.New(ctx,
+				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
+			)
+			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 			return err
 		}()
 
