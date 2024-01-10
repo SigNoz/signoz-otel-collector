@@ -14,6 +14,7 @@ require (
 	github.com/knadh/koanf v1.5.0
 	github.com/oklog/ulid v1.3.1
 	github.com/open-telemetry/opamp-go v0.5.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.79.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter v0.79.0

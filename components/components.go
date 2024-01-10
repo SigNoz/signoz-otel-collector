@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter"
@@ -198,6 +199,7 @@ func Components() (otelcol.Factories, error) {
 	}
 
 	exporters := []exporter.Factory{
+		awss3exporter.NewFactory(),
 		carbonexporter.NewFactory(),
 		clickhousemetricsexporter.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
