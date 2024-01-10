@@ -55,7 +55,7 @@ AS SELECT
     type,
     is_monotonic,
     fingerprint,
-    unix_milli/21600000*21600000 AS unix_milli,
+    floor(unix_milli/21600000)*21600000 AS unix_milli,
     labels
 FROM signoz_metrics.time_series_v4;
 
@@ -72,6 +72,6 @@ AS SELECT
     type,
     is_monotonic,
     fingerprint,
-    unix_milli/86400000*86400000 AS unix_milli,
+    floor(unix_milli/86400000)*86400000 AS unix_milli,
     labels
 FROM signoz_metrics.time_series_v4;
