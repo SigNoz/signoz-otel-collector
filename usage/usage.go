@@ -64,61 +64,8 @@ func NewUsageCollector(db clickhouse.Conn, options Options, dbName string, usage
 		ttl:                  3,
 	}
 }
-func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) error {
-	//  we don't have timestamp in the order by field as we need to update it contiously.
-	query := fmt.Sprintf(
-		`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			tenant String,
-			collector_id String,
-			exporter_id String,
-			timestamp DateTime,
-			data String
-		) ENGINE MergeTree()
-		ORDER BY (tenant, collector_id, exporter_id, timestamp)
-		TTL timestamp + INTERVAL %d DAY;
-		`,
-		databaseName,
-		e.tableName,
-		cluster,
-		e.ttl,
-	)
-
-	err := db.Exec(context.Background(), query)
-	if err != nil {
-		return err
-	}
-
-	// distributed usage
-	query = fmt.Sprintf(
-		`
-		CREATE TABLE IF NOT EXISTS 
-			%s.%s  ON CLUSTER %s 
-			AS %s.%s
-			ENGINE = Distributed(%s, %s, %s, cityHash64(rand()));
-		`,
-		databaseName,
-		e.distributedTableName,
-		cluster,
-		databaseName,
-		e.tableName,
-		cluster,
-		databaseName,
-		e.tableName,
-	)
-
-	err = db.Exec(context.Background(), query)
-
-	return err
-}
 
 func (e *UsageCollector) Start() error {
-	// create table if not exists
-	err := e.CreateTable(e.db, e.dbName)
-	if err != nil {
-		return err
-	}
-
 	// start collector routine which
 	e.initReaderOnce.Do(func() {
 		e.ir, _ = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
