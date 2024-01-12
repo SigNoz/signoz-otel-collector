@@ -1,4 +1,3 @@
---we don't have timestamp in the order by field as we need to update it continuously.
 CREATE TABLE IF NOT EXISTS signoz_metrics.usage ON CLUSTER {{ .SIGNOZ_CLUSTER }} (
     tenant String,
     collector_id String,
