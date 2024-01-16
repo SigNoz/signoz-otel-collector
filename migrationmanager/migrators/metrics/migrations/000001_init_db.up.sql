@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.samples_v2 ON CLUSTER {{.SIGNOZ_CLUSTE
                         timestamp_ms Int64 Codec(DoubleDelta, LZ4),
                         value Float64 Codec(Gorilla, LZ4)
                 )
-                ENGINE = MergeTree
+                ENGINE = ReplicatedMergeTree
                         PARTITION BY toDate(timestamp_ms / 1000)
                         ORDER BY (metric_name, fingerprint, timestamp_ms)
                          TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.time_series_v2 ON CLUSTER {{.SIGNOZ_CL
                         timestamp_ms Int64 Codec(DoubleDelta, LZ4),
                         labels String Codec(ZSTD(5))
                 )
-                ENGINE = ReplacingMergeTree
+                ENGINE = ReplicatedReplacingMergeTree
                         PARTITION BY toDate(timestamp_ms / 1000)
                         ORDER BY (metric_name, fingerprint)
                         TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.time_series_v3 ON CLUSTER {{.SIGNOZ_CL
                         timestamp_ms Int64 CODEC(Delta, ZSTD),
                         labels String CODEC(ZSTD(5))
                 )
-                ENGINE = ReplacingMergeTree
+                ENGINE = ReplicatedReplacingMergeTree
                         PARTITION BY toDate(timestamp_ms / 1000)
                         ORDER BY (env, temporality, metric_name, fingerprint);
 

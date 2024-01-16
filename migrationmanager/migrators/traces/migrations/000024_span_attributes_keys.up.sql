@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.span_attributes_keys ON CLUSTER {{.SIGN
     tagType Enum('tag', 'resource') CODEC(ZSTD(1)),
     dataType Enum('string', 'bool', 'float64') CODEC(ZSTD(1)),
     isColumn bool CODEC(ZSTD(1)),
-) ENGINE ReplacingMergeTree
+) ENGINE ReplicatedReplacingMergeTree
 ORDER BY (tagKey, tagType, dataType, isColumn);
 
 CREATE TABLE IF NOT EXISTS signoz_traces.distributed_span_attributes_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} AS signoz_traces.span_attributes_keys
