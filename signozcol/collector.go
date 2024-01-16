@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
+	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 
 	"go.opentelemetry.io/collector/otelcol"
@@ -195,11 +196,12 @@ func newOtelColSettings(configPaths []string, version string, desc string, loggi
 		Version:     version,
 	}
 
+	envp := envprovider.New()
 	fmp := fileprovider.New()
 	configProviderSettings := otelcol.ConfigProviderSettings{
 		ResolverSettings: confmap.ResolverSettings{
 			URIs:       configPaths,
-			Providers:  map[string]confmap.Provider{fmp.Scheme(): fmp},
+			Providers:  map[string]confmap.Provider{fmp.Scheme(): fmp, envp.Scheme(): envp},
 			Converters: []confmap.Converter{expandconverter.New()},
 		},
 	}
