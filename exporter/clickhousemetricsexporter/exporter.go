@@ -76,13 +76,15 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	if err != nil {
 		return nil, errors.New("invalid endpoint")
 	}
+	maxIdleConnections := cfg.RemoteWriteQueue.NumConsumers + 1
 
 	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
 
 	params := &ClickHouseParams{
 		DSN:                  cfg.HTTPClientSettings.Endpoint,
 		DropDatabase:         false,
-		MaxOpenConns:         75,
+		MaxIdleConns:         maxIdleConnections,
+		MaxOpenConns:         maxIdleConnections + 10,
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
