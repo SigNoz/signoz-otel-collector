@@ -103,6 +103,29 @@ func addSample(tsMap map[string]*prompb.TimeSeries, sample *prompb.Sample, label
 	return sig
 }
 
+func addHistogram(tsMap map[string]*prompb.TimeSeries, h *prompb.Histogram, labels []prompb.Label,
+	metric pmetric.Metric) string {
+
+	if h == nil || labels == nil || tsMap == nil {
+		return ""
+	}
+
+	sig := timeSeriesSignature(metric, &labels)
+	ts, ok := tsMap[sig]
+
+	if ok {
+		ts.Histograms = append(ts.Histograms, *h)
+	} else {
+		newTs := &prompb.TimeSeries{
+			Labels:     labels,
+			Histograms: []prompb.Histogram{*h},
+		}
+		tsMap[sig] = newTs
+	}
+
+	return sig
+}
+
 // addExemplars finds a bucket bound that corresponds to the exemplars value and add the exemplar to the specific sig;
 // we only add exemplars if samples are presents
 // tsMap is unmodified if either of its parameters is nil and samples are nil.
@@ -484,6 +507,39 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 		qtlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName, quantileStr, percentileStr)
 		addSample(tsMap, quantile, qtlabels, metric)
 	}
+}
+
+func addSingleExponentialHistogramDataPoint(pt pmetric.ExponentialHistogramDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
+	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
+	time := convertTimeStamp(pt.Timestamp())
+	// sum, count, and buckets of the histogram should append suffix to baseName
+	baseName := getPromMetricName(metric, namespace)
+
+	var scale int32
+	var positiveOffset int64
+	var positiveDeltas []int64
+	var negativeOffset int64
+	var negativeDeltas []int64
+
+	scale = int32(pt.Scale())
+	positiveOffset = int64(pt.Positive().Offset())
+	for _, i := range pt.Positive().BucketCounts().AsRaw() {
+		positiveDeltas = append(positiveDeltas, int64(i))
+	}
+	negativeOffset = int64(pt.Negative().Offset())
+	for _, i := range pt.Negative().BucketCounts().AsRaw() {
+		negativeDeltas = append(negativeDeltas, int64(i))
+	}
+
+	addHistogram(tsMap, &prompb.Histogram{
+		Schema:         scale,
+		PositiveDeltas: positiveDeltas,
+		PositiveCounts: []float64{float64(positiveOffset)},
+		NegativeDeltas: negativeDeltas,
+		NegativeCounts: []float64{float64(negativeOffset)},
+		ZeroCount:      &prompb.Histogram_ZeroCountInt{ZeroCountInt: pt.ZeroCount()},
+		Timestamp:      time,
+	}, createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName), metric)
 }
 
 func orderBySampleTimestamp(tsArray []prompb.TimeSeries) []prompb.TimeSeries {

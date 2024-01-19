@@ -256,7 +256,14 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
-						// TODO(srikanthccv): implement
+						dataPoints := metric.ExponentialHistogram().DataPoints()
+						if dataPoints.Len() == 0 {
+							dropped++
+							prwe.logger.Warn("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
+						}
+						for x := 0; x < dataPoints.Len(); x++ {
+							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+						}
 					default:
 						dropped++
 						name := metric.Name()

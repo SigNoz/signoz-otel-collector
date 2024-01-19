@@ -18,12 +18,15 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
+	lclient "github.com/ClickHouse/ch-go"
+	lclientproto "github.com/ClickHouse/ch-go/proto"
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
@@ -51,6 +54,7 @@ const (
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
 	DISTRIBUTED_SAMPLES_TABLE_V4     = "distributed_samples_v4"
 	TIME_SERIES_TABLE                = "time_series_v2"
+	DISTRIBUTED_EXP_HIST_TABLE       = "distributed_exp_hist"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
 )
@@ -58,6 +62,7 @@ const (
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
 	conn                 clickhouse.Conn
+	lClient              *lclient.Client
 	l                    *logrus.Entry
 	database             string
 	maxTimeSeriesInQuery int
@@ -117,8 +122,15 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
+	ctx := context.Background()
+	c, err := lclient.Dial(ctx, lclient.Options{Address: dsnURL.Host})
+	if err != nil {
+		panic(err)
+	}
+
 	ch := &clickHouse{
 		conn:                 conn,
+		lClient:              c,
 		l:                    l,
 		database:             database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
@@ -386,6 +398,74 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		ctx, _ = tag.New(ctx,
 			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
+	}()
+	if err != nil {
+		return err
+	}
+
+	err = func() error {
+		ctx := context.Background()
+
+		namesCols := lclientproto.ColStr{}
+		fingerprintsCols := lclientproto.ColUInt64{}
+		sketchesCols := lclientproto.NewAggregateFunctionDDSketch("AggregateFunction(quantilesDDSketch(0.01, 0.9), UInt64)")
+		timestampsCols := lclientproto.ColInt64{}
+
+		for i, ts := range data.Timeseries {
+			fingerprint := fingerprints[i]
+			for _, s := range ts.Histograms {
+
+				gamma := math.Pow(2, math.Pow(2, float64(-s.Schema)))
+				positiveOffset := s.PositiveCounts[0]
+				negativeOffset := s.NegativeCounts[0]
+				var positivebinCounts []float64
+				for _, x := range s.PositiveDeltas {
+					positivebinCounts = append(positivebinCounts, float64(x))
+				}
+				var negativebinCounts []float64
+				for _, x := range s.NegativeDeltas {
+					negativebinCounts = append(negativebinCounts, float64(x))
+				}
+				var zeroCount int
+				if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountInt); ok {
+					zeroCount = int(x.ZeroCountInt)
+				} else if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountFloat); ok {
+					zeroCount = int(x.ZeroCountFloat)
+				}
+
+				sketch := lclientproto.DDSketch{
+					Mapping: &lclientproto.IndexMapping{Gamma: gamma},
+					PositiveValues: &lclientproto.Store{
+						ContiguousBinIndexOffset: int32(positiveOffset),
+						ContiguousBinCounts:      positivebinCounts,
+					},
+					NegativeValues: &lclientproto.Store{
+						ContiguousBinIndexOffset: int32(negativeOffset),
+						ContiguousBinCounts:      negativebinCounts,
+					},
+					ZeroCount: float64(zeroCount),
+				}
+
+				namesCols.Append(fingerprintToName[fingerprint][nameLabel])
+				fingerprintsCols.Append(fingerprint)
+				sketchesCols.Append(sketch)
+				timestampsCols.Append(s.Timestamp)
+			}
+		}
+		input := lclientproto.Input{
+			{Name: "metric_name", Data: namesCols},
+			{Name: "fingerprint", Data: fingerprintsCols},
+			{Name: "sketch", Data: sketchesCols},
+			{Name: "timestamp_ms", Data: timestampsCols},
+		}
+		start := time.Now()
+		err = ch.lClient.Do(ctx, lclient.Query{Body: "INSERT INTO " + ch.database + "." + DISTRIBUTED_EXP_HIST_TABLE + " (metric_name, fingerprint, sketch, timestamp_ms) VALUES", Input: input})
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
