@@ -74,7 +74,7 @@ func (e *UsageCollector) CreateTable(db clickhouse.Conn, databaseName string) er
 			exporter_id String,
 			timestamp DateTime,
 			data String
-		) ENGINE MergeTree()
+		) ENGINE ReplicatedMergeTree()
 		ORDER BY (tenant, collector_id, exporter_id, timestamp)
 		TTL timestamp + INTERVAL %d DAY;
 		`,

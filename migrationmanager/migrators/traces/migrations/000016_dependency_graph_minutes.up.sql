@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes ON CLUSTER {{.
     error_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     total_count SimpleAggregateFunction(sum, UInt64) CODEC(T64, ZSTD(1)),
     timestamp DateTime CODEC(DoubleDelta, LZ4)
-) ENGINE AggregatingReplicatedMergeTree
+) ENGINE ReplicatedAggregatingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;
