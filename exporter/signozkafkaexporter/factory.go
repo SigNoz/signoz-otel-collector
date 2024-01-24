@@ -36,6 +36,10 @@ const (
 	defaultCompression = "none"
 	// default from sarama.NewConfig()
 	defaultFluxMaxMessages = 0
+	// default from sarama.NewConfig()
+	defaultIdempotence = false
+	// default from sarama.NewConfig()
+	defaultMaxOpenConnections = 5
 )
 
 // FactoryOption applies changes to kafkaExporterFactory.
@@ -104,11 +108,14 @@ func createDefaultConfig() component.Config {
 			},
 		},
 		Producer: Producer{
-			MaxMessageBytes:  defaultProducerMaxMessageBytes,
-			RequiredAcks:     defaultProducerRequiredAcks,
-			Compression:      defaultCompression,
-			FlushMaxMessages: defaultFluxMaxMessages,
+			MaxMessageBytes:   defaultProducerMaxMessageBytes,
+			RequiredAcks:      defaultProducerRequiredAcks,
+			Compression:       defaultCompression,
+			FlushMaxMessages:  defaultFluxMaxMessages,
+			EnableIdempotence: defaultIdempotence,
+			MaxOpenRequests:   defaultMaxOpenConnections,
 		},
+		UseRequestIdAsRecordKey: false,
 	}
 }
 

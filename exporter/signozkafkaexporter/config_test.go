@@ -69,6 +69,8 @@ func TestLoadConfig(t *testing.T) {
 					MaxMessageBytes: 10000000,
 					RequiredAcks:    sarama.WaitForAll,
 					Compression:     "none",
+					EnableIdempotence: false,
+					MaxOpenRequests:   5,
 				},
 			},
 		},

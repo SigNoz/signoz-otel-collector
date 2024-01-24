@@ -22,10 +22,11 @@ var errUnrecognizedEncoding = fmt.Errorf("unrecognized encoding")
 
 // kafkaTracesProducer uses sarama to produce trace messages to Kafka.
 type kafkaTracesProducer struct {
-	producer  sarama.SyncProducer
-	topic     string
-	marshaler TracesMarshaler
-	logger    *zap.Logger
+	producer      sarama.SyncProducer
+	topic         string
+	marshaler     TracesMarshaler
+	logger        *zap.Logger
+	useReqIdAsKey bool
 }
 
 type kafkaErrors struct {
@@ -47,6 +48,13 @@ func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces
 	if err != nil {
 		return consumererror.NewPermanent(err)
 	}
+	if e.useReqIdAsKey {
+		// all messages are assumed to be from the same request, so we use the same reqId for all messages
+		messages, err = setRequestIdAsKey(ctx, messages)
+		if err != nil {
+			return consumererror.NewPermanent(err)
+		}
+	}
 	err = e.producer.SendMessages(messages)
 	if err != nil {
 		var prodErr sarama.ProducerErrors
@@ -66,10 +74,11 @@ func (e *kafkaTracesProducer) Close(context.Context) error {
 
 // kafkaMetricsProducer uses sarama to produce metrics messages to kafka
 type kafkaMetricsProducer struct {
-	producer  sarama.SyncProducer
-	topic     string
-	marshaler MetricsMarshaler
-	logger    *zap.Logger
+	producer      sarama.SyncProducer
+	topic         string
+	marshaler     MetricsMarshaler
+	logger        *zap.Logger
+	useReqIdAsKey bool
 }
 
 func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric.Metrics) error {
@@ -81,6 +90,12 @@ func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric
 	messages, err := e.marshaler.Marshal(md, kafkaTopic)
 	if err != nil {
 		return consumererror.NewPermanent(err)
+	}
+	if e.useReqIdAsKey {
+		messages, err = setRequestIdAsKey(ctx, messages)
+		if err != nil {
+			return consumererror.NewPermanent(err)
+		}
 	}
 	err = e.producer.SendMessages(messages)
 	if err != nil {
@@ -101,10 +116,11 @@ func (e *kafkaMetricsProducer) Close(context.Context) error {
 
 // kafkaLogsProducer uses sarama to produce logs messages to kafka
 type kafkaLogsProducer struct {
-	producer  sarama.SyncProducer
-	topic     string
-	marshaler LogsMarshaler
-	logger    *zap.Logger
+	producer      sarama.SyncProducer
+	topic         string
+	marshaler     LogsMarshaler
+	logger        *zap.Logger
+	useReqIdAsKey bool
 }
 
 func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
@@ -116,6 +132,12 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 	messages, err := e.marshaler.Marshal(ld, kafkaTopic)
 	if err != nil {
 		return consumererror.NewPermanent(err)
+	}
+	if e.useReqIdAsKey {
+		messages, err = setRequestIdAsKey(ctx, messages)
+		if err != nil {
+			return consumererror.NewPermanent(err)
+		}
 	}
 	err = e.producer.SendMessages(messages)
 	if err != nil {
@@ -148,11 +170,22 @@ func newSaramaProducer(config Config) (sarama.SyncProducer, error) {
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Producer.MaxMessageBytes = config.Producer.MaxMessageBytes
 	c.Producer.Flush.MaxMessages = config.Producer.FlushMaxMessages
+
+	// since we are now populating record keys, we use the reference hash partitioner
+	// the default hash partitioner has some issues -
+	// https://github.com/IBM/sarama/blob/56d2b5c239e1c4d77064b89cc176fd304b3baa0a/partitioner.go#L184
+	c.Producer.Partitioner = sarama.NewReferenceHashPartitioner
+
 	if int32(config.Producer.MaxMessageBytes) > sarama.MaxRequestSize {
 		// If the user has set a MaxMessageBytes that is larger than the MaxRequestSize, then
 		// set the MaxRequestSize to the MaxMessageBytes.
 		// If we dont do this, then sarama will reject messages > 100MB with a packet encoding error.
 		sarama.MaxRequestSize = int32(config.Producer.MaxMessageBytes)
+	}
+
+	if config.Producer.EnableIdempotence {
+		c.Producer.Idempotent = true
+		c.Net.MaxOpenRequests = config.Producer.MaxOpenRequests
 	}
 
 	if config.ProtocolVersion != "" {
@@ -191,10 +224,11 @@ func newMetricsExporter(config Config, set exporter.CreateSettings, marshalers m
 	}
 
 	return &kafkaMetricsProducer{
-		producer:  producer,
-		topic:     config.Topic,
-		marshaler: marshaler,
-		logger:    set.Logger,
+		producer:      producer,
+		topic:         config.Topic,
+		marshaler:     marshaler,
+		logger:        set.Logger,
+		useReqIdAsKey: config.UseRequestIdAsRecordKey,
 	}, nil
 
 }
@@ -210,10 +244,11 @@ func newTracesExporter(config Config, set exporter.CreateSettings, marshalers ma
 		return nil, err
 	}
 	return &kafkaTracesProducer{
-		producer:  producer,
-		topic:     config.Topic,
-		marshaler: marshaler,
-		logger:    set.Logger,
+		producer:      producer,
+		topic:         config.Topic,
+		marshaler:     marshaler,
+		logger:        set.Logger,
+		useReqIdAsKey: config.UseRequestIdAsRecordKey,
 	}, nil
 }
 
@@ -228,10 +263,11 @@ func newLogsExporter(config Config, set exporter.CreateSettings, marshalers map[
 	}
 
 	return &kafkaLogsProducer{
-		producer:  producer,
-		topic:     config.Topic,
-		marshaler: marshaler,
-		logger:    set.Logger,
+		producer:      producer,
+		topic:         config.Topic,
+		marshaler:     marshaler,
+		logger:        set.Logger,
+		useReqIdAsKey: config.UseRequestIdAsRecordKey,
 	}, nil
 
 }
