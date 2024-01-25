@@ -977,6 +977,8 @@ github.com/onsi/gomega v1.27.10 h1:naR28SdDFlqrG6kScpT8VWpu1xWY5nJRCF3XaYyBjhI=
 github.com/onsi/gomega v1.27.10/go.mod h1:RsS8tutOdbdgzbPtzzATp12yT7kM5I5aElG3evPbQ0M=
 github.com/open-telemetry/opamp-go v0.5.0 h1:2YFbb6G4qBkq3yTRdVb5Nfz9hKHW/ldUyex352e1J7g=
 github.com/open-telemetry/opamp-go v0.5.0/go.mod h1:IMdeuHGVc5CjKSu5/oNV0o+UmiXuahoHvoZ4GOmAI9M=
+github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter v0.88.0 h1:AUaONcqNTonre2OVwi0S0tAZw2n2UefQrbiQpOycYJw=
+github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter v0.88.0/go.mod h1:0CGSrrACk8/boiEg38qtRX/Lsqa1Duiwn7eToSCcPOI=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.88.0 h1:JhPlfHigIajnkPPSMeU7ypwFYEJ/2nUfhi4YpQZz06M=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.88.0/go.mod h1:+ujeN1JE1cNLGv9X+tjxCe4AUZHl83wu7lKFRiJOhIs=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.88.0 h1:PoD/VhG/db5kczKJgyNH6rH0CJvKFHvqmPLNG9PJxcE=
@@ -1037,6 +1039,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/awsutil v
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/awsutil v0.88.0/go.mod h1:5H2PTv4hg+NqtO5SDV28SSWcxVQWXMHr72t31xOKI3c=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/containerinsight v0.88.0 h1:LbYBtkruiV9Zn5DA5S7bqIQB5yeqyUSfHwE6sefAke4=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/containerinsight v0.88.0/go.mod h1:C81gHOQqypn4G+Xc8TpQL/mJtq1jJtM4SYlkHATDVuY=
+github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/cwlogs v0.88.0 h1:/KLgSTzRv3UPYNFCjsX+Ws6DQXkpYyyIWxxhelkSS+U=
+github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/cwlogs v0.88.0/go.mod h1:aibDK/GgtnM6hXoD0/SCJFet6z9Hg0yufCLe+QQjeeg=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.88.0 h1:n0V8AEUMhq3z+a4neCIiiu4GN8hSIdtzujX7JitWJgw=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.88.0/go.mod h1:YLcg2qYPcIf8sH0YuxhWgTO8B/GVCh15FNOl5SVOsgw=
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/k8s v0.88.0 h1:VR5zJ/qsbOeRsB51HyOYw02ZTBR8pFlL5uemIFTJcxU=

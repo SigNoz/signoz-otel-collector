@@ -1,6 +1,7 @@
 package components
 
 import (
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
@@ -311,6 +312,7 @@ func CoreComponents() (
 		loggingexporter.NewFactory(),
 		otlpexporter.NewFactory(),
 		otlphttpexporter.NewFactory(),
+		awscloudwatchlogsexporter.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)
 

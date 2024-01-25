@@ -20,6 +20,7 @@ require (
 	github.com/knadh/koanf v1.5.0
 	github.com/oklog/ulid v1.3.1
 	github.com/open-telemetry/opamp-go v0.5.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter v0.88.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.88.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.88.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.88.0
@@ -328,6 +329,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer v0.88.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/awsutil v0.88.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/containerinsight v0.88.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/cwlogs v0.88.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/ecsutil v0.88.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/k8s v0.88.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/metrics v0.88.0 // indirect
