@@ -37,7 +37,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -77,16 +76,19 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	if err != nil {
 		return nil, errors.New("invalid endpoint")
 	}
+	maxIdleConnections := cfg.RemoteWriteQueue.NumConsumers + 1
 
 	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
 
 	params := &ClickHouseParams{
 		DSN:                  cfg.HTTPClientSettings.Endpoint,
 		DropDatabase:         false,
-		MaxOpenConns:         75,
+		MaxIdleConns:         maxIdleConnections,
+		MaxOpenConns:         maxIdleConnections + 10,
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		MaxThreads:           cfg.MaxThreads,
+		WriteTSToV4:          cfg.WriteTSToV4,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
@@ -316,10 +318,10 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 	prwe.mux.Unlock()
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
-	requests, err := batchTimeSeries(tsMap, maxBatchByteSize)
-	if err != nil {
-		errs = append(errs, consumererror.NewPermanent(err))
-		return errs
+	requests := batchTimeSeries(tsMap, maxBatchByteSize)
+	if requests == nil {
+		prwe.logger.Warn("empty batch, skipping")
+		return nil
 	}
 
 	input := make(chan *prompb.WriteRequest, len(requests))

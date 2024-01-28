@@ -47,7 +47,8 @@ type Config struct {
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
 
-	MaxThreads int `mapstructure:"max_threads"`
+	MaxThreads  int  `mapstructure:"max_threads"`
+	WriteTSToV4 bool `mapstructure:"write_ts_to_v4"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.

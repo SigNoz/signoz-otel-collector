@@ -162,6 +162,10 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			if err != nil {
 				return err
 			}
+
+			// remove after sometime
+			resources = addTemporaryUnderscoreSupport(resources)
+
 			for j := 0; j < logs.ScopeLogs().Len(); j++ {
 				rs := logs.ScopeLogs().At(j).LogRecords()
 				for k := 0; k < rs.Len(); k++ {
@@ -188,6 +192,10 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 					if err != nil {
 						return err
 					}
+
+					// remove after sometime
+					attributes = addTemporaryUnderscoreSupport(attributes)
+
 					err = statement.Append(
 						ts,
 						ots,
@@ -338,29 +346,62 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
+		// Support for . , remove the above section once done.
 		if forceStringValues {
 			// store everything as string
-			response.StringKeys = append(response.StringKeys, formatKey(k))
+			response.StringKeys = append(response.StringKeys, k)
 			response.StringValues = append(response.StringValues, v.AsString())
 		} else {
 			switch v.Type() {
 			case pcommon.ValueTypeInt:
-				response.IntKeys = append(response.IntKeys, formatKey(k))
+				response.IntKeys = append(response.IntKeys, k)
 				response.IntValues = append(response.IntValues, v.Int())
 			case pcommon.ValueTypeDouble:
-				response.FloatKeys = append(response.FloatKeys, formatKey(k))
+				response.FloatKeys = append(response.FloatKeys, k)
 				response.FloatValues = append(response.FloatValues, v.Double())
 			case pcommon.ValueTypeBool:
-				response.BoolKeys = append(response.BoolKeys, formatKey(k))
+				response.BoolKeys = append(response.BoolKeys, k)
 				response.BoolValues = append(response.BoolValues, v.Bool())
 			default: // store it as string
-				response.StringKeys = append(response.StringKeys, formatKey(k))
+				response.StringKeys = append(response.StringKeys, k)
 				response.StringValues = append(response.StringValues, v.AsString())
 			}
 		}
+
 		return true
 	})
 	return response
+}
+
+// remove this function after sometime.
+func addTemporaryUnderscoreSupport(data attributesToSliceResponse) attributesToSliceResponse {
+	for i, v := range data.BoolKeys {
+		if strings.Contains(v, ".") {
+			data.BoolKeys = append(data.BoolKeys, formatKey(v))
+			data.BoolValues = append(data.BoolValues, data.BoolValues[i])
+		}
+	}
+
+	for i, v := range data.StringKeys {
+		if strings.Contains(v, ".") {
+			data.StringKeys = append(data.StringKeys, formatKey(v))
+			data.StringValues = append(data.StringValues, data.StringValues[i])
+		}
+	}
+	for i, v := range data.IntKeys {
+		if strings.Contains(v, ".") {
+			data.IntKeys = append(data.IntKeys, formatKey(v))
+			data.IntValues = append(data.IntValues, data.IntValues[i])
+		}
+	}
+	for i, v := range data.FloatKeys {
+		if strings.Contains(v, ".") {
+			data.FloatKeys = append(data.FloatKeys, formatKey(v))
+			data.FloatValues = append(data.FloatValues, data.FloatValues[i])
+		}
+	}
+
+	return data
 }
 
 func formatKey(k string) string {
