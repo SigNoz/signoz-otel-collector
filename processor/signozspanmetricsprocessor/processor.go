@@ -1037,8 +1037,10 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 }
 
 func getDimensionValueWithResource(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool, foundInResource bool) {
-	// The more specific span attribute should take precedence.
 	if attr, exists := spanAttr.Get(d.name); exists {
+		if _, exists := resourceAttr.Get(d.name); exists {
+			return attr, true, true
+		}
 		return attr, true, false
 	}
 	if attr, exists := resourceAttr.Get(d.name); exists {
