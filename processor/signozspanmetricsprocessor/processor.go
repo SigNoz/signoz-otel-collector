@@ -41,13 +41,14 @@ import (
 )
 
 const (
-	serviceNameKey     = conventions.AttributeServiceName
-	operationKey       = "operation"   // OpenTelemetry non-standard constant.
-	spanKindKey        = "span.kind"   // OpenTelemetry non-standard constant.
-	statusCodeKey      = "status.code" // OpenTelemetry non-standard constant.
-	tagHTTPStatusCode  = conventions.AttributeHTTPStatusCode
-	metricKeySeparator = string(byte(0))
-	traceIDKey         = "trace_id"
+	serviceNameKey          = conventions.AttributeServiceName
+	operationKey            = "operation"   // OpenTelemetry non-standard constant.
+	spanKindKey             = "span.kind"   // OpenTelemetry non-standard constant.
+	statusCodeKey           = "status.code" // OpenTelemetry non-standard constant.
+	tagHTTPStatusCode       = conventions.AttributeHTTPStatusCode
+	tagHTTPStatusCodeStable = "http.response.status_code"
+	metricKeySeparator      = string(byte(0))
+	traceIDKey              = "trace_id"
 
 	defaultDimensionsCacheSize = 1000
 	resourcePrefix             = "resource_"
@@ -159,6 +160,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 
 	callDimensions := []Dimension{
 		{Name: tagHTTPStatusCode},
+		{Name: tagHTTPStatusCodeStable},
 	}
 	callDimensions = append(callDimensions, pConfig.Dimensions...)
 
@@ -170,6 +172,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 
 	var externalCallDimensions = []Dimension{
 		{Name: tagHTTPStatusCode},
+		{Name: tagHTTPStatusCodeStable},
 	}
 	externalCallDimensions = append(externalCallDimensions, pConfig.Dimensions...)
 
@@ -662,6 +665,17 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 			}
 			return addr, true
 		}
+		// net.peer.name|net.host.name is renamed to server.address
+		peerAddress, ok := attrs.Get("server.address")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("server.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
 		peerIp, ok := attrs.Get(conventions.AttributeNetPeerIP)
 		if ok {
 			addr = peerIp.Str()
@@ -671,6 +685,28 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 			}
 			return addr, true
 		}
+		// net.peer.ip is renamed to net.sock.peer.addr
+		peerAddress, ok = attrs.Get("net.sock.peer.addr")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("net.sock.peer.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
+		// And later net.sock.peer.addr is renamed to network.peer.address
+		peerAddress, ok = attrs.Get("network.peer.address")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("network.peer.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
 		return "", false
 	}
 
@@ -712,6 +748,10 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 	// If none of the above is set, check for full URL.
 	httpURL, ok := attrs.Get(conventions.AttributeHTTPURL)
+	if !ok {
+		// http.url is renamed to url.full
+		httpURL, ok = attrs.Get("url.full")
+	}
 	if ok {
 		urlValue := httpURL.Str()
 		// url pattern from godoc [scheme:][//[userinfo@]host][/]path[?query][#fragment]
