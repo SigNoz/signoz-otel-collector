@@ -160,7 +160,6 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 
 	callDimensions := []Dimension{
 		{Name: tagHTTPStatusCode},
-		{Name: tagHTTPStatusCodeStable},
 	}
 	callDimensions = append(callDimensions, pConfig.Dimensions...)
 
@@ -172,7 +171,6 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 
 	var externalCallDimensions = []Dimension{
 		{Name: tagHTTPStatusCode},
-		{Name: tagHTTPStatusCodeStable},
 	}
 	externalCallDimensions = append(externalCallDimensions, pConfig.Dimensions...)
 
@@ -1065,6 +1063,10 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 	// The more specific span attribute should take precedence.
 	if attr, exists := spanAttr.Get(d.name); exists {
 		return attr, true
+	} else if d.name == tagHTTPStatusCode {
+		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+			return attr, true
+		}
 	}
 	if attr, exists := resourceAttr.Get(d.name); exists {
 		return attr, true
@@ -1082,6 +1084,10 @@ func getDimensionValueWithResource(d dimension, spanAttr pcommon.Map, resourceAt
 			return attr, true, true
 		}
 		return attr, true, false
+	} else if d.name == tagHTTPStatusCode {
+		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+			return attr, true, false
+		}
 	}
 	if attr, exists := resourceAttr.Get(d.name); exists {
 		return attr, true, true

@@ -722,6 +722,7 @@ func initSpan(span span, s ptrace.Span) {
 
 	s.Attributes().PutStr(stringAttrName, "stringAttrValue")
 	s.Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
+	s.Attributes().PutStr("http.response.status_code", "200")
 	s.Attributes().PutInt(intAttrName, 99)
 	s.Attributes().PutDouble(doubleAttrName, 99.99)
 	s.Attributes().PutBool(boolAttrName, true)
@@ -833,6 +834,16 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 				semconv.AttributeServiceInstanceID: testID,
 			},
 			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000test-instance-id",
+		},
+		{
+			name: "http status code with new sem conv",
+			optionalDims: []dimension{
+				{name: "http.response.status_code"},
+			},
+			spanAttrMap: map[string]interface{}{
+				"http.response.status_code": 200,
+			},
+			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000200",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
