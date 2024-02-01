@@ -162,7 +162,7 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == "http.status_code" {
+		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
 			statusString, err := strconv.Atoi(v.Str())
 			statusInt := v.Int()
@@ -171,7 +171,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			}
 			span.HttpCode = strconv.FormatInt(statusInt, 10)
 			span.ResponseStatusCode = span.HttpCode
-		} else if k == "http.url" && span.Kind == 3 {
+		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
 			value := v.Str()
 			valueUrl, err := url.Parse(value)
 			if err == nil {
@@ -179,12 +179,12 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
-		} else if k == "http.method" && span.Kind == 3 {
+		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
-		} else if k == "http.url" && span.Kind != 3 {
+		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
-		} else if k == "http.method" && span.Kind != 3 {
+		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
 		} else if k == "http.route" {
 			span.HttpRoute = v.Str()
@@ -194,7 +194,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.MsgSystem = v.Str()
 		} else if k == "messaging.operation" {
 			span.MsgOperation = v.Str()
-		} else if k == "component" {
+		} else if k == "component" { // TODO: There was never a "component" attribute in the spec, this was from OpenCensus/OpenTracing
 			span.Component = v.Str()
 		} else if k == "db.system" {
 			span.DBSystem = v.Str()
