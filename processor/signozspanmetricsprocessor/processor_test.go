@@ -58,9 +58,11 @@ const (
 	notInSpanAttrName0     = "shouldBeInMetric"
 	notInSpanAttrName1     = "shouldNotBeInMetric"
 	regionResourceAttrName = "region"
+	conflictResourceAttr   = "host.name"
 	DimensionsCacheSize    = 2
 
 	sampleRegion          = "us-east-1"
+	sampleConflictingHost = "conflicting-host"
 	sampleLatency         = float64(11)
 	sampleLatencyDuration = time.Duration(sampleLatency) * time.Millisecond
 )
@@ -609,6 +611,8 @@ func verifyConsumeMetricsInput(t testing.TB, input pmetric.Metrics, expectedTemp
 func verifyMetricLabels(dp metricDataPoint, t testing.TB, seenMetricIDs map[metricID]bool) {
 	mID := metricID{}
 	wantDimensions := map[string]pcommon.Value{
+		conflictResourceAttr:                    pcommon.NewValueStr(sampleConflictingHost),
+		resourcePrefix + conflictResourceAttr:   pcommon.NewValueStr(sampleConflictingHost),
 		stringAttrName:                          pcommon.NewValueStr("stringAttrValue"),
 		intAttrName:                             pcommon.NewValueInt(99),
 		doubleAttrName:                          pcommon.NewValueDouble(99.99),
@@ -700,6 +704,7 @@ func initServiceSpans(serviceSpans serviceSpans, spans ptrace.ResourceSpans) {
 	}
 
 	spans.Resource().Attributes().PutStr(regionResourceAttrName, sampleRegion)
+	spans.Resource().Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
 
 	ils := spans.ScopeSpans().AppendEmpty()
 	for _, span := range serviceSpans.spans {
@@ -716,6 +721,7 @@ func initSpan(span span, s ptrace.Span) {
 	s.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(sampleLatencyDuration)))
 
 	s.Attributes().PutStr(stringAttrName, "stringAttrValue")
+	s.Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
 	s.Attributes().PutInt(intAttrName, 99)
 	s.Attributes().PutDouble(doubleAttrName, 99.99)
 	s.Attributes().PutBool(boolAttrName, true)
