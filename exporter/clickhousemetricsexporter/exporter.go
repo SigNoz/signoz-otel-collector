@@ -186,6 +186,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						temporality = metric.Sum().AggregationTemporality()
 					case pmetric.MetricTypeHistogram:
 						temporality = metric.Histogram().AggregationTemporality()
+					case pmetric.MetricTypeExponentialHistogram:
+						temporality = metric.ExponentialHistogram().AggregationTemporality()
 					case pmetric.MetricTypeSummary:
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
@@ -256,7 +258,22 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
-						// TODO(srikanthccv): implement
+						// we don't support cumulative exponential histograms
+						if temporality == pmetric.AggregationTemporalityCumulative {
+							dropped++
+							prwe.logger.Warn("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
+							continue
+						}
+
+						dataPoints := metric.ExponentialHistogram().DataPoints()
+						if dataPoints.Len() == 0 {
+							dropped++
+							prwe.logger.Warn("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
+						}
+
+						for x := 0; x < dataPoints.Len(); x++ {
+							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+						}
 					default:
 						dropped++
 						name := metric.Name()
