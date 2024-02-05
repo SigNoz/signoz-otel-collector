@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -32,23 +33,26 @@ var (
 		Measure:     ExporterSigNozSentMetricPoints,
 		Description: "The number of metric points exported to signoz",
 		Aggregation: view.Sum(),
-		TagKeys:     []tag.Key{usage.TagTenantKey},
+		TagKeys:     []tag.Key{usage.TagTenantKey, usage.TagExporterIdKey},
 	}
 	MetricPointsBytesView = &view.View{
 		Name:        "signoz_metric_points_bytes",
 		Measure:     ExporterSigNozSentMetricPointsBytes,
 		Description: "The size of metric points exported to signoz",
 		Aggregation: view.Sum(),
-		TagKeys:     []tag.Key{usage.TagTenantKey},
+		TagKeys:     []tag.Key{usage.TagTenantKey, usage.TagExporterIdKey},
 	}
 )
 
-func UsageExporter(metrics []*metricdata.Metric) (map[string]usage.Usage, error) {
+func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage.Usage, error) {
 	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
 		if strings.Contains(metric.Descriptor.Name, "signoz_metric_points_count") {
 			for _, v := range metric.TimeSeries {
-				tenant := v.LabelValues[0].Value
+				if v.LabelValues[0].Value != id.String() {
+					continue
+				}
+				tenant := v.LabelValues[1].Value
 				if d, ok := data[tenant]; ok {
 					d.Count = v.Points[0].Value.(int64)
 					data[tenant] = d
@@ -60,7 +64,10 @@ func UsageExporter(metrics []*metricdata.Metric) (map[string]usage.Usage, error)
 			}
 		} else if strings.Contains(metric.Descriptor.Name, "signoz_metric_points_bytes") {
 			for _, v := range metric.TimeSeries {
-				tenant := v.LabelValues[0].Value
+				if v.LabelValues[0].Value != id.String() {
+					continue
+				}
+				tenant := v.LabelValues[1].Value
 				if d, ok := data[tenant]; ok {
 					d.Size = v.Points[0].Value.(int64)
 					data[tenant] = d

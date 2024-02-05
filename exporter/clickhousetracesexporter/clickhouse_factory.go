@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -38,7 +39,7 @@ type Factory struct {
 
 // Writer writes spans to storage.
 type Writer interface {
-	WriteBatchOfSpans(span []*Span) error
+	WriteBatchOfSpans(exporterId uuid.UUID, span []*Span) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)

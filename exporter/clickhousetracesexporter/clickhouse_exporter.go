@@ -58,7 +58,9 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
+	id := uuid.New()
 	collector := usage.NewUsageCollector(
+		id,
 		f.db,
 		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
@@ -74,6 +76,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 	}
 
 	storage := storage{
+		id:             id,
 		Writer:         spanWriter,
 		usageCollector: collector,
 		config: storageConfig{
@@ -87,6 +90,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 }
 
 type storage struct {
+	id             uuid.UUID
 	Writer         Writer
 	usageCollector *usage.UsageCollector
 	config         storageConfig
@@ -416,7 +420,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+		err := s.Writer.WriteBatchOfSpans(s.id, batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err

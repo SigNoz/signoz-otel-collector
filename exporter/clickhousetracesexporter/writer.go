@@ -25,6 +25,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -353,7 +354,7 @@ func stringToBool(s string) bool {
 	return false
 }
 
-func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
+func (w *SpanWriter) writeModelBatch(exporterId uuid.UUID, batchSpans []*Span) error {
 	ctx := context.Background()
 	var statement driver.Batch
 	var err error
@@ -402,16 +403,16 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 	}
 
 	return nil
 }
 
 // WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
+func (w *SpanWriter) WriteBatchOfSpans(exporterId uuid.UUID, batch []*Span) error {
 	if w.spansTable != "" {
-		if err := w.writeModelBatch(batch); err != nil {
+		if err := w.writeModelBatch(exporterId, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}

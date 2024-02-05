@@ -14,12 +14,14 @@ import (
 
 const (
 	TenantKey                 = "tenant"
+	ExporterIDKey             = "exporterId"
 	DefaultCollectionInterval = 1 * time.Hour
 	UsageTableName            = "usage"
 )
 
 var (
-	TagTenantKey, _ = tag.NewKey(TenantKey)
+	TagTenantKey, _     = tag.NewKey(TenantKey)
+	TagExporterIdKey, _ = tag.NewKey(ExporterIDKey)
 )
 
 type Metric struct {
