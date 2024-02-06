@@ -132,6 +132,9 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 	if err != nil {
 		return delTTL, err
 	}
+	if len(dbResp) == 0 {
+		return -1, nil
+	}
 
 	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
 
