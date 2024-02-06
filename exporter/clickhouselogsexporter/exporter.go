@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -117,10 +119,85 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	return nil
 }
 
+func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, error) {
+	type DBResponseTTL struct {
+		EngineFull string `ch:"engine_full"`
+	}
+
+	var delTTL int = -1
+
+	var dbResp []DBResponseTTL
+	q := "SELECT engine_full FROM system.tables WHERE name='logs' and database='signoz_logs'"
+	err := e.db.Select(ctx, &dbResp, q)
+	if err != nil {
+		return delTTL, err
+	}
+
+	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
+
+	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
+	if len(m) > 1 {
+		seconds_int, err := strconv.Atoi(m[1])
+		if err != nil {
+			return delTTL, nil
+		}
+		delTTL = seconds_int
+	}
+
+	return delTTL, nil
+}
+
+func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, acceptedDateTime time.Time, ld plog.Logs) {
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		logs := ld.ResourceLogs().At(i)
+		for j := 0; j < logs.ScopeLogs().Len(); j++ {
+			xyz := func(log plog.LogRecord) bool {
+				t := log.Timestamp().AsTime()
+				return t.Unix() < acceptedDateTime.Unix()
+			}
+			logs.ScopeLogs().At(j).LogRecords().RemoveIf(xyz)
+		}
+	}
+}
+
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
+	for i := 0; i <= 1; i++ {
+		err := e.pushToClickhouse(ctx, ld)
+		if err != nil {
+			// StatementSend:code: 252, message: Too many partitions for single INSERT block
+
+			// iterating twice since we want to try once after removing the old data
+			if i == 1 || !strings.Contains(err.Error(), "StatementSend:code: 252") {
+				// TODO(nitya): after returning it will be retried, ideally it should be pushed to DLQ
+				return err
+			}
+
+			// get the TTL.
+			ttL, ttlErr := e.getLogsTTLSeconds(ctx)
+			if ttlErr != nil {
+				return fmt.Errorf("error getting ttl %v, after error %v", ttlErr, err)
+			}
+			if ttL == -1 {
+				return err
+			}
+
+			// if logs contains timestamp before acceptedDateTime, it will be rejected
+			acceptedDateTime := time.Now().Add(-(time.Duration(ttL) * time.Second))
+
+			// drop logs older than TTL
+			e.removeOldLogs(ctx, acceptedDateTime, ld)
+		} else {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
 	var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -486,7 +563,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.DialTimeout = dialTimeout
 	}
-	
+
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err
