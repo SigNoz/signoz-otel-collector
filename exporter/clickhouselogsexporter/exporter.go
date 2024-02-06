@@ -148,13 +148,13 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 }
 
 func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, acceptedDateTime time.Time, ld plog.Logs) {
+	removeLog := func(log plog.LogRecord) bool {
+		t := log.Timestamp().AsTime()
+		return t.Unix() < acceptedDateTime.Unix()
+	}
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
-			removeLog := func(log plog.LogRecord) bool {
-				t := log.Timestamp().AsTime()
-				return t.Unix() < acceptedDateTime.Unix()
-			}
 			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
 		}
 	}
