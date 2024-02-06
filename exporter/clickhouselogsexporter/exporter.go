@@ -151,11 +151,11 @@ func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, acceptedDate
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
-			xyz := func(log plog.LogRecord) bool {
+			removeLog := func(log plog.LogRecord) bool {
 				t := log.Timestamp().AsTime()
 				return t.Unix() < acceptedDateTime.Unix()
 			}
-			logs.ScopeLogs().At(j).LogRecords().RemoveIf(xyz)
+			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
 		}
 	}
 }
