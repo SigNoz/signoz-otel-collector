@@ -81,6 +81,7 @@ type ClickHouseParams struct {
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
+	MaxThreads           int
 	WriteTSToV4          bool
 }
 
@@ -103,6 +104,13 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		MaxOpenConns: params.MaxOpenConns,
 		DialTimeout:  1 * time.Minute,
 	}
+
+	if params.MaxThreads != 0 {
+		options.Settings = clickhouse.Settings{
+			"max_threads": params.MaxThreads,
+		}
+	}
+
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
 			// Database: "",

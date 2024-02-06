@@ -47,6 +47,7 @@ type Config struct {
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
 
+	MaxThreads  int  `mapstructure:"max_threads"`
 	WriteTSToV4 bool `mapstructure:"write_ts_to_v4"`
 }
 
@@ -79,6 +80,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.RemoteWriteQueue.NumConsumers < 0 {
 		return fmt.Errorf("remote write consumer number can't be negative")
+	}
+
+	if cfg.MaxThreads < 0 {
+		return fmt.Errorf("max threads can't be negative")
 	}
 	return nil
 }

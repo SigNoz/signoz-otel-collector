@@ -33,6 +33,7 @@ type Config struct {
 	exporterhelper.TimeoutSettings `mapstructure:",squash"`
 	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
 	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
+	MaxThreads                     int `mapstructure:"max_threads"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -49,6 +50,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.QueueSettings.NumConsumers < 0 {
 		return fmt.Errorf("remote write consumer number can't be negative")
+	}
+
+	if cfg.MaxThreads < 0 {
+		return fmt.Errorf("max_threads can't be negative")
 	}
 	return nil
 }

@@ -87,6 +87,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxOpenConns:         maxIdleConnections + 10,
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
+		MaxThreads:           cfg.MaxThreads,
 		WriteTSToV4:          cfg.WriteTSToV4,
 	}
 	ch, err := NewClickHouse(params)

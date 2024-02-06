@@ -82,6 +82,7 @@ type namespaceConfig struct {
 	NumConsumers               int
 	Encoding                   Encoding
 	Connector                  Connector
+	MaxThreads                 int
 }
 
 // Connecto defines how to connect to the database
@@ -97,6 +98,11 @@ func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 		Addr:         []string{dsnURL.Host},
 		MaxOpenConns: maxOpenIdleConnections + 5,
 		MaxIdleConns: maxOpenIdleConnections,
+	}
+	if cfg.MaxThreads != 0 {
+		options.Settings = clickhouse.Settings{
+			"max_threads": cfg.MaxThreads,
+		}
 	}
 	if dsnURL.Query().Get("username") != "" {
 		auth := clickhouse.Auth{
@@ -129,7 +135,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, maxThreads int, primaryNamespace string, otherNamespaces ...string) *Options {
 
 	if datasource == "" {
 		datasource = defaultDatasource
@@ -163,6 +169,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			NumConsumers:               numConsumers,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
+			MaxThreads:                 maxThreads,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -178,6 +185,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 				SpansTable:      defaultArchiveSpansTable,
 				Encoding:        defaultEncoding,
 				Connector:       defaultConnector,
+				MaxThreads:      maxThreads,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}
