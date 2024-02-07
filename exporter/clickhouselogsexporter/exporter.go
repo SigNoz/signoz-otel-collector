@@ -133,7 +133,7 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 		return delTTL, err
 	}
 	if len(dbResp) == 0 {
-		return -1, nil
+		return delTTL, fmt.Errorf("ttl not found")
 	}
 
 	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
@@ -155,9 +155,6 @@ func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs
 	ttL, err := e.getLogsTTLSeconds(ctx)
 	if err != nil {
 		return err
-	}
-	if ttL == -1 {
-		return fmt.Errorf("ttl not found")
 	}
 
 	// if logs contains timestamp before acceptedDateTime, it will be rejected
