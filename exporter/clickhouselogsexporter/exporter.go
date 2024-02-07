@@ -127,7 +127,7 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 	var delTTL int = -1
 
 	var dbResp []DBResponseTTL
-	q := "SELECT engine_full FROM system.tables WHERE name='logs' and database='signoz_logs'"
+	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", tableName, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
 	if err != nil {
 		return delTTL, err
@@ -150,7 +150,19 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 	return delTTL, nil
 }
 
-func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, acceptedDateTime time.Time, ld plog.Logs) {
+func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs) error {
+	// get the TTL.
+	ttL, err := e.getLogsTTLSeconds(ctx)
+	if err != nil {
+		return err
+	}
+	if ttL == -1 {
+		return fmt.Errorf("ttl not found")
+	}
+
+	// if logs contains timestamp before acceptedDateTime, it will be rejected
+	acceptedDateTime := time.Now().Add(-(time.Duration(ttL) * time.Second))
+
 	removeLog := func(log plog.LogRecord) bool {
 		t := log.Timestamp().AsTime()
 		return t.Unix() < acceptedDateTime.Unix()
@@ -161,6 +173,7 @@ func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, acceptedDate
 			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
 		}
 	}
+	return nil
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -171,27 +184,17 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		err := e.pushToClickhouse(ctx, ld)
 		if err != nil {
 			// StatementSend:code: 252, message: Too many partitions for single INSERT block
-
 			// iterating twice since we want to try once after removing the old data
 			if i == 1 || !strings.Contains(err.Error(), "StatementSend:code: 252") {
 				// TODO(nitya): after returning it will be retried, ideally it should be pushed to DLQ
 				return err
 			}
 
-			// get the TTL.
-			ttL, ttlErr := e.getLogsTTLSeconds(ctx)
-			if ttlErr != nil {
-				return fmt.Errorf("error getting ttl %v, after error %v", ttlErr, err)
-			}
-			if ttL == -1 {
-				return err
-			}
-
-			// if logs contains timestamp before acceptedDateTime, it will be rejected
-			acceptedDateTime := time.Now().Add(-(time.Duration(ttL) * time.Second))
-
 			// drop logs older than TTL
-			e.removeOldLogs(ctx, acceptedDateTime, ld)
+			removeLogsError := e.removeOldLogs(ctx, ld)
+			if removeLogsError != nil {
+				return fmt.Errorf("error while dropping old logs %v, after error %v", removeLogsError, err)
+			}
 		} else {
 			break
 		}
