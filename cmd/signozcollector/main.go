@@ -63,6 +63,7 @@ func main() {
 			Desc:         constants.Desc,
 			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
 			PollInterval: 200 * time.Millisecond,
+			Logger:       logger,
 		},
 	)
 
