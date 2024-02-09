@@ -73,6 +73,8 @@ type clickHouse struct {
 	writeTSToV4     bool
 
 	mWrittenTimeSeries prometheus.Counter
+
+	exporterID uuid.UUID
 }
 
 type ClickHouseParams struct {
@@ -83,6 +85,7 @@ type ClickHouseParams struct {
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
 	WriteTSToV4          bool
+	ExporterId           uuid.UUID
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -134,6 +137,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		}),
 		watcherInterval: params.WatcherInterval,
 		writeTSToV4:     params.WriteTSToV4,
+		exporterID:      params.ExporterId,
 	}
 
 	go func() {
@@ -199,7 +203,7 @@ func (ch *clickHouse) GetDBConn() interface{} {
 	return ch.conn
 }
 
-func (ch *clickHouse) Write(ctx context.Context, exporterID uuid.UUID, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
+func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
@@ -396,7 +400,7 @@ func (ch *clickHouse) Write(ctx context.Context, exporterID uuid.UUID, data *pro
 	}
 
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 	}
 
 	// write to distributed_samples_v4 table

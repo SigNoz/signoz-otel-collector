@@ -15,7 +15,7 @@ import (
 const (
 	TenantKey                 = "tenant"
 	ExporterIDKey             = "exporterId"
-	DefaultCollectionInterval = 1 * time.Hour
+	DefaultCollectionInterval = 30 * time.Second
 	UsageTableName            = "usage"
 )
 

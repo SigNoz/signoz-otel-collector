@@ -82,6 +82,8 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 
 	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
 
+	id := uuid.New()
+
 	params := &ClickHouseParams{
 		DSN:                  cfg.HTTPClientSettings.Endpoint,
 		DropDatabase:         false,
@@ -90,13 +92,13 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
+		ExporterId:           id,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
 		log.Fatalf("Error creating clickhouse client: %v", err)
 	}
 
-	id := uuid.New()
 	collector := usage.NewUsageCollector(
 		id,
 		ch.GetDBConn().(clickhouse.Conn),
@@ -348,7 +350,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 			defer wg.Done()
 
 			for request := range input {
-				err := prwe.ch.Write(ctx, prwe.id, request, metricNameToMeta)
+				err := prwe.ch.Write(ctx, request, metricNameToMeta)
 				if err != nil {
 					mu.Lock()
 					errs = append(errs, err)
