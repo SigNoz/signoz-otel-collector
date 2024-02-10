@@ -47,7 +47,9 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
+	id := uuid.New()
+
+	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
 
 	err := f.Initialize(logger)
 	if err != nil {
@@ -58,7 +60,6 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		return nil, err
 	}
 
-	id := uuid.New()
 	collector := usage.NewUsageCollector(
 		id,
 		f.db,
@@ -420,7 +421,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpans(s.id, batchOfSpans)
+		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err

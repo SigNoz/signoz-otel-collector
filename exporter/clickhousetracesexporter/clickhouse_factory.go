@@ -39,7 +39,7 @@ type Factory struct {
 
 // Writer writes spans to storage.
 type Writer interface {
-	WriteBatchOfSpans(exporterId uuid.UUID, span []*Span) error
+	WriteBatchOfSpans(span []*Span) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)
@@ -51,7 +51,7 @@ var (
 )
 
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int) *Factory {
+func ClickHouseNewFactory(exporterId uuid.UUID, migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int) *Factory {
 	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
 	writeLatencyView := &view.View{
@@ -64,7 +64,7 @@ func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeC
 
 	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, numConsumers, primaryNamespace, archiveNamespace),
+		Options: NewOptions(exporterId, migrations, datasource, dockerMultiNodeCluster, numConsumers, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -128,6 +128,7 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		attributeTable:    cfg.AttributeTable,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
+		exporterId:        cfg.ExporterId,
 	})
 }
 
@@ -147,6 +148,7 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		attributeTable:    cfg.AttributeTable,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
+		exporterId:        cfg.ExporterId,
 	})
 }
 

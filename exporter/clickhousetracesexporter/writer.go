@@ -53,6 +53,7 @@ type SpanWriter struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 type WriterOptions struct {
@@ -65,6 +66,7 @@ type WriterOptions struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -82,6 +84,7 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeTable:    options.attributeTable,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
+		exporterId:        options.exporterId,
 	}
 
 	return writer
@@ -354,7 +357,7 @@ func stringToBool(s string) bool {
 	return false
 }
 
-func (w *SpanWriter) writeModelBatch(exporterId uuid.UUID, batchSpans []*Span) error {
+func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 	ctx := context.Background()
 	var statement driver.Batch
 	var err error
@@ -403,16 +406,16 @@ func (w *SpanWriter) writeModelBatch(exporterId uuid.UUID, batchSpans []*Span) e
 		return err
 	}
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 	}
 
 	return nil
 }
 
 // WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpans(exporterId uuid.UUID, batch []*Span) error {
+func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
 	if w.spansTable != "" {
-		if err := w.writeModelBatch(exporterId, batch); err != nil {
+		if err := w.writeModelBatch(batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
