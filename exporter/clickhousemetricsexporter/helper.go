@@ -486,6 +486,72 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 	}
 }
 
+func addExpHistogram(tsMap map[string]*prompb.TimeSeries, h *prompb.Histogram, labels []prompb.Label,
+	metric pmetric.Metric) string {
+
+	if h == nil || labels == nil || tsMap == nil {
+		return ""
+	}
+
+	sig := timeSeriesSignature(metric, &labels)
+	ts, ok := tsMap[sig]
+
+	if ok {
+		ts.Histograms = append(ts.Histograms, *h)
+	} else {
+		newTs := &prompb.TimeSeries{
+			Labels:     labels,
+			Histograms: []prompb.Histogram{*h},
+		}
+		tsMap[sig] = newTs
+	}
+
+	return sig
+}
+
+func addSingleExponentialHistogramDataPoint(
+	pt pmetric.ExponentialHistogramDataPoint,
+	resource pcommon.Resource,
+	metric pmetric.Metric,
+	namespace string,
+	tsMap map[string]*prompb.TimeSeries,
+	externalLabels map[string]string,
+) {
+	time := convertTimeStamp(pt.Timestamp())
+	baseName := getPromMetricName(metric, namespace)
+
+	var positiveDeltas []int64
+	var negativeDeltas []int64
+
+	scale := int32(pt.Scale())
+	positiveOffset := int64(pt.Positive().Offset())
+	for _, i := range pt.Positive().BucketCounts().AsRaw() {
+		positiveDeltas = append(positiveDeltas, int64(i))
+	}
+	negativeOffset := int64(pt.Negative().Offset())
+	for _, i := range pt.Negative().BucketCounts().AsRaw() {
+		negativeDeltas = append(negativeDeltas, int64(i))
+	}
+	sum := pt.Sum()
+	count := pt.Count()
+	// Prometheus doesn't support min and max, we add them to PositiveCounts slice
+	// TODO(srikanthccv): Move to OTEL model
+	min := pt.Min()
+	max := pt.Max()
+
+	addExpHistogram(tsMap, &prompb.Histogram{
+		Schema:         scale,
+		Sum:            sum,
+		Count:          &prompb.Histogram_CountInt{CountInt: count},
+		PositiveDeltas: positiveDeltas,
+		PositiveCounts: []float64{float64(positiveOffset), min, max},
+		NegativeDeltas: negativeDeltas,
+		NegativeCounts: []float64{float64(negativeOffset)},
+		ZeroCount:      &prompb.Histogram_ZeroCountInt{ZeroCountInt: pt.ZeroCount()},
+		Timestamp:      time,
+	}, createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName), metric)
+}
+
 func orderBySampleTimestamp(tsArray []prompb.TimeSeries) []prompb.TimeSeries {
 	for i := range tsArray {
 		sL := tsArray[i].Samples

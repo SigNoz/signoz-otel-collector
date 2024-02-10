@@ -18,12 +18,14 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
+	chproto "github.com/ClickHouse/ch-go/proto"
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,6 +52,7 @@ const (
 	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
 	DISTRIBUTED_SAMPLES_TABLE_V4     = "distributed_samples_v4"
+	DISTRIBUTED_EXP_HIST_TABLE       = "distributed_exp_hist"
 	TIME_SERIES_TABLE                = "time_series_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
@@ -489,6 +492,88 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		ch.mWrittenTimeSeries.Add(float64(n))
 		ch.l.Debugf("Wrote %d new time series.", n)
 	}
+
+	err = func() error {
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+
+		for i, ts := range data.Timeseries {
+			fingerprint := fingerprints[i]
+			for _, s := range ts.Histograms {
+
+				sum := s.Sum
+				var count uint64
+				if x, ok := s.Count.(*prompb.Histogram_CountInt); ok {
+					count = uint64(x.CountInt)
+				} else if x, ok := s.Count.(*prompb.Histogram_CountFloat); ok {
+					count = uint64(x.CountFloat)
+				}
+				min, max := s.PositiveCounts[1], s.PositiveCounts[2]
+				gamma := math.Pow(2, math.Pow(2, float64(-s.Schema)))
+				positiveOffset := s.PositiveCounts[0]
+				negativeOffset := s.NegativeCounts[0]
+				var positivebinCounts []float64
+				for _, x := range s.PositiveDeltas {
+					positivebinCounts = append(positivebinCounts, float64(x))
+				}
+				var negativebinCounts []float64
+				for _, x := range s.NegativeDeltas {
+					negativebinCounts = append(negativebinCounts, float64(x))
+				}
+				var zeroCount int
+				if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountInt); ok {
+					zeroCount = int(x.ZeroCountInt)
+				} else if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountFloat); ok {
+					zeroCount = int(x.ZeroCountFloat)
+				}
+
+				sketch := chproto.DD{
+					Mapping: &chproto.IndexMapping{Gamma: gamma},
+					PositiveValues: &chproto.Store{
+						ContiguousBinIndexOffset: int32(positiveOffset),
+						ContiguousBinCounts:      positivebinCounts,
+					},
+					NegativeValues: &chproto.Store{
+						ContiguousBinIndexOffset: int32(negativeOffset),
+						ContiguousBinCounts:      negativebinCounts,
+					},
+					ZeroCount: float64(zeroCount),
+				}
+
+				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				err = statement.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					fingerprint,
+					s.Timestamp,
+					count,
+					sum,
+					min,
+					max,
+					sketch,
+				)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		return err
+	}()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
