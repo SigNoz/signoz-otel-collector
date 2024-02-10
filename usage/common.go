@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
@@ -15,7 +16,7 @@ import (
 const (
 	TenantKey                 = "tenant"
 	ExporterIDKey             = "exporterId"
-	DefaultCollectionInterval = 30 * time.Second
+	DefaultCollectionInterval = 1 * time.Hour
 	UsageTableName            = "usage"
 )
 
@@ -72,4 +73,13 @@ func GetTenantNameFromResource(resource pcommon.Resource) string {
 		return "default"
 	}
 	return tenant.AsString()
+}
+
+func GetIndexOfLabel(labelKeys []metricdata.LabelKey, key string) int {
+	for i, label := range labelKeys {
+		if label.Key == key {
+			return i
+		}
+	}
+	return -1
 }

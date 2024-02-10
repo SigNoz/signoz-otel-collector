@@ -1,6 +1,7 @@
 package clickhouselogsexporter
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -14,6 +15,8 @@ import (
 const (
 	SigNozSentLogRecordsKey      = "singoz_sent_log_records"
 	SigNozSentLogRecordsBytesKey = "singoz_sent_log_records_bytes"
+	SigNozLogsCount              = "signoz_logs_count"
+	SigNozLogsBytes              = "signoz_logs_bytes"
 )
 
 var (
@@ -29,14 +32,14 @@ var (
 
 	// Views for usage
 	LogsCountView = &view.View{
-		Name:        "signoz_logs_count",
+		Name:        SigNozLogsCount,
 		Measure:     ExporterSigNozSentLogRecords,
 		Description: "The number of logs exported to signoz",
 		Aggregation: view.Sum(),
 		TagKeys:     []tag.Key{usage.TagTenantKey, usage.TagExporterIdKey},
 	}
 	LogsSizeView = &view.View{
-		Name:        "signoz_logs_bytes",
+		Name:        SigNozLogsBytes,
 		Measure:     ExporterSigNozSentLogRecordsBytes,
 		Description: "The size of logs exported to signoz",
 		Aggregation: view.Sum(),
@@ -47,12 +50,21 @@ var (
 func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage.Usage, error) {
 	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
-		if strings.Contains(metric.Descriptor.Name, "signoz_logs_count") {
+		if !strings.Contains(metric.Descriptor.Name, SigNozLogsCount) && !strings.Contains(metric.Descriptor.Name, SigNozLogsBytes) {
+			continue
+		}
+		exporterIndex := usage.GetIndexOfLabel(metric.Descriptor.LabelKeys, usage.ExporterIDKey)
+		tenantIndex := usage.GetIndexOfLabel(metric.Descriptor.LabelKeys, usage.TenantKey)
+		if exporterIndex == -1 || tenantIndex == -1 {
+			return nil, fmt.Errorf("usage: failed to get index of labels")
+		}
+
+		if strings.Contains(metric.Descriptor.Name, SigNozLogsCount) {
 			for _, v := range metric.TimeSeries {
-				if v.LabelValues[0].Value != id.String() {
+				if v.LabelValues[exporterIndex].Value != id.String() {
 					continue
 				}
-				tenant := v.LabelValues[1].Value
+				tenant := v.LabelValues[tenantIndex].Value
 				if d, ok := data[tenant]; ok {
 					d.Count = v.Points[0].Value.(int64)
 					data[tenant] = d
@@ -62,12 +74,12 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 					}
 				}
 			}
-		} else if strings.Contains(metric.Descriptor.Name, "signoz_logs_bytes") {
+		} else if strings.Contains(metric.Descriptor.Name, SigNozLogsBytes) {
 			for _, v := range metric.TimeSeries {
-				if v.LabelValues[0].Value != id.String() {
+				if v.LabelValues[exporterIndex].Value != id.String() {
 					continue
 				}
-				tenant := v.LabelValues[1].Value
+				tenant := v.LabelValues[tenantIndex].Value
 				if d, ok := data[tenant]; ok {
 					d.Size = v.Points[0].Value.(int64)
 					data[tenant] = d
