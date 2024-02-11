@@ -21,6 +21,7 @@ import (
 	"net/url"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 )
 
@@ -82,6 +83,7 @@ type namespaceConfig struct {
 	NumConsumers               int
 	Encoding                   Encoding
 	Connector                  Connector
+	ExporterId                 uuid.UUID
 }
 
 // Connecto defines how to connect to the database
@@ -129,7 +131,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(exporterId uuid.UUID, migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, primaryNamespace string, otherNamespaces ...string) *Options {
 
 	if datasource == "" {
 		datasource = defaultDatasource
@@ -163,6 +165,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			NumConsumers:               numConsumers,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
+			ExporterId:                 exporterId,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -178,6 +181,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 				SpansTable:      defaultArchiveSpansTable,
 				Encoding:        defaultEncoding,
 				Connector:       defaultConnector,
+				ExporterId:      exporterId,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}

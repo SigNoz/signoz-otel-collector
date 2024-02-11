@@ -26,7 +26,7 @@ type Usage struct {
 }
 
 type UsageCollector struct {
-	id                   uuid.UUID
+	exporterID           uuid.UUID
 	reader               *metricexport.Reader
 	ir                   *metricexport.IntervalReader
 	initReaderOnce       sync.Once
@@ -35,7 +35,7 @@ type UsageCollector struct {
 	dbName               string
 	tableName            string
 	distributedTableName string
-	usageParser          func(metrics []*metricdata.Metric) (map[string]Usage, error)
+	usageParser          func(metrics []*metricdata.Metric, exporterID uuid.UUID) (map[string]Usage, error)
 	prevCount            int64
 	prevSize             int64
 	ttl                  int
@@ -49,9 +49,9 @@ func init() {
 
 const cluster = "cluster"
 
-func NewUsageCollector(db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric) (map[string]Usage, error)) *UsageCollector {
+func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric, id uuid.UUID) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
-		id:                   uuid.New(),
+		exporterID:           exporterId,
 		reader:               metricexport.NewReader(),
 		o:                    options,
 		db:                   db,
@@ -80,7 +80,7 @@ func (c *UsageCollector) Stop() error {
 }
 
 func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
-	usages, err := e.usageParser(metrics)
+	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
 		return err
 	}
@@ -91,13 +91,13 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		if err != nil {
 			return err
 		}
-		encryptedData, err := Encrypt([]byte(e.id.String())[:32], usageBytes)
+		encryptedData, err := Encrypt([]byte(e.exporterID.String())[:32], usageBytes)
 		if err != nil {
 			return err
 		}
 
 		// insert everything as a new row
-		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.id.String(), time, string(encryptedData))
+		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.exporterID.String(), time, string(encryptedData))
 		if err != nil {
 			return err
 		}

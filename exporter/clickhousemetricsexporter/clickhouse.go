@@ -28,6 +28,7 @@ import (
 	chproto "github.com/ClickHouse/ch-go/proto"
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
@@ -75,6 +76,8 @@ type clickHouse struct {
 	writeTSToV4     bool
 
 	mWrittenTimeSeries prometheus.Counter
+
+	exporterID uuid.UUID
 }
 
 type ClickHouseParams struct {
@@ -85,6 +88,7 @@ type ClickHouseParams struct {
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
 	WriteTSToV4          bool
+	ExporterId           uuid.UUID
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
@@ -136,6 +140,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		}),
 		watcherInterval: params.WatcherInterval,
 		writeTSToV4:     params.WriteTSToV4,
+		exporterID:      params.ExporterId,
 	}
 
 	go func() {
@@ -398,7 +403,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}
 
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 	}
 
 	// write to distributed_samples_v4 table

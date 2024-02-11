@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
@@ -46,6 +47,7 @@ const maxBatchByteSize = 3000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
+	id               uuid.UUID
 	namespace        string
 	externalLabels   map[string]string
 	endpointURL      *url.URL
@@ -80,6 +82,8 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 
 	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
 
+	id := uuid.New()
+
 	params := &ClickHouseParams{
 		DSN:                  cfg.HTTPClientSettings.Endpoint,
 		DropDatabase:         false,
@@ -88,13 +92,16 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
+		ExporterId:           id,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
 		log.Fatalf("Error creating clickhouse client: %v", err)
 	}
 
-	collector := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
+	collector := usage.NewUsageCollector(
+		id,
+		ch.GetDBConn().(clickhouse.Conn),
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
@@ -112,6 +119,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	}
 
 	return &PrwExporter{
+		id:               id,
 		namespace:        cfg.Namespace,
 		externalLabels:   sanitizedLabels,
 		endpointURL:      endpointURL,

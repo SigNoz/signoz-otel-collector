@@ -30,6 +30,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -47,6 +48,7 @@ const (
 )
 
 type clickhouseLogsExporter struct {
+	id            uuid.UUID
 	db            clickhouse.Conn
 	insertLogsSQL string
 	ksuid         ksuid.KSUID
@@ -71,8 +73,9 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
-
+	id := uuid.New()
 	collector := usage.NewUsageCollector(
+		id,
 		client,
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
@@ -92,6 +95,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
+		id:             id,
 		db:             client,
 		insertLogsSQL:  insertLogsSQL,
 		logger:         logger,
@@ -321,7 +325,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			zap.String("cost", duration.String()))
 
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 		}
 
 		// push tag attributes

@@ -25,6 +25,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -52,6 +53,7 @@ type SpanWriter struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 type WriterOptions struct {
@@ -64,6 +66,7 @@ type WriterOptions struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -81,6 +84,7 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeTable:    options.attributeTable,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
+		exporterId:        options.exporterId,
 	}
 
 	return writer
@@ -402,7 +406,7 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 	}
 
 	return nil
