@@ -48,6 +48,7 @@ func createDefaultConfig() component.Config {
 		DimensionsCacheSize:    defaultDimensionsCacheSize,
 		skipSanitizeLabel:      dropSanitizationFeatureGate.IsEnabled(),
 		MetricsFlushInterval:   60 * time.Second,
+		EnableExpHistogram:     false,
 	}
 }
 
