@@ -36,7 +36,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
-	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -828,10 +827,10 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 		{
 			name: "resource attribute contains instance ID",
 			optionalDims: []dimension{
-				{name: semconv.AttributeServiceInstanceID},
+				{name: signozID},
 			},
 			resourceAttrMap: map[string]interface{}{
-				semconv.AttributeServiceInstanceID: testID,
+				signozID: testID,
 			},
 			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000test-instance-id",
 		},
