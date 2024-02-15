@@ -15,6 +15,10 @@ import (
 
 func Test_LogFunctions(t *testing.T) {
 	expected := ottlfuncs.StandardFuncs[ottllog.TransformContext]()
+	for name, factory := range SignozLogFunctions() {
+		expected[name] = factory
+	}
+
 	actual := LogFunctions()
 	require.Equal(t, len(expected), len(actual))
 	for k := range actual {

@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
 )
 
 var (

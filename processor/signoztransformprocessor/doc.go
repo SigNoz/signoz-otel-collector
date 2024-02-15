@@ -3,6 +3,6 @@
 
 //go:generate mdatagen metadata.yaml
 
-// Package transformprocessor contains the logic to execute telemetry transform based
+// package signoztransformprocessor contains the logic to execute telemetry transform based
 // on the OpenTelemetry Transformation Language.
-package transformprocessor // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
+package signoztransformprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"

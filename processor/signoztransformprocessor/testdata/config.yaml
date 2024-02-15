@@ -1,4 +1,4 @@
-transform:
+signoztransform:
   trace_statements:
     - context: span
       statements:
@@ -24,35 +24,35 @@ transform:
       statements:
         - set(attributes["name"], "bear")
 
-transform/ignore_errors:
+signoztransform/ignore_errors:
   error_mode: ignore
   trace_statements:
     - context: resource
       statements:
         - set(attributes["name"], "bear")
 
-transform/bad_syntax_log:
+signoztransform/bad_syntax_log:
   log_statements:
     - context: log
       statements:
         - set(body, "bear" where attributes["http.path"] == "/animal"
         - keep_keys(attributes, ["http.method", "http.path"])
 
-transform/bad_syntax_metric:
+signoztransform/bad_syntax_metric:
   metric_statements:
     - context: datapoint
       statements:
         - set(name, "bear" where attributes["http.path"] == "/animal"
         - keep_keys(attributes, ["http.method", "http.path"])
 
-transform/bad_syntax_trace:
+signoztransform/bad_syntax_trace:
   trace_statements:
     - context: span
       statements:
         - set(name, "bear" where attributes["http.path"] == "/animal"
         - keep_keys(attributes, ["http.method", "http.path"])
 
-transform/bad_syntax_multi_signal:
+signoztransform/bad_syntax_multi_signal:
   trace_statements:
     - context: span
       statements:
@@ -69,32 +69,32 @@ transform/bad_syntax_multi_signal:
         - set(body, "bear" where attributes["http.path"] == "/animal"
         - keep_keys(attributes, ["http.method", "http.path"])
 
-transform/unknown_function_log:
+signoztransform/unknown_function_log:
   log_statements:
     - context: log
       statements:
         - set(body, "bear") where attributes["http.path"] == "/animal"
         - not_a_function(attributes, ["http.method", "http.path"])
 
-transform/unknown_function_metric:
+signoztransform/unknown_function_metric:
   metric_statements:
     - context: datapoint
       statements:
         - set(metric.name, "bear") where attributes["http.path"] == "/animal"
         - not_a_function(attributes, ["http.method", "http.path"])
 
-transform/unknown_function_trace:
+signoztransform/unknown_function_trace:
   trace_statements:
     - context: span
       statements:
         - set(name, "bear") where attributes["http.path"] == "/animal"
         - not_a_function(attributes, ["http.method", "http.path"])
 
-transform/unknown_context:
+signoztransform/unknown_context:
   trace_statements:
     - context: test
       statements:
         - set(name, "bear") where attributes["http.path"] == "/animal"
 
-transform/unknown_error_mode:
+signoztransform/unknown_error_mode:
   error_mode: test

@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package transformprocessor
+package signoztransformprocessor
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/collector/processor/processortest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/common"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metadata"
 )
 
 func TestFactory_Type(t *testing.T) {
