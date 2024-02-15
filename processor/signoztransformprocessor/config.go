@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package transformprocessor // import "github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
+package signoztransformprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
 
 import (
 	"go.opentelemetry.io/collector/component"
@@ -9,10 +9,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/common"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/logs"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/metrics"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor/internal/traces"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/logs"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metrics"
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/traces"
 )
 
 // Config defines the configuration for the processor.
