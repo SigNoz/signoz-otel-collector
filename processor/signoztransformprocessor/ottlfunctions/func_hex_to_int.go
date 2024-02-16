@@ -29,6 +29,8 @@ func createHexToIntFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments)
 }
 
 func hexToInt[K any](target ottl.StandardStringGetter[K]) (ottl.ExprFunc[K], error) {
+	hexRegex := regexp.MustCompile(`^(0x)?[a-f0-9]+$`)
+
 	return func(ctx context.Context, tCtx K) (interface{}, error) {
 		val, err := target.Get(ctx, tCtx)
 		if err != nil {
@@ -37,7 +39,7 @@ func hexToInt[K any](target ottl.StandardStringGetter[K]) (ottl.ExprFunc[K], err
 
 		val = strings.ToLower(val)
 
-		isValidHex, err := regexp.Match(`^(0x)?[a-f0-9]+$`, []byte(val))
+		isValidHex := hexRegex.Match([]byte(val))
 		if err != nil {
 			return nil, fmt.Errorf("could not test %s for being hex with regex: %w", val, err)
 		}
