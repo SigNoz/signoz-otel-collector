@@ -26,6 +26,11 @@ func TestHexToInt(t *testing.T) {
 			expected:    int64(171),
 			shouldError: false,
 		}, {
+			name:        "bad non-hex length",
+			target:      "aaa",
+			shouldError: true,
+			expected:    0,
+		}, {
 			name:        "non-hex value",
 			target:      "zz",
 			shouldError: true,
