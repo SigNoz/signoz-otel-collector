@@ -17,6 +17,7 @@ func SignozLogFunctions() map[string]ottl.Factory[ottllog.TransformContext] {
 	for _, f := range []ottl.Factory[ottllog.TransformContext]{
 		signozFuncs.NewExprFactory(),
 		signozFuncs.NewGrokParseFactory[ottllog.TransformContext](),
+		signozFuncs.NewHexToIntFactory[ottllog.TransformContext](),
 	} {
 		factoryMap[f.Name()] = f
 	}
