@@ -35,19 +35,18 @@ func hexToInt[K any](target ottl.StandardStringGetter[K]) (ottl.ExprFunc[K], err
 			return nil, err
 		}
 
-		matches, err := regexp.Match(`^(0x|0X)?[a-fA-F0-9]+$`, []byte(val))
+		val = strings.ToLower(val)
+
+		isValidHex, err := regexp.Match(`^(0x)?[a-f0-9]+$`, []byte(val))
 		if err != nil {
 			return nil, fmt.Errorf("could not test %s for being hex with regex: %w", val, err)
 		}
-		if !matches || len(val)%2 != 0 {
+		if !isValidHex {
 			return nil, fmt.Errorf("invalid hex value: %s", val)
 		}
 
-		val = strings.ToLower(val)
-		if !strings.HasPrefix(val, "0x") {
-			val = "0x" + val
-		}
+		val = strings.TrimPrefix(val, "0x")
 
-		return strconv.ParseInt(val, 0, 64)
+		return strconv.ParseInt(val, 16, 64)
 	}, nil
 }

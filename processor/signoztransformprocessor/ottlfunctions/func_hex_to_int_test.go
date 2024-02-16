@@ -17,7 +17,7 @@ func TestHexToInt(t *testing.T) {
 	}{
 		{
 			name:        "value with prefix",
-			target:      "0xab",
+			target:      "0xaB",
 			expected:    int64(171),
 			shouldError: false,
 		}, {
@@ -26,10 +26,10 @@ func TestHexToInt(t *testing.T) {
 			expected:    int64(171),
 			shouldError: false,
 		}, {
-			name:        "bad non-hex length",
-			target:      "aaa",
-			shouldError: true,
-			expected:    0,
+			name:        "odd length value",
+			target:      "aAa",
+			expected:    int64(2730),
+			shouldError: false,
 		}, {
 			name:        "non-hex value",
 			target:      "zz",
