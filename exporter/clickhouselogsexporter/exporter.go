@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +30,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -45,6 +48,7 @@ const (
 )
 
 type clickhouseLogsExporter struct {
+	id            uuid.UUID
 	db            clickhouse.Conn
 	insertLogsSQL string
 	ksuid         ksuid.KSUID
@@ -69,8 +73,9 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
-
+	id := uuid.New()
 	collector := usage.NewUsageCollector(
+		id,
 		client,
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
@@ -90,6 +95,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
+		id:             id,
 		db:             client,
 		insertLogsSQL:  insertLogsSQL,
 		logger:         logger,
@@ -117,10 +123,88 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	return nil
 }
 
+func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, error) {
+	type DBResponseTTL struct {
+		EngineFull string `ch:"engine_full"`
+	}
+
+	var delTTL int = -1
+
+	var dbResp []DBResponseTTL
+	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", tableName, databaseName)
+	err := e.db.Select(ctx, &dbResp, q)
+	if err != nil {
+		return delTTL, err
+	}
+	if len(dbResp) == 0 {
+		return delTTL, fmt.Errorf("ttl not found")
+	}
+
+	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
+
+	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
+	if len(m) > 1 {
+		seconds_int, err := strconv.Atoi(m[1])
+		if err != nil {
+			return delTTL, nil
+		}
+		delTTL = seconds_int
+	}
+
+	return delTTL, nil
+}
+
+func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs) error {
+	// get the TTL.
+	ttL, err := e.getLogsTTLSeconds(ctx)
+	if err != nil {
+		return err
+	}
+
+	// if logs contains timestamp before acceptedDateTime, it will be rejected
+	acceptedDateTime := time.Now().Add(-(time.Duration(ttL) * time.Second))
+
+	removeLog := func(log plog.LogRecord) bool {
+		t := log.Timestamp().AsTime()
+		return t.Unix() < acceptedDateTime.Unix()
+	}
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		logs := ld.ResourceLogs().At(i)
+		for j := 0; j < logs.ScopeLogs().Len(); j++ {
+			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
+		}
+	}
+	return nil
+}
+
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
+	for i := 0; i <= 1; i++ {
+		err := e.pushToClickhouse(ctx, ld)
+		if err != nil {
+			// StatementSend:code: 252, message: Too many partitions for single INSERT block
+			// iterating twice since we want to try once after removing the old data
+			if i == 1 || !strings.Contains(err.Error(), "StatementSend:code: 252") {
+				// TODO(nitya): after returning it will be retried, ideally it should be pushed to DLQ
+				return err
+			}
+
+			// drop logs older than TTL
+			removeLogsError := e.removeOldLogs(ctx, ld)
+			if removeLogsError != nil {
+				return fmt.Errorf("error while dropping old logs %v, after error %v", removeLogsError, err)
+			}
+		} else {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
 	var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -241,7 +325,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			zap.String("cost", duration.String()))
 
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 		}
 
 		// push tag attributes
@@ -486,7 +570,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 		}
 		options.DialTimeout = dialTimeout
 	}
-	
+
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, err

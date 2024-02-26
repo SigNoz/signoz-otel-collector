@@ -36,7 +36,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
-	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -58,9 +57,11 @@ const (
 	notInSpanAttrName0     = "shouldBeInMetric"
 	notInSpanAttrName1     = "shouldNotBeInMetric"
 	regionResourceAttrName = "region"
+	conflictResourceAttr   = "host.name"
 	DimensionsCacheSize    = 2
 
 	sampleRegion          = "us-east-1"
+	sampleConflictingHost = "conflicting-host"
 	sampleLatency         = float64(11)
 	sampleLatencyDuration = time.Duration(sampleLatency) * time.Millisecond
 )
@@ -609,6 +610,8 @@ func verifyConsumeMetricsInput(t testing.TB, input pmetric.Metrics, expectedTemp
 func verifyMetricLabels(dp metricDataPoint, t testing.TB, seenMetricIDs map[metricID]bool) {
 	mID := metricID{}
 	wantDimensions := map[string]pcommon.Value{
+		conflictResourceAttr:                    pcommon.NewValueStr(sampleConflictingHost),
+		resourcePrefix + conflictResourceAttr:   pcommon.NewValueStr(sampleConflictingHost),
 		stringAttrName:                          pcommon.NewValueStr("stringAttrValue"),
 		intAttrName:                             pcommon.NewValueInt(99),
 		doubleAttrName:                          pcommon.NewValueDouble(99.99),
@@ -700,6 +703,7 @@ func initServiceSpans(serviceSpans serviceSpans, spans ptrace.ResourceSpans) {
 	}
 
 	spans.Resource().Attributes().PutStr(regionResourceAttrName, sampleRegion)
+	spans.Resource().Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
 
 	ils := spans.ScopeSpans().AppendEmpty()
 	for _, span := range serviceSpans.spans {
@@ -716,6 +720,8 @@ func initSpan(span span, s ptrace.Span) {
 	s.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(sampleLatencyDuration)))
 
 	s.Attributes().PutStr(stringAttrName, "stringAttrValue")
+	s.Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
+	s.Attributes().PutStr("http.response.status_code", "200")
 	s.Attributes().PutInt(intAttrName, 99)
 	s.Attributes().PutDouble(doubleAttrName, 99.99)
 	s.Attributes().PutBool(boolAttrName, true)
@@ -821,12 +827,22 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 		{
 			name: "resource attribute contains instance ID",
 			optionalDims: []dimension{
-				{name: semconv.AttributeServiceInstanceID},
+				{name: signozID},
 			},
 			resourceAttrMap: map[string]interface{}{
-				semconv.AttributeServiceInstanceID: testID,
+				signozID: testID,
 			},
 			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000test-instance-id",
+		},
+		{
+			name: "http status code with new sem conv",
+			optionalDims: []dimension{
+				{name: "http.response.status_code"},
+			},
+			spanAttrMap: map[string]interface{}{
+				"http.response.status_code": 200,
+			},
+			wantKey: "ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET\u0000200",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

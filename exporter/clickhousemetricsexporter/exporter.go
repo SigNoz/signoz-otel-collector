@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/multierr"
@@ -46,6 +47,7 @@ const maxBatchByteSize = 3000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
+	id               uuid.UUID
 	namespace        string
 	externalLabels   map[string]string
 	endpointURL      *url.URL
@@ -80,6 +82,8 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 
 	userAgentHeader := fmt.Sprintf("%s/%s", strings.ReplaceAll(strings.ToLower(set.BuildInfo.Description), " ", "-"), set.BuildInfo.Version)
 
+	id := uuid.New()
+
 	params := &ClickHouseParams{
 		DSN:                  cfg.HTTPClientSettings.Endpoint,
 		DropDatabase:         false,
@@ -88,13 +92,16 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
+		ExporterId:           id,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
 		log.Fatalf("Error creating clickhouse client: %v", err)
 	}
 
-	collector := usage.NewUsageCollector(ch.GetDBConn().(clickhouse.Conn),
+	collector := usage.NewUsageCollector(
+		id,
+		ch.GetDBConn().(clickhouse.Conn),
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
@@ -112,6 +119,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 	}
 
 	return &PrwExporter{
+		id:               id,
 		namespace:        cfg.Namespace,
 		externalLabels:   sanitizedLabels,
 		endpointURL:      endpointURL,
@@ -186,6 +194,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						temporality = metric.Sum().AggregationTemporality()
 					case pmetric.MetricTypeHistogram:
 						temporality = metric.Histogram().AggregationTemporality()
+					case pmetric.MetricTypeExponentialHistogram:
+						temporality = metric.ExponentialHistogram().AggregationTemporality()
 					case pmetric.MetricTypeSummary:
 						temporality = pmetric.AggregationTemporalityUnspecified
 					default:
@@ -256,7 +266,22 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
-						// TODO(srikanthccv): implement
+						// we don't support cumulative exponential histograms
+						if temporality == pmetric.AggregationTemporalityCumulative {
+							dropped++
+							prwe.logger.Warn("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
+							continue
+						}
+
+						dataPoints := metric.ExponentialHistogram().DataPoints()
+						if dataPoints.Len() == 0 {
+							dropped++
+							prwe.logger.Warn("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
+						}
+
+						for x := 0; x < dataPoints.Len(); x++ {
+							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+						}
 					default:
 						dropped++
 						name := metric.Name()
