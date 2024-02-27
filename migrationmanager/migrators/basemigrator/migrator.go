@@ -3,7 +3,6 @@ package basemigrator
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -86,45 +85,25 @@ func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, da
 
 func (m *BaseMigrator) buildClickhouseMigrateURL(database string) (string, error) {
 	var clickhouseUrl string
-	parsedURL, err := url.Parse(m.Cfg.DSN)
+	options, err := clickhouse.ParseDSN(m.Cfg.DSN)
 	if err != nil {
 		return "", err
 	}
-	host := parsedURL.Host
-	if host == "" {
-		return "", fmt.Errorf("unable to parse host")
 
-	}
-	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
-	if err != nil {
-		return "", err
-	}
-	username := paramMap["username"]
-	password := paramMap["password"]
-
-	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, database, m.Cfg.ClusterName)
+	if len(options.Auth.Username) > 0 && len(options.Auth.Password) > 0 {
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", options.Auth.Username, options.Auth.Password, options.Addr[0], database, m.Cfg.ClusterName)
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, database, m.Cfg.ClusterName)
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", options.Addr[0], database, m.Cfg.ClusterName)
 	}
 	return clickhouseUrl, nil
 }
 
 func createClickhouseConnection(dsn string) (driver.Conn, error) {
-	dsnURL, err := url.Parse(dsn)
+	options, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse dsn: %w", err)
 	}
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-		options.Auth = auth
-	}
+
 	db, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open clickhouse connection: %w", err)
