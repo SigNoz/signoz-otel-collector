@@ -411,9 +411,9 @@ func BenchmarkProcessorConsumeTraces(b *testing.B) {
 func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, defaultNullValue *pcommon.Value, temporality string, logger *zap.Logger, excludePatterns []ExcludePattern) *processorImp {
 	defaultNotInSpanAttrVal := pcommon.NewValueStr("defaultNotInSpanAttrVal")
 	// use size 2 for LRU cache for testing purpose
-	metricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
-	callMetricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
-	dbCallMetricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	metricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	callMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	dbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 	externalCallMetricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 
 	defaultDimensions := []dimension{
@@ -503,8 +503,11 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 		dbCallMetricKeyToDimensions:       dbCallMetricKeyToDimensions,
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensions,
 
-		attrsCardinality:    make(map[string]map[string]struct{}),
-		excludePatternRegex: excludePatternRegex,
+		attrsCardinality:                       make(map[string]map[string]struct{}),
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             maxNumberOfServicesToTrack,
+		maxNumberOfOperationsToTrackPerService: maxNumberOfOperationsToTrackPerService,
+		excludePatternRegex:                    excludePatternRegex,
 	}
 }
 
@@ -749,15 +752,27 @@ func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Tr
 }
 
 func TestBuildKeySameServiceOperationCharSequence(t *testing.T) {
+
+	// Prepare
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+
+	// Mocked metric exporter will perform validation on metrics, during p.ConsumeTraces()
+	mexp.On("ConsumeMetrics", mock.Anything, mock.Anything).Return(nil)
+	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
+
+	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, pmetric.AggregationTemporalityCumulative.String(), zaptest.NewLogger(t), []ExcludePattern{})
+
 	span0 := ptrace.NewSpan()
 	span0.SetName("c")
 	buf := &bytes.Buffer{}
-	buildKey(buf, "ab", span0, nil, pcommon.NewMap())
+	p.buildKey(buf, "ab", span0, nil, pcommon.NewMap())
 	k0 := metricKey(buf.String())
 	buf.Reset()
 	span1 := ptrace.NewSpan()
 	span1.SetName("bc")
-	buildKey(buf, "a", span1, nil, pcommon.NewMap())
+	p.buildKey(buf, "a", span1, nil, pcommon.NewMap())
 	k1 := metricKey(buf.String())
 	assert.NotEqual(t, k0, k1)
 	assert.Equal(t, metricKey("ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET"), k0)
@@ -765,6 +780,17 @@ func TestBuildKeySameServiceOperationCharSequence(t *testing.T) {
 }
 
 func TestBuildKeyWithDimensions(t *testing.T) {
+	// Prepare
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+
+	// Mocked metric exporter will perform validation on metrics, during p.ConsumeTraces()
+	mexp.On("ConsumeMetrics", mock.Anything, mock.Anything).Return(nil)
+	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
+
+	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, pmetric.AggregationTemporalityCumulative.String(), zaptest.NewLogger(t), []ExcludePattern{})
+
 	defaultFoo := pcommon.NewValueStr("bar")
 	for _, tc := range []struct {
 		name            string
@@ -852,7 +878,7 @@ func TestBuildKeyWithDimensions(t *testing.T) {
 			assert.NoError(t, span0.Attributes().FromRaw(tc.spanAttrMap))
 			span0.SetName("c")
 			buf := &bytes.Buffer{}
-			buildKey(buf, "ab", span0, tc.optionalDims, resAttr)
+			p.buildKey(buf, "ab", span0, tc.optionalDims, resAttr)
 			assert.Equal(t, tc.wantKey, buf.String())
 		})
 	}
@@ -1010,4 +1036,53 @@ func TestProcessorUpdateExemplars(t *testing.T) {
 	// ----- verify -----------------------------------------------------------
 	assert.NoError(t, err)
 	assert.Empty(t, p.histograms[key].exemplarsData)
+}
+
+func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
+	// Prepare
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+
+	// Mocked metric exporter will perform validation on metrics, during p.ConsumeTraces()
+	mexp.On("ConsumeMetrics", mock.Anything, mock.Anything).Return(nil)
+	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
+
+	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, pmetric.AggregationTemporalityCumulative.String(), zaptest.NewLogger(t), []ExcludePattern{})
+	resAttr := pcommon.NewMap()
+
+	for i := 0; i <= p.maxNumberOfServicesToTrack; i++ {
+		span0 := ptrace.NewSpan()
+		span0.SetName("span")
+		buf := &bytes.Buffer{}
+		serviceName := fmt.Sprintf("service-%d", i)
+		p.buildKey(buf, serviceName, span0, []dimension{}, resAttr)
+	}
+
+	// adding new service should result in overflow
+	span0 := ptrace.NewSpan()
+	span0.SetName("span")
+	buf := &bytes.Buffer{}
+	serviceName := fmt.Sprintf("service-%d", p.maxNumberOfServicesToTrack)
+	p.buildKey(buf, serviceName, span0, []dimension{}, resAttr)
+
+	assert.Contains(t, buf.String(), overflowServiceName)
+
+	// reset to test operations
+	p.serviceToOperations = make(map[string]map[string]struct{})
+	p.buildKey(buf, "simple_service", span0, []dimension{}, resAttr)
+
+	for i := 0; i <= p.maxNumberOfOperationsToTrackPerService; i++ {
+		span0 := ptrace.NewSpan()
+		span0.SetName(fmt.Sprintf("operation-%d", i))
+		buf := &bytes.Buffer{}
+		p.buildKey(buf, "simple_service", span0, []dimension{}, resAttr)
+	}
+
+	// adding a new operation to service "simple_service" should result in overflow
+	span0 = ptrace.NewSpan()
+	span0.SetName(fmt.Sprintf("operation-%d", p.maxNumberOfOperationsToTrackPerService))
+	buf = &bytes.Buffer{}
+	p.buildKey(buf, "simple_service", span0, []dimension{}, resAttr)
+	assert.Contains(t, buf.String(), overflowOperation)
 }
