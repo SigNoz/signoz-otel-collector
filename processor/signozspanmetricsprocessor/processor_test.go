@@ -1047,8 +1047,11 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	mexp.On("ConsumeMetrics", mock.Anything, mock.Anything).Return(nil)
 	tcon.On("ConsumeTraces", mock.Anything, mock.Anything).Return(nil)
 
+	observedZapCore, observedLogs := observer.New(zap.DebugLevel)
+	observedLogger := zap.New(observedZapCore)
+
 	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
-	p := newProcessorImp(mexp, tcon, &defaultNullValue, pmetric.AggregationTemporalityCumulative.String(), zaptest.NewLogger(t), []ExcludePattern{})
+	p := newProcessorImp(mexp, tcon, &defaultNullValue, pmetric.AggregationTemporalityCumulative.String(), observedLogger, []ExcludePattern{})
 	resAttr := pcommon.NewMap()
 
 	for i := 0; i <= p.maxNumberOfServicesToTrack; i++ {
@@ -1068,6 +1071,14 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 
 	assert.Contains(t, buf.String(), overflowServiceName)
 
+	found := false
+	for _, log := range observedLogs.All() {
+		if strings.Contains(log.Message, "Too many services to track, using overflow service name") {
+			found = true
+		}
+	}
+	assert.True(t, found)
+
 	// reset to test operations
 	p.serviceToOperations = make(map[string]map[string]struct{})
 	p.buildKey(buf, "simple_service", span0, []dimension{}, resAttr)
@@ -1085,4 +1096,12 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	buf = &bytes.Buffer{}
 	p.buildKey(buf, "simple_service", span0, []dimension{}, resAttr)
 	assert.Contains(t, buf.String(), overflowOperation)
+
+	found = false
+	for _, log := range observedLogs.All() {
+		if strings.Contains(log.Message, "Too many operations to track, using overflow operation name") {
+			found = true
+		}
+	}
+	assert.True(t, found)
 }
