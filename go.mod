@@ -158,7 +158,7 @@ require (
 	go.opentelemetry.io/collector/extension v0.88.0
 	go.opentelemetry.io/collector/extension/ballastextension v0.88.0
 	go.opentelemetry.io/collector/extension/zpagesextension v0.88.0
-	go.opentelemetry.io/collector/featuregate v1.3.0
+	go.opentelemetry.io/collector/featuregate v1.0.0-rcv0017
 	go.opentelemetry.io/collector/otelcol v0.88.0
 	go.opentelemetry.io/collector/pdata v1.3.0
 	go.opentelemetry.io/collector/processor v0.88.0
