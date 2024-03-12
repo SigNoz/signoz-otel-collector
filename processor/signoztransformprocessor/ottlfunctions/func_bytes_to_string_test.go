@@ -5,7 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
+
+func makePCommonSlice(b []byte) pcommon.ByteSlice {
+	r := pcommon.NewByteSlice()
+	r.FromRaw(b)
+	return r
+}
 
 func TestBytesToString(t *testing.T) {
 	tests := []struct {
@@ -22,6 +29,11 @@ func TestBytesToString(t *testing.T) {
 		}, {
 			name:        "byte slice",
 			target:      []byte("hello world"),
+			expected:    "hello world",
+			shouldError: false,
+		}, {
+			name:        "pcommon byte slice",
+			target:      makePCommonSlice([]byte("hello world")),
 			expected:    "hello world",
 			shouldError: false,
 		},
