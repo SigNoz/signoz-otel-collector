@@ -421,7 +421,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+		err := s.Writer.WriteBatchOfSpans(ctx, batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err
