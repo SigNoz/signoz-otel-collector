@@ -115,6 +115,7 @@ type Span struct {
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
 	ResourceTagsMap    map[string]string  `json:"resourceTagsMap,omitempty"`
 	HasError           bool               `json:"hasError,omitempty"`
+	IsRemote           string             `json:"isRemote,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
 	GRPCCode           string             `json:"gRPCCode,omitempty"`
 	GRPCMethod         string             `json:"gRPCMethod,omitempty"`
