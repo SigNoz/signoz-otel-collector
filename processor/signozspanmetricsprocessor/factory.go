@@ -30,7 +30,9 @@ const (
 	// The value of "type" key in configuration.
 	typeStr = "signozspanmetrics"
 	// The stability level of the processor.
-	stability = component.StabilityLevelBeta
+	stability                              = component.StabilityLevelBeta
+	maxNumberOfServicesToTrack             = 256
+	maxNumberOfOperationsToTrackPerService = 2048
 )
 
 // NewFactory creates a factory for the spanmetrics processor.
@@ -44,11 +46,13 @@ func NewFactory() processor.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-		DimensionsCacheSize:    defaultDimensionsCacheSize,
-		skipSanitizeLabel:      dropSanitizationFeatureGate.IsEnabled(),
-		MetricsFlushInterval:   60 * time.Second,
-		EnableExpHistogram:     false,
+		AggregationTemporality:         "AGGREGATION_TEMPORALITY_CUMULATIVE",
+		DimensionsCacheSize:            defaultDimensionsCacheSize,
+		skipSanitizeLabel:              dropSanitizationFeatureGate.IsEnabled(),
+		MetricsFlushInterval:           60 * time.Second,
+		EnableExpHistogram:             false,
+		MaxServicesToTrack:             maxNumberOfServicesToTrack,
+		MaxOperationsToTrackPerService: maxNumberOfOperationsToTrackPerService,
 	}
 }
 

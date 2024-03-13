@@ -123,6 +123,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/ClickHouse/clickhouse-go v1.5.4 h1:cKjXeYLNWVJIx2J1K6H2CqyRmfwVJVY1OV1coaaFcI0=
 github.com/ClickHouse/clickhouse-go v1.5.4/go.mod h1:EaI/sW7Azgz9UATzd5ZdZHRUhHgv5+JMS9NSr2smCJI=
+github.com/DataDog/datadog-agent/pkg/proto v0.48.0 h1:Ga1doqJG07YG3uA/tcEy13m6OHvfcKaCkMQjafWsAxI=
+github.com/DataDog/datadog-agent/pkg/proto v0.48.0/go.mod h1:A4qG1PwNPYcM391xyksJ47ZZjknSAQVvNdXAXsrR+N0=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/DataDog/zstd v1.5.0 h1:+K/VEwIAaPcHiMtQvpLD4lqW7f0Gk3xdYZmI1hD+CXo=
 github.com/DataDog/zstd v1.5.0/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwSAmyw=
@@ -1164,6 +1166,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdrecei
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/collectdreceiver v0.88.0/go.mod h1:60Bk4I2BzQc3t/8MRsp5mNljrXaVDesitNxtu8qGMjg=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/couchdbreceiver v0.88.0 h1:YLHDRVYdAxKkIO4odgEQzdGedKwVFkgLwi7mkQeuN3Q=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/couchdbreceiver v0.88.0/go.mod h1:uqXweGZrRt4OOoCryUpZmBhp2s1VvxaceWH+53UmIa4=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver v0.88.0 h1:ZhnqUPOnp7BMFdfaOEc504XKTKP4RbVlnsD62DSBf4U=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver v0.88.0/go.mod h1:++zCfUMqGaftwBybkunbJwi5k0m1A/mlSGTxfmZHDj4=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.88.0 h1:nZ6htzzlFFMnq0y0COHPNJIVdvbo4FxlR+OxxgYzQUE=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.88.0/go.mod h1:D9KcaUxtdtwj/hvnDD64jfILiB20iplYDkDIG+zbOvs=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dotnetdiagnosticsreceiver v0.76.3 h1:JYTKZjJUAFYUT9quw3ANNMZz5c8LXvJ+AxHFZPv2RWU=
@@ -1495,6 +1499,10 @@ github.com/vishvananda/netlink v1.1.1-0.20201029203352-d40f9887b852/go.mod h1:tw
 github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df/go.mod h1:JP3t17pCcGlemwknint6hfoeCVQrEMVwxRLRjXpq+BU=
 github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae h1:4hwBBUfQCFe3Cym0ZtKyq7L16eZUtYKs+BaHDN6mAns=
 github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1DwXk04H54A1oHXtwZmA0grkVMdPxx/VGLCah0=
+github.com/vmihailenco/msgpack/v4 v4.3.12 h1:07s4sz9IReOgdikxLTKNbBdqDMLsjPKXwvCazn8G65U=
+github.com/vmihailenco/msgpack/v4 v4.3.12/go.mod h1:gborTTJjAo/GWTqqRjrLCn9pgNN+NXzzngzBKDPIqw4=
+github.com/vmihailenco/tagparser v0.1.2 h1:gnjoVuB/kljJ5wICEEOpx98oXMWPLj22G67Vbd1qPqc=
+github.com/vmihailenco/tagparser v0.1.2/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgqMEUPoW2WPyhdI=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/vultr/govultr/v2 v2.17.2/go.mod h1:ZFOKGWmgjytfyjeyAdhQlSWwTjh2ig+X49cAp50dzXI=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
