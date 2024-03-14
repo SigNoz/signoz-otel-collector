@@ -174,7 +174,7 @@ require (
 	go.uber.org/zap v1.26.0
 	golang.org/x/text v0.14.0
 	google.golang.org/grpc v1.62.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
