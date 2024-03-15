@@ -72,7 +72,7 @@ func defaultMetricsUnmarshalers() map[string]MetricsUnmarshaler {
 }
 
 func defaultLogsUnmarshalers() map[string]LogsUnmarshaler {
-	otlpPb := newPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding)
+	otlpPb := NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding)
 	raw := newRawLogsUnmarshaler()
 	text := newTextLogsUnmarshaler()
 	return map[string]LogsUnmarshaler{

@@ -22,7 +22,7 @@ func (p pdataLogsUnmarshaler) Encoding() string {
 	return p.encoding
 }
 
-func newPdataLogsUnmarshaler(unmarshaler plog.Unmarshaler, encoding string) LogsUnmarshaler {
+func NewPdataLogsUnmarshaler(unmarshaler plog.Unmarshaler, encoding string) LogsUnmarshaler {
 	return pdataLogsUnmarshaler{
 		Unmarshaler: unmarshaler,
 		encoding:    encoding,
