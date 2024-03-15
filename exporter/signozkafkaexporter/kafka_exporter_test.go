@@ -6,6 +6,7 @@ package signozkafkaexporter
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -21,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/testdata"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 )
 
 func TestNewExporter_err_version(t *testing.T) {
@@ -239,6 +241,47 @@ func TestLogsDataPusher(t *testing.T) {
 	})
 	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
 	err := p.logsDataPusher(ctx, testdata.GenerateLogsOneLogRecord())
+	require.NoError(t, err)
+}
+
+func TestLogBodyBytesGetConvertedToTextString(t *testing.T) {
+	c := sarama.NewConfig()
+	producer := mocks.NewSyncProducer(t, c)
+	p := kafkaLogsProducer{
+		producer:  producer,
+		marshaler: newPdataLogsMarshaler(&plog.ProtoMarshaler{}, defaultEncoding),
+	}
+	t.Cleanup(func() {
+		require.NoError(t, p.Close(context.Background()))
+	})
+
+	log := testdata.GenerateLogsOneLogRecord()
+	logBodyBytes := log.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().SetEmptyBytes()
+	testBody := []byte("test log")
+	logBodyBytes.Append(testBody...)
+
+	producer.ExpectSendMessageWithCheckerFunctionAndSucceed(func(val []byte) error {
+		unmarshaler := signozkafkareceiver.NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding)
+		producedLog, err := unmarshaler.Unmarshal(val)
+		if err != nil {
+			return err
+		}
+
+		producedBody := producedLog.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsRaw()
+		producedBodyStr, ok := producedBody.(string)
+		if !ok || producedBodyStr != string(testBody) {
+			return fmt.Errorf(
+				"unexpected log body produced: type %s, value: %v",
+				reflect.TypeOf(producedBody).String(), producedBody,
+			)
+		}
+
+		return nil
+	})
+
+	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
+	err := p.logsDataPusher(ctx, log)
+
 	require.NoError(t, err)
 }
 
