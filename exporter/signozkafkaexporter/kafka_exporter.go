@@ -138,19 +138,24 @@ func (e *kafkaLogsProducer) normalizeLogData(ld *plog.Logs) {
 	for rlIdx := 0; rlIdx < ld.ResourceLogs().Len(); rlIdx++ {
 		rl := ld.ResourceLogs().At(rlIdx)
 
-		for slIdx := 0; slIdx < ld.ResourceLogs().Len(); slIdx++ {
+		for slIdx := 0; slIdx < rl.ScopeLogs().Len(); slIdx++ {
 			sl := rl.ScopeLogs().At(slIdx)
 
-			for lrIdx := 0; lrIdx < ld.ResourceLogs().Len(); lrIdx++ {
+			for lrIdx := 0; lrIdx < sl.LogRecords().Len(); lrIdx++ {
 				lr := sl.LogRecords().At(lrIdx)
 
 				// log body is always expected to be string in SigNoz
-				strBody := lr.Body().AsString()
-				if lr.Body().Type() == pcommon.ValueTypeBytes {
-					strBody = string(lr.Body().Bytes().AsRaw())
-				}
+				if lr.Body().Type() != pcommon.ValueTypeStr {
+					var strBody string
+					if lr.Body().Type() == pcommon.ValueTypeBytes {
+						strBody = string(lr.Body().Bytes().AsRaw())
+					} else {
+						strBody = lr.Body().AsString()
+					}
 
-				lr.Body().SetStr(strBody)
+					lr.Body().SetStr(strBody)
+
+				}
 
 			}
 		}

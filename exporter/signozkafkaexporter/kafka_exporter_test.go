@@ -255,32 +255,40 @@ func TestLogBodyBytesGetConvertedToTextString(t *testing.T) {
 		require.NoError(t, p.Close(context.Background()))
 	})
 
-	log := testdata.GenerateLogsOneLogRecord()
-	logBodyBytes := log.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().SetEmptyBytes()
+	testLogCount := 5
 	testBody := []byte("test log")
-	logBodyBytes.Append(testBody...)
+
+	logs := testdata.GenerateLogsManyLogRecordsSameResource(testLogCount)
+	for i := 0; i < testLogCount; i++ {
+		lr := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i)
+		logBodyBytes := lr.Body().SetEmptyBytes()
+		logBodyBytes.Append(testBody...)
+	}
 
 	producer.ExpectSendMessageWithCheckerFunctionAndSucceed(func(val []byte) error {
 		unmarshaler := signozkafkareceiver.NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding)
-		producedLog, err := unmarshaler.Unmarshal(val)
+		producedLogs, err := unmarshaler.Unmarshal(val)
 		if err != nil {
 			return err
 		}
 
-		producedBody := producedLog.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().AsRaw()
-		producedBodyStr, ok := producedBody.(string)
-		if !ok || producedBodyStr != string(testBody) {
-			return fmt.Errorf(
-				"unexpected log body produced: type %s, value: %v",
-				reflect.TypeOf(producedBody).String(), producedBody,
-			)
+		for i := 0; i < testLogCount; i++ {
+			lr := producedLogs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i)
+			producedBody := lr.Body().AsRaw()
+			producedBodyStr, ok := producedBody.(string)
+			if !ok || producedBodyStr != string(testBody) {
+				return fmt.Errorf(
+					"unexpected log body produced: testLogIdx: %d, type %s, value: %v",
+					i, reflect.TypeOf(producedBody).String(), producedBody,
+				)
+			}
 		}
 
 		return nil
 	})
 
 	ctx := client.NewContext(context.Background(), client.Info{Metadata: client.NewMetadata(map[string][]string{"signoz_tenant_id": {"test_tenant_id"}})})
-	err := p.logsDataPusher(ctx, log)
+	err := p.logsDataPusher(ctx, logs)
 
 	require.NoError(t, err)
 }
