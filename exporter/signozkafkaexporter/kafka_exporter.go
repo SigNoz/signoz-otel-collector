@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -108,6 +109,8 @@ type kafkaLogsProducer struct {
 }
 
 func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
+	e.normalizeLogData(&ld)
+
 	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
 	if err != nil {
 		return consumererror.NewPermanent(err)
@@ -129,6 +132,34 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 		return err
 	}
 	return nil
+}
+
+func (e *kafkaLogsProducer) normalizeLogData(ld *plog.Logs) {
+	for rlIdx := 0; rlIdx < ld.ResourceLogs().Len(); rlIdx++ {
+		rl := ld.ResourceLogs().At(rlIdx)
+
+		for slIdx := 0; slIdx < rl.ScopeLogs().Len(); slIdx++ {
+			sl := rl.ScopeLogs().At(slIdx)
+
+			for lrIdx := 0; lrIdx < sl.LogRecords().Len(); lrIdx++ {
+				lr := sl.LogRecords().At(lrIdx)
+
+				// log body is always expected to be string in SigNoz
+				if lr.Body().Type() != pcommon.ValueTypeStr {
+					var strBody string
+					if lr.Body().Type() == pcommon.ValueTypeBytes {
+						strBody = string(lr.Body().Bytes().AsRaw())
+					} else {
+						strBody = lr.Body().AsString()
+					}
+
+					lr.Body().SetStr(strBody)
+
+				}
+
+			}
+		}
+	}
 }
 
 func (e *kafkaLogsProducer) Close(context.Context) error {
