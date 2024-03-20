@@ -143,6 +143,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.NumberTagMap,
 			span.BoolTagMap,
 			span.ResourceTagsMap,
+			span.IsRemote,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
@@ -345,10 +346,7 @@ func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) er
 }
 
 func stringToBool(s string) bool {
-	if strings.ToLower(s) == "true" {
-		return true
-	}
-	return false
+	return strings.ToLower(s) == "true"
 }
 
 func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) error {
