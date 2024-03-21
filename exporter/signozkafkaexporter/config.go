@@ -37,6 +37,9 @@ type Config struct {
 
 	// Authentication defines used authentication mechanism.
 	Authentication Authentication `mapstructure:"auth"`
+
+	// UseRequestIdAsRecordKey defines whether to use request id as record key or not.Defaults to false.
+	UseRequestIdAsRecordKey bool `mapstructure:"use_request_id_as_record_key"`
 }
 
 // Metadata defines configuration for retrieving metadata from the broker.
@@ -75,6 +78,12 @@ type Producer struct {
 	// broker request. Defaults to 0 for unlimited. Similar to
 	// `queue.buffering.max.messages` in the JVM producer.
 	FlushMaxMessages int `mapstructure:"flush_max_messages"`
+
+	// maps to saramaconfig.Producer.Idempotent
+	EnableIdempotence bool `mapstructure:"enable_idempotence"`
+
+	// maps tp saramaconfig.Net.MaxOpenRequests
+	MaxOpenRequests int `mapstructure:"max_open_requests"`
 }
 
 // MetadataRetry defines retry configuration for Metadata.
