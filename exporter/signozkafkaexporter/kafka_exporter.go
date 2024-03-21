@@ -39,10 +39,8 @@ func (ke kafkaErrors) Error() string {
 }
 
 func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces) error {
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_traces", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(td, kafkaTopic)
 	if err != nil {
@@ -74,10 +72,8 @@ type kafkaMetricsProducer struct {
 }
 
 func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric.Metrics) error {
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_metrics", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(md, kafkaTopic)
 	if err != nil {
@@ -111,10 +107,8 @@ type kafkaLogsProducer struct {
 func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
 	e.normalizeLogData(&ld)
 
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_logs", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(ld, kafkaTopic)
 	if err != nil {
