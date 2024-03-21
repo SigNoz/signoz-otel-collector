@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"net/url"
 	"runtime/pprof"
 	"strings"
 	"sync"
@@ -94,31 +93,22 @@ type ClickHouseParams struct {
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	l := logrus.WithField("component", "clickhouse")
 
-	dsnURL, err := url.Parse(params.DSN)
+	options, err := clickhouse.ParseDSN(params.DSN)
 
 	if err != nil {
 		return nil, err
 	}
-	database := dsnURL.Query().Get("database")
-	if database == "" {
-		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
+
+	if options.MaxIdleConns < params.MaxIdleConns {
+		options.MaxIdleConns = params.MaxIdleConns
+	}
+	if options.MaxOpenConns < params.MaxOpenConns {
+		options.MaxOpenConns = params.MaxOpenConns
+	}
+	if options.DialTimeout < 1*time.Minute {
+		options.DialTimeout = 1 * time.Minute
 	}
 
-	options := &clickhouse.Options{
-		Addr:         []string{dsnURL.Host},
-		MaxIdleConns: params.MaxIdleConns,
-		MaxOpenConns: params.MaxOpenConns,
-		DialTimeout:  1 * time.Minute,
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			// Database: "",
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-
-		options.Auth = auth
-	}
 	conn, err := clickhouse.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
@@ -127,7 +117,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    l,
-		database:             database,
+		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 
 		timeSeries: make(map[uint64]struct{}, 8192),
