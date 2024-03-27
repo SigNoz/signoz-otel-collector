@@ -101,7 +101,7 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string) error {
 		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
 		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
-		) ENGINE MergeTree()
+		) ENGINE ReplicatedMergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
 		TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE

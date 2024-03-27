@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS signoz_logs.tag_attributes ON CLUSTER {{.SIGNOZ_CLUST
     stringTagValue String CODEC(ZSTD(1)),
     int64TagValue Nullable(Int64) CODEC(ZSTD(1)),
     float64TagValue Nullable(Float64) CODEC(ZSTD(1))
-) ENGINE ReplacingMergeTree
+) ENGINE ReplicatedReplacingMergeTree
 ORDER BY (tagKey, tagType, tagDataType, stringTagValue, int64TagValue, float64TagValue)
 TTL toDateTime(timestamp) + INTERVAL 172800 SECOND DELETE
 SETTINGS ttl_only_drop_parts = 1, allow_nullable_key = 1;

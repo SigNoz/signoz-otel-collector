@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER {{.SIGNOZ_CLUSTER}} (
 	attributes_float64_key Array(String) CODEC(ZSTD(1)),
 	attributes_float64_value Array(Float64) CODEC(ZSTD(1)),
 	INDEX body_idx body TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
-) ENGINE MergeTree
+) ENGINE ReplicatedMergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id)
 TTL toDateTime(timestamp / 1000000000) + INTERVAL 1296000 SECOND DELETE;
@@ -27,7 +27,7 @@ TTL toDateTime(timestamp / 1000000000) + INTERVAL 1296000 SECOND DELETE;
 CREATE TABLE IF NOT EXISTS signoz_logs.logs_atrribute_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} (
 name String,
 datatype String
-)ENGINE = ReplacingMergeTree
+)ENGINE = ReplicatedReplacingMergeTree
 ORDER BY (name, datatype);
 
 
@@ -35,7 +35,7 @@ ORDER BY (name, datatype);
 CREATE TABLE IF NOT EXISTS signoz_logs.logs_resource_keys ON CLUSTER {{.SIGNOZ_CLUSTER}} (
 name String,
 datatype String
-)ENGINE = ReplacingMergeTree
+)ENGINE = ReplicatedReplacingMergeTree
 ORDER BY (name, datatype);
 
 

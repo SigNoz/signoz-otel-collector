@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.time_series_v4_6hrs ON CLUSTER {{.SIGN
     labels String CODEC(ZSTD(5)),
     INDEX idx_labels labels TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
 )
-ENGINE = ReplacingMergeTree
+ENGINE = ReplicatedReplacingMergeTree
         PARTITION BY toDate(unix_milli / 1000)
         ORDER BY (env, temporality, metric_name, fingerprint, unix_milli)
         TTL toDateTime(unix_milli/1000) + INTERVAL 2592000 SECOND DELETE
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.time_series_v4_1day ON CLUSTER {{.SIGN
     labels String CODEC(ZSTD(5)),
     INDEX idx_labels labels TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
 )
-ENGINE = ReplacingMergeTree
+ENGINE = ReplicatedReplacingMergeTree
         PARTITION BY toDate(unix_milli / 1000)
         ORDER BY (env, temporality, metric_name, fingerprint, unix_milli)
         TTL toDateTime(unix_milli/1000) + INTERVAL 2592000 SECOND DELETE
