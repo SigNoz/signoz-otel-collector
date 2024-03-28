@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
@@ -36,6 +39,15 @@ const (
 	defaultCompression = "none"
 	// default from sarama.NewConfig()
 	defaultFluxMaxMessages = 0
+)
+
+var (
+	kafkaMetricsProduced = stats.Int64("kafka_metric_data_points_produced", "The number of metric data points produced to Kafka", stats.UnitDimensionless)
+	kafkaSpansProduced   = stats.Int64("kafka_spans_produced", "The number of spans produced to Kafka", stats.UnitDimensionless)
+	kafkaLogsProduced    = stats.Int64("kafka_log_records_produced", "The number of log records to Kafka", stats.UnitDimensionless)
+
+	tagTenantId  = tag.MustNewKey("tenantId")
+	tagComponent = tag.MustNewKey("component")
 )
 
 // FactoryOption applies changes to kafkaExporterFactory.
@@ -70,6 +82,30 @@ func WithLogsMarshalers(logsMarshalers ...LogsMarshaler) FactoryOption {
 
 // NewFactory creates Kafka exporter factory.
 func NewFactory(options ...FactoryOption) exporter.Factory {
+	kafkaMetricsProducedView := &view.View{
+		Name:        kafkaMetricsProduced.Name(),
+		Measure:     kafkaMetricsProduced,
+		Description: kafkaMetricsProduced.Description(),
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
+		Aggregation: view.Sum(),
+	}
+	kafkaSpansProducedView := &view.View{
+		Name:        kafkaSpansProduced.Name(),
+		Measure:     kafkaSpansProduced,
+		Description: kafkaSpansProduced.Description(),
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
+		Aggregation: view.Sum(),
+	}
+	kafkaLogsProducedView := &view.View{
+		Name:        kafkaLogsProduced.Name(),
+		Measure:     kafkaLogsProduced,
+		Description: kafkaLogsProduced.Description(),
+		TagKeys:     []tag.Key{tagTenantId, tagComponent},
+		Aggregation: view.Sum(),
+	}
+
+	view.Register(kafkaMetricsProducedView, kafkaSpansProducedView, kafkaLogsProducedView)
+
 	f := &kafkaExporterFactory{
 		tracesMarshalers:  tracesMarshalers(),
 		metricsMarshalers: metricsMarshalers(),
