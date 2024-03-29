@@ -42,7 +42,6 @@ import (
 )
 
 const (
-	CLUSTER                    = "cluster"
 	DISTRIBUTED_LOGS_TABLE     = "distributed_logs"
 	DISTRIBUTED_TAG_ATTRIBUTES = "distributed_tag_attributes"
 )
