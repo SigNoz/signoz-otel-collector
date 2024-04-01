@@ -1,0 +1,2 @@
+ALTER TABLE signoz_logs.logs ON CLUSTER {{ .SIGNOZ_CLUSTER }} DROP INDEX IF EXISTS body_idx ;
+ALTER TABLE signoz_logs.logs ON CLUSTER {{ .SIGNOZ_CLUSTER }} ADD INDEX IF NOT EXISTS body_idx lower(body) TYPE ngrambf_v1(4, 50000, 5, 0) GRANULARITY 1;
