@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.dependency_graph_minutes_v2 ON CLUSTER 
     deployment_environment LowCardinality(String) CODEC(ZSTD(1)),
     k8s_cluster_name LowCardinality(String) CODEC(ZSTD(1)),
     k8s_namespace_name LowCardinality(String) CODEC(ZSTD(1))
-) ENGINE ReplicatedAggregatingMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}AggregatingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;

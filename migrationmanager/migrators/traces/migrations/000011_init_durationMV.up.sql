@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.durationSort ON CLUSTER {{.SIGNOZ_CLUST
   INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
   INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
   INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
-) ENGINE ReplicatedMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE

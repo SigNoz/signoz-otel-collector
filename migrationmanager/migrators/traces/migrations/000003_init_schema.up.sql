@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index ON CLUSTER {{.SIGNOZ
   INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
   INDEX idx_message exceptionMessage TYPE bloom_filter GRANULARITY 4,
   INDEX idx_type exceptionType TYPE bloom_filter GRANULARITY 4
-) ENGINE ReplicatedMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (exceptionType, exceptionMessage, serviceName, -toUnixTimestamp(timestamp));
 

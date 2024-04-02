@@ -12,6 +12,7 @@ type MigratorConfig struct {
 	IsDurationSortFeatureDisabled  bool
 	IsTimestampSortFeatureDisabled bool
 	VerboseLoggingEnabled          bool
+	ReplicationEnabled             bool
 }
 
 type Migrator interface {

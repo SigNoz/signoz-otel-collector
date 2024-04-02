@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.usage_explorer ON CLUSTER {{.SIGNOZ_CLU
   timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
   service_name LowCardinality(String) CODEC(ZSTD(1)),
   count UInt64 CODEC(T64, ZSTD(1))
-) ENGINE ReplicatedSummingMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}SummingMergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, service_name)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;

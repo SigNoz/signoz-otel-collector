@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS signoz_traces.top_level_operations ON CLUSTER {{.SIGNOZ_CLUSTER}} (
     name LowCardinality(String) CODEC(ZSTD(1)),
     serviceName LowCardinality(String) CODEC(ZSTD(1))
-) ENGINE ReplicatedReplacingMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}ReplacingMergeTree
 ORDER BY (serviceName, name);
 
 

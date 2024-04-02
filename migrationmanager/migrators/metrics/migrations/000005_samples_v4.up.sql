@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.samples_v4 ON CLUSTER {{.SIGNOZ_CLUSTE
     unix_milli Int64 CODEC(DoubleDelta, ZSTD),
     value Float64 Codec(Gorilla, ZSTD)
 )
-ENGINE = ReplicatedMergeTree
+ENGINE = {{.SIGNOZ_REPLICATED}}MergeTree
         PARTITION BY toDate(unix_milli / 1000)
         ORDER BY (env, temporality, metric_name, fingerprint, unix_milli)
         TTL toDateTime(unix_milli/1000) + INTERVAL 2592000 SECOND DELETE
