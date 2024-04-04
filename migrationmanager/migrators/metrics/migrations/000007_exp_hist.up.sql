@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS signoz_metrics.exp_hist ON CLUSTER {{.SIGNOZ_CLUSTER}
     max Float64 Codec(Gorilla, ZSTD),
     sketch AggregateFunction(quantilesDD(0.01, 0.5, 0.75, 0.9, 0.95, 0.99), UInt64) CODEC(ZSTD(1))
 )
-ENGINE = MergeTree
+ENGINE = {{.SIGNOZ_REPLICATED}}MergeTree
         PARTITION BY toDate(unix_milli / 1000)
         ORDER BY (env, temporality, metric_name, fingerprint, unix_milli)
         TTL toDateTime(unix_milli/1000) + INTERVAL 2592000 SECOND DELETE
