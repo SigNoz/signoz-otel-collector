@@ -107,12 +107,14 @@ func main() {
 
 	// set SIGNOZ_REPLICATED env var so that golang-migrate can use it
 	// the value of this env would replace all occurences of {{.SIGNOZ_REPLICATED}} in the migration files
+	signozReplicated := ""
+	logger.Info("Setting env var SIGNOZ_REPLICATED", zap.Bool("replication", replicationEnabled))
 	if replicationEnabled {
-		logger.Info("Setting env var SIGNOZ_REPLICATED", zap.Bool("replication", replicationEnabled))
-		err = os.Setenv("SIGNOZ_REPLICATED", "Replicated")
-		if err != nil {
-			logger.Fatal("Failed to set env var SIGNOZ_REPLICATED", zap.Error(err))
-		}
+		signozReplicated = "Replicated"
+	}
+	err = os.Setenv("SIGNOZ_REPLICATED", signozReplicated)
+	if err != nil {
+		logger.Fatal("Failed to set env var SIGNOZ_REPLICATED", zap.Error(err))
 	}
 
 	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature, verboseLoggingEnabled, replicationEnabled)
