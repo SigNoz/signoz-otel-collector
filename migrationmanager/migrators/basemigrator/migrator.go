@@ -84,16 +84,22 @@ func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, da
 }
 
 func (m *BaseMigrator) buildClickhouseMigrateURL(database string) (string, error) {
-	var clickhouseUrl string
+	var clickhouseUrl, migrationsTableEngine string
 	options, err := clickhouse.ParseDSN(m.Cfg.DSN)
 	if err != nil {
 		return "", err
 	}
 
-	if len(options.Auth.Username) > 0 && len(options.Auth.Password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", options.Auth.Username, options.Auth.Password, options.Addr[0], database, m.Cfg.ClusterName)
+	if m.Cfg.ReplicationEnabled {
+		migrationsTableEngine = "ReplicatedMergeTree"
 	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", options.Addr[0], database, m.Cfg.ClusterName)
+		migrationsTableEngine = "MergeTree"
+	}
+
+	if len(options.Auth.Username) > 0 && len(options.Auth.Password) > 0 {
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=%s", options.Auth.Username, options.Auth.Password, options.Addr[0], database, m.Cfg.ClusterName, migrationsTableEngine)
+	} else {
+		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=%s", options.Addr[0], database, m.Cfg.ClusterName, migrationsTableEngine)
 	}
 	return clickhouseUrl, nil
 }
