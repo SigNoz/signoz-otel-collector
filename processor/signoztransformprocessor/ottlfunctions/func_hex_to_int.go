@@ -10,7 +10,7 @@ import (
 )
 
 type HexToIntArguments[K any] struct {
-	Target ottl.StandardStringGetter[K]
+	Target ottl.StringGetter[K]
 }
 
 func NewHexToIntFactory[K any]() ottl.Factory[K] {
@@ -27,7 +27,7 @@ func createHexToIntFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments)
 	return hexToInt(args.Target)
 }
 
-func hexToInt[K any](target ottl.StandardStringGetter[K]) (ottl.ExprFunc[K], error) {
+func hexToInt[K any](target ottl.StringGetter[K]) (ottl.ExprFunc[K], error) {
 
 	return func(ctx context.Context, tCtx K) (interface{}, error) {
 		val, err := target.Get(ctx, tCtx)
