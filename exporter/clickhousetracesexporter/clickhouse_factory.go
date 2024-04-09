@@ -15,6 +15,7 @@
 package clickhousetracesexporter
 
 import (
+	"context"
 	"flag"
 	"fmt"
 
@@ -39,7 +40,7 @@ type Factory struct {
 
 // Writer writes spans to storage.
 type Writer interface {
-	WriteBatchOfSpans(span []*Span) error
+	WriteBatchOfSpans(ctx context.Context, span []*Span) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)

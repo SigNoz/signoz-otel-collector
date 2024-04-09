@@ -23,6 +23,6 @@ func TestNewPdataMetricsUnmarshaler(t *testing.T) {
 }
 
 func TestNewPdataLogsUnmarshaler(t *testing.T) {
-	um := newPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, "test")
+	um := NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, "test")
 	assert.Equal(t, "test", um.Encoding())
 }

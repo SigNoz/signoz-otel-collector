@@ -54,6 +54,8 @@ const (
 
 	defaultDimensionsCacheSize = 1000
 	resourcePrefix             = "resource_"
+	overflowServiceName        = "overflow_service"
+	overflowOperation          = "overflow_operation"
 )
 
 var (
@@ -126,6 +128,10 @@ type processorImp struct {
 	started bool
 
 	shutdownOnce sync.Once
+
+	serviceToOperations                    map[string]map[string]struct{}
+	maxNumberOfServicesToTrack             int
+	maxNumberOfOperationsToTrackPerService int
 }
 
 type dimension struct {
@@ -189,7 +195,7 @@ func (h *exponentialHistogram) Observe(value float64) {
 }
 
 func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
-	logger.Info("Building signozspanmetricsprocessor")
+	logger.Info("Building signozspanmetricsprocessor with config", zap.Any("config", config))
 	pConfig := config.(*Config)
 
 	bounds := defaultLatencyHistogramBucketsMs
@@ -251,34 +257,37 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	}
 
 	return &processorImp{
-		logger:                            logger,
-		instanceID:                        instanceID,
-		config:                            *pConfig,
-		startTimestamp:                    pcommon.NewTimestampFromTime(time.Now()),
-		histograms:                        make(map[metricKey]*histogramData),
-		expHistograms:                     make(map[metricKey]*exponentialHistogram),
-		callHistograms:                    make(map[metricKey]*histogramData),
-		dbCallHistograms:                  make(map[metricKey]*histogramData),
-		externalCallHistograms:            make(map[metricKey]*histogramData),
-		latencyBounds:                     bounds,
-		callLatencyBounds:                 bounds,
-		dbCallLatencyBounds:               bounds,
-		externalCallLatencyBounds:         bounds,
-		dimensions:                        newDimensions(pConfig.Dimensions),
-		expDimensions:                     newDimensions(pConfig.Dimensions),
-		callDimensions:                    newDimensions(callDimensions),
-		dbCallDimensions:                  newDimensions(dbCallDimensions),
-		externalCallDimensions:            newDimensions(externalCallDimensions),
-		keyBuf:                            bytes.NewBuffer(make([]byte, 0, 1024)),
-		metricKeyToDimensions:             metricKeyToDimensionsCache,
-		expHistogramKeyToDimensions:       expHistogramKeyToDimensionsCache,
-		callMetricKeyToDimensions:         callMetricKeyToDimensionsCache,
-		dbCallMetricKeyToDimensions:       dbMetricKeyToDimensionsCache,
-		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensionsCache,
-		attrsCardinality:                  make(map[string]map[string]struct{}),
-		excludePatternRegex:               excludePatternRegex,
-		ticker:                            ticker,
-		done:                              make(chan struct{}),
+		logger:                                 logger,
+		instanceID:                             instanceID,
+		config:                                 *pConfig,
+		startTimestamp:                         pcommon.NewTimestampFromTime(time.Now()),
+		histograms:                             make(map[metricKey]*histogramData),
+		expHistograms:                          make(map[metricKey]*exponentialHistogram),
+		callHistograms:                         make(map[metricKey]*histogramData),
+		dbCallHistograms:                       make(map[metricKey]*histogramData),
+		externalCallHistograms:                 make(map[metricKey]*histogramData),
+		latencyBounds:                          bounds,
+		callLatencyBounds:                      bounds,
+		dbCallLatencyBounds:                    bounds,
+		externalCallLatencyBounds:              bounds,
+		dimensions:                             newDimensions(pConfig.Dimensions),
+		expDimensions:                          newDimensions(pConfig.Dimensions),
+		callDimensions:                         newDimensions(callDimensions),
+		dbCallDimensions:                       newDimensions(dbCallDimensions),
+		externalCallDimensions:                 newDimensions(externalCallDimensions),
+		keyBuf:                                 bytes.NewBuffer(make([]byte, 0, 1024)),
+		metricKeyToDimensions:                  metricKeyToDimensionsCache,
+		expHistogramKeyToDimensions:            expHistogramKeyToDimensionsCache,
+		callMetricKeyToDimensions:              callMetricKeyToDimensionsCache,
+		dbCallMetricKeyToDimensions:            dbMetricKeyToDimensionsCache,
+		externalCallMetricKeyToDimensions:      externalCallMetricKeyToDimensionsCache,
+		attrsCardinality:                       make(map[string]map[string]struct{}),
+		excludePatternRegex:                    excludePatternRegex,
+		ticker:                                 ticker,
+		done:                                   make(chan struct{}),
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             pConfig.MaxServicesToTrack,
+		maxNumberOfOperationsToTrackPerService: pConfig.MaxOperationsToTrackPerService,
 	}, nil
 }
 
@@ -881,21 +890,21 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	}
 	// Always reset the buffer before re-using.
 	p.keyBuf.Reset()
-	buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
+	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
 	key := metricKey(p.keyBuf.String())
 	p.cache(serviceName, span, key, resourceAttr)
 	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
 	if p.config.EnableExpHistogram {
 		p.keyBuf.Reset()
-		buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
+		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
 		expKey := metricKey(p.keyBuf.String())
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
 		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
 	p.keyBuf.Reset()
-	buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
+	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
 	callKey := metricKey(p.keyBuf.String())
 	p.callCache(serviceName, span, callKey, resourceAttr)
 	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
@@ -1073,10 +1082,19 @@ func (p *processorImp) resetExemplarData() {
 }
 
 func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) pcommon.Map {
+
+	spanName := span.Name()
+	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
+		serviceName = overflowServiceName
+	}
+	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+		spanName = overflowOperation
+	}
+
 	dims := pcommon.NewMap()
 	dims.EnsureCapacity(4 + len(optionalDims))
 	dims.PutStr(serviceNameKey, serviceName)
-	dims.PutStr(operationKey, span.Name())
+	dims.PutStr(operationKey, spanName)
 	dims.PutStr(spanKindKey, SpanKindStr(span.Kind()))
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
 	for _, d := range optionalDims {
@@ -1138,9 +1156,18 @@ func concatDimensionValue(dest *bytes.Buffer, value string, prefixSep bool) {
 // or resource attributes. If the dimension exists in both, the span's attributes, being the most specific, takes precedence.
 //
 // The metric key is a simple concatenation of dimension values, delimited by a null character.
-func buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
+func (p *processorImp) buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
+	spanName := span.Name()
+	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
+		p.logger.Warn("Too many services to track, using overflow service name", zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
+		serviceName = overflowServiceName
+	}
+	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+		p.logger.Warn("Too many operations to track, using overflow operation name", zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService))
+		spanName = overflowOperation
+	}
 	concatDimensionValue(dest, serviceName, false)
-	concatDimensionValue(dest, span.Name(), true)
+	concatDimensionValue(dest, spanName, true)
 	concatDimensionValue(dest, SpanKindStr(span.Kind()), true)
 	concatDimensionValue(dest, StatusCodeStr(span.Status().Code()), true)
 
@@ -1149,6 +1176,11 @@ func buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optional
 			concatDimensionValue(dest, v.AsString(), true)
 		}
 	}
+	if _, ok := p.serviceToOperations[serviceName]; !ok {
+		p.serviceToOperations[serviceName] = make(map[string]struct{})
+	}
+	p.serviceToOperations[serviceName][spanName] = struct{}{}
+
 }
 
 // buildCustomKey builds the metric key from the service name and span metadata such as operation, kind, status_code and

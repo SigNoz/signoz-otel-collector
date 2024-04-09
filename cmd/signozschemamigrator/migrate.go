@@ -41,6 +41,7 @@ func main() {
 	f.String("cluster-name", "cluster", "Cluster name to use while running migrations")
 	f.Bool("disable-duration-sort-feature", false, "Flag to disable the duration sort feature. Defaults to false.")
 	f.Bool("disable-timestamp-sort-feature", false, "Flag to disable the timestamp sort feature. Defaults to false.")
+	f.Bool("replication", false, "Flag to enable replication. Defaults to false.")
 	f.Bool("verbose", false, "Flag to enable verbose logging. Defaults to false.")
 
 	err := f.Parse(os.Args[1:])
@@ -73,6 +74,11 @@ func main() {
 		logger.Fatal("Failed to get verbose flag from args", zap.Error(err))
 	}
 
+	replicationEnabled, err := f.GetBool("replication")
+	if err != nil {
+		logger.Fatal("Failed to get replication flag from args", zap.Error(err))
+	}
+
 	if dsn == "" {
 		logger.Fatal("dsn is a required field")
 	}
@@ -99,7 +105,19 @@ func main() {
 	}
 	logger.Info("Successfully set env var SIGNOZ_CLUSTER ", zap.String("cluster-name", clusterNameFromEnv))
 
-	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature, verboseLoggingEnabled)
+	// set SIGNOZ_REPLICATED env var so that golang-migrate can use it
+	// the value of this env would replace all occurences of {{.SIGNOZ_REPLICATED}} in the migration files
+	signozReplicated := ""
+	logger.Info("Setting env var SIGNOZ_REPLICATED", zap.Bool("replication", replicationEnabled))
+	if replicationEnabled {
+		signozReplicated = "Replicated"
+	}
+	err = os.Setenv("SIGNOZ_REPLICATED", signozReplicated)
+	if err != nil {
+		logger.Fatal("Failed to set env var SIGNOZ_REPLICATED", zap.Error(err))
+	}
+
+	manager, err := migrationmanager.New(dsn, clusterName, disableDurationSortFeature, disableTimestampSortFeature, verboseLoggingEnabled, replicationEnabled)
 	if err != nil {
 		logger.Fatal("Failed to create migration manager", zap.Error(err))
 	}

@@ -46,7 +46,6 @@ const (
 	namespace                        = "promhouse"
 	subsystem                        = "clickhouse"
 	nameLabel                        = "__name__"
-	CLUSTER                          = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
 	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_error_index_v2 ON CLUSTER {{.SIG
   exceptionStacktrace String CODEC(ZSTD(1)),
   exceptionEscaped bool CODEC(T64, ZSTD(1)),
   INDEX idx_error_id errorID TYPE bloom_filter GRANULARITY 4
-) ENGINE MergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, groupID)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE;

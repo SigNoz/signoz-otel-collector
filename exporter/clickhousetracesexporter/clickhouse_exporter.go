@@ -38,6 +38,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	hasIsRemoteMask uint32 = 0x00000100
+	isRemoteMask    uint32 = 0x00000200
+)
+
 // Crete new exporter.
 func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
@@ -276,6 +281,15 @@ func populateTraceModel(span *Span) {
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *Span {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
+	isRemote := "unknown"
+	flags := otelSpan.Flags()
+	if flags&hasIsRemoteMask != 0 {
+		isRemote = "no"
+		if flags&isRemoteMask != 0 {
+			isRemote = "yes"
+		}
+	}
+
 	attributes := otelSpan.Attributes()
 	resourceAttributes := resource.Attributes()
 	tagMap := map[string]string{}
@@ -378,7 +392,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			BoolTagMap:        boolTagMap,
 			HasError:          false,
 		},
-		Tenant: &tenant,
+		Tenant:   &tenant,
+		IsRemote: isRemote,
 	}
 
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
@@ -421,7 +436,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpans(batchOfSpans)
+		err := s.Writer.WriteBatchOfSpans(ctx, batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err

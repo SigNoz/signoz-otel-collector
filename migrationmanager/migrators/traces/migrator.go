@@ -39,7 +39,7 @@ func (m *TracesMigrator) initFeatures() error {
 			return err
 		}
 	} else {
-		err := enableDurationSortFeature(m.DB, m.Cfg.ClusterName)
+		err := enableDurationSortFeature(m.DB, m.Cfg.ClusterName, m.Cfg.ReplicationEnabled)
 		if err != nil {
 			return err
 		}
@@ -58,7 +58,11 @@ func (m *TracesMigrator) initFeatures() error {
 	return nil
 }
 
-func enableDurationSortFeature(db clickhouse.Conn, cluster string) error {
+func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEnabled bool) error {
+	signozReplicated := ""
+	if replicationEnabled {
+		signozReplicated = "Replicated"
+	}
 	err := db.Exec(context.Background(), fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s( 
 		timestamp DateTime64(9) CODEC(DoubleDelta, LZ4),
 		traceID FixedString(32) CODEC(ZSTD(1)),
@@ -101,11 +105,11 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string) error {
 		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
 		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
-		) ENGINE MergeTree()
+		) ENGINE %sMergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
 		TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE
-		SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, cluster))
+		SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, cluster, signozReplicated))
 	if err != nil {
 		return err
 	}
