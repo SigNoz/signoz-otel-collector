@@ -5,41 +5,33 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 )
 
-type KeyAPI struct {
+type TenantAPI struct {
 	base    *API
 	storage *storage.Storage
 }
 
-func NewKeyAPI(base *API, storage *storage.Storage) *KeyAPI {
-	return &KeyAPI{
+func NewTenantAPI(base *API, storage *storage.Storage) *TenantAPI {
+	return &TenantAPI{
 		base:    base,
 		storage: storage,
 	}
 }
 
-func (api *KeyAPI) Register() {
-	group := api.base.Handler().Group("/keys")
-
-	group.GET("", func(gctx *gin.Context) {
-		_, cancel := context.WithTimeout(gctx, 5*time.Second)
-		defer cancel()
-	})
+func (api *TenantAPI) Register() {
+	group := api.base.Handler().Group("/tenants")
 
 	group.POST("", func(gctx *gin.Context) {
 		ctx, cancel := context.WithTimeout(gctx, 5*time.Second)
 		defer cancel()
 
 		type Req struct {
-			Tenant struct {
-				Name string `json:"name" binding:"required"`
-			} `json:"tenant" binding:"required"`
-			Name      string    `json:"name" binding:"required"`
-			ExpiresAt time.Time `json:"expires_at" binding:"required"`
+			Name string `json:"name" binding:"required"`
 		}
 
 		req := new(Req)
@@ -48,8 +40,9 @@ func (api *KeyAPI) Register() {
 			return
 		}
 
-		tenant, err := api.storage.DAO.Tenants().SelectByName(ctx, req.Tenant.Name)
-		if err != nil {
+		tenant := entity.NewTenant(req.Name)
+
+		if err := api.storage.DAO.Tenants().Insert(ctx, tenant); err != nil {
 			api.base.SendErrorResponse(gctx, err)
 			return
 		}
@@ -59,11 +52,6 @@ func (api *KeyAPI) Register() {
 		}
 
 		api.base.SendSuccessResponse(gctx, http.StatusCreated, Res{Id: tenant.Id.String()})
-	})
-
-	group.DELETE("", func(gctx *gin.Context) {
-		_, cancel := context.WithTimeout(gctx, 5*time.Second)
-		defer cancel()
 	})
 
 }
