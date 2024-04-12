@@ -1,9 +1,9 @@
 package main
 
 import (
+	httpAPI "github.com/SigNoz/signoz-otel-collector/pkg/api/http"
 	"github.com/SigNoz/signoz-otel-collector/pkg/log"
 	"github.com/SigNoz/signoz-otel-collector/pkg/server/http"
-	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 )
 
@@ -14,12 +14,22 @@ func registerApi(app *cobra.Command) {
 		Use:   "api",
 		Short: "Starts an api to interact with configuration.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Create the logger by taking the log-level from the root command
 			logger := log.NewZapLogger(app.PersistentFlags().Lookup("log-level").Value.String())
 			defer func() {
 				_ = logger.Flush()
 			}()
-			server := http.NewServer(logger, gin.Default(), http.WithListen(httpAddress))
 
+			// Create the api
+			api := httpAPI.NewAPI(logger)
+			// Register all apis into api
+			httpAPI.NewKeyAPI(api).Register()
+			httpAPI.NewLimitAPI(api).Register()
+
+			// Create the server
+			server := http.NewServer(logger, api.Handler(), http.WithListen(httpAddress))
+
+			// Run the http server in a goroutine and catch potential errors
 			ch := make(chan error, 1)
 			go func() {
 				if err := server.Start(cmd.Context()); err != nil {
