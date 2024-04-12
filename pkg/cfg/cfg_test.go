@@ -31,7 +31,7 @@ func TestSetCfgWithFlag(t *testing.T) {
 
 // The *PreRun and *PostRun functions will only be executed if the Run function of the current command has been declared.
 func TestSetCfgWithEnv(t *testing.T) {
-	os.Setenv("ZEUS_APP_LOG_LEVEL", "warn")
+	os.Setenv("APP_LOG_LEVEL", "warn")
 	var logLevel string
 	cmd := testCmd(&logLevel)
 	_ = cmd.Execute()
@@ -40,7 +40,7 @@ func TestSetCfgWithEnv(t *testing.T) {
 }
 
 func TestSetCfgWithFlagAndEnv(t *testing.T) {
-	os.Setenv("ZEUS_APP_LOG_LEVEL", "warn")
+	os.Setenv("APP_LOG_LEVEL", "warn")
 	var logLevel string
 	cmd := testCmd(&logLevel)
 	cmd.SetArgs([]string{"--log-level=info"})

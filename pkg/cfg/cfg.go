@@ -14,7 +14,7 @@ import (
 func SetCfg(cmd *cobra.Command, prefix string) {
 	v := viper.New()
 
-	v.SetEnvPrefix("zeus_" + prefix)
+	v.SetEnvPrefix(prefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv()
 
