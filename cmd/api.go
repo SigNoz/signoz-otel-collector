@@ -4,11 +4,13 @@ import (
 	httpAPI "github.com/SigNoz/signoz-otel-collector/pkg/api/http"
 	"github.com/SigNoz/signoz-otel-collector/pkg/log"
 	"github.com/SigNoz/signoz-otel-collector/pkg/server/http"
+	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
 	"github.com/spf13/cobra"
 )
 
 func registerApi(app *cobra.Command) {
-	var httpAddress string
+	var adminHttpConfig adminHttpConfig
+	var storageConfig storageConfig
 
 	cmd := &cobra.Command{
 		Use:   "api",
@@ -20,14 +22,22 @@ func registerApi(app *cobra.Command) {
 				_ = logger.Flush()
 			}()
 
-			// Create the api
+			// Initialize the storage layer
+			storage := storage.NewStorage(storageConfig.strategy,
+				storage.WithHost(storageConfig.host),
+				storage.WithPort(storageConfig.port),
+				storage.WithUser(storageConfig.user),
+				storage.WithPassword(storageConfig.password),
+				storage.WithDatabase(storageConfig.database),
+			)
+
+			// Create the api and register all apis into the base api
 			api := httpAPI.NewAPI(logger)
-			// Register all apis into api
-			httpAPI.NewKeyAPI(api).Register()
-			httpAPI.NewLimitAPI(api).Register()
+			httpAPI.NewTenantAPI(api, storage).Register()
+			httpAPI.NewKeyAPI(api, storage).Register()
 
 			// Create the server
-			server := http.NewServer(logger, api.Handler(), http.WithListen(httpAddress))
+			server := http.NewServer(logger, api.Handler(), http.WithListen(adminHttpConfig.bindAddress))
 
 			// Run the http server in a goroutine and catch potential errors
 			ch := make(chan error, 1)
@@ -45,8 +55,7 @@ func registerApi(app *cobra.Command) {
 		},
 	}
 
-	// Configuration options for the api
-	cmd.Flags().StringVar(&httpAddress, "http-address", "0.0.0.0:8000", "Listen ip:port address for all http endpoints.")
-
+	adminHttpConfig.registerFlags(cmd)
+	storageConfig.registerFlags(cmd)
 	app.AddCommand(cmd)
 }

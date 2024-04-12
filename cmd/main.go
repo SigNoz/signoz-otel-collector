@@ -24,7 +24,7 @@ func main() {
 
 	// Set a list of common flags across all sub commands
 	var logLevel string
-	app.PersistentFlags().StringVar(&logLevel, "log-level", "debug", "The log level of collector. Valid values are [info, debug, error, warn]")
+	app.PersistentFlags().StringVar(&logLevel, "log-level", "debug", "The log level of collector. Valid values are [info debug error warn]")
 
 	// register a list of subcommands
 	registerApi(app)
