@@ -17,7 +17,7 @@ type MigrationManager struct {
 	logger    *zap.Logger
 }
 
-func New(dsn string, clusterName string, isDurationSortFeatureDisabled, isTimestampSortFeatureDisabled, verboseLoggingEnabled bool) (*MigrationManager, error) {
+func New(dsn string, clusterName string, isDurationSortFeatureDisabled, isTimestampSortFeatureDisabled, verboseLoggingEnabled, replicationEnabled bool) (*MigrationManager, error) {
 	logger := zap.L().With(zap.String("component", "migrationmanager"))
 	cfg := migrators.MigratorConfig{
 		DSN:                            dsn,
@@ -25,6 +25,7 @@ func New(dsn string, clusterName string, isDurationSortFeatureDisabled, isTimest
 		IsDurationSortFeatureDisabled:  isDurationSortFeatureDisabled,
 		IsTimestampSortFeatureDisabled: isTimestampSortFeatureDisabled,
 		VerboseLoggingEnabled:          verboseLoggingEnabled,
+		ReplicationEnabled:             replicationEnabled,
 	}
 
 	logsMigrator, err := createNewMigrator("logs", cfg)

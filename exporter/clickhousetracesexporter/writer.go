@@ -25,6 +25,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -52,6 +53,7 @@ type SpanWriter struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 type WriterOptions struct {
@@ -64,6 +66,7 @@ type WriterOptions struct {
 	attributeTable    string
 	attributeKeyTable string
 	encoding          Encoding
+	exporterId        uuid.UUID
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -81,14 +84,13 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeTable:    options.attributeTable,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
+		exporterId:        options.exporterId,
 	}
 
 	return writer
 }
 
-func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
-
-	ctx := context.Background()
+func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
 
@@ -141,6 +143,7 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 			span.NumberTagMap,
 			span.BoolTagMap,
 			span.ResourceTagsMap,
+			span.IsRemote,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
@@ -160,9 +163,7 @@ func (w *SpanWriter) writeIndexBatch(batchSpans []*Span) error {
 	return err
 }
 
-func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
-
-	ctx := context.Background()
+func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) error {
 	var tagKeyStatement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -294,9 +295,7 @@ func (w *SpanWriter) writeTagBatch(batchSpans []*Span) error {
 	return err
 }
 
-func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
-
-	ctx := context.Background()
+func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
 
@@ -347,14 +346,10 @@ func (w *SpanWriter) writeErrorBatch(batchSpans []*Span) error {
 }
 
 func stringToBool(s string) bool {
-	if strings.ToLower(s) == "true" {
-		return true
-	}
-	return false
+	return strings.ToLower(s) == "true"
 }
 
-func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
-	ctx := context.Background()
+func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
 
@@ -376,6 +371,9 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		usageMap := span.TraceModel
 		usageMap.TagMap = map[string]string{}
 		serialized, err = json.Marshal(span.TraceModel)
+		if err != nil {
+			return err
+		}
 		serializedUsage, err := json.Marshal(usageMap)
 
 		if err != nil {
@@ -402,34 +400,34 @@ func (w *SpanWriter) writeModelBatch(batchSpans []*Span) error {
 		return err
 	}
 	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 	}
 
 	return nil
 }
 
 // WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpans(batch []*Span) error {
+func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error {
 	if w.spansTable != "" {
-		if err := w.writeModelBatch(batch); err != nil {
+		if err := w.writeModelBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
 	}
 	if w.indexTable != "" {
-		if err := w.writeIndexBatch(batch); err != nil {
+		if err := w.writeIndexBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			return err
 		}
 	}
 	if w.errorTable != "" {
-		if err := w.writeErrorBatch(batch); err != nil {
+		if err := w.writeErrorBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			return err
 		}
 	}
 	if w.attributeTable != "" && w.attributeKeyTable != "" {
-		if err := w.writeTagBatch(batch); err != nil {
+		if err := w.writeTagBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
 			return err
 		}

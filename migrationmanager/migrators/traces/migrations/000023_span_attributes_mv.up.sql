@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.span_attributes ON CLUSTER {{.SIGNOZ_CL
     stringTagValue String CODEC(ZSTD(1)),
     float64TagValue Nullable(Float64) CODEC(ZSTD(1)),
     isColumn bool CODEC(ZSTD(1)),
-) ENGINE ReplacingMergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}ReplacingMergeTree
 ORDER BY (tagKey, tagType, dataType, stringTagValue, float64TagValue, isColumn)
 TTL toDateTime(timestamp) + INTERVAL 172800 SECOND DELETE
 SETTINGS ttl_only_drop_parts = 1, allow_nullable_key = 1;

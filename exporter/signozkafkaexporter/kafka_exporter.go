@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -38,10 +39,8 @@ func (ke kafkaErrors) Error() string {
 }
 
 func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces) error {
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_traces", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(td, kafkaTopic)
 	if err != nil {
@@ -73,10 +72,8 @@ type kafkaMetricsProducer struct {
 }
 
 func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric.Metrics) error {
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_metrics", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(md, kafkaTopic)
 	if err != nil {
@@ -108,10 +105,10 @@ type kafkaLogsProducer struct {
 }
 
 func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
-	kafkaTopicPrefix, err := getKafkaTopicFromClientMetadata(client.FromContext(ctx).Metadata)
-	if err != nil {
-		return consumererror.NewPermanent(err)
-	}
+	e.normalizeLogData(&ld)
+
+	kafkaTopicPrefix := getKafkaTopicPrefixFromClientMetadata(client.FromContext(ctx).Metadata)
+
 	kafkaTopic := fmt.Sprintf("%s_logs", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(ld, kafkaTopic)
 	if err != nil {
@@ -129,6 +126,34 @@ func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) er
 		return err
 	}
 	return nil
+}
+
+func (e *kafkaLogsProducer) normalizeLogData(ld *plog.Logs) {
+	for rlIdx := 0; rlIdx < ld.ResourceLogs().Len(); rlIdx++ {
+		rl := ld.ResourceLogs().At(rlIdx)
+
+		for slIdx := 0; slIdx < rl.ScopeLogs().Len(); slIdx++ {
+			sl := rl.ScopeLogs().At(slIdx)
+
+			for lrIdx := 0; lrIdx < sl.LogRecords().Len(); lrIdx++ {
+				lr := sl.LogRecords().At(lrIdx)
+
+				// log body is always expected to be string in SigNoz
+				if lr.Body().Type() != pcommon.ValueTypeStr {
+					var strBody string
+					if lr.Body().Type() == pcommon.ValueTypeBytes {
+						strBody = string(lr.Body().Bytes().AsRaw())
+					} else {
+						strBody = lr.Body().AsString()
+					}
+
+					lr.Body().SetStr(strBody)
+
+				}
+
+			}
+		}
+	}
 }
 
 func (e *kafkaLogsProducer) Close(context.Context) error {

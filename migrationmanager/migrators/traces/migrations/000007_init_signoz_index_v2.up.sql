@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v2 ON CLUSTER {{.SIGNOZ_CL
   INDEX idx_httpHost httpHost TYPE bloom_filter GRANULARITY 4,
   INDEX idx_httpMethod httpMethod TYPE bloom_filter GRANULARITY 4,
   INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
-) ENGINE MergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp)
 PRIMARY KEY (serviceName, hasError, toStartOfHour(timestamp), name)
 ORDER BY (serviceName, hasError, toStartOfHour(timestamp), name, timestamp)
