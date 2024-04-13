@@ -29,6 +29,7 @@ var (
 		errors.TypeInternal:     http.StatusInternalServerError,
 		errors.TypeInvalidInput: http.StatusBadRequest,
 		errors.TypeUnsupported:  http.StatusBadRequest,
+		errors.TypeNotFound:     http.StatusNotFound,
 	}
 )
 

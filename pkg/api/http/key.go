@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -54,11 +55,20 @@ func (api *KeyAPI) Register() {
 			return
 		}
 
-		type Res struct {
-			Id string `json:"id"`
+		key := entity.NewKey(req.Name, req.ExpiresAt, tenant.Id)
+
+		err = api.storage.DAO.Keys().Insert(ctx, key)
+		if err != nil {
+			api.base.SendErrorResponse(gctx, err)
+			return
 		}
 
-		api.base.SendSuccessResponse(gctx, http.StatusCreated, Res{Id: tenant.Id.String()})
+		type Res struct {
+			Id    string `json:"id"`
+			Value string `json:"value"`
+		}
+
+		api.base.SendSuccessResponse(gctx, http.StatusCreated, Res{Id: key.Id.String(), Value: key.Value})
 	})
 
 	group.DELETE("", func(gctx *gin.Context) {

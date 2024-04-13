@@ -11,3 +11,7 @@ func NewDAO() *off {
 func (dao *off) Tenants() entity.TenantRepository {
 	return newTenant()
 }
+
+func (dao *off) Keys() entity.KeyRepository {
+	return newKey()
+}

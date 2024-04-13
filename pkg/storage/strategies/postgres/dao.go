@@ -22,3 +22,7 @@ func NewDAO(host string, port int, user string, password string, database string
 func (dao *postgres) Tenants() entity.TenantRepository {
 	return newTenant(dao.db)
 }
+
+func (dao *postgres) Keys() entity.KeyRepository {
+	return newKey(dao.db)
+}

@@ -11,6 +11,7 @@ import (
 
 type DAO interface {
 	Tenants() entity.TenantRepository
+	Keys() entity.KeyRepository
 }
 
 func NewDAO(strategy strategies.Strategy, opts options) DAO {

@@ -40,12 +40,12 @@ func (dao *tenant) SelectByName(ctx context.Context, name string) (*entity.Tenan
 		db.
 		QueryRowContext(
 			ctx,
-			"SELECT * FROM tenant WHERE name = ?",
+			"SELECT * FROM tenant WHERE name = $1",
 			name,
-		).Scan(tenant.Id, tenant.Name, tenant.CreatedAt)
+		).Scan(&tenant.Id, &tenant.Name, &tenant.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.Newf(errors.TypeInternal, "tenant: %s not found", name)
+			return nil, errors.Newf(errors.TypeNotFound, "tenant: %s not found", name)
 		}
 		return nil, err
 	}

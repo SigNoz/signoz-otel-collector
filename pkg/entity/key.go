@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"crypto/rand"
 	"math/big"
 	"time"
@@ -41,6 +42,5 @@ func NewKey(name string, expiresAt time.Time, tenantId Id) *Key {
 }
 
 type KeyRepository interface {
-	Get() []*Key
-	GetById(Id) *Key
+	Insert(context.Context, *Key) error
 }

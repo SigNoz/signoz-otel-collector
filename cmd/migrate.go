@@ -32,8 +32,8 @@ func registerMigrate(app *cobra.Command) {
 
 			// Initialize atlas
 			workdir, err := atlasexec.NewWorkingDir(
-				atlasexec.WithAtlasHCLPath(path.Clean("./sql/atlas.hcl")),
-				atlasexec.WithMigrations(os.DirFS("./sql/migrations")),
+				atlasexec.WithAtlasHCLPath(path.Clean("./pkg/storage/migrations/atlas.hcl")),
+				atlasexec.WithMigrations(os.DirFS("./pkg/storage/migrations/migrations")),
 			)
 			if err != nil {
 				logger.Errorctx(cmd.Context(), "failed to load working directory", err)
@@ -77,7 +77,7 @@ func registerMigrate(app *cobra.Command) {
 
 			logger.Infoctx(cmd.Context(), fmt.Sprintf("applied %d migration(s)", len(res.Applied)))
 			for _, applied := range res.Applied {
-				logger.Infoctx(cmd.Context(), fmt.Sprintf("migration %s", applied.Name))
+				logger.Infoctx(cmd.Context(), fmt.Sprintf("applied migration file %s", applied.Name))
 			}
 
 			return nil
