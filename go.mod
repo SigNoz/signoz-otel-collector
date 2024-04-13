@@ -162,6 +162,7 @@ require (
 	go.opentelemetry.io/collector/exporter/otlpexporter v0.88.0
 	go.opentelemetry.io/collector/exporter/otlphttpexporter v0.88.0
 	go.opentelemetry.io/collector/extension v0.88.0
+	go.opentelemetry.io/collector/extension/auth v0.88.0
 	go.opentelemetry.io/collector/extension/ballastextension v0.88.0
 	go.opentelemetry.io/collector/extension/zpagesextension v0.88.0
 	go.opentelemetry.io/collector/featuregate v1.0.0-rcv0017
@@ -412,7 +413,6 @@ require (
 	go.opentelemetry.io/collector/config/confignet v0.88.0 // indirect
 	go.opentelemetry.io/collector/config/internal v0.88.0 // indirect
 	go.opentelemetry.io/collector/connector v0.88.0 // indirect
-	go.opentelemetry.io/collector/extension/auth v0.88.0 // indirect
 	go.opentelemetry.io/collector/service v0.88.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.42.0 // indirect
