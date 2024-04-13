@@ -43,4 +43,5 @@ func NewKey(name string, expiresAt time.Time, tenantId Id) *Key {
 
 type KeyRepository interface {
 	Insert(context.Context, *Key) error
+	SelectByValue(context.Context, string) (*Key, error)
 }

@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
+	"github.com/SigNoz/signoz-otel-collector/pkg/errors"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -30,4 +32,23 @@ func (dao *key) Insert(ctx context.Context, key *entity.Key) error {
 	}
 
 	return nil
+}
+
+func (dao *key) SelectByValue(ctx context.Context, value string) (*entity.Key, error) {
+	key := new(entity.Key)
+	err := dao.
+		db.
+		QueryRowContext(
+			ctx,
+			"SELECT * FROM key WHERE value = $1",
+			value,
+		).Scan(&key.Id, &key.Name, &key.Value, &key.CreatedAt, &key.ExpiresAt, &key.TenantId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.Newf(errors.TypeNotFound, "key not found")
+		}
+		return nil, err
+	}
+
+	return key, nil
 }
