@@ -27,6 +27,7 @@ func main() {
 	app.PersistentFlags().StringVar(&logLevel, "log-level", "debug", "The log level of collector. Valid values are [info debug error warn]")
 
 	// register a list of subcommands
+	registerRun(app)
 	registerApi(app)
 	registerMigrate(app)
 
@@ -35,7 +36,7 @@ func main() {
 	}
 }
 
-func wait(ctx context.Context, logger log.Logger, err chan error) {
+func wait(ctx context.Context, logger log.Logger, err <-chan error) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
 
