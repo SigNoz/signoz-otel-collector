@@ -14,7 +14,7 @@ func TestInfoctx(t *testing.T) {
 	ctx := context.Background()
 	core, logs := observer.New(zapcore.InfoLevel) // zap has a special zaptest/observer module made for unit testing
 	logger := NewZapLogger("info")
-	logger.(*zapLogger).setl(zap.New(core).Sugar())
+	logger.(*ZapLogger).setl(zap.New(core).Sugar())
 	logger.Infoctx(ctx, "this is a test for the info with context logger", "url", true)
 	assert.Equal(t, 1, logs.Len())
 	assert.Equal(t, "this is a test for the info with context logger", logs.All()[0].Message)
