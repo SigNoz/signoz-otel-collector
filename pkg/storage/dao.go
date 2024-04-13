@@ -4,19 +4,20 @@ import (
 	"fmt"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
-	"github.com/SigNoz/signoz-otel-collector/pkg/storage/off"
-	"github.com/SigNoz/signoz-otel-collector/pkg/storage/postgres"
+	"github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies"
+	"github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies/off"
+	"github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies/postgres"
 )
 
 type DAO interface {
 	Tenants() entity.TenantRepository
 }
 
-func NewDAO(strategy Strategy, opts options) DAO {
+func NewDAO(strategy strategies.Strategy, opts options) DAO {
 	switch strategy {
-	case Off:
+	case strategies.Off:
 		return off.NewDAO()
-	case Postgres:
+	case strategies.Postgres:
 		return postgres.NewDAO(opts.host, opts.port, opts.user, opts.password, opts.database)
 	}
 

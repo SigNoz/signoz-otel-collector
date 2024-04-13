@@ -1,11 +1,13 @@
 package storage
 
+import "github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies"
+
 type Storage struct {
-	Strategy Strategy
+	Strategy strategies.Strategy
 	DAO      DAO
 }
 
-func NewStorage(strategy Strategy, opts ...Option) *Storage {
+func NewStorage(strategy strategies.Strategy, opts ...Option) *Storage {
 	//Set default values
 	storageOtps := options{}
 

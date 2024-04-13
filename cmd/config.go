@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
+	"github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies"
 	"github.com/spf13/cobra"
 )
 
 type storageConfig struct {
-	strategy storage.Strategy
+	strategy strategies.Strategy
 	host     string
 	port     int
 	user     string
@@ -18,8 +18,8 @@ type storageConfig struct {
 }
 
 func (sc *storageConfig) registerFlags(cmd *cobra.Command) {
-	sc.strategy = storage.Off
-	cmd.Flags().Var(&sc.strategy, "strategy", fmt.Sprintf("Strategy to use for storage, allowed Values are: %v", storage.AllowedStrategies()))
+	sc.strategy = strategies.Off
+	cmd.Flags().Var(&sc.strategy, "strategy", fmt.Sprintf("Strategy to use for storage, allowed Values are: %v", strategies.AllowedStrategies()))
 	cmd.Flags().StringVar(&sc.host, "postgres-host", "0.0.0.0", "Host of postgres")
 	cmd.Flags().IntVar(&sc.port, "postgres-port", 5432, "Port of postgres")
 	cmd.Flags().StringVar(&sc.user, "postgres-user", "postgres", "User of postgres")

@@ -28,6 +28,7 @@ func main() {
 
 	// register a list of subcommands
 	registerApi(app)
+	registerMigrate(app)
 
 	if err := app.Execute(); err != nil {
 		os.Exit(1)
