@@ -71,6 +71,39 @@ func (api *KeyAPI) Register() {
 		api.base.SendSuccessResponse(gctx, http.StatusCreated, Res{Id: key.Id.String(), Value: key.Value})
 	})
 
+	group.POST("/:id/limits", func(gctx *gin.Context) {
+		ctx, cancel := context.WithTimeout(gctx, 5*time.Second)
+		defer cancel()
+
+		type Req struct {
+			Key struct {
+				Id entity.Id `json:"id" binding:"required"`
+			} `json:"key" binding:"required"`
+			Signal entity.Signal      `json:"signal" binding:"required"`
+			Config entity.LimitConfig `json:"config" binding:"required"`
+		}
+
+		req := new(Req)
+		if err := gctx.BindJSON(req); err != nil {
+			api.base.SendErrorResponse(gctx, err)
+			return
+		}
+
+		limit := entity.NewLimit(req.Config, req.Key.Id, req.Signal)
+
+		err := api.storage.DAO.Limits().Insert(ctx, limit)
+		if err != nil {
+			api.base.SendErrorResponse(gctx, err)
+			return
+		}
+
+		type Res struct {
+			Id string `json:"id"`
+		}
+
+		api.base.SendSuccessResponse(gctx, http.StatusCreated, Res{Id: limit.Id.String()})
+	})
+
 	group.DELETE("", func(gctx *gin.Context) {
 		_, cancel := context.WithTimeout(gctx, 5*time.Second)
 		defer cancel()
