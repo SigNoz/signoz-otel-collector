@@ -116,10 +116,10 @@ func runCollector(
 		return err
 	}
 
-	// TODO: Move this cancel logic inside collector.Shutdown()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 	wait(ctx, logger, collector.Error())
+	// TODO: Move this cancel logic inside collector.Shutdown()
+	// ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// defer cancel()
 	if err := collector.Shutdown(ctx); err != nil {
 		return err
 	}

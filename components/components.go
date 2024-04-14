@@ -124,7 +124,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
-	"github.com/SigNoz/signoz-otel-collector/pkg/extensions/keyauth"
+	"github.com/SigNoz/signoz-otel-collector/pkg/extension/keyauth"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
