@@ -46,6 +46,7 @@ func NewServer(logger log.Logger, handler *gin.Engine, opts ...Option) *Server {
 }
 
 func (server *Server) Start(ctx context.Context) error {
+	server.logger.Infoctx(ctx, "starting http server", "listen", server.opts.listen)
 	if err := server.srv.ListenAndServe(); err != nil {
 		if err != http.ErrServerClosed {
 			server.logger.Errorctx(ctx, "failed to start server", err)
