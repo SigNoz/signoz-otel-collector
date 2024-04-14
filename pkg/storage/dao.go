@@ -12,6 +12,8 @@ import (
 type DAO interface {
 	Tenants() entity.TenantRepository
 	Keys() entity.KeyRepository
+	Limits() entity.LimitRepository
+	LimitMetrics() entity.LimitMetricRepository
 }
 
 func NewDAO(strategy strategies.Strategy, opts options) DAO {
@@ -20,7 +22,8 @@ func NewDAO(strategy strategies.Strategy, opts options) DAO {
 		return off.NewDAO()
 	case strategies.Postgres:
 		return postgres.NewDAO(opts.host, opts.port, opts.user, opts.password, opts.database)
+	default:
+		panic(fmt.Sprintf("strategy %s has no dao implemented", strategy.String()))
 	}
 
-	panic(fmt.Sprintf("strategy %s has no dao implemented", strategy.String()))
 }

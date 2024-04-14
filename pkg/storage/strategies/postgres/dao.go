@@ -26,3 +26,11 @@ func (dao *postgres) Tenants() entity.TenantRepository {
 func (dao *postgres) Keys() entity.KeyRepository {
 	return newKey(dao.db)
 }
+
+func (dao *postgres) Limits() entity.LimitRepository {
+	return newLimit(dao.db)
+}
+
+func (dao *postgres) LimitMetrics() entity.LimitMetricRepository {
+	return newLimitMetric(dao.db)
+}

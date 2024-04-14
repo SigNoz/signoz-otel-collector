@@ -15,3 +15,11 @@ func (dao *off) Tenants() entity.TenantRepository {
 func (dao *off) Keys() entity.KeyRepository {
 	return newKey()
 }
+
+func (dao *off) Limits() entity.LimitRepository {
+	return newLimit()
+}
+
+func (dao *off) LimitMetrics() entity.LimitMetricRepository {
+	return newLimitMetric()
+}

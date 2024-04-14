@@ -33,9 +33,9 @@ func NewStrategy(name string) (Strategy, error) {
 		return Postgres, nil
 	case "off":
 		return Off, nil
+	default:
+		return Strategy{}, fmt.Errorf("strategy %s not supported", name)
 	}
-
-	return Strategy{}, fmt.Errorf("strategy %s not supported", name)
 }
 
 func (enum *Strategy) String() string {
