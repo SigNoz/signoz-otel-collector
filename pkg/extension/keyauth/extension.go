@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
 	"go.opentelemetry.io/collector/component"
@@ -45,6 +46,7 @@ func (auth *KeyAuth) Authenticate(ctx context.Context, headers map[string][]stri
 	var values []string
 
 	for _, header := range auth.headers {
+		// Go converts all headers to canonical headers
 		auth, ok := headers[http.CanonicalHeaderKey(header)]
 		if ok {
 			name = header
@@ -57,12 +59,11 @@ func (auth *KeyAuth) Authenticate(ctx context.Context, headers map[string][]stri
 		return ctx, errors.New("missing header or key")
 	}
 
-	value := values[0]
-
-	_, err := auth.storage.DAO.Keys().SelectByValue(ctx, value)
+	key, err := auth.storage.DAO.Keys().SelectByValue(ctx, values[0])
 	if err != nil {
 		return nil, err
 	}
 
-	return ctx, nil
+	// Insert the key into the context
+	return entity.CtxWithKeyId(ctx, key.Id), nil
 }

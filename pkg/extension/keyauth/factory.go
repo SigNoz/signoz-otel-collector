@@ -13,7 +13,7 @@ func NewFactory() extension.Factory {
 		component.Type("keyauth"),
 		createDefaultConfig,
 		createExtension,
-		component.StabilityLevelBeta,
+		component.StabilityLevelDevelopment,
 	)
 }
 
