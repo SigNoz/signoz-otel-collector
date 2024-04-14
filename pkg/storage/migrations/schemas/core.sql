@@ -1,3 +1,4 @@
+-- TODO: Reset migrations to zero before merging to main
 CREATE TABLE "tenant" (
     "id" TEXT PRIMARY KEY,
     "name" TEXT UNIQUE,

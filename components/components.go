@@ -126,6 +126,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	"github.com/SigNoz/signoz-otel-collector/pkg/extension/keyauth"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
+	"github.com/SigNoz/signoz-otel-collector/pkg/processor/limiter"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
@@ -269,6 +270,7 @@ func Components() (otelcol.Factories, error) {
 		logstransformprocessor.NewFactory(),
 		signoztailsampler.NewFactory(),
 		signoztransformprocessor.NewFactory(),
+		limiter.NewFactory(),
 	}
 	for _, pr := range factories.Processors {
 		processors = append(processors, pr)
