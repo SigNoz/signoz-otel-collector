@@ -56,3 +56,13 @@ func (cc *collectorConfig) registerFlags(cmd *cobra.Command) {
 		"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
 	cmd.Flags().AddGoFlagSet(flagSet)
 }
+
+type cacheConfig struct {
+	host string
+	port int
+}
+
+func (cc *cacheConfig) registerFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&cc.host, "redis-host", "0.0.0.0", "Host of redis")
+	cmd.Flags().IntVar(&cc.port, "redis-port", 6379, "Port of redis")
+}

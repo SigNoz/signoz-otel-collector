@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
+	"github.com/SigNoz/signoz-otel-collector/pkg/cache"
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/log"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
@@ -18,6 +19,7 @@ import (
 func registerRun(app *cobra.Command) {
 	var collectorConfig collectorConfig
 	var storageConfig storageConfig
+	var cacheConfig cacheConfig
 
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -34,12 +36,14 @@ func registerRun(app *cobra.Command) {
 				logger,
 				storageConfig,
 				collectorConfig,
+				cacheConfig,
 			)
 		},
 	}
 
 	collectorConfig.registerFlags(cmd)
 	storageConfig.registerFlags(cmd)
+	cacheConfig.registerFlags(cmd)
 	app.AddCommand(cmd)
 }
 
@@ -48,6 +52,7 @@ func runCollector(
 	logger log.Logger,
 	storageConfig storageConfig,
 	collectorConfig collectorConfig,
+	cacheConfig cacheConfig,
 ) error {
 	// Copy files
 	if collectorConfig.managerConfig != "" {
@@ -84,8 +89,13 @@ func runCollector(
 	)
 	logger.Infoctx(ctx, "initialized storage")
 
+	cache := cache.NewCache(
+		cache.WithHost(cacheConfig.host),
+		cache.WithPort(cacheConfig.port),
+	)
+
 	//Inject the global env here
-	env.NewG(env.WithStorage(storage))
+	env.NewG(env.WithStorage(storage), env.WithCache(cache))
 
 	// Assert the zap logger within the logger interface
 	zaplogger := logger.(*log.ZapLogger).Getl().Desugar()
