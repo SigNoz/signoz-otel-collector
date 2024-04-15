@@ -41,6 +41,8 @@ func createTraces(
 		nextConsumer,
 		lp.ConsumeTraces,
 		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		processorhelper.WithStart(lp.Start),
+		processorhelper.WithShutdown(lp.Shutdown),
 	)
 }
 
@@ -62,6 +64,8 @@ func createMetrics(
 		nextConsumer,
 		lp.ConsumeMetrics,
 		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		processorhelper.WithStart(lp.Start),
+		processorhelper.WithShutdown(lp.Shutdown),
 	)
 }
 
@@ -83,5 +87,7 @@ func createLogs(
 		nextConsumer,
 		lp.ConsumeLogs,
 		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		processorhelper.WithStart(lp.Start),
+		processorhelper.WithShutdown(lp.Shutdown),
 	)
 }

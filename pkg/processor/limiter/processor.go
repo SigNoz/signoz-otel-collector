@@ -2,12 +2,15 @@ package limiter
 
 import (
 	"context"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/errors"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -17,15 +20,62 @@ import (
 )
 
 type limiterProcessor struct {
-	logger  *zap.Logger
-	storage *storage.Storage
+	logger      *zap.Logger
+	storage     *storage.Storage
+	shutdownCh  chan bool
+	incrementCh chan []*entity.LimitMetric
+	goroutines  sync.WaitGroup
 }
 
 func newLimiterProcessor(logger *zap.Logger) (*limiterProcessor, error) {
 	return &limiterProcessor{
-		logger:  logger,
-		storage: env.G().Storage(),
+		logger:      logger,
+		storage:     env.G().Storage(),
+		shutdownCh:  make(chan bool),
+		incrementCh: make(chan []*entity.LimitMetric, runtime.NumCPU()),
+		goroutines:  sync.WaitGroup{},
 	}, nil
+}
+
+func (lp *limiterProcessor) Start(ctx context.Context, h component.Host) error {
+	lp.goroutines.Add(1)
+	go func() {
+	MAIN:
+		for {
+			select {
+			case limitMetrics := <-lp.incrementCh:
+				lp.increment(ctx, limitMetrics)
+
+			case <-lp.shutdownCh:
+				lp.logger.Info("Flushing remaining metrics", zap.Int("num", len(lp.incrementCh)))
+
+			FLUSH:
+				for {
+					select {
+					case limitMetrics := <-lp.incrementCh:
+						lp.increment(ctx, limitMetrics)
+					default:
+						break FLUSH
+					}
+				}
+
+				lp.logger.Info("Stopping increment goroutine")
+				break MAIN
+			}
+		}
+
+		lp.goroutines.Done()
+	}()
+	return nil
+}
+
+func (lp *limiterProcessor) Shutdown(ctx context.Context) error {
+	// Signal the increment loop to close
+	lp.shutdownCh <- true
+
+	// Wait for the increment loop to exit
+	lp.goroutines.Wait()
+	return nil
 }
 
 func (lp *limiterProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) (ptrace.Traces, error) {
@@ -77,6 +127,13 @@ func (lp *limiterProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) (plog
 	}
 
 	return ld, nil
+}
+
+func (lp *limiterProcessor) increment(ctx context.Context, limitMetrics []*entity.LimitMetric) {
+	err := lp.storage.DAO.LimitMetrics().Insert(ctx, limitMetrics)
+	if err != nil {
+		lp.logger.Error("unable to increment limit metrics", zap.Error(err))
+	}
 }
 
 func (lp *limiterProcessor) consume(ctx context.Context, signal entity.Signal, limitValue entity.LimitValue) error {
@@ -137,10 +194,8 @@ func (lp *limiterProcessor) consume(ctx context.Context, signal entity.Signal, l
 		))
 	}
 
-	err = lp.storage.DAO.LimitMetrics().Insert(ctx, limitMetrics)
-	if err != nil {
-		return err
-	}
+	// Send the limitMetric to be ingested asynchronously
+	lp.incrementCh <- limitMetrics
 
 	return nil
 }
