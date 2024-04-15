@@ -1,6 +1,7 @@
 package env
 
 import (
+	"github.com/SigNoz/signoz-otel-collector/pkg/cache"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
 )
 
@@ -16,6 +17,7 @@ func G() g {
 
 type g struct {
 	storage *storage.Storage
+	cache   *cache.Cache
 }
 
 func NewG(opts ...Option) {
@@ -30,4 +32,8 @@ func NewG(opts ...Option) {
 
 func (env g) Storage() *storage.Storage {
 	return env.storage
+}
+
+func (env g) Cache() *cache.Cache {
+	return env.cache
 }

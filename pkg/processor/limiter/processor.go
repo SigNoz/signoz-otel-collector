@@ -22,15 +22,26 @@ import (
 type limiterProcessor struct {
 	logger      *zap.Logger
 	storage     *storage.Storage
+	policy      entity.LimitMetricRepository
 	shutdownCh  chan bool
 	incrementCh chan []*entity.LimitMetric
 	goroutines  sync.WaitGroup
 }
 
-func newLimiterProcessor(logger *zap.Logger) (*limiterProcessor, error) {
+func newLimiterProcessor(logger *zap.Logger, cfg component.Config) (*limiterProcessor, error) {
+	config, _ := cfg.(*Config)
+	var policy entity.LimitMetricRepository
+
+	if config.Policy == PolicyRedis {
+		policy = NewRedisPolicy(env.G().Cache())
+	} else {
+		policy = NewPostgresPolicy(env.G().Storage())
+	}
+
 	return &limiterProcessor{
 		logger:      logger,
 		storage:     env.G().Storage(),
+		policy:      policy,
 		shutdownCh:  make(chan bool),
 		incrementCh: make(chan []*entity.LimitMetric, runtime.NumCPU()),
 		goroutines:  sync.WaitGroup{},
@@ -130,7 +141,7 @@ func (lp *limiterProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) (plog
 }
 
 func (lp *limiterProcessor) increment(ctx context.Context, limitMetrics []*entity.LimitMetric) {
-	err := lp.storage.DAO.LimitMetrics().Insert(ctx, limitMetrics)
+	err := lp.policy.Insert(ctx, limitMetrics)
 	if err != nil {
 		lp.logger.Error("unable to increment limit metrics", zap.Error(err))
 	}
@@ -159,7 +170,7 @@ func (lp *limiterProcessor) consume(ctx context.Context, signal entity.Signal, l
 
 	// Iterate over all periods and check whether limit has exceeded or not
 	for period, maxLimitValue := range limit.Config.Map() {
-		currLimitValue, err := lp.storage.DAO.LimitMetrics().
+		currLimitValue, err := lp.policy.
 			SelectValueByPeriodAndSignalAndPeriodAtAndKeyId(
 				ctx,
 				period,
