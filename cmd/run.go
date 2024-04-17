@@ -56,8 +56,9 @@ func runCollector(
 ) error {
 	// Copy files
 	if collectorConfig.managerConfig != "" {
-		// Copy the collector config to the copy path ??
-		// Why?
+		// The opamp server offers an updated config when the collector runs in managed mode.
+		// The original config path is not writable in container mode.
+		// We take the copy of the original config and use the copy path (/var/tmp/...) to dynamically update the config.
 		if _, err := os.Stat(collectorConfig.config); os.IsNotExist(err) {
 			logger.Errorctx(ctx, "config file does not exist", err)
 			return err
