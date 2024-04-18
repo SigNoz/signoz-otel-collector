@@ -2,137 +2,97 @@ package main
 
 import (
 	"context"
-	"os"
-	"time"
 
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/cache"
-	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/log"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
-	"github.com/SigNoz/signoz-otel-collector/service"
-	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 func registerRun(app *cobra.Command) {
+	var adminHttpConfig adminHttpConfig
 	var collectorConfig collectorConfig
 	var storageConfig storageConfig
 	var cacheConfig cacheConfig
+	var adminEnabled bool
 
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Run the otel collector",
+		Short: "Starts the otel collector and the api",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			// Create the logger by taking the log-level from the root command
 			logger := log.NewZapLogger(app.PersistentFlags().Lookup("log-level").Value.String())
 			defer func() {
 				_ = logger.Flush()
 			}()
 
-			return runCollector(
+			// Initialize the storage layer
+			storage := storage.NewStorage(
+				storageConfig.strategy,
+				storage.WithHost(storageConfig.host),
+				storage.WithPort(storageConfig.port),
+				storage.WithUser(storageConfig.user),
+				storage.WithPassword(storageConfig.password),
+				storage.WithDatabase(storageConfig.database),
+			)
+			logger.Infoctx(ctx, "initialized storage", "strategy", storageConfig.strategy)
+
+			// Initialize the cache layer
+			cache := cache.NewCache(
+				cacheConfig.strategy,
+				cache.WithHost(cacheConfig.host),
+				cache.WithPort(cacheConfig.port),
+			)
+			logger.Infoctx(ctx, "initialized cache", "strategy", cacheConfig.strategy)
+
+			return run(
 				cmd.Context(),
 				logger,
-				storageConfig,
+				storage,
+				cache,
 				collectorConfig,
-				cacheConfig,
+				adminEnabled,
+				adminHttpConfig,
 			)
 		},
 	}
 
+	cmd.Flags().BoolVar(&adminEnabled, "admin-enabled", false, "Whether to enable the admin api or not, do not specify the flag to disable the admin api")
+	adminHttpConfig.registerFlags(cmd)
 	collectorConfig.registerFlags(cmd)
 	storageConfig.registerFlags(cmd)
 	cacheConfig.registerFlags(cmd)
 	app.AddCommand(cmd)
 }
 
-func runCollector(
+func run(
 	ctx context.Context,
 	logger log.Logger,
-	storageConfig storageConfig,
+	storage *storage.Storage,
+	cache *cache.Cache,
 	collectorConfig collectorConfig,
-	cacheConfig cacheConfig,
+	adminEnabled bool,
+	adminHttpConfig adminHttpConfig,
 ) error {
-	// Copy files
-	if collectorConfig.managerConfig != "" {
-		// The opamp server offers an updated config when the collector runs in managed mode.
-		// The original config path is not writable in container mode.
-		// We take the copy of the original config and use the copy path (/var/tmp/...) to dynamically update the config.
-		if _, err := os.Stat(collectorConfig.config); os.IsNotExist(err) {
-			logger.Errorctx(ctx, "config file does not exist", err)
-			return err
-		}
+	group, ctx := errgroup.WithContext(ctx)
 
-		data, err := os.ReadFile(collectorConfig.config)
-		if err != nil {
-			logger.Errorctx(ctx, "failed to read config file", err)
-			return err
-		}
-
-		err = os.WriteFile(collectorConfig.copyPath, data, 0600)
-		if err != nil {
-			logger.Errorctx(ctx, "failed to write config file at copy path", err)
-			return err
-		}
-
-		// Set the collector config to the new path
-		collectorConfig.config = collectorConfig.copyPath
+	// Start the collector first
+	group.Go(func() error {
+		return runCollector(ctx, logger, storage, collectorConfig, cache)
+	})
+	// Start the admin api
+	if adminEnabled {
+		group.Go(func() error {
+			return runApi(ctx, logger, storage, adminHttpConfig)
+		})
 	}
 
-	storage := storage.NewStorage(
-		storageConfig.strategy,
-		storage.WithHost(storageConfig.host),
-		storage.WithPort(storageConfig.port),
-		storage.WithUser(storageConfig.user),
-		storage.WithPassword(storageConfig.password),
-		storage.WithDatabase(storageConfig.database),
-	)
-	logger.Infoctx(ctx, "initialized storage")
-
-	cache := cache.NewCache(
-		cache.WithHost(cacheConfig.host),
-		cache.WithPort(cacheConfig.port),
-	)
-
-	//Inject the global env here
-	env.NewG(env.WithStorage(storage), env.WithCache(cache))
-
-	// Assert the zap logger within the logger interface
-	zaplogger := logger.(*log.ZapLogger).Getl().Desugar()
-
-	// Create the collector
-	collector, err := service.New(
-		signozcol.New(
-			signozcol.WrappedCollectorSettings{
-				ConfigPaths:  []string{collectorConfig.config},
-				Version:      constants.Version,
-				Desc:         constants.Desc,
-				LoggingOpts:  []zap.Option{zap.WithCaller(true)},
-				PollInterval: 200 * time.Millisecond,
-				Logger:       zaplogger,
-			},
-		),
-		zaplogger,
-		collectorConfig.managerConfig,
-		collectorConfig.config,
-	)
+	err := group.Wait()
 	if err != nil {
-		logger.Errorctx(ctx, "failed to create the collector", err)
 		return err
 	}
 
-	if err := collector.Start(ctx); err != nil {
-		logger.Errorctx(ctx, "failed to start the collector", err)
-		return err
-	}
-
-	wait(ctx, logger, collector.Error())
-	// TODO: Move this cancel logic inside collector.Shutdown()
-	// ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	// defer cancel()
-	if err := collector.Shutdown(ctx); err != nil {
-		return err
-	}
 	return nil
 }

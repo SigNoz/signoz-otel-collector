@@ -18,16 +18,27 @@ func registerApi(app *cobra.Command) {
 		Use:   "api",
 		Short: "Starts an api to interact with configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			// Create the logger by taking the log-level from the root command
 			logger := log.NewZapLogger(app.PersistentFlags().Lookup("log-level").Value.String())
 			defer func() {
 				_ = logger.Flush()
 			}()
 
+			storage := storage.NewStorage(
+				storageConfig.strategy,
+				storage.WithHost(storageConfig.host),
+				storage.WithPort(storageConfig.port),
+				storage.WithUser(storageConfig.user),
+				storage.WithPassword(storageConfig.password),
+				storage.WithDatabase(storageConfig.database),
+			)
+			logger.Infoctx(ctx, "initialized storage", "strategy", storageConfig.strategy)
+
 			return runApi(
 				cmd.Context(),
 				logger,
-				storageConfig,
+				storage,
 				adminHttpConfig,
 			)
 		},
@@ -41,19 +52,9 @@ func registerApi(app *cobra.Command) {
 func runApi(
 	ctx context.Context,
 	logger log.Logger,
-	storageConfig storageConfig,
+	storage *storage.Storage,
 	adminHttpConfig adminHttpConfig,
 ) error {
-	// Initialize the storage layer
-	storage := storage.NewStorage(
-		storageConfig.strategy,
-		storage.WithHost(storageConfig.host),
-		storage.WithPort(storageConfig.port),
-		storage.WithUser(storageConfig.user),
-		storage.WithPassword(storageConfig.password),
-		storage.WithDatabase(storageConfig.database),
-	)
-
 	// Create the api and register all apis into the base api
 	api := httpAPI.NewAPI(logger)
 	httpAPI.NewTenantAPI(api, storage).Register()

@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies"
+	cacheStrategies "github.com/SigNoz/signoz-otel-collector/pkg/cache/strategies"
+
+	storageStrategies "github.com/SigNoz/signoz-otel-collector/pkg/storage/strategies"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/collector/featuregate"
 )
 
 type storageConfig struct {
-	strategy strategies.Strategy
+	strategy storageStrategies.Strategy
 	host     string
 	port     int
 	user     string
@@ -20,8 +22,8 @@ type storageConfig struct {
 }
 
 func (sc *storageConfig) registerFlags(cmd *cobra.Command) {
-	sc.strategy = strategies.Off
-	cmd.Flags().Var(&sc.strategy, "strategy", fmt.Sprintf("Strategy to use for storage, allowed Values are: %v", strategies.AllowedStrategies()))
+	sc.strategy = storageStrategies.Off
+	cmd.Flags().Var(&sc.strategy, "storage-strategy", fmt.Sprintf("Strategy to use for storage, allowed values are: %v", storageStrategies.AllowedStrategies()))
 	cmd.Flags().StringVar(&sc.host, "postgres-host", "0.0.0.0", "Host of postgres")
 	cmd.Flags().IntVar(&sc.port, "postgres-port", 5432, "Port of postgres")
 	cmd.Flags().StringVar(&sc.user, "postgres-user", "postgres", "User of postgres")
@@ -58,11 +60,14 @@ func (cc *collectorConfig) registerFlags(cmd *cobra.Command) {
 }
 
 type cacheConfig struct {
-	host string
-	port int
+	strategy cacheStrategies.Strategy
+	host     string
+	port     int
 }
 
 func (cc *cacheConfig) registerFlags(cmd *cobra.Command) {
+	cc.strategy = cacheStrategies.Off
+	cmd.Flags().Var(&cc.strategy, "cache-strategy", fmt.Sprintf("Strategy to use for cache, allowed values are: %v", cacheStrategies.AllowedStrategies()))
 	cmd.Flags().StringVar(&cc.host, "redis-host", "0.0.0.0", "Host of redis")
 	cmd.Flags().IntVar(&cc.port, "redis-port", 6379, "Port of redis")
 }

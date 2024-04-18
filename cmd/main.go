@@ -14,11 +14,11 @@ import (
 
 func main() {
 	app := &cobra.Command{
-		Use:          "collector",
-		Short:        "Signoz Otel Collector",
+		Use:          "signoz-otel-collector",
+		Short:        "Signoz OTEL Collector",
 		SilenceUsage: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			cfg.SetCfg(cmd, "collector")
+			cfg.SetCfg(cmd, "signoz_otel_collector")
 		},
 	}
 
@@ -27,9 +27,10 @@ func main() {
 	app.PersistentFlags().StringVar(&logLevel, "log-level", "debug", "The log level of collector. Valid values are [info debug error warn]")
 
 	// register a list of subcommands
-	registerRun(app)
-	registerApi(app)
 	registerMigrate(app)
+	registerCollector(app)
+	registerApi(app)
+	registerRun(app)
 
 	if err := app.Execute(); err != nil {
 		os.Exit(1)

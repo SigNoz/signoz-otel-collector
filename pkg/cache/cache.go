@@ -1,10 +1,13 @@
 package cache
 
+import "github.com/SigNoz/signoz-otel-collector/pkg/cache/strategies"
+
 type Cache struct {
-	CAO CAO
+	CAO      CAO
+	Strategy strategies.Strategy
 }
 
-func NewCache(opts ...Option) *Cache {
+func NewCache(strategy strategies.Strategy, opts ...Option) *Cache {
 	cacheOpts := options{}
 
 	// Merge default and input values
@@ -16,6 +19,7 @@ func NewCache(opts ...Option) *Cache {
 	cao := NewCAO(cacheOpts)
 
 	return &Cache{
-		CAO: cao,
+		CAO:      cao,
+		Strategy: strategy,
 	}
 }
