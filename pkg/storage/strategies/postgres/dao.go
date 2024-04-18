@@ -34,3 +34,7 @@ func (dao *postgres) Limits() entity.LimitRepository {
 func (dao *postgres) LimitMetrics() entity.LimitMetricRepository {
 	return newLimitMetric(dao.db)
 }
+
+func (dao *postgres) Auth() entity.AuthRepository {
+	return newAuth(dao.db)
+}

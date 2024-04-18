@@ -14,6 +14,7 @@ type DAO interface {
 	Keys() entity.KeyRepository
 	Limits() entity.LimitRepository
 	LimitMetrics() entity.LimitMetricRepository
+	Auth() entity.AuthRepository
 }
 
 func NewDAO(strategy strategies.Strategy, opts options) DAO {

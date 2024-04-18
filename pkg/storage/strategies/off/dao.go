@@ -23,3 +23,7 @@ func (dao *off) Limits() entity.LimitRepository {
 func (dao *off) LimitMetrics() entity.LimitMetricRepository {
 	return newLimitMetric()
 }
+
+func (dao *off) Auth() entity.AuthRepository {
+	return newAuth()
+}

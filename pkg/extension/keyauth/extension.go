@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
+	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension/auth"
 	"go.uber.org/zap"
@@ -59,11 +59,13 @@ func (auth *KeyAuth) Authenticate(ctx context.Context, headers map[string][]stri
 		return ctx, errors.New("missing header or key")
 	}
 
-	key, err := auth.storage.DAO.Keys().SelectByValue(ctx, values[0])
+	authData, err := auth.storage.DAO.Auth().SelectByKeyValue(ctx, values[0])
 	if err != nil {
 		return nil, err
 	}
 
-	// Insert the key into the context
-	return entity.CtxWithKeyId(ctx, key.Id), nil
+	//Set authdata into context
+	cl := client.FromContext(ctx)
+	cl.Auth = authData
+	return client.NewContext(ctx, cl), nil
 }
