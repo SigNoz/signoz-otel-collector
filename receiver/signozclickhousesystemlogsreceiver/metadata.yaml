@@ -1,0 +1,6 @@
+type: signozclickhousesystemlogsreceiver
+
+status:
+  class: receiver
+  stability:
+    beta: [logs]
