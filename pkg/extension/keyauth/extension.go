@@ -8,6 +8,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
+	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension/auth"
 	"go.uber.org/zap"
@@ -64,6 +65,7 @@ func (auth *KeyAuth) Authenticate(ctx context.Context, headers map[string][]stri
 		return nil, err
 	}
 
-	//Set authdata into context
-	return entity.NewContextWithAuth(ctx, authData), nil
+	return client.NewContext(ctx, client.Info{
+		Metadata: entity.NewMetadataWithAuth(ctx, authData),
+	}), nil
 }

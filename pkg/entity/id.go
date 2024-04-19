@@ -39,6 +39,14 @@ func NewId(value string) (Id, error) {
 	}, nil
 }
 
+func MustNewId(value string) Id {
+	id, err := NewId(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func (id Id) String() string {
 	return id.val.String()
 }

@@ -1,9 +1,7 @@
 package signozkafkaexporter
 
 import (
-	"context"
-
-	"github.com/SigNoz/signoz-otel-collector/pkg/entity"
+	"go.opentelemetry.io/collector/client"
 )
 
 const (
@@ -11,13 +9,12 @@ const (
 )
 
 // getKafkaTopicFromClientMetadata returns the kafka topic from client metadata
-func getKafkaTopicPrefixFromCtx(ctx context.Context) string {
-	// Retrieve credential id from ctx
-	auth, ok := entity.AuthFromContext(ctx)
-	if !ok {
-		// If no auth was found, return the deafult topic.
-		return DefaultKafkaTopicPrefix
+func getKafkaTopicPrefixFromClientMetadata(md client.Metadata) string {
+	// return default topic if no tenant id is found in client metadata
+	signozTenantId := md.Get("signoz-tenant-name")
+	if len(signozTenantId) != 0 {
+		return signozTenantId[0]
 	}
 
-	return auth.TenantName()
+	return DefaultKafkaTopicPrefix
 }

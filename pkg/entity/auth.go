@@ -8,8 +8,10 @@ import (
 
 var _ client.AuthData = (*Auth)(nil)
 
-// unexported context key
-type authCtxKey struct{}
+const (
+	MetadataKeyId      = "signoz-key-id"
+	MetadataTenantName = "signoz-tenant-name"
+)
 
 // Auth struct represents the AuthData interface like the opentelemetry client.
 // We cannot use the otel client because some processors like the batch processor overwrite
@@ -19,7 +21,8 @@ type authCtxKey struct{}
 //		Metadata: client.NewMetadata(md),
 //	})
 //
-// # Use the FromContext and NewContext functions directly instead of relying on AuthData
+// The only workaround to a new client metadata and use that. Ensure that the metadata_keys in the
+// batch processor match the keys set here.
 //
 // It's a domain aggregate.
 type Auth struct {
@@ -34,21 +37,33 @@ func NewAuth(key *Key, tenant *Tenant) *Auth {
 	}
 }
 
-func NewContextWithAuth(ctx context.Context, auth *Auth) context.Context {
-	return context.WithValue(ctx, authCtxKey{}, auth)
+// NewMetadat takes an existing metadat and derives a new metadata with the
+// Auth value stored on it.
+func NewMetadataWithAuth(ctx context.Context, auth *Auth) client.Metadata {
+	return client.NewMetadata(map[string][]string{
+		MetadataKeyId:      {auth.key.Id.String()},
+		MetadataTenantName: {auth.tenant.Name},
+	})
 }
 
-func AuthFromContext(ctx context.Context) (*Auth, bool) {
-	c, ok := ctx.Value(authCtxKey{}).(*Auth)
-	return c, ok
+func KeyIdFromMetadata(md client.Metadata) (Id, bool) {
+	values := md.Get(MetadataKeyId)
+
+	if len(values) == 0 {
+		return Id{}, false
+	}
+
+	return MustNewId(values[0]), true
 }
 
-func (a *Auth) KeyId() Id {
-	return a.key.Id
-}
+func TenantNameFromMetadata(md client.Metadata) (string, bool) {
+	values := md.Get(MetadataKeyId)
 
-func (a *Auth) TenantName() string {
-	return a.tenant.Name
+	if len(values) == 0 {
+		return "", false
+	}
+
+	return values[0], true
 }
 
 // CAUTION: Do not use this function unless you are sure no processor overwrites the context
