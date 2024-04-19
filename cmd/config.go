@@ -71,3 +71,13 @@ func (cc *cacheConfig) registerFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cc.host, "redis-host", "0.0.0.0", "Host of redis")
 	cmd.Flags().IntVar(&cc.port, "redis-port", 6379, "Port of redis")
 }
+
+type migrateConfig struct {
+	hclPath       string
+	migrationsDir string
+}
+
+func (mc *migrateConfig) registerFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&mc.hclPath, "hcl-path", "./pkg/storage/migrations/atlas.hcl", "Path to the atlas hcl configuration flag")
+	cmd.Flags().StringVar(&mc.migrationsDir, "migrations-dir", "./pkg/storage/migrations/migrations", "Path to the directory containing all migration files")
+}

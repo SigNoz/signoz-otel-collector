@@ -13,6 +13,7 @@ import (
 
 func registerMigrate(app *cobra.Command) {
 	var storageConfig storageConfig
+	var migrateConfig migrateConfig
 
 	cmd := &cobra.Command{
 		Use:   "migrate",
@@ -32,8 +33,8 @@ func registerMigrate(app *cobra.Command) {
 
 			// Initialize atlas
 			workdir, err := atlasexec.NewWorkingDir(
-				atlasexec.WithAtlasHCLPath(path.Clean("./pkg/storage/migrations/atlas.hcl")),
-				atlasexec.WithMigrations(os.DirFS("./pkg/storage/migrations/migrations")),
+				atlasexec.WithAtlasHCLPath(path.Clean(migrateConfig.hclPath)),
+				atlasexec.WithMigrations(os.DirFS(migrateConfig.migrationsDir)),
 			)
 			if err != nil {
 				logger.Errorctx(cmd.Context(), "failed to load working directory", err)
@@ -84,6 +85,7 @@ func registerMigrate(app *cobra.Command) {
 		},
 	}
 
+	migrateConfig.registerFlags(cmd)
 	storageConfig.registerFlags(cmd)
 	app.AddCommand(cmd)
 }
