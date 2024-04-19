@@ -10,7 +10,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/env"
 	"github.com/SigNoz/signoz-otel-collector/pkg/errors"
 	"github.com/SigNoz/signoz-otel-collector/pkg/storage"
-	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -150,12 +149,13 @@ func (lp *limiterProcessor) increment(ctx context.Context, limitMetrics []*entit
 
 func (lp *limiterProcessor) consume(ctx context.Context, signal entity.Signal, limitValue entity.LimitValue) error {
 	// Retrieve credential id from ctx
-	cl := client.FromContext(ctx)
-	keyIdAttribute := cl.Auth.GetAttribute("key.id")
-	if keyIdAttribute == nil {
+	auth, ok := entity.AuthFromContext(ctx)
+	if !ok {
+		// If no auth was found, skip the limiter.
 		return nil
 	}
-	keyId := keyIdAttribute.(entity.Id)
+
+	keyId := auth.KeyId()
 
 	// Retrieve the limit from the backing store
 	limit, err := lp.storage.DAO.Limits().SelectByKeyAndSignal(ctx, keyId, signal)

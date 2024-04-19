@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/Shopify/sarama"
-	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -39,7 +38,7 @@ func (ke kafkaErrors) Error() string {
 }
 
 func (e *kafkaTracesProducer) tracesPusher(ctx context.Context, td ptrace.Traces) error {
-	kafkaTopicPrefix := getKafkaTopicPrefixFromClient(client.FromContext(ctx))
+	kafkaTopicPrefix := getKafkaTopicPrefixFromCtx(ctx)
 
 	kafkaTopic := fmt.Sprintf("%s_traces", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(td, kafkaTopic)
@@ -72,7 +71,7 @@ type kafkaMetricsProducer struct {
 }
 
 func (e *kafkaMetricsProducer) metricsDataPusher(ctx context.Context, md pmetric.Metrics) error {
-	kafkaTopicPrefix := getKafkaTopicPrefixFromClient(client.FromContext(ctx))
+	kafkaTopicPrefix := getKafkaTopicPrefixFromCtx(ctx)
 
 	kafkaTopic := fmt.Sprintf("%s_metrics", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(md, kafkaTopic)
@@ -107,7 +106,7 @@ type kafkaLogsProducer struct {
 func (e *kafkaLogsProducer) logsDataPusher(ctx context.Context, ld plog.Logs) error {
 	e.normalizeLogData(&ld)
 
-	kafkaTopicPrefix := getKafkaTopicPrefixFromClient(client.FromContext(ctx))
+	kafkaTopicPrefix := getKafkaTopicPrefixFromCtx(ctx)
 
 	kafkaTopic := fmt.Sprintf("%s_logs", kafkaTopicPrefix)
 	messages, err := e.marshaler.Marshal(ld, kafkaTopic)
