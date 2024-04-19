@@ -1,0 +1,6 @@
+.git/
+.github/
+.versions/
+tmp/
+vendor/
+example/
