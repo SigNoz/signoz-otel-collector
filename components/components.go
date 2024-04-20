@@ -128,6 +128,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
+	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 )
@@ -160,6 +161,7 @@ func Components() (otelcol.Factories, error) {
 		azureeventhubreceiver.NewFactory(),
 		azuremonitorreceiver.NewFactory(),
 		carbonreceiver.NewFactory(),
+		clickhousesystemtablesreceiver.NewFactory(),
 		collectdreceiver.NewFactory(),
 		couchdbreceiver.NewFactory(),
 		datadogreceiver.NewFactory(),
