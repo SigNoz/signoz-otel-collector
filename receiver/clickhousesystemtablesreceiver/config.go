@@ -13,7 +13,7 @@ type QueryLogScrapeConfig struct {
 
 	// Must be configured to a value greater than flush_interval_milliseconds setting for query_log
 	// For details see https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#query-log
-	ScrapeDelaySeconds uint64 `mapstructure:"scrape_delay_seconds"`
+	MinScrapeDelaySeconds uint64 `mapstructure:"min_scrape_delay_seconds"`
 }
 
 type Config struct {
@@ -26,7 +26,7 @@ func (cfg *Config) Validate() (err error) {
 		err = multierr.Append(err, errors.New("dsn must be specified"))
 	}
 
-	if cfg.QueryLogScrapeConfig.ScrapeDelaySeconds == 0 {
+	if cfg.QueryLogScrapeConfig.MinScrapeDelaySeconds == 0 {
 		err = multierr.Append(err, errors.New("query_log_scrape_config.scrape_delay_seconds must be set to a value greater than flush_interval_milliseconds setting for clickhouse query_log table"))
 	}
 

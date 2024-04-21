@@ -4,6 +4,8 @@ package clickhousesystemtablesreceiver
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -295,28 +297,71 @@ func scrapeQueryLogs(
 
 func scrapeQueryLogRecords(
 	ctx context.Context, db driver.Conn, minTs uint64, maxTs uint64,
-) ([]plog.LogRecord, error) {
+) (plog.LogRecordSlice, error) {
+	res := plog.NewLogRecordSlice()
+
 	queryLogs, err := scrapeQueryLogs(
 		ctx, db, minTs, maxTs,
 	)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 
-	logRecords := []plog.LogRecord{}
 	for _, ql := range queryLogs {
-		lr := ql.toLogRecord()
-		logRecords = append(logRecords, lr)
+		lr, err := ql.toLogRecord()
+		if err != nil {
+			return res, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
+		}
+		lr.CopyTo(res.AppendEmpty())
 	}
 
-	return logRecords, nil
+	return res, nil
 }
 
-func (ql *QueryLog) toLogRecord() plog.LogRecord {
+func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 	lr := plog.NewLogRecord()
 
 	lr.SetTimestamp(pcommon.NewTimestampFromTime(ql.EventTimeMicroseconds))
 	lr.Body().SetStr(ql.Query)
 
-	return lr
+	if strings.HasPrefix(ql.EventType, "Exception") {
+		lr.SetSeverityNumber(plog.SeverityNumberError)
+		lr.SetSeverityText("ERROR")
+	} else {
+		lr.SetSeverityNumber(plog.SeverityNumberInfo)
+		lr.SetSeverityText("INFO")
+	}
+
+	// Populate log attributes
+	attrs := map[string]any{}
+	qlVal := reflect.ValueOf(ql).Elem()
+	qlType := qlVal.Type()
+	for i := 0; i < qlVal.NumField(); i++ {
+		field := qlType.Field(i)
+		if attrName := field.Tag.Get("ch"); attrName != "" {
+			attrs[attrName] = qlVal.Field(i).Interface()
+		}
+	}
+
+	lr.Attributes().FromRaw(attrs)
+	// slices and maps need separate handling
+	for k, v := range attrs {
+		rVal := reflect.ValueOf(v)
+		if rVal.Kind() == reflect.Slice {
+			slice := lr.Attributes().PutEmptySlice(k)
+			for i := 0; i < rVal.Len(); i++ {
+				slice.AppendEmpty().FromRaw(rVal.Index(i).Interface())
+			}
+		} else if rVal.Kind() == reflect.Map {
+			pmap := lr.Attributes().PutEmptyMap(k)
+			iter := rVal.MapRange()
+			for iter.Next() {
+				pmap.PutEmpty(iter.Key().String()).FromRaw(iter.Value().Interface())
+			}
+		} else if timeV, ok := v.(time.Time); ok {
+			lr.Attributes().PutStr(k, timeV.Format(time.RFC3339))
+		}
+	}
+
+	return lr, nil
 }

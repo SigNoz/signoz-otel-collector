@@ -9,25 +9,28 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
 
 type systemTablesReceiver struct {
 	// next scrape will include events in query_log table with
-	// nextScrapeMinEventTs  <= event_timestamp < (nextScrapeMinEventTs + scrapeIntervalSeconds)
+	// nextScrapeIntervalStartTs  <= event_timestamp < (nextScrapeIntervalStartTs + scrapeIntervalSeconds)
 	scrapeIntervalSeconds uint64
 
 	// next scrape will happen only after timestamp at server
-	// is greater than (nextScrapeMinEventTs + scrapeIntervalSeconds) + scrapeDelaySeconds
+	// is greater than (nextScrapeIntervalStartTs + scrapeIntervalSeconds) + scrapeDelaySeconds
 	scrapeDelaySeconds uint64
 
-	db     driver.Conn
-	logger *zap.Logger
+	nextConsumer consumer.Logs
+	db           driver.Conn
+	logger       *zap.Logger
 
 	// members containing internal state for receivers
-	nextScrapeMinEventTs uint64
-	requestShutdown      context.CancelFunc
-	shutdownCompleteWg   sync.WaitGroup
+	nextScrapeIntervalStartTs uint64
+	requestShutdown           context.CancelFunc
+	shutdownCompleteWg        sync.WaitGroup
 }
 
 func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) error {
@@ -40,7 +43,7 @@ func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) e
 	if err != nil {
 		return fmt.Errorf("couldn't start clickhousesystemtablesreceiver: %w", err)
 	}
-	r.nextScrapeMinEventTs = serverTsNow
+	r.nextScrapeIntervalStartTs = serverTsNow
 
 	// TODO(Raj): Add obsrecv stuff
 	// obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
@@ -111,21 +114,22 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint6
 		return 5, fmt.Errorf("couldn't determine server ts while scraping query log: %w", err)
 	}
 
-	maxEventTsToScrape := r.nextScrapeMinEventTs + r.scrapeIntervalSeconds
+	// Events with ts in [r.nextScrapedMinEventTs, scrapeIntervalEndTs) are to be scraped next
+	scrapeIntervalEndTs := r.nextScrapeIntervalStartTs + r.scrapeIntervalSeconds
 
-	minServerTsForNextScrapeAttempt := maxEventTsToScrape + r.scrapeDelaySeconds
+	minServerTsForNextScrapeAttempt := scrapeIntervalEndTs + r.scrapeDelaySeconds
 
-	if serverTsNow <= minServerTsForNextScrapeAttempt {
-		waitSeconds := (minServerTsForNextScrapeAttempt - serverTsNow) + 1
+	if serverTsNow < minServerTsForNextScrapeAttempt {
+		waitSeconds := minServerTsForNextScrapeAttempt - serverTsNow + 1
 		r.logger.Debug(fmt.Sprintf(
-			"not ready to scrape yet. waiting %ds before next attempt. serverTsNow: %d, maxEventTsToScrape: %d",
-			waitSeconds, serverTsNow, maxEventTsToScrape,
+			"not ready to scrape yet. waiting %ds before next attempt. serverTsNow: %d, scrapeIntervalEndTs: %d",
+			waitSeconds, serverTsNow, scrapeIntervalEndTs,
 		))
 		return waitSeconds, nil
 	}
 
 	queryLogRecords, err := scrapeQueryLogRecords(
-		ctx, r.db, r.nextScrapeMinEventTs, maxEventTsToScrape,
+		ctx, r.db, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	)
 	if err != nil {
 		return 5, fmt.Errorf(
@@ -133,19 +137,28 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint6
 		)
 	}
 
-	logBodies := []string{}
-	for _, lr := range queryLogRecords {
-		logBodies = append(
-			logBodies,
-			fmt.Sprintf("%d", lr.Timestamp().AsTime().Unix()),
-		)
+	// TODO(Raj): Remove this
+	for i := 0; i < queryLogRecords.Len(); i++ {
+		queryLogRecords.At(i).Attributes().PutStr("log_type", "query_log")
 	}
 
-	r.logger.Debug(fmt.Sprintf(
+	// resourceLogsByQueryLogHostName := map[string]plog.ResourceLogs{}
+	// for _, lr := range queryLogRecords {
+	// lr.Attributes().
+	// }
+	pl := plog.NewLogs()
+	rl := pl.ResourceLogs().AppendEmpty()
+	sl := rl.ScopeLogs().AppendEmpty()
+	queryLogRecords.CopyTo(sl.LogRecords())
+
+	r.nextConsumer.ConsumeLogs(ctx, pl)
+
+	// TODO(Raj): Turn this into a debug log
+	r.logger.Info(fmt.Sprintf(
 		"scraped %d query logs. serverTsNow: %d, minTs: %d, maxTs: %d",
-		len(queryLogRecords), serverTsNow, r.nextScrapeMinEventTs, maxEventTsToScrape,
+		queryLogRecords.Len(), serverTsNow, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	))
 
-	r.nextScrapeMinEventTs = maxEventTsToScrape
+	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
 	return r.scrapeIntervalSeconds, nil
 }

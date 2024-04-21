@@ -50,9 +50,10 @@ func createLogsReceiver(
 	}
 
 	return &systemTablesReceiver{
+		nextConsumer:          consumer,
 		db:                    db,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
-		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.ScrapeDelaySeconds,
+		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.MinScrapeDelaySeconds,
 		// TODO(Raj): is params.Logger always provided to be non null?
 		logger: params.Logger,
 	}, nil
