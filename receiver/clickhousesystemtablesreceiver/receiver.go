@@ -3,6 +3,7 @@ package clickhousesystemtablesreceiver
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -25,13 +26,17 @@ type systemTablesReceiver struct {
 	logger *zap.Logger
 }
 
-func (r *systemTablesReceiver) Start(_ context.Context, host component.Host) error {
+func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) error {
 	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
 	r.requestShutdown = cancelReceiverCtx
 
 	// Begin scraping query_log entries that come at or after
 	// the timestamp at clickhouse server when the receiver is started.
-	r.nextScrapeIntervalStartTs = r.unixTsNowAtClickhouse()
+	serverTsNow, err := r.unixTsNowAtClickhouse(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't start clickhousesystemtablesreceiver: %w", err)
+	}
+	r.nextScrapeIntervalStartTs = serverTsNow
 
 	// TODO(Raj): Add obsrecv stuff
 	// obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
@@ -71,7 +76,7 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 		}
 
 		if time.Now().Unix() >= minTsBeforeNextScrapeAttempt {
-			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady()
+			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady(ctx)
 			if err != nil {
 				return err
 			}
@@ -83,11 +88,20 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 
 }
 
-func (r *systemTablesReceiver) unixTsNowAtClickhouse() uint64 {
-	return 0
+func (r *systemTablesReceiver) unixTsNowAtClickhouse(ctx context.Context) (uint64, error) {
+	var serverTsNow uint64
+	row := r.db.QueryRow(ctx, `select toUInt64(toUnixTimestamp(now()))`)
+	if err := row.Scan(&serverTsNow); err != nil {
+		return 0, fmt.Errorf("couldn't query current timestamp at clickhouse server: %w", err)
+	}
+	return serverTsNow, nil
 }
 
-func (r *systemTablesReceiver) scrapeQueryLogIfReady() (int64, error) {
-	r.logger.Info("DEBUG: Pretending to scrape query log")
+func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (int64, error) {
+	serverTsNow, err := r.unixTsNowAtClickhouse(ctx)
+	if err != nil {
+		return 5, err
+	}
+	r.logger.Info(fmt.Sprintf("DEBUG: Pretending to scrape query log: server ts: %d", serverTsNow))
 	return 5, nil
 }
