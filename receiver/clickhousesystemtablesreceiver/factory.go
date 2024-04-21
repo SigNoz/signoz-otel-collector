@@ -39,7 +39,7 @@ func createLogsReceiver(
 		return nil, err
 	}
 
-	scrapeIntervalSeconds := rCfg.ScrapeIntervalSeconds
+	scrapeIntervalSeconds := rCfg.QueryLogScrapeConfig.ScrapeIntervalSeconds
 	if scrapeIntervalSeconds == 0 {
 		scrapeIntervalSeconds = defaultScrapeIntervalSeconds
 	}
@@ -52,6 +52,7 @@ func createLogsReceiver(
 	return &systemTablesReceiver{
 		db:                    db,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
+		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.ScrapeDelaySeconds,
 		// TODO(Raj): is params.Logger always provided to be non null?
 		logger: params.Logger,
 	}, nil
