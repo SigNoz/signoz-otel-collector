@@ -98,12 +98,12 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 }
 
 func (r *systemTablesReceiver) unixTsNowAtClickhouse(ctx context.Context) (uint64, error) {
-	var serverTsNow uint64
-	row := r.db.QueryRow(ctx, `select toUInt64(toUnixTimestamp(now()))`)
+	var serverTsNow uint32
+	row := r.db.QueryRow(ctx, `select toUnixTimestamp(now())`)
 	if err := row.Scan(&serverTsNow); err != nil {
 		return 0, fmt.Errorf("couldn't query current timestamp at clickhouse server: %w", err)
 	}
-	return serverTsNow, nil
+	return uint64(serverTsNow), nil
 }
 
 // Scrapes query_log table at clickhouse if it has been long enough since the last scrape.

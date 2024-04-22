@@ -13,7 +13,6 @@ const (
 	defaultScrapeIntervalSeconds = 10
 )
 
-// NewFactory creates Kafka receiver factory.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		"clickhousesystemtablesreceiver",
