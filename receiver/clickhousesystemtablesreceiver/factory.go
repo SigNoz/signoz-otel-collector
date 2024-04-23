@@ -32,11 +32,6 @@ func createLogsReceiver(
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
 	rCfg := cfg.(*Config)
-	// TODO(Raj): Is this needed here?
-	err := rCfg.Validate()
-	if err != nil {
-		return nil, err
-	}
 
 	scrapeIntervalSeconds := rCfg.QueryLogScrapeConfig.ScrapeIntervalSeconds
 	if scrapeIntervalSeconds == 0 {
@@ -50,13 +45,17 @@ func createLogsReceiver(
 
 	chQuerrier := newClickhouseQuerrier(db)
 
+	logger := params.Logger
+	if logger == nil {
+		return nil, fmt.Errorf("logsReceiver must be provided with a logger")
+	}
+
 	return &systemTablesReceiver{
 		nextConsumer:          consumer,
 		clickhouse:            chQuerrier,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.MinScrapeDelaySeconds,
-		// TODO(Raj): is params.Logger always provided to be non null?
-		logger: params.Logger,
+		logger:                params.Logger,
 	}, nil
 
 }
