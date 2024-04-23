@@ -11,7 +11,7 @@ import (
 type mockClickhouseQuerrier struct {
 	tsNow uint32
 
-	scrapeResult []QueryLog
+	nextScrapeResult []QueryLog
 }
 
 var _ clickhouseQuerrier = (*mockClickhouseQuerrier)(nil)
@@ -19,7 +19,7 @@ var _ clickhouseQuerrier = (*mockClickhouseQuerrier)(nil)
 func (t *mockClickhouseQuerrier) scrapeQueryLog(
 	ctx context.Context, minTs uint32, maxTs uint32,
 ) ([]QueryLog, error) {
-	return t.scrapeResult, nil
+	return t.nextScrapeResult, nil
 }
 
 func (t *mockClickhouseQuerrier) unixTsNow(ctx context.Context) (

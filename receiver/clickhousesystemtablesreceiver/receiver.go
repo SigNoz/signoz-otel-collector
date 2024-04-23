@@ -116,7 +116,6 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 
 	// not late enough to reliably scrape the next batch of query_logs to be scraped?
 	minServerTsForNextScrapeAttempt := scrapeIntervalEndTs + r.scrapeDelaySeconds
-
 	if serverTsNow < minServerTsForNextScrapeAttempt {
 		waitSeconds := minServerTsForNextScrapeAttempt - serverTsNow
 		r.logger.Debug(fmt.Sprintf(
@@ -185,7 +184,13 @@ func (r *systemTablesReceiver) queryLogsToPlogs(queryLogs []QueryLog) (
 	pl := plog.NewLogs()
 
 	logsByQueryLogHostName := map[string]plog.LogRecordSlice{}
+
 	for _, ql := range queryLogs {
+		lr, err := ql.toLogRecord()
+		if err != nil {
+			return pl, err
+		}
+
 		if _, exists := logsByQueryLogHostName[ql.Hostname]; !exists {
 			rl := pl.ResourceLogs().AppendEmpty()
 			rl.Resource().Attributes().PutStr("hostname", ql.Hostname)
@@ -193,10 +198,6 @@ func (r *systemTablesReceiver) queryLogsToPlogs(queryLogs []QueryLog) (
 			logsByQueryLogHostName[ql.Hostname] = sl.LogRecords()
 		}
 
-		lr, err := ql.toLogRecord()
-		if err != nil {
-			return pl, err
-		}
 		lr.MoveTo(logsByQueryLogHostName[ql.Hostname].AppendEmpty())
 	}
 

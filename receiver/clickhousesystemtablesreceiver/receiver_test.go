@@ -41,14 +41,10 @@ func TestReceiver(t *testing.T) {
 	)
 	require.Nil(err)
 
-	// Receiver should start scraping from the server ts
-	// it observes when it starts
+	// Receiver should start scraping query_log rows that come after the
+	// clickhouse ts it observes when starting up
 	t0 := uint32(time.Now().Unix())
 	mockQuerrier.tsNow = t0
-
-	testQl1 := makeTestQueryLog("test-host1", time.Now(), "test query 1")
-	testQl2 := makeTestQueryLog("test-host2", time.Now(), "test query 2")
-	mockQuerrier.scrapeResult = []QueryLog{testQl1, testQl2}
 
 	err = testReceiver.init(context.Background())
 	require.Nil(err)
@@ -56,6 +52,11 @@ func TestReceiver(t *testing.T) {
 
 	// The receiver should wait long enough to respect
 	// min scrape delay - ensuring query_log table has been flushed
+
+	testQl1 := makeTestQueryLog("test-host1", time.Now(), "test query 1")
+	testQl2 := makeTestQueryLog("test-host2", time.Now(), "test query 2")
+	mockQuerrier.nextScrapeResult = []QueryLog{testQl1, testQl2}
+
 	require.Equal(len(logsSink.AllLogs()), 0)
 	waitSeconds, err := testReceiver.scrapeQueryLogIfReady(context.Background())
 	require.Nil(err)
@@ -75,12 +76,12 @@ func TestReceiver(t *testing.T) {
 	require.Nil(err)
 	require.GreaterOrEqual(waitSeconds, testScrapeIntervalSeconds)
 	require.Equal(len(logsSink.AllLogs()), 1)
-	logProduced := logsSink.AllLogs()[0]
 
-	require.Equal(logProduced.ResourceLogs().Len(), 2)
+	plogProduced := logsSink.AllLogs()[0]
+	require.Equal(plogProduced.ResourceLogs().Len(), 2)
 	producedHostNames := []string{}
-	for i := 0; i < logProduced.ResourceLogs().Len(); i++ {
-		rl := logProduced.ResourceLogs().At(i)
+	for i := 0; i < plogProduced.ResourceLogs().Len(); i++ {
+		rl := plogProduced.ResourceLogs().At(i)
 		hn, exists := rl.Resource().Attributes().Get("hostname")
 		require.True(exists, "scrape query logs are expected to have hostname in resource attribs")
 		producedHostNames = append(producedHostNames, hn.Str())
@@ -96,20 +97,21 @@ func TestReceiver(t *testing.T) {
 
 	// should scrape again after specified interval has passed
 	mockQuerrier.tsNow += testScrapeIntervalSeconds + 1
+
 	testHost := "host-3"
-	testQlTs := time.Now()
+	testQlEventTime := time.Now()
 	testQuery := "test query"
-	testQl3 := makeTestQueryLog(testHost, testQlTs, testQuery)
-	mockQuerrier.scrapeResult = []QueryLog{testQl3}
+	testQl3 := makeTestQueryLog(testHost, testQlEventTime, testQuery)
+	mockQuerrier.nextScrapeResult = []QueryLog{testQl3}
+
 	_, err = testReceiver.scrapeQueryLogIfReady(context.Background())
 	require.Nil(err)
 	require.Equal(len(logsSink.AllLogs()), 2)
-
-	logProduced = logsSink.AllLogs()[1]
+	plogProduced = logsSink.AllLogs()[1]
 
 	// log data should be as expected.
-	require.Equal(1, logProduced.ResourceLogs().Len())
-	rl := logProduced.ResourceLogs().At(0)
+	require.Equal(1, plogProduced.ResourceLogs().Len())
+	rl := plogProduced.ResourceLogs().At(0)
 
 	hostProduced, _ := rl.Resource().Attributes().Get("hostname")
 	require.Equal(hostProduced.Str(), testHost)
@@ -121,8 +123,8 @@ func TestReceiver(t *testing.T) {
 	lr := sl.LogRecords().At(0)
 
 	require.Equal(lr.Body().Str(), testQuery)
-	require.Equal(lr.Timestamp().AsTime().Unix(), testQlTs.Unix())
+	require.Equal(lr.Timestamp().AsTime().Unix(), testQlEventTime.Unix())
 	et, exists := lr.Attributes().Get("event_time")
 	require.True(exists)
-	require.Equal(et.Str(), testQlTs.Format(time.RFC3339))
+	require.Equal(et.Str(), testQlEventTime.Format(time.RFC3339))
 }
