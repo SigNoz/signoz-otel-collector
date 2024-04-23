@@ -48,7 +48,6 @@ func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) e
 
 	go func() {
 		if err := r.run(receiverCtx); err != nil {
-			// TODO(Raj): Should this cause fatal errors?
 			host.ReportFatalError(err)
 		}
 	}()
@@ -89,8 +88,8 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 		if time.Now().Unix() >= minTsBeforeNextScrapeAttempt {
 			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady(ctx)
 			if err != nil {
-				// TODO(Raj): Errors returned from run are
-				return err
+				// errors returned from run will cause collector shutdown
+				r.logger.Error("scrape attempt failed", zap.Error(err))
 			}
 			minTsBeforeNextScrapeAttempt = time.Now().Unix() + int64(secondsToWaitBeforeNextAttempt)
 		}

@@ -6,8 +6,6 @@ import (
 	"go.uber.org/multierr"
 )
 
-// TODO(Raj): Add config_test
-
 type QueryLogScrapeConfig struct {
 	ScrapeIntervalSeconds uint32 `mapstructure:"scrape_interval_seconds"`
 
