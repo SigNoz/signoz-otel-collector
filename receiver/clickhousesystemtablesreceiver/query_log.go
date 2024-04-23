@@ -326,11 +326,12 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 	return lr, nil
 }
 
+// pcommon.Value.FromRaw doesn't work for everything
 func pcommonValue(v any) pcommon.Value {
+	pVal := pcommon.NewValueEmpty()
+
 	rVal := reflect.ValueOf(v)
 	valueKind := rVal.Kind()
-
-	pVal := pcommon.NewValueEmpty()
 
 	if valueKind == reflect.Slice {
 		ps := pcommon.NewSlice()

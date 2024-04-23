@@ -27,7 +27,7 @@ func createDefaultConfig() component.Config {
 }
 
 func createLogsReceiver(
-	_ context.Context,
+	ctx context.Context,
 	params receiver.CreateSettings,
 	cfg component.Config,
 	consumer consumer.Logs,
@@ -39,7 +39,7 @@ func createLogsReceiver(
 		scrapeIntervalSeconds = defaultScrapeIntervalSeconds
 	}
 
-	db, err := newClickhouseClient(rCfg.DSN)
+	db, err := newClickhouseClient(ctx, rCfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create clickhouse client: %w", err)
 	}
