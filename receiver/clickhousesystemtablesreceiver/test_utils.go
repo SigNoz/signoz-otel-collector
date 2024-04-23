@@ -1,58 +1,61 @@
 package clickhousesystemtablesreceiver
 
 import (
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/DATA-DOG/go-sqlmock"
-	mockhouse "github.com/srikanthccv/ClickHouse-go-mock"
-	"go.opentelemetry.io/collector/consumer/consumertest"
+	"context"
+	"time"
+
+	"go.opentelemetry.io/collector/consumer"
 	"go.uber.org/zap"
 )
 
-type mockClickhouse struct {
-	mockDB mockhouse.ClickConnMockCommon
+type mockClickhouseQuerrier struct {
+	tsNow uint32
+
+	scrapeResult []QueryLog
 }
 
-func newMockClickhouse() (*mockClickhouse, error) {
-	mockCh, err := mockhouse.NewClickHouseWithQueryMatcher(
-		nil, sqlmock.QueryMatcherRegexp,
-	)
+var _ clickhouseQuerrier = (*mockClickhouseQuerrier)(nil)
+
+func (t *mockClickhouseQuerrier) scrapeQueryLog(
+	ctx context.Context, minTs uint32, maxTs uint32,
+) ([]QueryLog, error) {
+	return t.scrapeResult, nil
+}
+
+func (t *mockClickhouseQuerrier) unixTsNow(ctx context.Context) (
+	uint32, error,
+) {
+	return t.tsNow, nil
+}
+
+func newTestReceiver(
+	ch clickhouseQuerrier,
+	scrapeIntervalSeconds uint32,
+	scrapeDelaySeconds uint32,
+	nextConsumer consumer.Logs,
+) (*systemTablesReceiver, error) {
+	config := zap.NewProductionConfig()
+	config.OutputPaths = []string{"stdout"}
+	logger, err := config.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	mockCh.MatchExpectationsInOrder(false)
-
-	return &mockClickhouse{
-		mockDB: mockCh,
-	}, nil
-
-}
-
-func (mch *mockClickhouse) mockServerTsNow(ts uint32) {
-	cols := []mockhouse.ColumnType{}
-	cols = append(cols, mockhouse.ColumnType{Type: "UInt32", Name: "toUnixTimestamp(now())"})
-
-	values := [][]any{
-		{
-			uint32(ts),
-		},
-	}
-
-	mch.mockDB.ExpectQuery(
-		`select toUnixTimestamp(now())`,
-	).WillReturnRows(mockhouse.NewRows(cols, values))
-}
-
-func newTestReceiver(
-	db driver.Conn,
-	scrapeIntervalSeconds uint64,
-	scrapeDelaySeconds uint64,
-) *systemTablesReceiver {
 	return &systemTablesReceiver{
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    scrapeDelaySeconds,
-		nextConsumer:          consumertest.NewNop(),
-		db:                    db,
-		logger:                zap.NewNop(),
+		clickhouse:            ch,
+		nextConsumer:          nextConsumer,
+		logger:                logger,
+	}, nil
+}
+
+func makeTestQueryLog(hostname string, eventTime time.Time, query string) QueryLog {
+	return QueryLog{
+		Hostname:              hostname,
+		EventType:             "QueryFinish",
+		EventTime:             eventTime,
+		EventTimeMicroseconds: eventTime,
+		Query:                 query,
 	}
 }

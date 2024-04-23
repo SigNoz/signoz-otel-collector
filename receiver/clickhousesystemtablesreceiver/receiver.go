@@ -141,6 +141,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 	for _, ql := range queryLogs {
 		if _, exists := logsByQueryLogHostName[ql.Hostname]; !exists {
 			rl := pl.ResourceLogs().AppendEmpty()
+			rl.Resource().Attributes().PutStr("hostname", ql.Hostname)
 			sl := rl.ScopeLogs().AppendEmpty()
 			logsByQueryLogHostName[ql.Hostname] = sl.LogRecords()
 		}
