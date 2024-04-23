@@ -73,8 +73,42 @@ func TestReceiver(t *testing.T) {
 	}
 	require.ElementsMatch(producedHostNames, []string{"test-host1", "test-host2"})
 
-	// The receiver should then continue to scrape periodically
-	// as per specified interval
+	// The receiver should then continue to scrape periodically as per specified interval
 
-	// require.Equal(1, 2)
+	mockQuerrier.tsNow += testScrapeIntervalSeconds - 1
+	waitSeconds, err = testReceiver.scrapeQueryLogIfReady(context.Background())
+	require.Nil(err)
+	require.GreaterOrEqual(waitSeconds, testScrapeIntervalSeconds)
+	// scraping again before scrape interval has passed should not have fetched more logs
+	require.Equal(len(logsSink.AllLogs()), 1)
+
+	mockQuerrier.tsNow += testScrapeIntervalSeconds + 2
+	testHost := "host-3"
+	testQlTs := time.Now()
+	testQuery := "test query"
+	testQl3 := makeTestQueryLog(testHost, testQlTs, testQuery)
+	mockQuerrier.scrapeResult = []QueryLog{testQl3}
+	_, err = testReceiver.scrapeQueryLogIfReady(context.Background())
+	require.Nil(err)
+	require.Equal(len(logsSink.AllLogs()), 2)
+
+	logProduced = logsSink.AllLogs()[1]
+
+	require.Equal(1, logProduced.ResourceLogs().Len())
+	rl := logProduced.ResourceLogs().At(0)
+
+	hostProduced, _ := rl.Resource().Attributes().Get("hostname")
+	require.Equal(hostProduced.Str(), testHost)
+
+	require.Equal(rl.ScopeLogs().Len(), 1)
+	sl := rl.ScopeLogs().At(0)
+
+	require.Equal(sl.LogRecords().Len(), 1)
+	lr := sl.LogRecords().At(0)
+
+	require.Equal(lr.Body().Str(), testQuery)
+	require.Equal(lr.Timestamp().AsTime().Unix(), testQlTs.Unix())
+	et, exists := lr.Attributes().Get("event_time")
+	require.True(exists)
+	require.Equal(et.Str(), testQlTs.Format(time.RFC3339))
 }
