@@ -36,29 +36,6 @@ func (q *querrierImpl) scrapeQueryLog(
 	return scrapeQueryLogTable(ctx, q.db, minTs, maxTs)
 }
 
-// func (q *querrierImpl) scrapeQueryLogRecords(
-// 	ctx context.Context, minTs uint32, maxTs uint32,
-// ) (plog.LogRecordSlice, error) {
-// 	res := plog.NewLogRecordSlice()
-
-// 	queryLogs, err := scrapeQueryLogs(
-// 		ctx, q.db, minTs, maxTs,
-// 	)
-// 	if err != nil {
-// 		return res, err
-// 	}
-
-// 	for _, ql := range queryLogs {
-// 		lr, err := ql.toLogRecord()
-// 		if err != nil {
-// 			return res, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
-// 		}
-// 		lr.CopyTo(res.AppendEmpty())
-// 	}
-
-// 	return res, nil
-// }
-
 func (q *querrierImpl) unixTsNow(ctx context.Context) (
 	uint32, error,
 ) {

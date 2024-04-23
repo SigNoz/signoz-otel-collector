@@ -6,11 +6,24 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.uber.org/zap"
 )
 
 func TestReceiverStartAndShutdown(t *testing.T) {
+	require := require.New(t)
 
+	r := &systemTablesReceiver{
+		scrapeIntervalSeconds: 2,
+		scrapeDelaySeconds:    8,
+		clickhouse:            &mockClickhouseQuerrier{},
+		nextConsumer:          consumertest.NewNop(),
+		logger:                zap.NewNop(),
+	}
+
+	require.NoError(r.Start(context.Background(), componenttest.NewNopHost()))
+	require.NoError(r.Shutdown(context.Background()))
 }
 
 func TestReceiver(t *testing.T) {
