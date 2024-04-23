@@ -1,0 +1,5 @@
+clickhousesystemtablesreceiver:
+  dsn: tcp://clickhouse:9000/
+  query_log_scrape_config:
+    scrape_interval_seconds: 20
+    min_scrape_delay_seconds: 8
