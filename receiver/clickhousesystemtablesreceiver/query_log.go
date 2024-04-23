@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
+// DTO for scanning query_log rows from clickhouse
 // https://clickhouse.com/docs/en/operations/system-tables/query_log
 type QueryLog struct {
 	// Hostname of the server executing the query.
@@ -273,7 +274,6 @@ func scrapeQueryLogTable(
 			event_time >= %d
 			and event_time < %d
 		order by event_time asc
-		format JSON
 	`, minTs, maxTs)
 
 	rows, err := db.Query(ctx, query)
@@ -298,46 +298,63 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 	lr := plog.NewLogRecord()
 
 	lr.SetTimestamp(pcommon.NewTimestampFromTime(ql.EventTimeMicroseconds))
+
 	lr.Body().SetStr(ql.Query)
 
 	if strings.HasPrefix(ql.EventType, "Exception") {
 		lr.SetSeverityNumber(plog.SeverityNumberError)
 		lr.SetSeverityText("ERROR")
+
 	} else {
 		lr.SetSeverityNumber(plog.SeverityNumberInfo)
 		lr.SetSeverityText("INFO")
+
 	}
 
 	// Populate log attributes
-	attrs := map[string]any{}
 	qlVal := reflect.ValueOf(ql).Elem()
 	qlType := qlVal.Type()
 	for i := 0; i < qlVal.NumField(); i++ {
 		field := qlType.Field(i)
 		if attrName := field.Tag.Get("ch"); attrName != "" {
-			attrs[attrName] = qlVal.Field(i).Interface()
-		}
-	}
-
-	lr.Attributes().FromRaw(attrs)
-	// slices and maps need separate handling
-	for k, v := range attrs {
-		rVal := reflect.ValueOf(v)
-		if rVal.Kind() == reflect.Slice {
-			slice := lr.Attributes().PutEmptySlice(k)
-			for i := 0; i < rVal.Len(); i++ {
-				slice.AppendEmpty().FromRaw(rVal.Index(i).Interface())
-			}
-		} else if rVal.Kind() == reflect.Map {
-			pmap := lr.Attributes().PutEmptyMap(k)
-			iter := rVal.MapRange()
-			for iter.Next() {
-				pmap.PutEmpty(iter.Key().String()).FromRaw(iter.Value().Interface())
-			}
-		} else if timeV, ok := v.(time.Time); ok {
-			lr.Attributes().PutStr(k, timeV.Format(time.RFC3339))
+			fieldVal := qlVal.Field(i).Interface()
+			pval := pcommonValue(fieldVal)
+			pval.CopyTo(lr.Attributes().PutEmpty(attrName))
 		}
 	}
 
 	return lr, nil
+}
+
+func pcommonValue(v any) pcommon.Value {
+	rVal := reflect.ValueOf(v)
+	valueKind := rVal.Kind()
+
+	pVal := pcommon.NewValueEmpty()
+
+	if valueKind == reflect.Slice {
+		ps := pcommon.NewSlice()
+		for i := 0; i < rVal.Len(); i++ {
+			pv := pcommonValue(rVal.Index(i).Interface())
+			pv.CopyTo(ps.AppendEmpty())
+		}
+		ps.CopyTo(pVal.SetEmptySlice())
+
+	} else if valueKind == reflect.Map {
+		pmap := pcommon.NewMap()
+		iter := rVal.MapRange()
+		for iter.Next() {
+			pv := pcommonValue(iter.Value().Interface())
+			pv.CopyTo(pmap.PutEmpty(iter.Key().String()))
+		}
+		pmap.CopyTo(pVal.SetEmptyMap())
+
+	} else if timeV, ok := v.(time.Time); ok {
+		pVal.SetStr(timeV.Format(time.RFC3339))
+
+	} else {
+		pVal.FromRaw(v)
+	}
+
+	return pVal
 }
