@@ -114,6 +114,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	// Events with ts in [r.nextScrapedMinEventTs, scrapeIntervalEndTs) are to be scraped next
 	scrapeIntervalEndTs := r.nextScrapeIntervalStartTs + r.scrapeIntervalSeconds
 
+	// not late enough to reliably scrape the next batch of query_logs to be scraped?
 	minServerTsForNextScrapeAttempt := scrapeIntervalEndTs + r.scrapeDelaySeconds
 
 	if serverTsNow < minServerTsForNextScrapeAttempt {
@@ -125,19 +126,62 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 		return waitSeconds, nil
 	}
 
+	// scrape the next batch of query_log rows to be scraped.
+
 	if r.obsrecv != nil {
 		ctx = r.obsrecv.StartLogsOp(ctx)
 	}
 
-	queryLogs, err := r.clickhouse.scrapeQueryLog(
+	pushedCount, scrapeErr := r.scrapeAndPushQueryLogs(
 		ctx, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	)
-	if err != nil {
+
+	if r.obsrecv != nil {
+		r.obsrecv.EndLogsOp(ctx, "clickhouse.system.query_log", pushedCount, scrapeErr)
+	}
+
+	if scrapeErr != nil {
 		return r.scrapeIntervalSeconds, fmt.Errorf(
-			"couldn't scrape clickhouse query_log table: %w", err,
+			"couldn't scrape and push query logs: %w", scrapeErr,
 		)
 	}
 
+	r.logger.Debug(fmt.Sprintf(
+		"scraped %d query logs. serverTsNow: %d, minTs: %d, maxTs: %d",
+		pushedCount, serverTsNow, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
+	))
+
+	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
+	return r.scrapeIntervalSeconds, nil
+
+}
+
+func (r *systemTablesReceiver) scrapeAndPushQueryLogs(
+	ctx context.Context, minEventTs uint32, maxEventTs uint32,
+) (int, error) {
+	queryLogs, err := r.clickhouse.scrapeQueryLog(
+		ctx, minEventTs, maxEventTs,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't scrape clickhouse query_log table: %w", err)
+	}
+
+	pl, err := r.queryLogsToPlogs(queryLogs)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't create plogs.Logs for scraped query logs: %w", err)
+	}
+
+	err = r.nextConsumer.ConsumeLogs(ctx, pl)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't push logs to next consumer: %w", err)
+	}
+
+	return len(queryLogs), nil
+}
+
+func (r *systemTablesReceiver) queryLogsToPlogs(queryLogs []QueryLog) (
+	plog.Logs, error,
+) {
 	pl := plog.NewLogs()
 
 	logsByQueryLogHostName := map[string]plog.LogRecordSlice{}
@@ -151,26 +195,10 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 
 		lr, err := ql.toLogRecord()
 		if err != nil {
-			return r.scrapeIntervalSeconds, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
+			return pl, err
 		}
 		lr.MoveTo(logsByQueryLogHostName[ql.Hostname].AppendEmpty())
 	}
 
-	r.logger.Debug(fmt.Sprintf(
-		"scraped %d query logs. serverTsNow: %d, minTs: %d, maxTs: %d",
-		len(queryLogs), serverTsNow, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
-	))
-
-	err = r.nextConsumer.ConsumeLogs(ctx, pl)
-
-	if r.obsrecv != nil {
-		r.obsrecv.EndLogsOp(ctx, "clickhouse.system.query_log", 1, err)
-	}
-
-	if err != nil {
-		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't push logs to next consumer: %w", err)
-	}
-
-	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
-	return r.scrapeIntervalSeconds, nil
+	return pl, nil
 }

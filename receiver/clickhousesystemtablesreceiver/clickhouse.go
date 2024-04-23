@@ -10,9 +10,9 @@ import (
 // Used by the receiver for working with clickhouse.
 // Helps mock things for tests
 type clickhouseQuerrier interface {
-	// Scrape query_log table for rows with minTs <= event_time < maxTs
+	// Scrape query_log table for rows with minEventTs <= event_time < maxEventTs
 	scrapeQueryLog(
-		ctx context.Context, minTs uint32, maxTs uint32,
+		ctx context.Context, minEventTs uint32, maxEventTs uint32,
 	) ([]QueryLog, error)
 
 	// Get unix epoch time now at the server (seconds)
