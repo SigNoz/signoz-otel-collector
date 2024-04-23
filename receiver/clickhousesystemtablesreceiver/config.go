@@ -9,11 +9,11 @@ import (
 // TODO(Raj): Add config_test
 
 type QueryLogScrapeConfig struct {
-	ScrapeIntervalSeconds uint64 `mapstructure:"scrape_interval_seconds"`
+	ScrapeIntervalSeconds uint32 `mapstructure:"scrape_interval_seconds"`
 
 	// Must be configured to a value greater than flush_interval_milliseconds setting for query_log
 	// For details see https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#query-log
-	MinScrapeDelaySeconds uint64 `mapstructure:"min_scrape_delay_seconds"`
+	MinScrapeDelaySeconds uint32 `mapstructure:"min_scrape_delay_seconds"`
 }
 
 type Config struct {

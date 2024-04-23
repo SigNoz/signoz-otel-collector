@@ -48,9 +48,11 @@ func createLogsReceiver(
 		return nil, fmt.Errorf("couldn't create clickhouse client: %w", err)
 	}
 
+	chQuerrier := newClickhouseQuerrier(db)
+
 	return &systemTablesReceiver{
 		nextConsumer:          consumer,
-		db:                    db,
+		clickhouse:            chQuerrier,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.MinScrapeDelaySeconds,
 		// TODO(Raj): is params.Logger always provided to be non null?

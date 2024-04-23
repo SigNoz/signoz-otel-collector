@@ -187,11 +187,11 @@ type QueryLog struct {
 	AsyncReadCounters map[string]uint64 `ch:"asynchronous_read_counters"`
 }
 
-func scrapeQueryLogs(
+func scrapeQueryLogTable(
 	ctx context.Context,
 	db driver.Conn,
-	minTs uint64,
-	maxTs uint64,
+	minTs uint32,
+	maxTs uint32,
 ) ([]QueryLog, error) {
 	query := fmt.Sprintf(`
 		select
@@ -293,29 +293,6 @@ func scrapeQueryLogs(
 	}
 
 	return result, nil
-}
-
-func scrapeQueryLogRecords(
-	ctx context.Context, db driver.Conn, minTs uint64, maxTs uint64,
-) (plog.LogRecordSlice, error) {
-	res := plog.NewLogRecordSlice()
-
-	queryLogs, err := scrapeQueryLogs(
-		ctx, db, minTs, maxTs,
-	)
-	if err != nil {
-		return res, err
-	}
-
-	for _, ql := range queryLogs {
-		lr, err := ql.toLogRecord()
-		if err != nil {
-			return res, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
-		}
-		lr.CopyTo(res.AppendEmpty())
-	}
-
-	return res, nil
 }
 
 func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
