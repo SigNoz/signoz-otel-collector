@@ -69,6 +69,7 @@ func TestReceiver(t *testing.T) {
 	require.Less(waitSeconds, testScrapeIntervalSeconds+testScrapeDelaySeconds)
 	require.Equal(len(logsSink.AllLogs()), 0)
 
+	// receiver should be able to start scraping after waiting long enough
 	mockQuerrier.tsNow = t0 + testScrapeIntervalSeconds + testScrapeDelaySeconds
 	waitSeconds, err = testReceiver.scrapeQueryLogIfReady(context.Background())
 	require.Nil(err)
@@ -86,16 +87,15 @@ func TestReceiver(t *testing.T) {
 	}
 	require.ElementsMatch(producedHostNames, []string{"test-host1", "test-host2"})
 
-	// The receiver should then continue to scrape periodically as per specified interval
-
+	// attempting a scrape before scrape interval has passed should not fetch more logs
 	mockQuerrier.tsNow += testScrapeIntervalSeconds - 1
 	waitSeconds, err = testReceiver.scrapeQueryLogIfReady(context.Background())
 	require.Nil(err)
-	require.GreaterOrEqual(waitSeconds, testScrapeIntervalSeconds)
-	// scraping again before scrape interval has passed should not have fetched more logs
+	require.GreaterOrEqual(waitSeconds, uint32(1))
 	require.Equal(len(logsSink.AllLogs()), 1)
 
-	mockQuerrier.tsNow += testScrapeIntervalSeconds + 2
+	// should scrape again after specified interval has passed
+	mockQuerrier.tsNow += testScrapeIntervalSeconds + 1
 	testHost := "host-3"
 	testQlTs := time.Now()
 	testQuery := "test query"
@@ -107,6 +107,7 @@ func TestReceiver(t *testing.T) {
 
 	logProduced = logsSink.AllLogs()[1]
 
+	// log data should be as expected.
 	require.Equal(1, logProduced.ResourceLogs().Len())
 	rl := logProduced.ResourceLogs().At(0)
 

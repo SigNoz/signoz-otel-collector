@@ -18,8 +18,8 @@ type systemTablesReceiver struct {
 	// nextScrapeIntervalStartTs  <= event_timestamp < (nextScrapeIntervalStartTs + scrapeIntervalSeconds)
 	scrapeIntervalSeconds uint32
 
-	// next scrape will happen only after timestamp at server
-	// is greater than (nextScrapeIntervalStartTs + scrapeIntervalSeconds) + scrapeDelaySeconds
+	// next scrape will happen only after timestamp at server is at least
+	// (nextScrapeIntervalStartTs + scrapeIntervalSeconds) + scrapeDelaySeconds
 	scrapeDelaySeconds uint32
 
 	clickhouse   clickhouseQuerrier
@@ -34,20 +34,23 @@ type systemTablesReceiver struct {
 	shutdownCompleteWg sync.WaitGroup
 }
 
-func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) error {
-	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
-	r.requestShutdown = cancelReceiverCtx
-
+func (r *systemTablesReceiver) Start(
+	ctx context.Context, host component.Host,
+) error {
 	err := r.init(ctx)
 	if err != nil {
 		return err
 	}
+
+	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
+	r.requestShutdown = cancelReceiverCtx
 
 	go func() {
 		if err := r.run(receiverCtx); err != nil {
 			host.ReportFatalError(err)
 		}
 	}()
+
 	return nil
 }
 
@@ -96,12 +99,16 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 
 }
 
-// Scrapes query_log table at clickhouse if it has been long enough since the last scrape.
+// Scrapes query_log table at clickhouse if the next set of query_log rows to be scraped are ready for scraping
 // Returns the number of seconds to wait before attempting a scrape again
-func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint32, error) {
+func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
+	uint32, error,
+) {
 	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
 	if err != nil {
-		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't determine server ts while scraping query log: %w", err)
+		return r.scrapeIntervalSeconds, fmt.Errorf(
+			"couldn't determine server ts while scraping query log: %w", err,
+		)
 	}
 
 	// Events with ts in [r.nextScrapedMinEventTs, scrapeIntervalEndTs) are to be scraped next
@@ -110,7 +117,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 	minServerTsForNextScrapeAttempt := scrapeIntervalEndTs + r.scrapeDelaySeconds
 
 	if serverTsNow < minServerTsForNextScrapeAttempt {
-		waitSeconds := minServerTsForNextScrapeAttempt - serverTsNow + 1
+		waitSeconds := minServerTsForNextScrapeAttempt - serverTsNow
 		r.logger.Debug(fmt.Sprintf(
 			"not ready to scrape yet. waiting %ds before next attempt. serverTsNow: %d, scrapeIntervalEndTs: %d",
 			waitSeconds, serverTsNow, scrapeIntervalEndTs,
