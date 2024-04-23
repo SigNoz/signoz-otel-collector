@@ -1,4 +1,4 @@
-package clickhousesystemtablesreceiver // import "github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
+package clickhousesystemtablesreceiver
 
 import (
 	"context"

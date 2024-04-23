@@ -17,5 +17,6 @@ receivers:
       scrape_interval_seconds: 20
       # required. min_scrape_delay_seconds must be set to a duration larger
       # than flush_interval_milliseconds settings for query_log
+      # For details, see https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#query-log
       min_scrape_delay_seconds: 8
 ```

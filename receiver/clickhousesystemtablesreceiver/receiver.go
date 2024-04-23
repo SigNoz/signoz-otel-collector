@@ -1,4 +1,3 @@
-// import "github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 package clickhousesystemtablesreceiver
 
 import (
@@ -160,7 +159,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 	err = r.nextConsumer.ConsumeLogs(ctx, pl)
 
 	if r.obsrecv != nil {
-		r.obsrecv.EndLogsOp(ctx, "clickhousesystemtablesreceiver", 1, err)
+		r.obsrecv.EndLogsOp(ctx, "clickhouse.system.query_log", 1, err)
 	}
 
 	if err != nil {

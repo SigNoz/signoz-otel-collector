@@ -1,4 +1,3 @@
-// import "github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 package clickhousesystemtablesreceiver
 
 import (
@@ -11,10 +10,12 @@ import (
 // Used by the receiver for working with clickhouse.
 // Helps mock things for tests
 type clickhouseQuerrier interface {
+	// Scrape query_log table for rows with minTs <= event_time < maxTs
 	scrapeQueryLog(
 		ctx context.Context, minTs uint32, maxTs uint32,
 	) ([]QueryLog, error)
 
+	// Get unix epoch time now at the server (seconds)
 	unixTsNow(context.Context) (uint32, error)
 }
 
@@ -42,7 +43,9 @@ func (q *querrierImpl) unixTsNow(ctx context.Context) (
 	var serverTsNow uint32
 	row := q.db.QueryRow(ctx, `select toUnixTimestamp(now())`)
 	if err := row.Scan(&serverTsNow); err != nil {
-		return 0, fmt.Errorf("couldn't query current timestamp at clickhouse server: %w", err)
+		return 0, fmt.Errorf(
+			"couldn't query current timestamp at clickhouse server: %w", err,
+		)
 	}
 	return serverTsNow, nil
 }
