@@ -9,14 +9,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 )
 
 type systemTablesReceiver struct {
-	settings receiver.CreateSettings
-
 	// next scrape will include events in query_log table with
 	// nextScrapeIntervalStartTs  <= event_timestamp < (nextScrapeIntervalStartTs + scrapeIntervalSeconds)
 	scrapeIntervalSeconds uint32
@@ -27,13 +24,14 @@ type systemTablesReceiver struct {
 
 	clickhouse   clickhouseQuerrier
 	nextConsumer consumer.Logs
-	logger       *zap.Logger
 
-	// members containing internal state for receivers
-	obsrecv                   *receiverhelper.ObsReport
+	logger  *zap.Logger
+	obsrecv *receiverhelper.ObsReport
+
 	nextScrapeIntervalStartTs uint32
-	requestShutdown           context.CancelFunc
-	shutdownCompleteWg        sync.WaitGroup
+
+	requestShutdown    context.CancelFunc
+	shutdownCompleteWg sync.WaitGroup
 }
 
 func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) error {
@@ -54,11 +52,11 @@ func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) e
 }
 
 func (r *systemTablesReceiver) init(ctx context.Context) error {
-	// Begin scraping query_log entries that come at or after
+	// The receiver starts scraping query_log entries that come at or after
 	// the timestamp at clickhouse server when the receiver is started.
 	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
 	if err != nil {
-		return fmt.Errorf("couldn't start clickhousesystemtablesreceiver: %w", err)
+		return fmt.Errorf("couldn't determine ts at clickhouse at receiver startup: %w", err)
 	}
 	r.nextScrapeIntervalStartTs = serverTsNow
 
@@ -87,7 +85,7 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 		if time.Now().Unix() >= minTsBeforeNextScrapeAttempt {
 			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady(ctx)
 			if err != nil {
-				// errors returned from run will cause collector shutdown
+				// errors returned from run() will cause collector shutdown
 				r.logger.Error("scrape attempt failed", zap.Error(err))
 			}
 			minTsBeforeNextScrapeAttempt = time.Now().Unix() + int64(secondsToWaitBeforeNextAttempt)
@@ -103,7 +101,7 @@ func (r *systemTablesReceiver) run(ctx context.Context) error {
 func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint32, error) {
 	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("couldn't determine server ts while scraping query log: %w", err)
+		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't determine server ts while scraping query log: %w", err)
 	}
 
 	// Events with ts in [r.nextScrapedMinEventTs, scrapeIntervalEndTs) are to be scraped next
@@ -128,7 +126,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 		ctx, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	)
 	if err != nil {
-		return 0, fmt.Errorf(
+		return r.scrapeIntervalSeconds, fmt.Errorf(
 			"couldn't scrape clickhouse query_log table: %w", err,
 		)
 	}
@@ -146,7 +144,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 
 		lr, err := ql.toLogRecord()
 		if err != nil {
-			return 0, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
+			return r.scrapeIntervalSeconds, fmt.Errorf("couldn't convert to query_log to plog record: %w", err)
 		}
 		lr.MoveTo(logsByQueryLogHostName[ql.Hostname].AppendEmpty())
 	}
@@ -163,7 +161,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 	}
 
 	if err != nil {
-		return 0, fmt.Errorf("couldn't push logs to next consumer: %w", err)
+		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't push logs to next consumer: %w", err)
 	}
 
 	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs

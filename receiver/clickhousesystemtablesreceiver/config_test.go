@@ -38,9 +38,12 @@ func TestLoadConfig(t *testing.T) {
 
 		cm, err := confmaptest.LoadConf(filepath.Join("testdata", tt.testConfFileName))
 		require.Nil(err)
+
 		sub, err := cm.Sub("clickhousesystemtablesreceiver")
 		require.Nil(err)
+
 		require.NoError(component.UnmarshalConfig(sub, cfg))
+
 		if tt.expectedErr {
 			require.Error(component.ValidateConfig(cfg))
 		} else {

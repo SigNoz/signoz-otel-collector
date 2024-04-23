@@ -15,7 +15,6 @@ const (
 )
 
 func NewFactory() receiver.Factory {
-
 	return receiver.NewFactory(
 		"clickhousesystemtablesreceiver",
 		createDefaultConfig,
@@ -49,7 +48,7 @@ func createLogsReceiver(
 
 	logger := params.Logger
 	if logger == nil {
-		return nil, fmt.Errorf("logsReceiver must be provided with a logger")
+		return nil, fmt.Errorf("logger must be provided")
 	}
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
@@ -62,7 +61,6 @@ func createLogsReceiver(
 	}
 
 	return &systemTablesReceiver{
-		settings:              params,
 		nextConsumer:          consumer,
 		clickhouse:            chQuerrier,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
