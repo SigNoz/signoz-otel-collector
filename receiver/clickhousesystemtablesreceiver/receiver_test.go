@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,7 @@ func TestReceiverStartAndShutdown(t *testing.T) {
 		clickhouse:            &mockClickhouseQuerrier{},
 		nextConsumer:          consumertest.NewNop(),
 		logger:                zap.NewNop(),
+		settings:              receiver.CreateSettings{},
 	}
 
 	require.NoError(r.Start(context.Background(), componenttest.NewNopHost()))

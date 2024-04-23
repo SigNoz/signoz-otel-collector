@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
 
 const (
@@ -14,6 +15,7 @@ const (
 )
 
 func NewFactory() receiver.Factory {
+
 	return receiver.NewFactory(
 		"clickhousesystemtablesreceiver",
 		createDefaultConfig,
@@ -50,12 +52,23 @@ func createLogsReceiver(
 		return nil, fmt.Errorf("logsReceiver must be provided with a logger")
 	}
 
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
+		ReceiverID:             params.ID,
+		Transport:              "clickhouse",
+		ReceiverCreateSettings: params,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &systemTablesReceiver{
+		settings:              params,
 		nextConsumer:          consumer,
 		clickhouse:            chQuerrier,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.MinScrapeDelaySeconds,
 		logger:                params.Logger,
+		obsrecv:               obsrecv,
 	}, nil
 
 }

@@ -10,10 +10,14 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
 )
 
 type systemTablesReceiver struct {
+	settings receiver.CreateSettings
+
 	// next scrape will include events in query_log table with
 	// nextScrapeIntervalStartTs  <= event_timestamp < (nextScrapeIntervalStartTs + scrapeIntervalSeconds)
 	scrapeIntervalSeconds uint32
@@ -27,6 +31,7 @@ type systemTablesReceiver struct {
 	logger       *zap.Logger
 
 	// members containing internal state for receivers
+	obsrecv                   *receiverhelper.ObsReport
 	nextScrapeIntervalStartTs uint32
 	requestShutdown           context.CancelFunc
 	shutdownCompleteWg        sync.WaitGroup
@@ -35,16 +40,6 @@ type systemTablesReceiver struct {
 func (r *systemTablesReceiver) Start(ctx context.Context, host component.Host) error {
 	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
 	r.requestShutdown = cancelReceiverCtx
-
-	// TODO(Raj): Add obsrecv stuff
-	// obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
-	// ReceiverID:             r.settings.ID,
-	// Transport:              transport,
-	// ReceiverCreateSettings: r.settings,
-	// })
-	// if err != nil {
-	// return err
-	// }
 
 	err := r.init(ctx)
 	if err != nil {
@@ -68,6 +63,7 @@ func (r *systemTablesReceiver) init(ctx context.Context) error {
 		return fmt.Errorf("couldn't start clickhousesystemtablesreceiver: %w", err)
 	}
 	r.nextScrapeIntervalStartTs = serverTsNow
+
 	return nil
 }
 
@@ -126,6 +122,10 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 		return waitSeconds, nil
 	}
 
+	if r.obsrecv != nil {
+		ctx = r.obsrecv.StartLogsOp(ctx)
+	}
+
 	queryLogs, err := r.clickhouse.scrapeQueryLog(
 		ctx, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	)
@@ -158,7 +158,15 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint3
 		len(queryLogs), serverTsNow, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
 	))
 
-	r.nextConsumer.ConsumeLogs(ctx, pl)
+	err = r.nextConsumer.ConsumeLogs(ctx, pl)
+
+	if r.obsrecv != nil {
+		r.obsrecv.EndLogsOp(ctx, "clickhousesystemtablesreceiver", 1, err)
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("couldn't push logs to next consumer: %w", err)
+	}
 
 	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
 	return r.scrapeIntervalSeconds, nil
