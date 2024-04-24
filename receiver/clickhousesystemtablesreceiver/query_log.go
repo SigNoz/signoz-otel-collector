@@ -322,6 +322,7 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 			pval.CopyTo(lr.Attributes().PutEmpty(attrName))
 		}
 	}
+	lr.Attributes().PutStr("source", "clickhouse")
 
 	return lr, nil
 }

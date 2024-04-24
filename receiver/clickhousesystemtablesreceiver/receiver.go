@@ -45,11 +45,7 @@ func (r *systemTablesReceiver) Start(
 	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
 	r.requestShutdown = cancelReceiverCtx
 
-	go func() {
-		if err := r.run(receiverCtx); err != nil {
-			host.ReportFatalError(err)
-		}
-	}()
+	go r.run(receiverCtx)
 
 	return nil
 }
@@ -72,29 +68,25 @@ func (r *systemTablesReceiver) Shutdown(context.Context) error {
 	return nil
 }
 
-func (r *systemTablesReceiver) run(ctx context.Context) error {
+func (r *systemTablesReceiver) run(ctx context.Context) {
 	r.shutdownCompleteWg.Add(1)
 	defer r.shutdownCompleteWg.Done()
 
-	minTsBeforeNextScrapeAttempt := time.Now().Unix()
+	ticker := time.NewTicker(time.Millisecond * 500)
 
 	for {
-		// time to shut down?
-		if ctx.Err() != nil {
-			r.logger.Info("Stopping ClickhouseSystemTablesReceiver", zap.Error(ctx.Err()))
-			return ctx.Err()
-		}
-
-		if time.Now().Unix() >= minTsBeforeNextScrapeAttempt {
+		select {
+		case <-ctx.Done():
+			r.logger.Info("Stopping ClickhouseSystemTablesReceiver")
+			return
+		case <-ticker.C:
 			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady(ctx)
 			if err != nil {
-				// errors returned from run() will cause collector shutdown
 				r.logger.Error("scrape attempt failed", zap.Error(err))
 			}
-			minTsBeforeNextScrapeAttempt = time.Now().Unix() + int64(secondsToWaitBeforeNextAttempt)
+			nextWait := time.Duration(secondsToWaitBeforeNextAttempt) * time.Second
+			ticker.Reset(max(nextWait, 1*time.Millisecond))
 		}
-
-		time.Sleep(500 * time.Millisecond)
 	}
 
 }
@@ -151,8 +143,12 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	))
 
 	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
-	return r.scrapeIntervalSeconds, nil
 
+	// Go for the next scrape immediately if next interval to be scraped is already far enough in the past.
+	nextScrapeMinServerTs := r.nextScrapeIntervalStartTs + r.scrapeIntervalSeconds + r.scrapeDelaySeconds
+	nextWaitSeconds := max(0, nextScrapeMinServerTs-serverTsNow)
+
+	return nextWaitSeconds, nil
 }
 
 func (r *systemTablesReceiver) scrapeAndPushQueryLogs(
