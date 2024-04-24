@@ -21,20 +21,25 @@ type clickhouseQuerier interface {
 
 type querrierImpl struct {
 	db driver.Conn
+
+	// Cluster name to use for scraping query log from clustered deployments.
+	// If ClusterName is specified, the scrape will target `clusterAllReplicas(clusterName, system.query_log)`
+	clusterName string
 }
 
 var _ clickhouseQuerier = (*querrierImpl)(nil)
 
-func newClickhouseQuerrier(db driver.Conn) *querrierImpl {
+func newClickhouseQuerrier(db driver.Conn, clusterName string) *querrierImpl {
 	return &querrierImpl{
-		db: db,
+		db:          db,
+		clusterName: clusterName,
 	}
 }
 
 func (q *querrierImpl) scrapeQueryLog(
 	ctx context.Context, minTs uint32, maxTs uint32,
 ) ([]QueryLog, error) {
-	return scrapeQueryLogTable(ctx, q.db, minTs, maxTs)
+	return scrapeQueryLogTable(ctx, q.db, q.clusterName, minTs, maxTs)
 }
 
 func (q *querrierImpl) unixTsNow(ctx context.Context) (

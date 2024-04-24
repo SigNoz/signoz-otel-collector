@@ -15,7 +15,12 @@ type QueryLogScrapeConfig struct {
 }
 
 type Config struct {
-	DSN                  string               `mapstructure:"dsn"`
+	DSN string `mapstructure:"dsn"`
+
+	// Cluster name to use for scraping query log from clustered deployments.
+	// If ClusterName is specified, the scrape will target `clusterAllReplicas(cluster_name, system.query_log)`
+	ClusterName string `mapstructure:"cluster_name"`
+
 	QueryLogScrapeConfig QueryLogScrapeConfig `mapstructure:"query_log_scrape_config"`
 }
 

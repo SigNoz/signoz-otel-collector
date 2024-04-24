@@ -187,12 +187,22 @@ type QueryLog struct {
 	AsyncReadCounters map[string]uint64 `ch:"asynchronous_read_counters"`
 }
 
+// Queries clickhouse `db` for query_log rows with minTs <= event_time < maxTs.
+// If ClusterName is non-empty, the scrape will target `clusterAllReplicas(clusterName, system.query_log)`
 func scrapeQueryLogTable(
 	ctx context.Context,
 	db driver.Conn,
+	clusterName string,
 	minTs uint32,
 	maxTs uint32,
 ) ([]QueryLog, error) {
+	tableName := "system.query_log"
+	if len(clusterName) > 0 {
+		tableName = fmt.Sprintf(
+			"clusterAllReplicas('%s', system.query_log)", clusterName,
+		)
+	}
+
 	query := fmt.Sprintf(`
 		select
 			hostname,
@@ -269,12 +279,12 @@ func scrapeQueryLogTable(
 			transaction_id,
 			query_cache_usage,
 			asynchronous_read_counters,
-		from system.query_log
+		from %s
 		where
 			event_time >= %d
 			and event_time < %d
 		order by event_time asc
-	`, minTs, maxTs)
+	`, tableName, minTs, maxTs)
 
 	rows, err := db.Query(ctx, query)
 	if err != nil {

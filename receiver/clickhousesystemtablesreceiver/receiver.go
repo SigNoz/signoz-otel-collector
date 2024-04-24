@@ -145,6 +145,9 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
 
 	// Go for the next scrape immediately if next interval to be scraped is already far enough in the past.
+	// Allows the receiver to catch up if it is running behind
+	// For example, this can happen if this was the first successful scrape
+	// after several failed attempts and subsequent waits for r.ScrapeIntervalSeconds
 	nextScrapeMinServerTs := r.nextScrapeIntervalStartTs + r.scrapeIntervalSeconds + r.scrapeDelaySeconds
 	nextWaitSeconds := max(0, nextScrapeMinServerTs-serverTsNow)
 

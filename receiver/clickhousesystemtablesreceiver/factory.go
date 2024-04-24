@@ -44,7 +44,7 @@ func createLogsReceiver(
 		return nil, fmt.Errorf("couldn't create clickhouse client: %w", err)
 	}
 
-	chQuerrier := newClickhouseQuerrier(db)
+	chQuerrier := newClickhouseQuerrier(db, rCfg.ClusterName)
 
 	logger := params.Logger
 	if logger == nil {
