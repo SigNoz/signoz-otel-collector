@@ -14,7 +14,7 @@ type mockClickhouseQuerrier struct {
 	nextScrapeResult []QueryLog
 }
 
-var _ clickhouseQuerrier = (*mockClickhouseQuerrier)(nil)
+var _ clickhouseQuerier = (*mockClickhouseQuerrier)(nil)
 
 func (t *mockClickhouseQuerrier) scrapeQueryLog(
 	ctx context.Context, minTs uint32, maxTs uint32,
@@ -29,7 +29,7 @@ func (t *mockClickhouseQuerrier) unixTsNow(ctx context.Context) (
 }
 
 func newTestReceiver(
-	ch clickhouseQuerrier,
+	ch clickhouseQuerier,
 	scrapeIntervalSeconds uint32,
 	scrapeDelaySeconds uint32,
 	nextConsumer consumer.Logs,

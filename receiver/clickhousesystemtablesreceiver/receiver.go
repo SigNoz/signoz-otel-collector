@@ -22,7 +22,7 @@ type systemTablesReceiver struct {
 	// (nextScrapeIntervalStartTs + scrapeIntervalSeconds) + scrapeDelaySeconds
 	scrapeDelaySeconds uint32
 
-	clickhouse   clickhouseQuerrier
+	clickhouse   clickhouseQuerier
 	nextConsumer consumer.Logs
 
 	logger  *zap.Logger

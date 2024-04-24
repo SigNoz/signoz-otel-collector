@@ -291,7 +291,7 @@ func scrapeQueryLogTable(
 		result = append(result, ql)
 	}
 
-	return result, nil
+	return result, rows.Err()
 }
 
 func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {

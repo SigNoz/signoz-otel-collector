@@ -9,7 +9,7 @@ import (
 
 // Used by the receiver for working with clickhouse.
 // Helps mock things for tests
-type clickhouseQuerrier interface {
+type clickhouseQuerier interface {
 	// Scrape query_log table for rows with minEventTs <= event_time < maxEventTs
 	scrapeQueryLog(
 		ctx context.Context, minEventTs uint32, maxEventTs uint32,
@@ -23,7 +23,7 @@ type querrierImpl struct {
 	db driver.Conn
 }
 
-var _ clickhouseQuerrier = (*querrierImpl)(nil)
+var _ clickhouseQuerier = (*querrierImpl)(nil)
 
 func newClickhouseQuerrier(db driver.Conn) *querrierImpl {
 	return &querrierImpl{
