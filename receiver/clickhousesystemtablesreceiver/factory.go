@@ -18,8 +18,8 @@ func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		"clickhousesystemtablesreceiver",
 		createDefaultConfig,
-		receiver.WithLogs(createLogsReceiver, component.StabilityLevelAlpha))
-
+		receiver.WithLogs(createLogsReceiver, component.StabilityLevelAlpha),
+	)
 }
 
 func createDefaultConfig() component.Config {

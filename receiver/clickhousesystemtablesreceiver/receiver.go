@@ -72,7 +72,9 @@ func (r *systemTablesReceiver) run(ctx context.Context) {
 	r.shutdownCompleteWg.Add(1)
 	defer r.shutdownCompleteWg.Done()
 
-	ticker := time.NewTicker(time.Millisecond * 500)
+	ticker := time.NewTicker(time.Second * time.Duration(
+		r.scrapeIntervalSeconds+r.scrapeDelaySeconds,
+	))
 
 	for {
 		select {
