@@ -76,6 +76,11 @@ func (r *systemTablesReceiver) run(ctx context.Context) {
 		r.scrapeIntervalSeconds+r.scrapeDelaySeconds,
 	))
 
+	r.logger.Info(fmt.Sprintf(
+		"starting system.query_log table scrape. scrape_interval: %d, min_scrape_delay: %d",
+		r.scrapeIntervalSeconds, r.scrapeDelaySeconds,
+	))
+
 	for {
 		select {
 		case <-ctx.Done():
