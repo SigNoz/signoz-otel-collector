@@ -439,9 +439,11 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
+	start := time.Now()
 	p.lock.Lock()
 	p.aggregateMetrics(traces)
 	p.lock.Unlock()
+	p.logger.Info("Time taken to aggregate metrics", zap.Int64("time", time.Since(start).Milliseconds()))
 
 	// Forward trace data unmodified and propagate trace pipeline errors, if any.
 	return p.tracesConsumer.ConsumeTraces(ctx, traces)

@@ -93,6 +93,7 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
+	var prepareStart time.Time = time.Now()
 
 	defer func() {
 		if statement != nil {
@@ -151,6 +152,8 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 		}
 	}
 
+	w.logger.Info("Time taken to prepare batch for index table", zap.Int64("time", time.Since(prepareStart).Milliseconds()))
+
 	start := time.Now()
 
 	err = statement.Send()
@@ -167,6 +170,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 	var tagKeyStatement driver.Batch
 	var tagStatement driver.Batch
 	var err error
+	var prepareStart time.Time = time.Now()
 
 	defer func() {
 		if tagKeyStatement != nil {
@@ -264,6 +268,8 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 		}
 	}
 
+	w.logger.Info("Time taken to prepare batch for tag/tagKey tables", zap.Int64("time", time.Since(prepareStart).Milliseconds()))
+
 	tagStart := time.Now()
 	err = tagStatement.Send()
 	stats.RecordWithTags(ctx,
@@ -298,6 +304,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
+	var prepareStart time.Time = time.Now()
 
 	defer func() {
 		if statement != nil {
@@ -333,6 +340,8 @@ func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) er
 		}
 	}
 
+	w.logger.Info("Time taken to prepare batch for error table", zap.Int64("time", time.Since(prepareStart).Milliseconds()))
+
 	start := time.Now()
 
 	err = statement.Send()
@@ -352,6 +361,7 @@ func stringToBool(s string) bool {
 func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) error {
 	var statement driver.Batch
 	var err error
+	var marshalStart time.Time = time.Now()
 
 	defer func() {
 		if statement != nil {
@@ -388,6 +398,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
 	}
+	w.logger.Info("Time taken to marshal spans for model batch", zap.Int64("time", time.Since(marshalStart).Milliseconds()))
 	start := time.Now()
 
 	err = statement.Send()
@@ -408,30 +419,38 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error {
+	start := time.Now()
 	if w.spansTable != "" {
 		if err := w.writeModelBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
 	}
+	w.logger.Info("Time taken to write batch of spans to model table", zap.Int64("time", time.Since(start).Milliseconds()))
+	start = time.Now()
 	if w.indexTable != "" {
 		if err := w.writeIndexBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			return err
 		}
 	}
+	w.logger.Info("Time taken to write batch of spans to index table", zap.Int64("time", time.Since(start).Milliseconds()))
+	start = time.Now()
 	if w.errorTable != "" {
 		if err := w.writeErrorBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			return err
 		}
 	}
+	w.logger.Info("Time taken to write batch of spans to error table", zap.Int64("time", time.Since(start).Milliseconds()))
+	start = time.Now()
 	if w.attributeTable != "" && w.attributeKeyTable != "" {
 		if err := w.writeTagBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
 			return err
 		}
 	}
+	w.logger.Info("Time taken to write batch of spans to tag/tagKey tables", zap.Int64("time", time.Since(start).Milliseconds()))
 	return nil
 }
 
