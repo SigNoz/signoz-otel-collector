@@ -481,6 +481,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
+			c.logger.Info("Time taken to claim message", zap.Int64("time", time.Since(start).Milliseconds()))
 
 			ctx := c.obsrecv.StartTracesOp(session.Context())
 			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
@@ -501,6 +502,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			spanCount := traces.SpanCount()
 			c.logger.Info("Time taken to unmarshal traces message", zap.Int64("time", time.Since(start).Milliseconds()), zap.Int("spanCount", spanCount))
 			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
+			c.logger.Info("Time taken to consume traces message", zap.Int64("time", time.Since(start).Milliseconds()))
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
@@ -515,6 +517,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
+			c.logger.Info("Time taken to process traces message", zap.Int64("time", time.Since(start).Milliseconds()))
 			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
