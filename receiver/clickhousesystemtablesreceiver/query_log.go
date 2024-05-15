@@ -56,7 +56,7 @@ type QueryLog struct {
 	FormattedQuery string `ch:"formatted_query"`
 	QueryKind      string `ch:"query_kind"`
 	// Identical hash value without the values of literals for similar queries.
-	NormalizedQueryHash uint64 `ch:"normalized_query_hash"`
+	NormalizedQueryHash string `ch:"normalized_query_hash"`
 
 	// Names of the databases present in the query.
 	Databases []string `ch:"databases"`
@@ -224,7 +224,7 @@ func scrapeQueryLogTable(
 			query,
 			formatted_query,
 			query_kind,
-			normalized_query_hash,
+			toString(normalized_query_hash) as normalized_query_hash,
 			databases,
 			tables,
 			columns,
