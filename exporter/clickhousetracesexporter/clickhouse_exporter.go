@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -416,6 +417,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 	case <-s.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		start := time.Now()
 		rss := td.ResourceSpans()
 		var batchOfSpans []*Span
 		for i := 0; i < rss.Len(); i++ {
@@ -436,6 +438,7 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
+		zap.L().Info("Time taken to convert spans to structured spans", zap.Int64("time", time.Since(start).Milliseconds()))
 		err := s.Writer.WriteBatchOfSpans(ctx, batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)

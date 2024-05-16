@@ -125,7 +125,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	
+
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
@@ -275,7 +275,7 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
-	
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
@@ -481,6 +481,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
+			c.logger.Info("Time taken to claim message", zap.Int64("time", time.Since(start).Milliseconds()))
 
 			ctx := c.obsrecv.StartTracesOp(session.Context())
 			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
@@ -499,7 +500,9 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			spanCount := traces.SpanCount()
+			c.logger.Info("Time taken to unmarshal traces message", zap.Int64("time", time.Since(start).Milliseconds()), zap.Int("spanCount", spanCount))
 			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
+			c.logger.Info("Time taken to consume traces message", zap.Int64("time", time.Since(start).Milliseconds()))
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
@@ -514,6 +517,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
+			c.logger.Info("Time taken to process traces message", zap.Int64("time", time.Since(start).Milliseconds()))
 			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
