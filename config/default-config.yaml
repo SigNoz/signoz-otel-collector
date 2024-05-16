@@ -52,7 +52,7 @@ extensions:
   zpages: {}
 exporters:
   clickhousetraces:
-    datasource: tcp://localhost:9000/?database=signoz_traces
+    datasource: tcp://localhost:9000/signoz_traces
     migrations: exporter/clickhousetracesexporter/migrations
     retry_on_failure:
       enabled: true
@@ -64,7 +64,7 @@ exporters:
       queue_size: 100
       num_consumers: 5
   clickhousemetricswrite:
-    endpoint: tcp://localhost:9000/?database=signoz_metrics
+    endpoint: tcp://localhost:9000/signoz_metrics
     resource_to_telemetry_conversion:
       enabled: true
   prometheus:

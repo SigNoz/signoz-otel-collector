@@ -179,18 +179,15 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			span.HttpCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.HttpCode
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
 		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
 			value := v.Str()
 			valueUrl, err := url.Parse(value)
 			if err == nil {
 				value = valueUrl.Hostname()
 			}
-			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
-			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
@@ -204,8 +201,6 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.MsgSystem = v.Str()
 		} else if k == "messaging.operation" {
 			span.MsgOperation = v.Str()
-		} else if k == "component" { // TODO: There was never a "component" attribute in the spec, this was from OpenCensus/OpenTracing
-			span.Component = v.Str()
 		} else if k == "db.system" {
 			span.DBSystem = v.Str()
 		} else if k == "db.name" {
@@ -221,14 +216,9 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			span.GRPCCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.GRPCCode
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
 		} else if k == "rpc.method" {
 			span.RPCMethod = v.Str()
-			system, found := attributes.Get("rpc.system")
-			if found && system.Str() == "grpc" {
-				span.GRPCMethod = v.Str()
-			}
 		} else if k == "rpc.service" {
 			span.RPCService = v.Str()
 		} else if k == "rpc.system" {
@@ -371,7 +361,6 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		ServiceName:       ServiceName,
 		Kind:              int8(otelSpan.Kind()),
 		StatusCode:        int16(otelSpan.Status().Code()),
-		TagMap:            tagMap,
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
 		BoolTagMap:        boolTagMap,
@@ -524,27 +513,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		TagType:  "tag",
 		IsColumn: true,
 		DataType: "bool",
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "externalHttpMethod",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.ExternalHttpMethod,
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "externalHttpUrl",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.ExternalHttpUrl,
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "component",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.Component,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "dbSystem",

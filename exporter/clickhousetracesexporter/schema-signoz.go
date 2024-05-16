@@ -91,16 +91,12 @@ type Span struct {
 	ServiceName        string             `json:"serviceName,omitempty"`
 	Kind               int8               `json:"kind,omitempty"`
 	StatusCode         int16              `json:"statusCode,omitempty"`
-	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
 	HttpUrl            string             `json:"httpUrl,omitempty"`
 	HttpMethod         string             `json:"httpMethod,omitempty"`
 	HttpHost           string             `json:"httpHost,omitempty"`
 	HttpRoute          string             `json:"httpRoute,omitempty"`
-	HttpCode           string             `json:"httpCode,omitempty"`
 	MsgSystem          string             `json:"msgSystem,omitempty"`
 	MsgOperation       string             `json:"msgOperation,omitempty"`
-	ExternalHttpUrl    string             `json:"externalHttpUrl,omitempty"`
-	Component          string             `json:"component,omitempty"`
 	DBSystem           string             `json:"dbSystem,omitempty"`
 	DBName             string             `json:"dbName,omitempty"`
 	DBOperation        string             `json:"dbOperation,omitempty"`
@@ -109,7 +105,6 @@ type Span struct {
 	ErrorEvent         Event              `json:"errorEvent,omitempty"`
 	ErrorID            string             `json:"errorID,omitempty"`
 	ErrorGroupID       string             `json:"errorGroupID,omitempty"`
-	TagMap             map[string]string  `json:"tagMap,omitempty"`
 	StringTagMap       map[string]string  `json:"stringTagMap,omitempty"`
 	NumberTagMap       map[string]float64 `json:"numberTagMap,omitempty"`
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
@@ -117,8 +112,6 @@ type Span struct {
 	HasError           bool               `json:"hasError,omitempty"`
 	IsRemote           string             `json:"isRemote,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
-	GRPCCode           string             `json:"gRPCCode,omitempty"`
-	GRPCMethod         string             `json:"gRPCMethod,omitempty"`
 	RPCSystem          string             `json:"rpcSystem,omitempty"`
 	RPCService         string             `json:"rpcService,omitempty"`
 	RPCMethod          string             `json:"rpcMethod,omitempty"`
@@ -146,22 +139,16 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("serviceName", s.ServiceName)
 	enc.AddInt8("kind", s.Kind)
 	enc.AddInt16("statusCode", s.StatusCode)
-	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
 	enc.AddString("httpUrl", s.HttpUrl)
 	enc.AddString("httpMethod", s.HttpMethod)
 	enc.AddString("httpHost", s.HttpHost)
 	enc.AddString("httpRoute", s.HttpRoute)
-	enc.AddString("httpCode", s.HttpCode)
 	enc.AddString("msgSystem", s.MsgSystem)
 	enc.AddString("msgOperation", s.MsgOperation)
-	enc.AddString("externalHttpUrl", s.ExternalHttpUrl)
-	enc.AddString("component", s.Component)
 	enc.AddString("dbSystem", s.DBSystem)
 	enc.AddString("dbName", s.DBName)
 	enc.AddString("dbOperation", s.DBOperation)
 	enc.AddString("peerService", s.PeerService)
-	enc.AddString("gRPCCode", s.GRPCCode)
-	enc.AddString("gRPCMethod", s.GRPCMethod)
 	enc.AddString("rpcSystem", s.RPCSystem)
 	enc.AddString("rpcService", s.RPCService)
 	enc.AddString("rpcMethod", s.RPCMethod)
@@ -172,7 +159,6 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddObject("errorEvent", &s.ErrorEvent)
 	enc.AddObject("traceModel", &s.TraceModel)
 	enc.AddString("event", fmt.Sprintf("%v", s.Events))
-	enc.AddString("tagMap", fmt.Sprintf("%v", s.TagMap))
 
 	return nil
 }
