@@ -116,6 +116,8 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.Kind,
 			span.DurationNano,
 			span.StatusCode,
+			span.ExternalHttpMethod,
+			span.ExternalHttpUrl,
 			span.DBSystem,
 			span.DBName,
 			span.DBOperation,

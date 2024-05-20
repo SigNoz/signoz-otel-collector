@@ -70,8 +70,6 @@ DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,
 DROP COLUMN IF EXISTS httpCode,
-DROP COLUMN IF EXISTS externalHttpUrl,
-DROP COLUMN IF EXISTS externalHttpMethod,
 DROP COLUMN IF EXISTS component;
 
 ALTER TABLE signoz_traces.distributed_signoz_index_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}} 
@@ -79,8 +77,6 @@ DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,
 DROP COLUMN IF EXISTS httpCode,
-DROP COLUMN IF EXISTS externalHttpUrl,
-DROP COLUMN IF EXISTS externalHttpMethod,
 DROP COLUMN IF EXISTS component;
 
 ALTER TABLE signoz_traces.durationSort ON CLUSTER {{.SIGNOZ_CLUSTER}} 
@@ -91,8 +87,6 @@ DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,
 DROP COLUMN IF EXISTS httpCode,
-DROP COLUMN IF EXISTS externalHttpUrl,
-DROP COLUMN IF EXISTS externalHttpMethod,
 DROP COLUMN IF EXISTS component;
 
 ALTER TABLE signoz_traces.distributed_durationSort ON CLUSTER {{.SIGNOZ_CLUSTER}}
@@ -100,8 +94,6 @@ DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,
 DROP COLUMN IF EXISTS httpCode,
-DROP COLUMN IF EXISTS externalHttpUrl,
-DROP COLUMN IF EXISTS externalHttpMethod,
 DROP COLUMN IF EXISTS component;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER {{.SIGNOZ_CLUSTER}}
@@ -127,6 +119,7 @@ AS SELECT
     responseStatusCode,
     stringTagMap,
     numberTagMap,
-    boolTagMap
+    boolTagMap,
+    isRemote
 FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;

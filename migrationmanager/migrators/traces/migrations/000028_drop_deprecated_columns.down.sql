@@ -10,8 +10,6 @@ ADD COLUMN IF NOT EXISTS tagMap Map(LowCardinality(String), String) CODEC(ZSTD(1
 ADD COLUMN IF NOT EXISTS gRPCCode LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS gRPCMethod LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS httpCode LowCardinality(String) CODEC(ZSTD(1)),
-ADD COLUMN IF NOT EXISTS externalHttpUrl LowCardinality(String) CODEC(ZSTD(1)),
-ADD COLUMN IF NOT EXISTS externalHttpMethod LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS component LowCardinality(String) CODEC(ZSTD(1));
 
 ALTER TABLE signoz_traces.distributed_signoz_index_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}} 
@@ -19,8 +17,6 @@ ADD COLUMN IF NOT EXISTS tagMap Map(LowCardinality(String), String) CODEC(ZSTD(1
 ADD COLUMN IF NOT EXISTS gRPCCode LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS gRPCMethod LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS httpCode LowCardinality(String) CODEC(ZSTD(1)),
-ADD COLUMN IF NOT EXISTS externalHttpUrl LowCardinality(String) CODEC(ZSTD(1)),
-ADD COLUMN IF NOT EXISTS externalHttpMethod LowCardinality(String) CODEC(ZSTD(1)),
 ADD COLUMN IF NOT EXISTS component LowCardinality(String) CODEC(ZSTD(1));
 
 ALTER TABLE signoz_traces.durationSort ON CLUSTER {{.SIGNOZ_CLUSTER}} 
@@ -65,7 +61,8 @@ AS SELECT
     responseStatusCode,
     stringTagMap,
     numberTagMap,
-    boolTagMap
+    boolTagMap,
+    isRemote
 FROM signoz_traces.signoz_index_v2
 ORDER BY durationNano, timestamp;
 

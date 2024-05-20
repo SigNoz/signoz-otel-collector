@@ -91,12 +91,14 @@ type Span struct {
 	ServiceName        string             `json:"serviceName,omitempty"`
 	Kind               int8               `json:"kind,omitempty"`
 	StatusCode         int16              `json:"statusCode,omitempty"`
+	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
 	HttpUrl            string             `json:"httpUrl,omitempty"`
 	HttpMethod         string             `json:"httpMethod,omitempty"`
 	HttpHost           string             `json:"httpHost,omitempty"`
 	HttpRoute          string             `json:"httpRoute,omitempty"`
 	MsgSystem          string             `json:"msgSystem,omitempty"`
 	MsgOperation       string             `json:"msgOperation,omitempty"`
+	ExternalHttpUrl    string             `json:"externalHttpUrl,omitempty"`
 	DBSystem           string             `json:"dbSystem,omitempty"`
 	DBName             string             `json:"dbName,omitempty"`
 	DBOperation        string             `json:"dbOperation,omitempty"`
@@ -139,12 +141,14 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("serviceName", s.ServiceName)
 	enc.AddInt8("kind", s.Kind)
 	enc.AddInt16("statusCode", s.StatusCode)
+	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
 	enc.AddString("httpUrl", s.HttpUrl)
 	enc.AddString("httpMethod", s.HttpMethod)
 	enc.AddString("httpHost", s.HttpHost)
 	enc.AddString("httpRoute", s.HttpRoute)
 	enc.AddString("msgSystem", s.MsgSystem)
 	enc.AddString("msgOperation", s.MsgOperation)
+	enc.AddString("externalHttpUrl", s.ExternalHttpUrl)
 	enc.AddString("dbSystem", s.DBSystem)
 	enc.AddString("dbName", s.DBName)
 	enc.AddString("dbOperation", s.DBOperation)

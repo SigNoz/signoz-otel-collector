@@ -85,6 +85,7 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		stringTagMap Map(String, String) CODEC(ZSTD(1)),
 		numberTagMap Map(String, Float64) CODEC(ZSTD(1)),
 		boolTagMap Map(String, bool) CODEC(ZSTD(1)),
+		isRemote LowCardinality(String) CODEC(ZSTD(1)),
 		INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_name name TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_kind kind TYPE minmax GRANULARITY 4,
@@ -128,7 +129,8 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
   		responseStatusCode,
 		stringTagMap,
 		numberTagMap,
-		boolTagMap
+		boolTagMap,
+		isRemote
 		FROM %s.%s
 		ORDER BY durationNano, timestamp`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortMVTable, cluster, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultIndexTable))
 	if err != nil {
