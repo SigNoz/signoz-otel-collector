@@ -166,7 +166,7 @@ func (r *httplogreceiver) Shutdown(context.Context) error {
 }
 
 func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
-	ctx := r.obsrecv.StartMetricsOp(req.Context())
+	ctx := r.obsrecv.StartLogsOp(req.Context())
 
 	// return this header if present. This is done to support vercel.
 	if req.Header.Get("x-vercel-verify") != "" {
@@ -195,7 +195,7 @@ func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r.obsrecv.EndMetricsOp(
+	r.obsrecv.EndLogsOp(
 		ctx,
 		metadata.Type,
 		totalCount,
