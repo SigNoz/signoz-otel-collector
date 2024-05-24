@@ -195,10 +195,10 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
-		} else if k == "http.route" || k == "server.address" || 
-		k == "client.address" || k == "http.request.header.host" {
+		} else if k == "http.route" {
 			span.HttpRoute = v.Str()
-		} else if k == "http.host" {
+		} else if k == "http.host" || k == "server.address" || 
+		k == "client.address" || k == "http.request.header.host" {
 			span.HttpHost = v.Str()
 		} else if k == "messaging.system" {
 			span.MsgSystem = v.Str()
