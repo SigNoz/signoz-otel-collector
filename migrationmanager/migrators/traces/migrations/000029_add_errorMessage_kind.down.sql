@@ -1,0 +1,2 @@
+ALTER TABLE signoz_traces.signoz_index ON CLUSTER {{.SIGNOZ_CLUSTER}} DROP COLUMN IF EXISTS errorMessage;
+ALTER TABLE signoz_traces.signoz_index ON CLUSTER {{.SIGNOZ_CLUSTER}} ADD COLUMN IF NOT EXISTS kindStr;
