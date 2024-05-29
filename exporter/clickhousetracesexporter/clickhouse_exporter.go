@@ -197,8 +197,8 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.HttpMethod = v.Str()
 		} else if k == "http.route" {
 			span.HttpRoute = v.Str()
-		} else if k == "http.host" || k == "server.address" || 
-		k == "client.address" || k == "http.request.header.host" {
+		} else if k == "http.host" || k == "server.address" ||
+			k == "client.address" || k == "http.request.header.host" {
 			span.HttpHost = v.Str()
 		} else if k == "messaging.system" {
 			span.MsgSystem = v.Str()
@@ -269,6 +269,7 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span, lowCardinalExcepti
 func populateTraceModel(span *Span) {
 	span.TraceModel.Events = span.Events
 	span.TraceModel.HasError = span.HasError
+	span.TraceModel.ErrorMessage = span.ErrorMessage
 }
 
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *Span {
@@ -363,6 +364,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		DurationNano:      durationNano,
 		ServiceName:       ServiceName,
 		Kind:              int8(otelSpan.Kind()),
+		KindStr:           otelSpan.Kind().String(),
 		StatusCode:        int16(otelSpan.Status().Code()),
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
@@ -377,6 +379,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 			ServiceName:       ServiceName,
 			Kind:              int8(otelSpan.Kind()),
+			KindStr:           otelSpan.Kind().String(),
 			References:        references,
 			TagMap:            tagMap,
 			StringTagMap:      stringTagMap,
@@ -387,9 +390,9 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		Tenant:   &tenant,
 		IsRemote: isRemote,
 	}
-
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
+		span.ErrorMessage = otelSpan.Status().Message()
 	}
 	populateOtherDimensions(attributes, span)
 	populateEvents(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
@@ -498,6 +501,13 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		NumberValue: float64(span.Kind),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "kindStr",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.KindStr,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "durationNano",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -516,6 +526,13 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		TagType:  "tag",
 		IsColumn: true,
 		DataType: "bool",
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "errorMessage",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ErrorMessage,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "externalHttpMethod",
