@@ -364,7 +364,6 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		DurationNano:      durationNano,
 		ServiceName:       ServiceName,
 		Kind:              int8(otelSpan.Kind()),
-		KindStr:           otelSpan.Kind().String(),
 		StatusCode:        int16(otelSpan.Status().Code()),
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
@@ -379,7 +378,6 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 			ServiceName:       ServiceName,
 			Kind:              int8(otelSpan.Kind()),
-			KindStr:           otelSpan.Kind().String(),
 			References:        references,
 			TagMap:            tagMap,
 			StringTagMap:      stringTagMap,
@@ -499,13 +497,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		IsColumn:    true,
 		DataType:    "float64",
 		NumberValue: float64(span.Kind),
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "kindStr",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.KindStr,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "durationNano",
