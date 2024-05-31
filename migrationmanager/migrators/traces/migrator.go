@@ -86,6 +86,9 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		numberTagMap Map(String, Float64) CODEC(ZSTD(1)),
 		boolTagMap Map(String, bool) CODEC(ZSTD(1)),
 		isRemote LowCardinality(String) CODEC(ZSTD(1)),
+		statusMessage String CODEC(ZSTD(1)),
+		statusCodeString String CODEC(ZSTD(1)),
+		spanKind String CODEC(ZSTD(1)),
 		INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_name name TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_kind kind TYPE minmax GRANULARITY 4,
@@ -98,6 +101,8 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
 		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
+		INDEX idx_spanKind spanKind TYPE set(5) GRANULARITY 4,
+		INDEX idx_statusCodeString statusCodeString TYPE set(3) GRANULARITY 4,
 		) ENGINE %sMergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
@@ -130,7 +135,10 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		stringTagMap,
 		numberTagMap,
 		boolTagMap,
-		isRemote
+		isRemote,
+		statusMessage,
+		statusCodeString,
+		spanKind
 		FROM %s.%s
 		ORDER BY durationNano, timestamp`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortMVTable, cluster, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultIndexTable))
 	if err != nil {

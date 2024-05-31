@@ -43,6 +43,7 @@ type TraceModel struct {
 	StartTimeUnixNano uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName       string             `json:"serviceName,omitempty"`
 	Kind              int8               `json:"kind,omitempty"`
+	SpanKind          string             `json:"spanKind,omitempty"`
 	References        references         `json:"references,omitempty"`
 	StatusCode        int16              `json:"statusCode,omitempty"`
 	TagMap            map[string]string  `json:"tagMap,omitempty"`
@@ -51,6 +52,8 @@ type TraceModel struct {
 	BoolTagMap        map[string]bool    `json:"boolTagMap,omitempty"`
 	Events            []string           `json:"event,omitempty"`
 	HasError          bool               `json:"hasError,omitempty"`
+	StatusMessage     string             `json:"statusMessage,omitempty"`
+	StatusCodeString  string             `json:"statusCodeString,omitempty"`
 }
 
 func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -61,8 +64,11 @@ func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", t.StartTimeUnixNano)
 	enc.AddString("serviceName", t.ServiceName)
 	enc.AddInt8("kind", t.Kind)
+	enc.AddString("spanKind", t.SpanKind)
 	enc.AddInt16("statusCode", t.StatusCode)
 	enc.AddBool("hasError", t.HasError)
+	enc.AddString("statusMessage", t.StatusMessage)
+	enc.AddString("statusCodeString", t.StatusCodeString)
 	enc.AddArray("references", &t.References)
 	enc.AddString("tagMap", fmt.Sprintf("%v", t.TagMap))
 	enc.AddString("event", fmt.Sprintf("%v", t.Events))
@@ -90,6 +96,7 @@ type Span struct {
 	StartTimeUnixNano  uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName        string             `json:"serviceName,omitempty"`
 	Kind               int8               `json:"kind,omitempty"`
+	SpanKind           string             `json:"spanKind,omitempty"`
 	StatusCode         int16              `json:"statusCode,omitempty"`
 	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
 	HttpUrl            string             `json:"httpUrl,omitempty"`
@@ -112,6 +119,8 @@ type Span struct {
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
 	ResourceTagsMap    map[string]string  `json:"resourceTagsMap,omitempty"`
 	HasError           bool               `json:"hasError,omitempty"`
+	StatusMessage      string             `json:"statusMessage,omitempty"`
+	StatusCodeString   string             `json:"statusCodeString,omitempty"`
 	IsRemote           string             `json:"isRemote,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
 	RPCSystem          string             `json:"rpcSystem,omitempty"`
@@ -140,6 +149,7 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", s.StartTimeUnixNano)
 	enc.AddString("serviceName", s.ServiceName)
 	enc.AddInt8("kind", s.Kind)
+	enc.AddString("spanKind", s.SpanKind)
 	enc.AddInt16("statusCode", s.StatusCode)
 	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
 	enc.AddString("httpUrl", s.HttpUrl)
@@ -158,6 +168,8 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("rpcMethod", s.RPCMethod)
 	enc.AddString("responseStatusCode", s.ResponseStatusCode)
 	enc.AddBool("hasError", s.HasError)
+	enc.AddString("statusMessage", s.StatusMessage)
+	enc.AddString("statusCodeString", s.StatusCodeString)
 	enc.AddString("errorID", s.ErrorID)
 	enc.AddString("errorGroupID", s.ErrorGroupID)
 	enc.AddObject("errorEvent", &s.ErrorEvent)
