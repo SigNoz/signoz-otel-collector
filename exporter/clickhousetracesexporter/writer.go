@@ -140,6 +140,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.ResourceTagsMap,
 			span.IsRemote,
 			span.ErrorMessage,
+			span.SpanKind,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))

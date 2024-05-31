@@ -43,6 +43,7 @@ type TraceModel struct {
 	StartTimeUnixNano uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName       string             `json:"serviceName,omitempty"`
 	Kind              int8               `json:"kind,omitempty"`
+	SpanKind          string             `json:"spanKind,omitempty"`
 	References        references         `json:"references,omitempty"`
 	StatusCode        int16              `json:"statusCode,omitempty"`
 	TagMap            map[string]string  `json:"tagMap,omitempty"`
@@ -62,6 +63,7 @@ func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", t.StartTimeUnixNano)
 	enc.AddString("serviceName", t.ServiceName)
 	enc.AddInt8("kind", t.Kind)
+	enc.AddString("spanKind", t.SpanKind)
 	enc.AddInt16("statusCode", t.StatusCode)
 	enc.AddBool("hasError", t.HasError)
 	enc.AddString("errorMessage", t.ErrorMessage)
@@ -92,6 +94,7 @@ type Span struct {
 	StartTimeUnixNano  uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName        string             `json:"serviceName,omitempty"`
 	Kind               int8               `json:"kind,omitempty"`
+	SpanKind           string             `json:"spanKind,omitempty"`
 	StatusCode         int16              `json:"statusCode,omitempty"`
 	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
 	HttpUrl            string             `json:"httpUrl,omitempty"`
@@ -143,6 +146,7 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", s.StartTimeUnixNano)
 	enc.AddString("serviceName", s.ServiceName)
 	enc.AddInt8("kind", s.Kind)
+	enc.AddString("spanKind", s.SpanKind)
 	enc.AddInt16("statusCode", s.StatusCode)
 	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
 	enc.AddString("httpUrl", s.HttpUrl)

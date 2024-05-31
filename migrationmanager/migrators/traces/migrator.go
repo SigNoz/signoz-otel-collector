@@ -78,7 +78,6 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		httpRoute LowCardinality(String) CODEC(ZSTD(1)), 
 		httpHost LowCardinality(String) CODEC(ZSTD(1)), 
 		hasError bool CODEC(T64, ZSTD(1)),
-		errorMessage String CODEC(ZSTD(1)),
 		rpcSystem LowCardinality(String) CODEC(ZSTD(1)),
 		rpcService LowCardinality(String) CODEC(ZSTD(1)),
 		rpcMethod LowCardinality(String) CODEC(ZSTD(1)),
@@ -87,6 +86,8 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		numberTagMap Map(String, Float64) CODEC(ZSTD(1)),
 		boolTagMap Map(String, bool) CODEC(ZSTD(1)),
 		isRemote LowCardinality(String) CODEC(ZSTD(1)),
+		errorMessage String CODEC(ZSTD(1)),
+		spanKind String CODEC(ZSTD(1)),
 		INDEX idx_service serviceName TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_name name TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_kind kind TYPE minmax GRANULARITY 4,
@@ -99,6 +100,7 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
 		INDEX idx_rpcMethod rpcMethod TYPE bloom_filter GRANULARITY 4,
 		INDEX idx_responseStatusCode responseStatusCode TYPE set(0) GRANULARITY 1,
+		INDEX idx_spanKind spanKind TYPE set(5) GRANULARITY 4,
 		) ENGINE %sMergeTree()
 		PARTITION BY toDate(timestamp)
 		ORDER BY (durationNano, timestamp)
@@ -124,7 +126,6 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		httpRoute,
 		httpHost,
 		hasError,
-		errorMessage,
 		rpcSystem,
   		rpcService,
   		rpcMethod,
@@ -132,7 +133,9 @@ func enableDurationSortFeature(db clickhouse.Conn, cluster string, replicationEn
 		stringTagMap,
 		numberTagMap,
 		boolTagMap,
-		isRemote
+		isRemote,
+		errorMessage,
+		spanKind
 		FROM %s.%s
 		ORDER BY durationNano, timestamp`, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortMVTable, cluster, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultDurationSortTable, clickhousetracesexporter.DefaultTraceDatabase, clickhousetracesexporter.DefaultIndexTable))
 	if err != nil {
