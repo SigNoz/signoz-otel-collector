@@ -269,7 +269,6 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span, lowCardinalExcepti
 func populateTraceModel(span *Span) {
 	span.TraceModel.Events = span.Events
 	span.TraceModel.HasError = span.HasError
-	span.TraceModel.ErrorMessage = span.ErrorMessage
 }
 
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *Span {
@@ -371,6 +370,8 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		BoolTagMap:        boolTagMap,
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
+		StatusMessage:     otelSpan.Status().Message(),
+		StatusCodeString:  otelSpan.Status().Code().String(),
 		TraceModel: TraceModel{
 			TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
 			SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
@@ -386,13 +387,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			NumberTagMap:      numberTagMap,
 			BoolTagMap:        boolTagMap,
 			HasError:          false,
+			StatusMessage:     otelSpan.Status().Message(),
+			StatusCodeString:  otelSpan.Status().Code().String(),
 		},
 		Tenant:   &tenant,
 		IsRemote: isRemote,
 	}
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
-		span.ErrorMessage = otelSpan.Status().Message()
 	}
 	populateOtherDimensions(attributes, span)
 	populateEvents(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
@@ -528,11 +530,18 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		DataType: "bool",
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "errorMessage",
+		Key:         "statusMessage",
 		TagType:     "tag",
 		IsColumn:    true,
 		DataType:    "string",
-		StringValue: span.ErrorMessage,
+		StringValue: span.StatusMessage,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusCodeString",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.StatusCodeString,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "externalHttpMethod",

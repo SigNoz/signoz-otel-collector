@@ -52,7 +52,8 @@ type TraceModel struct {
 	BoolTagMap        map[string]bool    `json:"boolTagMap,omitempty"`
 	Events            []string           `json:"event,omitempty"`
 	HasError          bool               `json:"hasError,omitempty"`
-	ErrorMessage      string             `json:"errorMessage,omitempty"`
+	StatusMessage     string             `json:"statusMessage,omitempty"`
+	StatusCodeString  string             `json:"statusCodeString,omitempty"`
 }
 
 func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -66,7 +67,8 @@ func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("spanKind", t.SpanKind)
 	enc.AddInt16("statusCode", t.StatusCode)
 	enc.AddBool("hasError", t.HasError)
-	enc.AddString("errorMessage", t.ErrorMessage)
+	enc.AddString("statusMessage", t.StatusMessage)
+	enc.AddString("statusCodeString", t.StatusCodeString)
 	enc.AddArray("references", &t.References)
 	enc.AddString("tagMap", fmt.Sprintf("%v", t.TagMap))
 	enc.AddString("event", fmt.Sprintf("%v", t.Events))
@@ -117,7 +119,8 @@ type Span struct {
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
 	ResourceTagsMap    map[string]string  `json:"resourceTagsMap,omitempty"`
 	HasError           bool               `json:"hasError,omitempty"`
-	ErrorMessage       string             `json:"errorMessage,omitempty"`
+	StatusMessage      string             `json:"statusMessage,omitempty"`
+	StatusCodeString   string             `json:"statusCodeString,omitempty"`
 	IsRemote           string             `json:"isRemote,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
 	RPCSystem          string             `json:"rpcSystem,omitempty"`
@@ -165,7 +168,8 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("rpcMethod", s.RPCMethod)
 	enc.AddString("responseStatusCode", s.ResponseStatusCode)
 	enc.AddBool("hasError", s.HasError)
-	enc.AddString("errorMessage", s.ErrorMessage)
+	enc.AddString("statusMessage", s.StatusMessage)
+	enc.AddString("statusCodeString", s.StatusCodeString)
 	enc.AddString("errorID", s.ErrorID)
 	enc.AddString("errorGroupID", s.ErrorGroupID)
 	enc.AddObject("errorEvent", &s.ErrorEvent)
