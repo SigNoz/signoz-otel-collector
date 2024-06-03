@@ -13,6 +13,10 @@ receivers:
   clickhousesystemtablesreceiver:
     # required
     dsn: tcp://clickhouse:9000/
+
+    # optional. Should be set to name of the cluster when scraping query logs from a clustered Clickhouse deployment
+    cluster: "cluster-name"
+
     query_log_scrape_config:
       scrape_interval_seconds: 20
       # required. min_scrape_delay_seconds must be set to a duration larger
