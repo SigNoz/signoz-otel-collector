@@ -15,7 +15,7 @@ receivers:
     dsn: tcp://clickhouse:9000/
 
     # optional. Should be set to name of the cluster when scraping query logs from a clustered Clickhouse deployment
-    cluster: "cluster-name"
+    cluster_name: "cluster-name"
 
     query_log_scrape_config:
       scrape_interval_seconds: 20
