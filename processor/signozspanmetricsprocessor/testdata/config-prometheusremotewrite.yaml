@@ -35,8 +35,8 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
 
-  jaeger:
-    endpoint: "localhost:14250"
+  otlp:
+    endpoint: "localhost:4317"
     tls:
       insecure: true
 
@@ -57,7 +57,7 @@ service:
       # spanmetrics will pass on span data untouched to next processor
       # while also accumulating metrics to be sent to the configured 'otlp/spanmetrics' exporter.
       processors: [signozspanmetrics, batch]
-      exporters: [jaeger]
+      exporters: [otlp]
 
     # This pipeline acts as a proxy to the 'metrics' pipeline below,
     # allowing for further metrics processing if required.

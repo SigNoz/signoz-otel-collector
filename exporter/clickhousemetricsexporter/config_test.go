@@ -54,10 +54,12 @@ func Test_loadConfig(t *testing.T) {
 		&Config{
 			TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
 			BackOffConfig: configretry.BackOffConfig{
-				Enabled:         true,
-				InitialInterval: 10 * time.Second,
-				MaxInterval:     1 * time.Minute,
-				MaxElapsedTime:  10 * time.Minute,
+				Enabled:             true,
+				InitialInterval:     10 * time.Second,
+				MaxInterval:         1 * time.Minute,
+				MaxElapsedTime:      10 * time.Minute,
+				RandomizationFactor: 0.5,
+				Multiplier:          1.5,
 			},
 			RemoteWriteQueue: RemoteWriteQueue{
 				Enabled:      true,
