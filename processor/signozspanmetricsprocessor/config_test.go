@@ -28,7 +28,6 @@ import (
 	"go.opentelemetry.io/collector/processor/batchprocessor"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver"
 )
@@ -93,15 +92,14 @@ func TestLoadConfig(t *testing.T) {
 			factories, err := otelcoltest.NopFactories()
 			require.NoError(t, err)
 
-			factories.Receivers["otlp"] = otlpreceiver.NewFactory()
-			factories.Receivers["jaeger"] = jaegerreceiver.NewFactory()
+			factories.Receivers[component.MustNewType("otlp")] = otlpreceiver.NewFactory()
+			factories.Receivers[component.MustNewType("jaeger")] = jaegerreceiver.NewFactory()
 
-			factories.Processors[typeStr] = NewFactory()
-			factories.Processors["batch"] = batchprocessor.NewFactory()
+			factories.Processors[component.MustNewType(typeStr)] = NewFactory()
+			factories.Processors[component.MustNewType("batch")] = batchprocessor.NewFactory()
 
-			factories.Exporters["otlp"] = otlpexporter.NewFactory()
-			factories.Exporters["prometheus"] = prometheusexporter.NewFactory()
-			factories.Exporters["jaeger"] = jaegerexporter.NewFactory()
+			factories.Exporters[component.MustNewType("otlp")] = otlpexporter.NewFactory()
+			factories.Exporters[component.MustNewType("prometheus")] = prometheusexporter.NewFactory()
 
 			// Test
 			cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", tc.configFile), factories)
@@ -120,7 +118,7 @@ func TestLoadConfig(t *testing.T) {
 					MaxServicesToTrack:             tc.wantMaxServicesToTrack,
 					MaxOperationsToTrackPerService: tc.wantMaxOperationsToTrackPerService,
 				},
-				cfg.Processors[component.NewID(typeStr)],
+				cfg.Processors[component.NewID(component.MustNewType(typeStr))],
 			)
 		})
 	}

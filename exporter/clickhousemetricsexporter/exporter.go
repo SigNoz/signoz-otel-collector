@@ -56,7 +56,7 @@ type PrwExporter struct {
 	closeChan        chan struct{}
 	concurrency      int
 	userAgentHeader  string
-	clientSettings   *confighttp.HTTPClientSettings
+	clientSettings   *confighttp.ClientConfig
 	settings         component.TelemetrySettings
 	ch               base.Storage
 	usageCollector   *usage.UsageCollector
@@ -138,8 +138,8 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 }
 
 // Start creates the prometheus client
-func (prwe *PrwExporter) Start(_ context.Context, host component.Host) (err error) {
-	prwe.client, err = prwe.clientSettings.ToClient(host, prwe.settings)
+func (prwe *PrwExporter) Start(ctx context.Context, host component.Host) (err error) {
+	prwe.client, err = prwe.clientSettings.ToClient(ctx, host, prwe.settings)
 	return err
 }
 

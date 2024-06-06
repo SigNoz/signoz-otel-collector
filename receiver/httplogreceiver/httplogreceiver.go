@@ -28,13 +28,13 @@ const (
 
 // NewFactory creates a factory for httplogreceiver
 func NewFactory() receiver.Factory {
-	return receiver.NewFactory(metadata.Type, createDefaultConfig, receiver.WithLogs(createLogsReceiver, metadata.LogsStability))
+	return receiver.NewFactory(component.MustNewType(metadata.Type), createDefaultConfig, receiver.WithLogs(createLogsReceiver, metadata.LogsStability))
 }
 
 // CreateDefaultConfig creates a config with type and version
 func createDefaultConfig() component.Config {
 	return &Config{
-		HTTPServerSettings: confighttp.HTTPServerSettings{
+		ServerConfig: confighttp.ServerConfig{
 			Endpoint: defaultEndpoint,
 		},
 		Source: "",
@@ -116,17 +116,13 @@ func (r *httplogreceiver) RegisterLogsConsumer(lc consumer.Logs) {
 // Start tells the receiver to start its processing.
 // By convention the consumer of the received data is set when the receiver
 // instance is created.
-func (r *httplogreceiver) Start(_ context.Context, host component.Host) error {
-	if r.logsConsumer == nil {
-		return component.ErrNilNextConsumer
-	}
-
+func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error {
 	if r.server != nil {
 		return nil
 	}
 
 	// set up the listener
-	ln, err := r.config.HTTPServerSettings.ToListener()
+	ln, err := r.config.ServerConfig.ToListener(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to bind to address %s: %w", r.config.Endpoint, err)
 	}
@@ -134,7 +130,7 @@ func (r *httplogreceiver) Start(_ context.Context, host component.Host) error {
 	mx := mux.NewRouter()
 	mx.HandleFunc("/", r.handleLogs)
 
-	r.server, err = r.config.HTTPServerSettings.ToServer(host, r.settings.TelemetrySettings, mx)
+	r.server, err = r.config.ServerConfig.ToServer(ctx, host, r.settings.TelemetrySettings, mx)
 	if err != nil {
 		return err
 	}
@@ -148,7 +144,7 @@ func (r *httplogreceiver) Start(_ context.Context, host component.Host) error {
 	go func() {
 		defer r.shutdownWG.Done()
 		if errHTTP := r.server.Serve(ln); !errors.Is(errHTTP, http.ErrServerClosed) && errHTTP != nil {
-			host.ReportFatalError(errHTTP)
+			r.settings.ReportStatus(component.NewFatalErrorEvent(errHTTP))
 		}
 	}()
 	return nil

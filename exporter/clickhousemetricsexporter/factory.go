@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -56,7 +57,7 @@ func NewFactory() exporter.Factory {
 
 	view.Register(writeLatencyView)
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
@@ -91,7 +92,7 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 			NumConsumers: 1,
 			QueueSize:    prwCfg.RemoteWriteQueue.QueueSize,
 		}),
-		exporterhelper.WithRetry(prwCfg.RetrySettings),
+		exporterhelper.WithRetry(prwCfg.BackOffConfig),
 		exporterhelper.WithStart(prwe.Start),
 		exporterhelper.WithShutdown(prwe.Shutdown),
 	)
@@ -108,13 +109,8 @@ func createDefaultConfig() component.Config {
 		Namespace:       "",
 		ExternalLabels:  map[string]string{},
 		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		RetrySettings: exporterhelper.RetrySettings{
-			Enabled:         true,
-			InitialInterval: 50 * time.Millisecond,
-			MaxInterval:     200 * time.Millisecond,
-			MaxElapsedTime:  1 * time.Minute,
-		},
-		HTTPClientSettings: confighttp.HTTPClientSettings{
+		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
+		HTTPClientSettings: confighttp.ClientConfig{
 			Endpoint: "http://some.url:9411/api/prom/push",
 			// We almost read 0 bytes, so no need to tune ReadBufferSize.
 			ReadBufferSize:  0,

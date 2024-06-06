@@ -26,7 +26,7 @@ func TestLoadConfig(t *testing.T) {
 		errorLen int
 	}{
 		{
-			id: component.NewIDWithName(metadata.Type, ""),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
 			expected: &Config{
 				ErrorMode: ottl.PropagateError,
 				TraceStatements: []common.ContextStatements{
@@ -77,7 +77,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "ignore_errors"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "ignore_errors"),
 			expected: &Config{
 				ErrorMode: ottl.IgnoreError,
 				TraceStatements: []common.ContextStatements{
@@ -93,25 +93,25 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "bad_syntax_trace"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_trace"),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "unknown_function_trace"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_trace"),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "bad_syntax_metric"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_metric"),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "unknown_function_metric"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_metric"),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "bad_syntax_log"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_log"),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "unknown_function_log"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_log"),
 		},
 		{
-			id:       component.NewIDWithName(metadata.Type, "bad_syntax_multi_signal"),
+			id:       component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_multi_signal"),
 			errorLen: 3,
 		},
 	}
@@ -144,7 +144,7 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func Test_UnknownContextID(t *testing.T) {
-	id := component.NewIDWithName(metadata.Type, "unknown_context")
+	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_context")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)
@@ -158,7 +158,7 @@ func Test_UnknownContextID(t *testing.T) {
 }
 
 func Test_UnknownErrorMode(t *testing.T) {
-	id := component.NewIDWithName(metadata.Type, "unknown_error_mode")
+	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_error_mode")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)

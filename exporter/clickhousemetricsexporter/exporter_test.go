@@ -32,6 +32,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -46,10 +47,10 @@ import (
 func skip_Test_NewPRWExporter(t *testing.T) {
 	cfg := &Config{
 		TimeoutSettings:    exporterhelper.TimeoutSettings{},
-		RetrySettings:      exporterhelper.RetrySettings{},
+		BackOffConfig:      configretry.BackOffConfig{},
 		Namespace:          "",
 		ExternalLabels:     map[string]string{},
-		HTTPClientSettings: confighttp.HTTPClientSettings{Endpoint: ""},
+		HTTPClientSettings: confighttp.ClientConfig{Endpoint: ""},
 	}
 	buildInfo := component.BuildInfo{
 		Description: "OpenTelemetry Collector",
@@ -138,7 +139,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 func skip_Test_Start(t *testing.T) {
 	cfg := &Config{
 		TimeoutSettings: exporterhelper.TimeoutSettings{},
-		RetrySettings:   exporterhelper.RetrySettings{},
+		BackOffConfig:   configretry.BackOffConfig{},
 		Namespace:       "",
 		ExternalLabels:  map[string]string{},
 	}
@@ -157,7 +158,7 @@ func skip_Test_Start(t *testing.T) {
 		returnErrorOnStartUp bool
 		set                  exporter.CreateSettings
 		endpoint             string
-		clientSettings       confighttp.HTTPClientSettings
+		clientSettings       confighttp.ClientConfig
 	}{
 		{
 			name:           "success_case",
@@ -166,7 +167,7 @@ func skip_Test_Start(t *testing.T) {
 			concurrency:    5,
 			externalLabels: map[string]string{"Key1": "Val1"},
 			set:            set,
-			clientSettings: confighttp.HTTPClientSettings{Endpoint: "https://some.url:9411/api/prom/push"},
+			clientSettings: confighttp.ClientConfig{Endpoint: "https://some.url:9411/api/prom/push"},
 		},
 		{
 			name:                 "invalid_tls",
@@ -176,10 +177,10 @@ func skip_Test_Start(t *testing.T) {
 			externalLabels:       map[string]string{"Key1": "Val1"},
 			set:                  set,
 			returnErrorOnStartUp: true,
-			clientSettings: confighttp.HTTPClientSettings{
+			clientSettings: confighttp.ClientConfig{
 				Endpoint: "https://some.url:9411/api/prom/push",
-				TLSSetting: configtls.TLSClientSetting{
-					TLSSetting: configtls.TLSSetting{
+				TLSSetting: configtls.ClientConfig{
+					Config: configtls.Config{
 						CAFile:   "non-existent file",
 						CertFile: "",
 						KeyFile:  "",
@@ -618,7 +619,7 @@ func temp_dis_Test_PushMetrics(t *testing.T) {
 
 			cfg := &Config{
 				Namespace: "",
-				HTTPClientSettings: confighttp.HTTPClientSettings{
+				HTTPClientSettings: confighttp.ClientConfig{
 					Endpoint: server.URL,
 					// We almost read 0 bytes, so no need to tune ReadBufferSize.
 					ReadBufferSize:  0,

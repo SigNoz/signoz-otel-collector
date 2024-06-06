@@ -24,24 +24,24 @@ func TestLoadConfig(t *testing.T) {
 		expected component.Config
 	}{
 		{
-			id:       component.NewIDWithName(metadata.Type, ""),
+			id:       component.NewIDWithName(component.MustNewType(metadata.Type), ""),
 			expected: createDefaultConfig(),
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "endpoint"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "endpoint"),
 			expected: &Config{
-				HTTPServerSettings: confighttp.HTTPServerSettings{
+				ServerConfig: confighttp.ServerConfig{
 					Endpoint: "localhost:54321",
 				},
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "withtls"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "withtls"),
 			expected: &Config{
-				HTTPServerSettings: confighttp.HTTPServerSettings{
+				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
-					TLSSetting: &configtls.TLSServerSetting{
-						TLSSetting: configtls.TLSSetting{
+					TLSSetting: &configtls.ServerConfig{
+						Config: configtls.Config{
 							CertFile: "/test.crt",
 							KeyFile:  "/test.key",
 						},
@@ -50,27 +50,27 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "heroku"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "heroku"),
 			expected: &Config{
-				HTTPServerSettings: confighttp.HTTPServerSettings{
+				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
 				},
 				Source: "heroku",
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "google"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "google"),
 			expected: &Config{
-				HTTPServerSettings: confighttp.HTTPServerSettings{
+				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
 				},
 				Source: "google",
 			},
 		},
 		{
-			id: component.NewIDWithName(metadata.Type, "json"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "json"),
 			expected: &Config{
-				HTTPServerSettings: confighttp.HTTPServerSettings{
+				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
 				},
 				Source: "json",
