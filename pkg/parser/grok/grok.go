@@ -7,7 +7,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
-	"github.com/scaleway/scaleway-sdk-go/logger"
 	"github.com/vjeantet/grok"
 	"go.opentelemetry.io/collector/component"
 )
@@ -93,7 +92,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	if c.Cache.Size > 0 {
 		op.cache = newMemoryCache(c.Cache.Size, 0)
-		logger.Debugf("configured %s with memory cache of size %d", op.ID(), op.cache.maxSize())
+		set.Logger.Sugar().Debugf("configured %s with memory cache of size %d", op.ID(), op.cache.maxSize())
 	}
 
 	return op, nil

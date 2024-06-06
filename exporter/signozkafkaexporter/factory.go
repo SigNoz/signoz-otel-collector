@@ -80,7 +80,7 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 		o(f)
 	}
 	return exporter.NewFactory(
-		component.MustNewType("signozkafkaexporter"),
+		component.MustNewType(metadata.Type),
 		createDefaultConfig,
 		exporter.WithTraces(f.createTracesExporter, metadata.TracesStability),
 		exporter.WithMetrics(f.createMetricsExporter, metadata.MetricsStability),
