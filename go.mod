@@ -299,7 +299,9 @@ require (
 	github.com/hetznercloud/hcloud-go/v2 v2.0.0 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
-	github.com/ionos-cloud/sdk-go/v6 v6.1.8 // indirect
+	github.com/ionos-cloud/sdk-go/v6 v6.1.11 // indirect
+	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
+	github.com/jellydator/ttlcache/v3 v3.2.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
