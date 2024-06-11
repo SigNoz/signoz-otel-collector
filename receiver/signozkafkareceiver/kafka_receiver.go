@@ -125,7 +125,7 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancel
-	
+
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
 		ReceiverID:             c.settings.ID,
 		Transport:              transport,
@@ -146,7 +146,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, consumerGroup); err != nil {
-			host.ReportFatalError(err)
+			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
 		}
 	}()
 	<-consumerGroup.ready
@@ -244,7 +244,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, metricsConsumerGroup); err != nil {
-			host.ReportFatalError(err)
+			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
 		}
 	}()
 	<-metricsConsumerGroup.ready
@@ -275,7 +275,7 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
-	
+
 	c := sarama.NewConfig()
 	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
 	c.ClientID = config.ClientID
@@ -370,7 +370,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, logsConsumerGroup); err != nil {
-			host.ReportFatalError(err)
+			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
 		}
 	}()
 	<-logsConsumerGroup.ready

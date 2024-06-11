@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
@@ -37,26 +38,28 @@ func Test_loadConfig(t *testing.T) {
 	assert.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
+	factories.Exporters[component.MustNewType(typeStr)] = factory
 	cfg, err := otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
 	// From the default configurations -- checks if a correct exporter is instantiated
-	e0 := cfg.Exporters[(component.NewID(typeStr))]
+	e0 := cfg.Exporters[(component.NewID(component.MustNewType(typeStr)))]
 	assert.Equal(t, e0, factory.CreateDefaultConfig())
 
 	// checks if the correct Config struct can be instantiated from testdata/config.yaml
-	e1 := cfg.Exporters[component.NewIDWithName(typeStr, "2")]
+	e1 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "2")]
 	assert.Equal(t, e1,
 		&Config{
 			TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-			RetrySettings: exporterhelper.RetrySettings{
-				Enabled:         true,
-				InitialInterval: 10 * time.Second,
-				MaxInterval:     1 * time.Minute,
-				MaxElapsedTime:  10 * time.Minute,
+			BackOffConfig: configretry.BackOffConfig{
+				Enabled:             true,
+				InitialInterval:     10 * time.Second,
+				MaxInterval:         1 * time.Minute,
+				MaxElapsedTime:      10 * time.Minute,
+				RandomizationFactor: 0.5,
+				Multiplier:          1.5,
 			},
 			RemoteWriteQueue: RemoteWriteQueue{
 				Enabled:      true,
@@ -65,10 +68,10 @@ func Test_loadConfig(t *testing.T) {
 			},
 			Namespace:      "test-space",
 			ExternalLabels: map[string]string{"key1": "value1", "key2": "value2"},
-			HTTPClientSettings: confighttp.HTTPClientSettings{
+			HTTPClientSettings: confighttp.ClientConfig{
 				Endpoint: "localhost:8888",
-				TLSSetting: configtls.TLSClientSetting{
-					TLSSetting: configtls.TLSSetting{
+				TLSSetting: configtls.ClientConfig{
+					Config: configtls.Config{
 						CAFile: "/var/lib/mycert.pem", // This is subject to change, but currently I have no idea what else to put here lol
 					},
 					Insecure: false,
@@ -92,7 +95,7 @@ func TestNegativeQueueSize(t *testing.T) {
 	assert.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
+	factories.Exporters[component.MustNewType(typeStr)] = factory
 	_, err = otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "negative_queue_size.yaml"), factories)
 	assert.Error(t, err)
 }
@@ -102,7 +105,7 @@ func TestNegativeNumConsumers(t *testing.T) {
 	assert.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
+	factories.Exporters[component.MustNewType(typeStr)] = factory
 	_, err = otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "negative_num_consumers.yaml"), factories)
 	assert.Error(t, err)
 }
@@ -112,8 +115,8 @@ func TestDisabledQueue(t *testing.T) {
 	assert.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
+	factories.Exporters[component.MustNewType(typeStr)] = factory
 	cfg, err := otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "disabled_queue.yaml"), factories)
 	assert.NoError(t, err)
-	assert.False(t, cfg.Exporters[component.NewID(typeStr)].(*Config).RemoteWriteQueue.Enabled)
+	assert.False(t, cfg.Exporters[component.NewID(component.MustNewType(typeStr))].(*Config).RemoteWriteQueue.Enabled)
 }

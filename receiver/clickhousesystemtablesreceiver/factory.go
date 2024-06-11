@@ -16,7 +16,7 @@ const (
 
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		"clickhousesystemtablesreceiver",
+		component.MustNewType("clickhousesystemtablesreceiver"),
 		createDefaultConfig,
 		receiver.WithLogs(createLogsReceiver, component.StabilityLevelAlpha),
 	)

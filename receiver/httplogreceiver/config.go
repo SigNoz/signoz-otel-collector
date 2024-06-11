@@ -17,19 +17,19 @@ const (
 
 // Config defines configuration for the https receiver.
 type Config struct {
-	confighttp.HTTPServerSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	confighttp.ServerConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 
 	Source string `mapstructure:"source"` // ex:- heroku, google etc
 }
 
 // Validate verifies that the endpoint is valid and the configured port is not 0
 func (rCfg *Config) Validate() error {
-	if rCfg.HTTPServerSettings.Endpoint == "" {
+	if rCfg.ServerConfig.Endpoint == "" {
 		return errors.New("must specify an endpoint for the httplogreceiver")
 	}
 
 	// validate port
-	_, portStr, err := net.SplitHostPort(rCfg.HTTPServerSettings.Endpoint)
+	_, portStr, err := net.SplitHostPort(rCfg.ServerConfig.Endpoint)
 	if err != nil {
 		return fmt.Errorf("endpoint is not formatted correctly: %w", err)
 	}

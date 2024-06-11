@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 )
@@ -31,7 +32,7 @@ func TestLoadConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[typeStr] = factory
+	factories.Exporters[component.MustNewType(typeStr)] = factory
 	cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", "config.yaml"), factories)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
@@ -40,16 +41,16 @@ func TestLoadConfig(t *testing.T) {
 
 	defaultCfg := factory.CreateDefaultConfig()
 	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000/?dial_timeout=5s"
-	r0 := cfg.Exporters[component.NewID(typeStr)]
+	r0 := cfg.Exporters[component.NewID(component.MustNewType(typeStr))]
 	assert.Equal(t, r0, defaultCfg)
 
-	r1 := cfg.Exporters[component.NewIDWithName(typeStr, "full")].(*Config)
+	r1 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "full")].(*Config)
 	assert.Equal(t, r1, &Config{
 		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
 		TimeoutSettings: exporterhelper.TimeoutSettings{
 			Timeout: 5 * time.Second,
 		},
-		RetrySettings: exporterhelper.RetrySettings{
+		BackOffConfig: configretry.BackOffConfig{
 			Enabled:             true,
 			InitialInterval:     5 * time.Second,
 			MaxInterval:         30 * time.Second,
@@ -63,12 +64,4 @@ func TestLoadConfig(t *testing.T) {
 			QueueSize:    100,
 		},
 	})
-}
-
-func withDefaultConfig(fns ...func(*Config)) *Config {
-	cfg := createDefaultConfig().(*Config)
-	for _, fn := range fns {
-		fn(cfg)
-	}
-	return cfg
 }
