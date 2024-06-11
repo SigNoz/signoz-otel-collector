@@ -117,7 +117,8 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	}
 
 	cache := ttlcache.New[uint64, bool](
-		ttlcache.WithTTL[uint64, bool](45 * time.Minute),
+		ttlcache.WithTTL[uint64, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[uint64, bool](),
 	)
 
 	go cache.Start()
@@ -415,7 +416,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
 			for fingerprint, labels := range timeSeries {
-				if ch.cache.Get(fingerprint).Value() {
+				if ch.cache.Get(fingerprint) != nil && ch.cache.Get(fingerprint).Value() {
 					continue
 				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
