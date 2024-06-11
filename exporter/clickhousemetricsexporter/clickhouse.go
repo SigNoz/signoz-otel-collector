@@ -52,6 +52,7 @@ const (
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
 	DISTRIBUTED_SAMPLES_TABLE_V4     = "distributed_samples_v4"
 	DISTRIBUTED_EXP_HIST_TABLE       = "distributed_exp_hist"
+	DISTRIBUTED_METRIC_LABELS_TABLE  = "distributed_metric_labels"
 	TIME_SERIES_TABLE                = "time_series_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
@@ -201,11 +202,17 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
 	fingerprintToName := make(map[uint64]map[string]string)
 
+	metricLabels := make(map[string]map[string]struct{})
+
 	for i, ts := range data.Timeseries {
 		var metricName string
 		var env string = "default"
 		labelsOverridden := make(map[string]*prompb.Label)
 		for _, label := range ts.Labels {
+			if metricLabels[label.Name] == nil {
+				metricLabels[label.Name] = make(map[string]struct{})
+			}
+			metricLabels[label.Name][label.Value] = struct{}{}
 			labelsOverridden[label.Name] = &prompb.Label{
 				Name:  label.Name,
 				Value: label.Value,
@@ -286,48 +293,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		ctx, _ = tag.New(ctx,
 			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
 			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
-		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-		return err
-	}()
-
-	if err != nil {
-		return err
-	}
-
-	// Write to distributed_time_series_v3 table
-	err = func() error {
-
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3), driver.WithReleaseConnection())
-		if err != nil {
-			return err
-		}
-		timestamp := model.Now().Time().UnixMilli()
-		for fingerprint, labels := range newTimeSeries {
-			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
-			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-			err = statement.Append(
-				fingerprintToName[fingerprint][envLabel],
-				meta.Temporality.String(),
-				fingerprintToName[fingerprint][nameLabel],
-				fingerprint,
-				timestamp,
-				encodedLabels,
-				meta.Description,
-				meta.Unit,
-				meta.Typ.String(),
-				meta.IsMonotonic,
-			)
-			if err != nil {
-				return err
-			}
-		}
-
-		start := time.Now()
-		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V3),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
@@ -566,6 +531,43 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}()
 	if err != nil {
 		return err
+	}
+
+	// write to metric_labels table
+	metricLabelsErr := func() error {
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (unix_milli, name, type, data_type, string_value) VALUES (?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_METRIC_LABELS_TABLE), driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		unixMilli := model.Now().Time().UnixMilli()
+		for name, values := range metricLabels {
+			for value := range values {
+				statement.Append(
+					unixMilli,
+					name,
+					"tag",
+					"string",
+					value,
+				)
+			}
+		}
+		start := time.Now()
+		err = statement.Send()
+		ctx, _ = tag.New(ctx,
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(tableKey, DISTRIBUTED_METRIC_LABELS_TABLE),
+		)
+		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
+		if err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	if metricLabelsErr != nil {
+		// log error
+		// we don't want to fail the whole operation if we can't write metric labels
+		ch.l.Errorf("error writing metric labels: %v", metricLabelsErr)
 	}
 
 	return nil
