@@ -295,7 +295,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
 			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -350,7 +350,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
 			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -393,7 +393,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			start := time.Now()
 			err = statement.Send()
 			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
 				tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE_V4),
 			)
 			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -442,7 +442,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			start := time.Now()
 			err = statement.Send()
 			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
 				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
 			)
 			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -531,7 +531,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
+			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
 			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))

@@ -4,6 +4,7 @@
 package signozkafkaexporter
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -39,8 +40,8 @@ func TestAuthentication(t *testing.T) {
 
 	saramaTLSCfg := &sarama.Config{}
 	saramaTLSCfg.Net.TLS.Enable = true
-	tlsClient := configtls.TLSClientSetting{}
-	tlscfg, err := tlsClient.LoadTLSConfig()
+	tlsClient := configtls.ClientConfig{}
+	tlscfg, err := tlsClient.LoadTLSConfig(context.Background())
 	require.NoError(t, err)
 	saramaTLSCfg.Net.TLS.Config = tlscfg
 
@@ -66,12 +67,12 @@ func TestAuthentication(t *testing.T) {
 			saramaConfig: saramaPlaintext,
 		},
 		{
-			auth:         Authentication{TLS: &configtls.TLSClientSetting{}},
+			auth:         Authentication{TLS: &configtls.ClientConfig{}},
 			saramaConfig: saramaTLSCfg,
 		},
 		{
-			auth: Authentication{TLS: &configtls.TLSClientSetting{
-				TLSSetting: configtls.TLSSetting{CAFile: "/doesnotexists"},
+			auth: Authentication{TLS: &configtls.ClientConfig{
+				Config: configtls.Config{CAFile: "/doesnotexists"},
 			}},
 			saramaConfig: saramaTLSCfg,
 			err:          "failed to load TLS config",

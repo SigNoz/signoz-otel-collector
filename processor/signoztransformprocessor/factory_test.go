@@ -16,14 +16,14 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metadata"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
 func TestFactory_Type(t *testing.T) {
 	factory := NewFactory()
-	assert.Equal(t, factory.Type(), component.Type(metadata.Type))
+	assert.Equal(t, factory.Type(), component.Type(component.MustNewType(metadata.Type)))
 }
 
 func TestFactory_CreateDefaultConfig(t *testing.T) {

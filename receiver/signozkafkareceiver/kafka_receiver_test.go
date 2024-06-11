@@ -57,8 +57,8 @@ func TestNewTracesReceiver_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
 		Authentication: kafka.Authentication{
-			TLS: &configtls.TLSClientSetting{
-				TLSSetting: configtls.TLSSetting{
+			TLS: &configtls.ClientConfig{
+				Config: configtls.Config{
 					CAFile: "/doesnotexist",
 				},
 			},
@@ -314,8 +314,8 @@ func TestNewMetricsExporter_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
 		Authentication: kafka.Authentication{
-			TLS: &configtls.TLSClientSetting{
-				TLSSetting: configtls.TLSSetting{
+			TLS: &configtls.ClientConfig{
+				Config: configtls.Config{
 					CAFile: "/doesnotexist",
 				},
 			},
@@ -569,8 +569,8 @@ func TestNewLogsExporter_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
 		Authentication: kafka.Authentication{
-			TLS: &configtls.TLSClientSetting{
-				TLSSetting: configtls.TLSSetting{
+			TLS: &configtls.ClientConfig{
+				Config: configtls.Config{
 					CAFile: "/doesnotexist",
 				},
 			},

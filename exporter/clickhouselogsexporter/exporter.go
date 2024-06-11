@@ -310,7 +310,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = statement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, string(component.DataTypeLogs)),
+				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_LOGS_TABLE),
 			},
 			writeLatencyMillis.M(int64(time.Since(dbWriteStart).Milliseconds())),
@@ -331,7 +331,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = tagStatement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, string(component.DataTypeLogs)),
+				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_TAG_ATTRIBUTES),
 			},
 			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
@@ -27,7 +28,7 @@ func newTestParser(t *testing.T, pattern string, cacheSize uint16) *Parser {
 	if cacheSize > 0 {
 		cfg.Cache.Size = cacheSize
 	}
-	op, err := cfg.Build(testutil.Logger(t))
+	op, err := cfg.Build(componenttest.NewNopTelemetrySettings())
 	require.NoError(t, err)
 	return op.(*Parser)
 }
@@ -35,7 +36,7 @@ func newTestParser(t *testing.T, pattern string, cacheSize uint16) *Parser {
 func TestParserBuildFailure(t *testing.T) {
 	cfg := NewConfigWithID("test")
 	cfg.OnError = "invalid_on_error"
-	_, err := cfg.Build(testutil.Logger(t))
+	_, err := cfg.Build(componenttest.NewNopTelemetrySettings())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid `on_error` field")
 }
@@ -200,7 +201,7 @@ func TestParserGrok(t *testing.T) {
 			cfg.OutputIDs = []string{"fake"}
 			tc.configure(cfg)
 
-			op, err := cfg.Build(testutil.Logger(t))
+			op, err := cfg.Build(componenttest.NewNopTelemetrySettings())
 			require.NoError(t, err)
 
 			fake := testutil.NewFakeOutput(t)
@@ -246,7 +247,7 @@ func newTestBenchParser(t *testing.T, cacheSize uint16) *Parser {
 	cfg.Pattern = benchParsePattern
 	cfg.Cache.Size = cacheSize
 
-	op, err := cfg.Build(testutil.Logger(t))
+	op, err := cfg.Build(componenttest.NewNopTelemetrySettings())
 	require.NoError(t, err)
 	return op.(*Parser)
 }

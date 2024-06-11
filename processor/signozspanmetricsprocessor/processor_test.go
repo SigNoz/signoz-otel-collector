@@ -738,7 +738,7 @@ func initSpan(span span, s ptrace.Span) {
 func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Traces) {
 	otlpExpFactory := otlpexporter.NewFactory()
 	otlpConfig := &otlpexporter.Config{
-		GRPCClientSettings: configgrpc.GRPCClientSettings{
+		ClientConfig: configgrpc.ClientConfig{
 			Endpoint: "example.com:1234",
 		},
 	}
@@ -747,7 +747,7 @@ func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Tr
 	require.NoError(t, err)
 	texp, err := otlpExpFactory.CreateTracesExporter(context.Background(), expCreationParams, otlpConfig)
 	require.NoError(t, err)
-	otlpID := component.NewID("otlp")
+	otlpID := component.NewID(component.MustNewType("otlp"))
 	return otlpID, mexp, texp
 }
 
