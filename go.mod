@@ -20,6 +20,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v1.0.2
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/knadh/koanf v1.5.0
 	github.com/lightstep/go-expohisto v1.0.0
 	github.com/oklog/ulid v1.3.1

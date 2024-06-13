@@ -28,6 +28,7 @@ import (
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
@@ -63,6 +64,8 @@ type clickHouse struct {
 	l                    *logrus.Entry
 	database             string
 	maxTimeSeriesInQuery int
+
+	cache *ttlcache.Cache[uint64, bool]
 
 	timeSeriesRW sync.RWMutex
 	// Maintains the lookup map for fingerprints that are
@@ -113,11 +116,19 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
+	cache := ttlcache.New[uint64, bool](
+		ttlcache.WithTTL[uint64, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[uint64, bool](),
+	)
+
+	go cache.Start()
+
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    l,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
+		cache:                cache,
 
 		timeSeries: make(map[uint64]struct{}, 8192),
 
@@ -295,48 +306,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	// Write to distributed_time_series_v3 table
-	err = func() error {
-
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3), driver.WithReleaseConnection())
-		if err != nil {
-			return err
-		}
-		timestamp := model.Now().Time().UnixMilli()
-		for fingerprint, labels := range newTimeSeries {
-			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
-			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-			err = statement.Append(
-				fingerprintToName[fingerprint][envLabel],
-				meta.Temporality.String(),
-				fingerprintToName[fingerprint][nameLabel],
-				fingerprint,
-				timestamp,
-				encodedLabels,
-				meta.Description,
-				meta.Unit,
-				meta.Typ.String(),
-				meta.IsMonotonic,
-			)
-			if err != nil {
-				return err
-			}
-		}
-
-		start := time.Now()
-		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V3),
-		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-		return err
-	}()
-
-	if err != nil {
-		return err
-	}
-
 	metrics := map[string]usage.Metric{}
 	err = func() error {
 		ctx := context.Background()
@@ -447,6 +416,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
 			for fingerprint, labels := range timeSeries {
+				if ch.cache.Get(fingerprint) != nil && ch.cache.Get(fingerprint).Value() {
+					continue
+				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 				err = statement.Append(
@@ -464,6 +436,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				if err != nil {
 					return err
 				}
+				ch.cache.Set(fingerprint, true, ttlcache.DefaultTTL)
 			}
 
 			start := time.Now()
