@@ -249,7 +249,17 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			resources = addTemporaryUnderscoreSupport(resources)
 
 			for j := 0; j < logs.ScopeLogs().Len(); j++ {
-				scope := logs.ScopeLogs().At(j).Scope().Name()
+				scope := logs.ScopeLogs().At(j).Scope()
+				scopeName := scope.Name()
+				scopeVersion := scope.Version()
+
+				scopeAttributes := attributesToSlice(scope.Attributes(), true)
+
+				err := addAttrsToTagStatement(tagStatement, "instrumentation_scope", resources)
+				if err != nil {
+					return err
+				}
+
 				rs := logs.ScopeLogs().At(j).LogRecords()
 				for k := 0; k < rs.Len(); k++ {
 					r := rs.At(k)
@@ -299,7 +309,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attributes.FloatValues,
 						attributes.BoolKeys,
 						attributes.BoolValues,
-						scope,
+						scopeName,
+						scopeVersion,
+						scopeAttributes.StringKeys,
+						scopeAttributes.StringValues,
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
@@ -514,7 +527,10 @@ const (
 							attributes_float64_value,
 							attributes_bool_key,
 							attributes_bool_value,
-							instrumentation_scope
+							instrumentation_scope,
+							instrumentation_scope_version,
+							instrumentation_scope_attributes_string_key,
+							instrumentation_scope_attributes_string_value
 							) VALUES (
 								?,
 								?,
@@ -535,7 +551,10 @@ const (
 								?,
 								?,
 								?,
-								?
+								?,
+								?,
+								?,
+								?,
 								)`
 )
 
