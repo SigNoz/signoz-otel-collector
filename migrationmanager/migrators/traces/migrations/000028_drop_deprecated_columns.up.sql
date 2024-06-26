@@ -63,9 +63,9 @@ WHERE dest != '' and kind != 2
 GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name;
 
 ALTER TABLE signoz_traces.signoz_index_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}} 
-DROP INDEX idx_httpCode,
-DROP INDEX idx_tagMapKeys,
-DROP INDEX idx_tagMapValues,
+DROP INDEX IF EXISTS idx_httpCode,
+DROP INDEX IF EXISTS idx_tagMapKeys,
+DROP INDEX IF EXISTS idx_tagMapValues,
 DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,
@@ -80,9 +80,9 @@ DROP COLUMN IF EXISTS httpCode,
 DROP COLUMN IF EXISTS component;
 
 ALTER TABLE signoz_traces.durationSort ON CLUSTER {{.SIGNOZ_CLUSTER}} 
-DROP INDEX idx_httpCode,
-DROP INDEX idx_tagMapKeys,
-DROP INDEX idx_tagMapValues,
+DROP INDEX IF EXISTS idx_httpCode,
+DROP INDEX IF EXISTS idx_tagMapKeys,
+DROP INDEX IF EXISTS idx_tagMapValues,
 DROP COLUMN IF EXISTS tagMap,
 DROP COLUMN IF EXISTS gRPCCode,
 DROP COLUMN IF EXISTS gRPCMethod,

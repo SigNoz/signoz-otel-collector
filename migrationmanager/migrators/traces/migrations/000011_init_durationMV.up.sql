@@ -36,28 +36,3 @@ PARTITION BY toDate(timestamp)
 ORDER BY (durationNano, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 1296000 SECOND DELETE
 SETTINGS index_granularity = 8192;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS signoz_traces.durationSortMV ON CLUSTER {{.SIGNOZ_CLUSTER}}
-TO signoz_traces.durationSort
-AS SELECT
-  timestamp,
-  traceID,
-  spanID,
-  parentSpanID,
-  serviceName,
-  name,
-  kind,
-  durationNano,
-  statusCode,
-  component,
-  httpMethod,
-  httpUrl,
-  httpCode,
-  httpRoute,
-  httpHost,
-  gRPCMethod,
-  gRPCCode,
-  hasError,
-  tagMap
-FROM signoz_traces.signoz_index_v2
-ORDER BY durationNano, timestamp;

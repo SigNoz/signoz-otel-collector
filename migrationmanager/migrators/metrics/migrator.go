@@ -28,7 +28,7 @@ func (m *MetricsMigrator) Migrate(ctx context.Context) error {
 	// TODO(srikanthccv): Remove this once we have a better way to handle data and last write
 	removeTTL := fmt.Sprintf(`ALTER TABLE %s.%s ON CLUSTER %s REMOVE TTL;`, database, clickhousemetricsexporter.TIME_SERIES_TABLE, m.Cfg.ClusterName)
 	if err = m.DB.Exec(context.Background(), removeTTL); err != nil {
-		if !strings.Contains(err.Error(), "Table doesn't have any table TTL expression, cannot remove.") {
+		if !strings.Contains(err.Error(), "Table doesn't have any table TTL expression, cannot remove.") && !strings.Contains(err.Error(), "code: 60") {
 			return fmt.Errorf("failed to remove TTL from table %s.%s, err: %s", database, clickhousemetricsexporter.TIME_SERIES_TABLE, err)
 		}
 	}
@@ -38,7 +38,9 @@ func (m *MetricsMigrator) Migrate(ctx context.Context) error {
 	// The table shard key had incorrectly been set to (env, temporality, metric_name, fingerprint, unix_milli) instead of (env, temporality, metric_name, fingerprint)
 	var showCreateTable string
 	if err = m.DB.QueryRow(context.Background(), fmt.Sprintf("SHOW CREATE TABLE %s.%s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4)).Scan(&showCreateTable); err != nil {
-		return fmt.Errorf("failed to get create table statement for %s.%s, err: %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, err)
+		if !strings.Contains(err.Error(), "code: 390") {
+			return fmt.Errorf("failed to get create table statement for %s.%s, err: %s", database, clickhousemetricsexporter.DISTRIBUTED_TIME_SERIES_TABLE_V4, err)
+		}
 	}
 
 	// drop table and it will be recreated with correct shard key
