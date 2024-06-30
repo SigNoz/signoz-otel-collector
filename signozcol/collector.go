@@ -196,25 +196,25 @@ func newOtelColSettings(configPaths []string, version string, desc string, loggi
 		Version:     version,
 	}
 
-	envp := envprovider.New()
-	fmp := fileprovider.New()
+	envp := envprovider.NewFactory()
+	fmp := fileprovider.NewFactory()
 	configProviderSettings := otelcol.ConfigProviderSettings{
 		ResolverSettings: confmap.ResolverSettings{
-			URIs:       configPaths,
-			Providers:  map[string]confmap.Provider{fmp.Scheme(): fmp, envp.Scheme(): envp},
-			Converters: []confmap.Converter{expandconverter.New()},
+			URIs:               configPaths,
+			ProviderFactories:  []confmap.ProviderFactory{envp, fmp},
+			ConverterFactories: []confmap.ConverterFactory{expandconverter.NewFactory()},
 		},
 	}
-	provider, err := otelcol.NewConfigProvider(configProviderSettings)
-	if err != nil {
-		return nil, err
+
+	f := func() (otelcol.Factories, error) {
+		return factories, nil
 	}
 
 	return &otelcol.CollectorSettings{
-		Factories:      factories,
-		BuildInfo:      buildInfo,
-		LoggingOptions: loggingOpts,
-		ConfigProvider: provider,
+		Factories:              f,
+		BuildInfo:              buildInfo,
+		LoggingOptions:         loggingOpts,
+		ConfigProviderSettings: configProviderSettings,
 		// This is set to true to disable the collector to handle SIGTERM and SIGINT on its own.
 		DisableGracefulShutdown: true,
 	}, nil

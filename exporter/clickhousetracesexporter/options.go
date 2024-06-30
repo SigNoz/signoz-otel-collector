@@ -18,7 +18,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/url"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
@@ -91,21 +90,19 @@ type Connector func(cfg *namespaceConfig) (clickhouse.Conn, error)
 
 func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	ctx := context.Background()
+	options, err := clickhouse.ParseDSN(cfg.Datasource)
+
+	if err != nil {
+		return nil, err
+	}
+
 	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout`
 	// error when using multiple consumers along with usage exporter
-	maxOpenIdleConnections := cfg.NumConsumers + 1
-	dsnURL, err := url.Parse(cfg.Datasource)
-	options := &clickhouse.Options{
-		Addr:         []string{dsnURL.Host},
-		MaxOpenConns: maxOpenIdleConnections + 5,
-		MaxIdleConns: maxOpenIdleConnections,
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-		options.Auth = auth
+	maxIdleConnections := cfg.NumConsumers + 1
+
+	if options.MaxIdleConns < maxIdleConnections {
+		options.MaxIdleConns = maxIdleConnections
+		options.MaxOpenConns = maxIdleConnections + 5
 	}
 	db, err := clickhouse.Open(options)
 	if err != nil {
@@ -116,7 +113,7 @@ func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, dsnURL.Query().Get("database"), cfg.Cluster)
+	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, options.Auth.Database, cfg.Cluster)
 	if err := db.Exec(ctx, query); err != nil {
 		return nil, err
 	}

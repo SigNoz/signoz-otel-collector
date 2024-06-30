@@ -12,19 +12,19 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/logs"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metrics"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/traces"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		metadata.Type,
+		component.MustNewType(metadata.Type),
 		createDefaultConfig,
 		processor.WithLogs(createLogsProcessor, metadata.LogsStability),
 		processor.WithTraces(createTracesProcessor, metadata.TracesStability),

@@ -179,8 +179,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			span.HttpCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.HttpCode
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
 		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
 			value := v.Str()
 			valueUrl, err := url.Parse(value)
@@ -198,14 +197,13 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.HttpMethod = v.Str()
 		} else if k == "http.route" {
 			span.HttpRoute = v.Str()
-		} else if k == "http.host" {
+		} else if k == "http.host" || k == "server.address" ||
+			k == "client.address" || k == "http.request.header.host" {
 			span.HttpHost = v.Str()
 		} else if k == "messaging.system" {
 			span.MsgSystem = v.Str()
 		} else if k == "messaging.operation" {
 			span.MsgOperation = v.Str()
-		} else if k == "component" { // TODO: There was never a "component" attribute in the spec, this was from OpenCensus/OpenTracing
-			span.Component = v.Str()
 		} else if k == "db.system" {
 			span.DBSystem = v.Str()
 		} else if k == "db.name" {
@@ -221,14 +219,9 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			span.GRPCCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.GRPCCode
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
 		} else if k == "rpc.method" {
 			span.RPCMethod = v.Str()
-			system, found := attributes.Get("rpc.system")
-			if found && system.Str() == "grpc" {
-				span.GRPCMethod = v.Str()
-			}
 		} else if k == "rpc.service" {
 			span.RPCService = v.Str()
 		} else if k == "rpc.system" {
@@ -370,13 +363,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		DurationNano:      durationNano,
 		ServiceName:       ServiceName,
 		Kind:              int8(otelSpan.Kind()),
+		SpanKind:          otelSpan.Kind().String(),
 		StatusCode:        int16(otelSpan.Status().Code()),
-		TagMap:            tagMap,
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
 		BoolTagMap:        boolTagMap,
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
+		StatusMessage:     otelSpan.Status().Message(),
+		StatusCodeString:  otelSpan.Status().Code().String(),
 		TraceModel: TraceModel{
 			TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
 			SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
@@ -385,17 +380,19 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 			ServiceName:       ServiceName,
 			Kind:              int8(otelSpan.Kind()),
+			SpanKind:          otelSpan.Kind().String(),
 			References:        references,
 			TagMap:            tagMap,
 			StringTagMap:      stringTagMap,
 			NumberTagMap:      numberTagMap,
 			BoolTagMap:        boolTagMap,
 			HasError:          false,
+			StatusMessage:     otelSpan.Status().Message(),
+			StatusCodeString:  otelSpan.Status().Code().String(),
 		},
 		Tenant:   &tenant,
 		IsRemote: isRemote,
 	}
-
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
@@ -506,6 +503,13 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		NumberValue: float64(span.Kind),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "spanKind",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.SpanKind,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "durationNano",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -526,6 +530,20 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		DataType: "bool",
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusMessage",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.StatusMessage,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusCodeString",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.StatusCodeString,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "externalHttpMethod",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -538,13 +556,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.ExternalHttpUrl,
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "component",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.Component,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "dbSystem",

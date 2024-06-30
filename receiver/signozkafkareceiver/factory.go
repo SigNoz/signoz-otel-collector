@@ -80,7 +80,7 @@ func NewFactory(options ...FactoryOption) receiver.Factory {
 		o(f)
 	}
 	return receiver.NewFactory(
-		metadata.Type,
+		component.MustNewType(metadata.Type),
 		createDefaultConfig,
 		receiver.WithTraces(f.createTracesReceiver, metadata.TracesStability),
 		receiver.WithMetrics(f.createMetricsReceiver, metadata.MetricsStability),

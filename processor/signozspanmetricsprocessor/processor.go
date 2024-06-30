@@ -369,10 +369,20 @@ func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resource
 	return false
 }
 
+type getExporters interface {
+	GetExporters() map[component.DataType]map[component.ID]component.Component
+}
+
 // Start implements the component.Component interface.
 func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	p.logger.Info("Starting signozspanmetricsprocessor with config", zap.Any("config", p.config))
-	exporters := host.GetExporters()
+
+	ge, ok := host.(getExporters)
+	if !ok {
+		return fmt.Errorf("unable to get exporters")
+	}
+
+	exporters := ge.GetExporters()
 
 	availableMetricsExporters := make([]string, 0, len(exporters[component.DataTypeMetrics]))
 

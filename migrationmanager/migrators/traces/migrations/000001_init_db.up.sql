@@ -26,6 +26,6 @@ CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index ON CLUSTER {{.SIGNOZ_CLUST
   INDEX idx_tagsKeys tagsKeys TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_tagsValues tagsValues TYPE bloom_filter(0.01) GRANULARITY 64,
   INDEX idx_duration durationNano TYPE minmax GRANULARITY 1
-) ENGINE MergeTree
+) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (serviceName, -toUnixTimestamp(timestamp));

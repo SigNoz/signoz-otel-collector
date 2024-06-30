@@ -118,7 +118,6 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.StatusCode,
 			span.ExternalHttpMethod,
 			span.ExternalHttpUrl,
-			span.Component,
 			span.DBSystem,
 			span.DBName,
 			span.DBOperation,
@@ -126,15 +125,11 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.Events,
 			span.HttpMethod,
 			span.HttpUrl,
-			span.HttpCode,
 			span.HttpRoute,
 			span.HttpHost,
 			span.MsgSystem,
 			span.MsgOperation,
 			span.HasError,
-			span.TagMap,
-			span.GRPCMethod,
-			span.GRPCCode,
 			span.RPCSystem,
 			span.RPCService,
 			span.RPCMethod,
@@ -144,6 +139,9 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.BoolTagMap,
 			span.ResourceTagsMap,
 			span.IsRemote,
+			span.StatusMessage,
+			span.StatusCodeString,
+			span.SpanKind,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
@@ -156,7 +154,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
 		tag.Upsert(tableKey, w.indexTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -268,7 +266,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 	err = tagStatement.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
 			tag.Upsert(tableKey, w.attributeTable),
 		},
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
@@ -282,7 +280,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 	err = tagKeyStatement.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
 			tag.Upsert(tableKey, w.attributeKeyTable),
 		},
 		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
@@ -338,7 +336,7 @@ func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) er
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
 		tag.Upsert(tableKey, w.errorTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -392,7 +390,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 	err = statement.Send()
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces)),
+		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
 		tag.Upsert(tableKey, w.spansTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))

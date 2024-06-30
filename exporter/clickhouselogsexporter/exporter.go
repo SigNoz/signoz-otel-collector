@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -42,7 +41,6 @@ import (
 )
 
 const (
-	CLUSTER                    = "cluster"
 	DISTRIBUTED_LOGS_TABLE     = "distributed_logs"
 	DISTRIBUTED_TAG_ATTRIBUTES = "distributed_tag_attributes"
 )
@@ -312,7 +310,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = statement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, string(component.DataTypeLogs)),
+				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_LOGS_TABLE),
 			},
 			writeLatencyMillis.M(int64(time.Since(dbWriteStart).Milliseconds())),
@@ -333,7 +331,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = tagStatement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, string(component.DataTypeLogs)),
+				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_TAG_ATTRIBUTES),
 			},
 			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),
@@ -541,34 +539,16 @@ const (
 func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	// use empty database to create database
 	ctx := context.Background()
-	dsnURL, err := url.Parse(cfg.DSN)
+	options, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, err
 	}
 
-	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxOpenIdleConnections := cfg.QueueSettings.NumConsumers + 1
-
-	options := &clickhouse.Options{
-		Addr:         []string{dsnURL.Host},
-		MaxOpenConns: maxOpenIdleConnections + 5,
-		MaxIdleConns: maxOpenIdleConnections,
-	}
-
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-		options.Auth = auth
-	}
-
-	if dsnURL.Query().Get("dial_timeout") != "" {
-		dialTimeout, err := time.ParseDuration(dsnURL.Query().Get("dial_timeout"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse dial_timeout from dsn: %w", err)
-		}
-		options.DialTimeout = dialTimeout
+	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
+	maxIdleConnections := cfg.QueueSettings.NumConsumers + 1
+	if options.MaxIdleConns < maxIdleConnections {
+		options.MaxIdleConns = maxIdleConnections
+		options.MaxOpenConns = maxIdleConnections + 5
 	}
 
 	db, err := clickhouse.Open(options)

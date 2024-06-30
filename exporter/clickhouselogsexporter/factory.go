@@ -22,6 +22,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -57,7 +58,7 @@ func NewFactory() exporter.Factory {
 	view.Register(writeLatencyView)
 
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithLogs(createLogsExporter, component.StabilityLevelBeta),
 	)
@@ -67,7 +68,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
 		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
-		RetrySettings:   exporterhelper.NewDefaultRetrySettings(),
+		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
 	}
 }
 
@@ -92,6 +93,6 @@ func createLogsExporter(
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutSettings),
 		exporterhelper.WithQueue(c.QueueSettings),
-		exporterhelper.WithRetry(c.RetrySettings),
+		exporterhelper.WithRetry(c.BackOffConfig),
 	)
 }

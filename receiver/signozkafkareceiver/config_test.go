@@ -31,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			id: component.NewIDWithName(metadata.Type, ""),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
 			expected: &Config{
 				Topic:         "spans",
 				Encoding:      "otlp_proto",
@@ -40,8 +40,8 @@ func TestLoadConfig(t *testing.T) {
 				GroupID:       "otel-collector",
 				InitialOffset: "latest",
 				Authentication: kafka.Authentication{
-					TLS: &configtls.TLSClientSetting{
-						TLSSetting: configtls.TLSSetting{
+					TLS: &configtls.ClientConfig{
+						Config: configtls.Config{
 							CAFile:   "ca.pem",
 							CertFile: "cert.pem",
 							KeyFile:  "key.pem",
@@ -60,18 +60,18 @@ func TestLoadConfig(t *testing.T) {
 					Interval: 1 * time.Second,
 				},
 				SaramaConsumerConfig: SaramaConsumerConfig{
-					ConsumerFetchMinBytes: 1,
+					ConsumerFetchMinBytes:     1,
 					ConsumerFetchDefaultBytes: 64,
-					ConsumerFetchMaxBytes: 128,
-					MaxProcessingTime: 500 * time.Millisecond,
-					MessagesChannelSize: 1024,
-					GroupSessionTimeout: 30 * time.Second,
+					ConsumerFetchMaxBytes:     128,
+					MaxProcessingTime:         500 * time.Millisecond,
+					MessagesChannelSize:       1024,
+					GroupSessionTimeout:       30 * time.Second,
 				},
 			},
 		},
 		{
 
-			id: component.NewIDWithName(metadata.Type, "logs"),
+			id: component.NewIDWithName(component.MustNewType(metadata.Type), "logs"),
 			expected: &Config{
 				Topic:         "logs",
 				Encoding:      "direct",
@@ -80,8 +80,8 @@ func TestLoadConfig(t *testing.T) {
 				GroupID:       "otel-collector",
 				InitialOffset: "earliest",
 				Authentication: kafka.Authentication{
-					TLS: &configtls.TLSClientSetting{
-						TLSSetting: configtls.TLSSetting{
+					TLS: &configtls.ClientConfig{
+						Config: configtls.Config{
 							CAFile:   "ca.pem",
 							CertFile: "cert.pem",
 							KeyFile:  "key.pem",
