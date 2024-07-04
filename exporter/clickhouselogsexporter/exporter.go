@@ -255,7 +255,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 				scopeAttributes := attributesToSlice(scope.Attributes(), true)
 
-				err := addAttrsToTagStatement(tagStatement, "instrumentation_scope", resources)
+				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes)
 				if err != nil {
 					return err
 				}
