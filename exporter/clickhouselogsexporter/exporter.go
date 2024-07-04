@@ -527,10 +527,10 @@ const (
 							attributes_float64_value,
 							attributes_bool_key,
 							attributes_bool_value,
-							instrumentation_scope,
-							instrumentation_scope_version,
-							instrumentation_scope_attributes_string_key,
-							instrumentation_scope_attributes_string_value
+							scope_name,
+							scope_version,
+							scope_string_key,
+							scope_string_value
 							) VALUES (
 								?,
 								?,
