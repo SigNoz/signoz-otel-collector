@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS signoz_logs.logs ON CLUSTER {{.SIGNOZ_CLUSTER}} (
 	attributes_int64_value Array(Int64) CODEC(ZSTD(1)),
 	attributes_float64_key Array(String) CODEC(ZSTD(1)),
 	attributes_float64_value Array(Float64) CODEC(ZSTD(1)),
-	INDEX body_idx body TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4
+	INDEX body_idx body TYPE ngrambf_v1(4, 60000, 5, 0) GRANULARITY 1
 ) ENGINE {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (timestamp, id)
