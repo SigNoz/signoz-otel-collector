@@ -27,6 +27,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/newschema"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
@@ -41,8 +42,11 @@ import (
 )
 
 const (
-	DISTRIBUTED_LOGS_TABLE     = "distributed_logs"
-	DISTRIBUTED_TAG_ATTRIBUTES = "distributed_tag_attributes"
+	DISTRIBUTED_LOGS_TABLE                      = "distributed_logs"
+	DISTRIBUTED_TAG_ATTRIBUTES                  = "distributed_tag_attributes"
+	DISTRIBUTED_LOGS_TABLE_V2                   = "distributed_logs_v2"
+	DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2         = "distributed_logs_v2_resource_bucket"
+	DISTRIBUTES_LOGS_RESOURCE_BUCKET_V2_SECONDS = 1800
 )
 
 type clickhouseLogsExporter struct {
@@ -202,7 +206,16 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	return nil
 }
 
+func tsBucket(ts int64, bucketSize int64) int64 {
+	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
+}
+
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
+	// JSON (sorted) for {bucket_start: {attribs: fingerprint}}
+	resourcesSeen := map[int64]map[string]string{}
+
+	var insertLogsStmtV2 driver.Batch
+	var insertResourcesStmtV2 driver.Batch
 	var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -213,6 +226,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 		if tagStatement != nil {
 			_ = tagStatement.Abort()
+		}
+		if insertLogsStmtV2 != nil {
+			_ = insertLogsStmtV2.Abort()
+		}
+		if insertResourcesStmtV2 != nil {
+			_ = insertResourcesStmtV2.Abort()
 		}
 	}()
 
@@ -231,6 +250,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			return fmt.Errorf("PrepareTagBatch:%w", err)
 		}
 
+		insertLogsQuery := fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_TABLE_V2)
+		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, insertLogsQuery, driver.WithReleaseConnection())
+		if err != nil {
+			return fmt.Errorf("PrepareBatchV2:%w", err)
+		}
+
 		metrics := map[string]usage.Metric{}
 
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
@@ -240,7 +265,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 			resources := attributesToSlice(res.Attributes(), true)
 
-			err := addAttrsToTagStatement(tagStatement, "resource", resources)
+			serializedRes, err := json.Marshal(res.Attributes().AsRaw())
+			if err != nil {
+				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
+			}
+			resourceJson := string(serializedRes)
+
+			err = addAttrsToTagStatement(tagStatement, "resource", resources)
 			if err != nil {
 				return err
 			}
@@ -279,6 +310,17 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						ts = ots
 					}
 
+					lBucketStart := tsBucket(int64(ts/1000000000), DISTRIBUTES_LOGS_RESOURCE_BUCKET_V2_SECONDS)
+
+					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
+						resourcesSeen[int64(lBucketStart)] = map[string]string{}
+					}
+					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
+					if !exists {
+						fp = newschema.CalculateFingerprint(res.Attributes().AsRaw(), newschema.ResourceHierarchy())
+						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
+					}
+
 					attributes := attributesToSlice(r.Attributes(), false)
 
 					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
@@ -288,6 +330,37 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 					// remove after sometime
 					attributes = addTemporaryUnderscoreSupport(attributes)
+
+					err = insertLogsStmtV2.Append(
+						uint64(lBucketStart),
+						fp,
+						ts,
+						ots,
+						e.ksuid.String(),
+						utils.TraceIDToHexOrEmptyString(r.TraceID()),
+						utils.SpanIDToHexOrEmptyString(r.SpanID()),
+						uint32(r.Flags()),
+						r.SeverityText(),
+						uint8(r.SeverityNumber()),
+						getStringifiedBody(r.Body()),
+						resources.StringKeys,
+						resources.StringValues,
+						attributes.StringKeys,
+						attributes.StringValues,
+						attributes.IntKeys,
+						attributes.IntValues,
+						attributes.FloatKeys,
+						attributes.FloatValues,
+						attributes.BoolKeys,
+						attributes.BoolValues,
+						scopeName,
+						scopeVersion,
+						scopeAttributes.StringKeys,
+						scopeAttributes.StringValues,
+					)
+					if err != nil {
+						return fmt.Errorf("LOGSv2: StatementAppend:%w", err)
+					}
 
 					err = statement.Append(
 						ts,
@@ -333,6 +406,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		if err != nil {
 			return fmt.Errorf("StatementSend:%w", err)
 		}
+
+		// insert to the new table
+		err = insertLogsStmtV2.Send()
+		if err != nil {
+			return fmt.Errorf("couldn't send batch insert logs statement:%w", err)
+		}
+
 		duration := time.Since(start)
 		e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 			zap.String("cost", duration.String()))
@@ -341,6 +421,32 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 		}
 
+		// insert into the resource bucket table
+		insertResourcesStmtV2, err = e.db.PrepareBatch(
+			ctx,
+			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2),
+			driver.WithReleaseConnection(),
+		)
+		if err != nil {
+			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
+		}
+
+		resourceCount := 0
+		for bucketTs, resources := range resourcesSeen {
+			for resourceLabels, fingerprint := range resources {
+				insertResourcesStmtV2.Append(
+					resourceLabels,
+					fingerprint,
+					bucketTs,
+				)
+				resourceCount += 1
+			}
+		}
+
+		err = insertResourcesStmtV2.Send()
+		if err != nil {
+			return fmt.Errorf("couldn't send batch insert resources statement:%w", err)
+		}
 		// push tag attributes
 		tagWriteStart := time.Now()
 		err = tagStatement.Send()
