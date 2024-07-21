@@ -15,6 +15,9 @@ import (
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.uber.org/zap"
@@ -40,7 +43,9 @@ type kafkaTracesConsumer struct {
 	settings receiver.CreateSettings
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	batchSize    int
+	batchTimeout time.Duration
 }
 
 // kafkaMetricsConsumer uses sarama to consume and handle messages from kafka.
@@ -54,7 +59,9 @@ type kafkaMetricsConsumer struct {
 	settings receiver.CreateSettings
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	batchSize    int
+	batchTimeout time.Duration
 }
 
 // kafkaLogsConsumer uses sarama to consume and handle messages from kafka.
@@ -68,7 +75,9 @@ type kafkaLogsConsumer struct {
 	settings receiver.CreateSettings
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	batchSize    int
+	batchTimeout time.Duration
 }
 
 var _ receiver.Traces = (*kafkaTracesConsumer)(nil)
@@ -92,11 +101,13 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Consumer.Offsets.AutoCommit.Enable = config.AutoCommit.Enable
 	c.Consumer.Offsets.AutoCommit.Interval = config.AutoCommit.Interval
+
 	if initialOffset, err := toSaramaInitialOffset(config.InitialOffset); err == nil {
 		c.Consumer.Offsets.Initial = initialOffset
 	} else {
 		return nil, err
 	}
+
 	if config.ProtocolVersion != "" {
 		version, err := sarama.ParseKafkaVersion(config.ProtocolVersion)
 		if err != nil {
@@ -104,9 +115,11 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 		}
 		c.Version = version
 	}
+
 	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
+
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
 		return nil, err
@@ -118,7 +131,8 @@ func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers 
 		unmarshaler:       unmarshaler,
 		settings:          set,
 		autocommitEnabled: config.AutoCommit.Enable,
-		messageMarking:    config.MessageMarking,
+		batchSize:         config.BatchSize,
+		batchTimeout:      config.BatchTimeout,
 	}, nil
 }
 
@@ -142,7 +156,8 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		ready:             make(chan bool),
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
-		messageMarking:    c.messageMarking,
+		batchSize:         c.batchSize,
+		batchTimeout:      c.batchTimeout,
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, consumerGroup); err != nil {
@@ -191,11 +206,13 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Consumer.Offsets.AutoCommit.Enable = config.AutoCommit.Enable
 	c.Consumer.Offsets.AutoCommit.Interval = config.AutoCommit.Interval
+
 	if initialOffset, err := toSaramaInitialOffset(config.InitialOffset); err == nil {
 		c.Consumer.Offsets.Initial = initialOffset
 	} else {
 		return nil, err
 	}
+
 	if config.ProtocolVersion != "" {
 		version, err := sarama.ParseKafkaVersion(config.ProtocolVersion)
 		if err != nil {
@@ -203,9 +220,11 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 		}
 		c.Version = version
 	}
+
 	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
+
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
 		return nil, err
@@ -217,7 +236,8 @@ func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers
 		unmarshaler:       unmarshaler,
 		settings:          set,
 		autocommitEnabled: config.AutoCommit.Enable,
-		messageMarking:    config.MessageMarking,
+		batchSize:         config.BatchSize,
+		batchTimeout:      config.BatchTimeout,
 	}, nil
 }
 
@@ -240,7 +260,8 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		ready:             make(chan bool),
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
-		messageMarking:    c.messageMarking,
+		batchSize:         c.batchSize,
+		batchTimeout:      c.batchTimeout,
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, metricsConsumerGroup); err != nil {
@@ -284,6 +305,7 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 	c.Metadata.Retry.Backoff = config.Metadata.Retry.Backoff
 	c.Consumer.Offsets.AutoCommit.Enable = config.AutoCommit.Enable
 	c.Consumer.Offsets.AutoCommit.Interval = config.AutoCommit.Interval
+
 	if initialOffset, err := toSaramaInitialOffset(config.InitialOffset); err == nil {
 		c.Consumer.Offsets.Initial = initialOffset
 	} else {
@@ -293,6 +315,7 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 	if err != nil {
 		return nil, err
 	}
+
 	if config.ProtocolVersion != "" {
 		var version sarama.KafkaVersion
 		version, err = sarama.ParseKafkaVersion(config.ProtocolVersion)
@@ -301,9 +324,11 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 		}
 		c.Version = version
 	}
+
 	if err = kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
 		return nil, err
 	}
+
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
 		return nil, err
@@ -315,7 +340,8 @@ func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers ma
 		unmarshaler:       unmarshaler,
 		settings:          set,
 		autocommitEnabled: config.AutoCommit.Enable,
-		messageMarking:    config.MessageMarking,
+		batchSize:         config.BatchSize,
+		batchTimeout:      config.BatchTimeout,
 	}, nil
 }
 
@@ -366,7 +392,8 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		ready:             make(chan bool),
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
-		messageMarking:    c.messageMarking,
+		batchSize:         c.batchSize,
+		batchTimeout:      c.batchTimeout,
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, logsConsumerGroup); err != nil {
@@ -410,7 +437,19 @@ type tracesConsumerGroupHandler struct {
 	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	// batching related fields
+	batch          ptrace.Traces
+	batchMutex     sync.Mutex
+	batchTimer     *time.Timer
+	batchItemCount int
+	batchSize      int
+	batchTimeout   time.Duration
+
+	// field to track offsets
+	offsetTracker map[string]map[int32]int64
+
+	lastErr error
 }
 
 type metricsConsumerGroupHandler struct {
@@ -425,7 +464,19 @@ type metricsConsumerGroupHandler struct {
 	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	// batching related fields
+	batch          pmetric.Metrics
+	batchMutex     sync.Mutex
+	batchTimer     *time.Timer
+	batchItemCount int
+	batchSize      int
+	batchTimeout   time.Duration
+
+	// field to track offsets
+	offsetTracker map[string]map[int32]int64
+
+	lastErr error
 }
 
 type logsConsumerGroupHandler struct {
@@ -440,7 +491,19 @@ type logsConsumerGroupHandler struct {
 	obsrecv *receiverhelper.ObsReport
 
 	autocommitEnabled bool
-	messageMarking    MessageMarking
+
+	// batching related fields
+	batch          plog.Logs
+	batchMutex     sync.Mutex
+	batchTimer     *time.Timer
+	batchItemCount int
+	batchSize      int
+	batchTimeout   time.Duration
+
+	// field to track offsets
+	offsetTracker map[string]map[int32]int64
+
+	lastErr error
 }
 
 var _ sarama.ConsumerGroupHandler = (*tracesConsumerGroupHandler)(nil)
@@ -464,61 +527,23 @@ func (c *tracesConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession
 
 func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	c.logger.Info("Starting consumer group", zap.Int32("partition", claim.Partition()))
-	if !c.autocommitEnabled {
-		defer session.Commit()
-	}
+	c.batch = ptrace.NewTraces()
+	c.batchTimer = time.NewTimer(c.batchTimeout)
+	defer func() {
+		if !c.batchTimer.Stop() {
+			<-c.batchTimer.C
+		}
+	}()
+
 	for {
 		select {
 		case message, ok := <-claim.Messages():
 			if !ok {
 				return nil
 			}
-			start := time.Now()
-			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
-				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
-			if !c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-
-			ctx := c.obsrecv.StartTracesOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(ctx, statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
-
-			traces, err := c.unmarshaler.Unmarshal(message.Value)
-			if err != nil {
-				c.logger.Error("failed to unmarshal message", zap.Error(err))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-
-			spanCount := traces.SpanCount()
-			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
-			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
-			if err != nil {
-				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-			if c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-			if !c.autocommitEnabled {
-				session.Commit()
-			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
-			}
-
+			return c.processTracesMessage(session, message)
+		case <-c.batchTimer.C:
+			return c.sendTracesBatch(session)
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
 		// https://github.com/Shopify/sarama/issues/1192
@@ -526,6 +551,77 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			return nil
 		}
 	}
+}
+
+func (h *tracesConsumerGroupHandler) markOffsets(session sarama.ConsumerGroupSession) {
+	for topic, partitions := range h.offsetTracker {
+		for partition, offset := range partitions {
+			session.MarkOffset(topic, partition, offset+1, "")
+		}
+	}
+}
+
+func (h *tracesConsumerGroupHandler) trackOffset(message *sarama.ConsumerMessage) {
+	topic := message.Topic
+	partition := message.Partition
+	if _, exists := h.offsetTracker[topic]; !exists {
+		h.offsetTracker[topic] = make(map[int32]int64)
+	}
+	if message.Offset > h.offsetTracker[topic][partition] {
+		h.offsetTracker[topic][partition] = message.Offset
+	}
+}
+
+func (h *tracesConsumerGroupHandler) processTracesMessage(session sarama.ConsumerGroupSession, message *sarama.ConsumerMessage) error {
+	if h.lastErr != nil {
+		// we don't want to consume the message if we failed to send the previous batch
+		return h.lastErr
+	}
+
+	traces, err := h.unmarshaler.Unmarshal(message.Value)
+	if err != nil {
+		h.logger.Error("Failed to unmarshal traces message", zap.Error(err))
+		return err
+	}
+
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	traces.ResourceSpans().MoveAndAppendTo(h.batch.ResourceSpans())
+	h.batchItemCount += traces.SpanCount()
+	h.trackOffset(message)
+
+	if h.batchItemCount >= h.batchSize {
+		return h.sendTracesBatch(session)
+	}
+	return nil
+}
+
+func (h *tracesConsumerGroupHandler) sendTracesBatch(session sarama.ConsumerGroupSession) error {
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	if h.batchItemCount == 0 {
+		return nil
+	}
+
+	ctx := h.obsrecv.StartTracesOp(session.Context())
+	err := h.nextConsumer.ConsumeTraces(ctx, h.batch)
+	h.lastErr = err
+	h.obsrecv.EndTracesOp(ctx, h.unmarshaler.Encoding(), h.batchItemCount, err)
+
+	if err != nil {
+		h.logger.Error("Failed to consume traces", zap.Error(err))
+		// we don't want to commit the offset if we failed to consume the traces
+		return err
+	}
+
+	h.markOffsets(session)
+
+	h.batch = ptrace.NewTraces()
+	h.batchItemCount = 0
+	h.batchTimer.Reset(h.batchTimeout)
+	return nil
 }
 
 func (c *metricsConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) error {
@@ -545,61 +641,23 @@ func (c *metricsConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSessio
 
 func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	c.logger.Info("Starting consumer group", zap.Int32("partition", claim.Partition()))
-	if !c.autocommitEnabled {
-		defer session.Commit()
-	}
+	c.batch = pmetric.NewMetrics()
+	c.batchTimer = time.NewTimer(c.batchTimeout)
+	defer func() {
+		if !c.batchTimer.Stop() {
+			<-c.batchTimer.C
+		}
+	}()
+
 	for {
 		select {
 		case message, ok := <-claim.Messages():
 			if !ok {
 				return nil
 			}
-			start := time.Now()
-			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
-				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
-			if !c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-
-			ctx := c.obsrecv.StartMetricsOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(ctx, statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
-
-			metrics, err := c.unmarshaler.Unmarshal(message.Value)
-			if err != nil {
-				c.logger.Error("failed to unmarshal message", zap.Error(err))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-
-			dataPointCount := metrics.DataPointCount()
-			err = c.nextConsumer.ConsumeMetrics(session.Context(), metrics)
-			c.obsrecv.EndMetricsOp(ctx, c.unmarshaler.Encoding(), dataPointCount, err)
-			if err != nil {
-				c.logger.Error("kafka receiver: failed to export metrics", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-			if c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-			if !c.autocommitEnabled {
-				session.Commit()
-			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
-			}
-
+			return c.processMetricsMessage(session, message)
+		case <-c.batchTimer.C:
+			return c.sendMetricsBatch(session)
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
 		// https://github.com/Shopify/sarama/issues/1192
@@ -607,6 +665,77 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			return nil
 		}
 	}
+}
+
+func (h *metricsConsumerGroupHandler) markOffsets(session sarama.ConsumerGroupSession) {
+	for topic, partitions := range h.offsetTracker {
+		for partition, offset := range partitions {
+			session.MarkOffset(topic, partition, offset+1, "")
+		}
+	}
+}
+
+func (h *metricsConsumerGroupHandler) trackOffset(message *sarama.ConsumerMessage) {
+	topic := message.Topic
+	partition := message.Partition
+	if _, exists := h.offsetTracker[topic]; !exists {
+		h.offsetTracker[topic] = make(map[int32]int64)
+	}
+	if message.Offset > h.offsetTracker[topic][partition] {
+		h.offsetTracker[topic][partition] = message.Offset
+	}
+}
+
+func (h *metricsConsumerGroupHandler) processMetricsMessage(session sarama.ConsumerGroupSession, message *sarama.ConsumerMessage) error {
+	if h.lastErr != nil {
+		// we don't want to consume the message if we failed to send the previous batch
+		return h.lastErr
+	}
+
+	metrics, err := h.unmarshaler.Unmarshal(message.Value)
+	if err != nil {
+		h.logger.Error("Failed to unmarshal traces message", zap.Error(err))
+		return err
+	}
+
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	metrics.ResourceMetrics().MoveAndAppendTo(h.batch.ResourceMetrics())
+	h.batchItemCount += metrics.MetricCount()
+	h.trackOffset(message)
+
+	if h.batchItemCount >= h.batchSize {
+		return h.sendMetricsBatch(session)
+	}
+	return nil
+}
+
+func (h *metricsConsumerGroupHandler) sendMetricsBatch(session sarama.ConsumerGroupSession) error {
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	if h.batchItemCount == 0 {
+		return nil
+	}
+
+	ctx := h.obsrecv.StartMetricsOp(session.Context())
+	err := h.nextConsumer.ConsumeMetrics(ctx, h.batch)
+	h.lastErr = err
+	h.obsrecv.EndMetricsOp(ctx, h.unmarshaler.Encoding(), h.batchItemCount, err)
+
+	if err != nil {
+		h.logger.Error("Failed to consume metrics", zap.Error(err))
+		// we don't want to commit the offset if we failed to consume the metrics
+		return err
+	}
+
+	h.markOffsets(session)
+
+	h.batch = pmetric.NewMetrics()
+	h.batchItemCount = 0
+	h.batchTimer.Reset(h.batchTimeout)
+	return nil
 }
 
 func (c *logsConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) error {
@@ -630,63 +759,23 @@ func (c *logsConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) 
 
 func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	c.logger.Info("Starting consumer group", zap.Int32("partition", claim.Partition()))
-	if !c.autocommitEnabled {
-		defer session.Commit()
-	}
+	c.batch = plog.NewLogs()
+	c.batchTimer = time.NewTimer(c.batchTimeout)
+	defer func() {
+		if !c.batchTimer.Stop() {
+			<-c.batchTimer.C
+		}
+	}()
+
 	for {
 		select {
 		case message, ok := <-claim.Messages():
 			if !ok {
 				return nil
 			}
-			start := time.Now()
-			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
-				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
-			if !c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-
-			ctx := c.obsrecv.StartLogsOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(
-				ctx,
-				statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
-
-			logs, err := c.unmarshaler.Unmarshal(message.Value)
-			if err != nil {
-				c.logger.Error("failed to unmarshal message", zap.Error(err))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-
-			err = c.nextConsumer.ConsumeLogs(session.Context(), logs)
-			// TODO
-			c.obsrecv.EndLogsOp(ctx, c.unmarshaler.Encoding(), logs.LogRecordCount(), err)
-			if err != nil {
-				c.logger.Error("kafka receiver: failed to export logs", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-				if c.messageMarking.After && c.messageMarking.OnError {
-					session.MarkMessage(message, "")
-				}
-				return err
-			}
-			if c.messageMarking.After {
-				session.MarkMessage(message, "")
-			}
-			if !c.autocommitEnabled {
-				session.Commit()
-			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
-			}
-
+			return c.processLogsMessage(session, message)
+		case <-c.batchTimer.C:
+			return c.sendLogsBatch(session)
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
 		// https://github.com/Shopify/sarama/issues/1192
@@ -694,6 +783,77 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			return nil
 		}
 	}
+}
+
+func (h *logsConsumerGroupHandler) markOffsets(session sarama.ConsumerGroupSession) {
+	for topic, partitions := range h.offsetTracker {
+		for partition, offset := range partitions {
+			session.MarkOffset(topic, partition, offset+1, "")
+		}
+	}
+}
+
+func (h *logsConsumerGroupHandler) trackOffset(message *sarama.ConsumerMessage) {
+	topic := message.Topic
+	partition := message.Partition
+	if _, exists := h.offsetTracker[topic]; !exists {
+		h.offsetTracker[topic] = make(map[int32]int64)
+	}
+	if message.Offset > h.offsetTracker[topic][partition] {
+		h.offsetTracker[topic][partition] = message.Offset
+	}
+}
+
+func (h *logsConsumerGroupHandler) processLogsMessage(session sarama.ConsumerGroupSession, message *sarama.ConsumerMessage) error {
+	if h.lastErr != nil {
+		// we don't want to consume the message if we failed to send the previous batch
+		return h.lastErr
+	}
+
+	logs, err := h.unmarshaler.Unmarshal(message.Value)
+	if err != nil {
+		h.logger.Error("Failed to unmarshal traces message", zap.Error(err))
+		return err
+	}
+
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	logs.ResourceLogs().MoveAndAppendTo(h.batch.ResourceLogs())
+	h.batchItemCount += logs.LogRecordCount()
+	h.trackOffset(message)
+
+	if h.batchItemCount >= h.batchSize {
+		return h.sendLogsBatch(session)
+	}
+	return nil
+}
+
+func (h *logsConsumerGroupHandler) sendLogsBatch(session sarama.ConsumerGroupSession) error {
+	h.batchMutex.Lock()
+	defer h.batchMutex.Unlock()
+
+	if h.batchItemCount == 0 {
+		return nil
+	}
+
+	ctx := h.obsrecv.StartLogsOp(session.Context())
+	err := h.nextConsumer.ConsumeLogs(ctx, h.batch)
+	h.lastErr = err
+	h.obsrecv.EndLogsOp(ctx, h.unmarshaler.Encoding(), h.batchItemCount, err)
+
+	if err != nil {
+		h.logger.Error("Failed to consume logs", zap.Error(err))
+		// we don't want to commit the offset if we failed to consume the logs
+		return err
+	}
+
+	h.markOffsets(session)
+
+	h.batch = plog.NewLogs()
+	h.batchItemCount = 0
+	h.batchTimer.Reset(h.batchTimeout)
+	return nil
 }
 
 func toSaramaInitialOffset(initialOffset string) (int64, error) {
