@@ -50,10 +50,11 @@ const (
 )
 
 type clickhouseLogsExporter struct {
-	id            uuid.UUID
-	db            clickhouse.Conn
-	insertLogsSQL string
-	ksuid         ksuid.KSUID
+	id              uuid.UUID
+	db              clickhouse.Conn
+	insertLogsSQL   string
+	insertLogsSQLV2 string
+	ksuid           ksuid.KSUID
 
 	logger *zap.Logger
 	cfg    *Config
@@ -75,6 +76,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
+	insertLogsSQLV2 := renderInsertLogsSQLV2(cfg)
 	id := uuid.New()
 	collector := usage.NewUsageCollector(
 		id,
@@ -97,15 +99,16 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
-		id:             id,
-		db:             client,
-		insertLogsSQL:  insertLogsSQL,
-		logger:         logger,
-		cfg:            cfg,
-		ksuid:          ksuid.New(),
-		usageCollector: collector,
-		wg:             new(sync.WaitGroup),
-		closeChan:      make(chan struct{}),
+		id:              id,
+		db:              client,
+		insertLogsSQL:   insertLogsSQL,
+		insertLogsSQLV2: insertLogsSQLV2,
+		logger:          logger,
+		cfg:             cfg,
+		ksuid:           ksuid.New(),
+		usageCollector:  collector,
+		wg:              new(sync.WaitGroup),
+		closeChan:       make(chan struct{}),
 	}, nil
 }
 
@@ -250,8 +253,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			return fmt.Errorf("PrepareTagBatch:%w", err)
 		}
 
-		insertLogsQuery := fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_TABLE_V2)
-		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, insertLogsQuery, driver.WithReleaseConnection())
+		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareBatchV2:%w", err)
 		}
@@ -664,6 +666,63 @@ const (
 								)`
 )
 
+const (
+	// language=ClickHouse SQL
+	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
+							ts_bucket_start,
+							resource_fingerprint,
+							timestamp,
+							observed_timestamp,
+							id,
+							trace_id,
+							span_id,
+							trace_flags,
+							severity_text,
+							severity_number,
+							body,
+							resources_string_key,
+							resources_string_value,
+							attributes_string_key, 
+							attributes_string_value,
+							attributes_int64_key,
+							attributes_int64_value,
+							attributes_float64_key,
+							attributes_float64_value,
+							attributes_bool_key,
+							attributes_bool_value,
+							scope_name,
+							scope_version,
+							scope_string_key,
+							scope_string_value
+							) VALUES (
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								)`
+)
+
 // newClickhouseClient create a clickhouse client.
 func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	// use empty database to create database
@@ -693,4 +752,8 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 
 func renderInsertLogsSQL(cfg *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
+}
+
+func renderInsertLogsSQLV2(cfg *Config) string {
+	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, DISTRIBUTED_LOGS_TABLE_V2)
 }
