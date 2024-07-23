@@ -49,8 +49,10 @@ func (node *DimensionHierarchyNode) Identifier(attributes map[string]any) []IdLa
 // TODO(Raj): Consider parsing this stuff out from json
 func ResourceHierarchy() *DimensionHierarchyNode {
 	return &DimensionHierarchyNode{
-		labels: []string{"cloud.provider"},
-
+		labels: []string{
+			"cloud.provider",
+			"source_type",
+		},
 		subHierachies: []DimensionHierarchyNode{{
 			labels: []string{"cloud.account.id"},
 
@@ -68,6 +70,7 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 							"k8s.cluster.name",
 							"k8s.cluster.uid",
 							"aws.ecs.cluster.arn",
+							"gcp.project",
 						},
 
 						subHierachies: []DimensionHierarchyNode{
