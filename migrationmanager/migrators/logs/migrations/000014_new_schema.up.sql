@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
 )
 ENGINE = MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
-ORDER BY (ts_bucket_start, resource_fingerprint, severity_text)
+ORDER BY (ts_bucket_start, resource_fingerprint, severity_text, timestamp)
 SETTINGS index_granularity = 8192;
 
 
