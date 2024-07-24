@@ -1,4 +1,4 @@
-package newschema
+package logsv2
 
 import (
 	"fmt"

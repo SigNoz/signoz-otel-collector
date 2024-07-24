@@ -27,7 +27,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/newschema"
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/logsv2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
@@ -321,7 +321,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
 					if !exists {
-						fp = newschema.CalculateFingerprint(res.Attributes().AsRaw(), newschema.ResourceHierarchy())
+						fp = logsv2.CalculateFingerprint(res.Attributes().AsRaw(), logsv2.ResourceHierarchy())
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
