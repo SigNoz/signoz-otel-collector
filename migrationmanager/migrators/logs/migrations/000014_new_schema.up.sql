@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     INDEX attributes_string_idx_key mapKeys(attributes_string) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
     INDEX attributes_string_idx_val mapValues(attributes_string) TYPE tokenbf_v1(5000, 2, 0) GRANULARITY 1,
     INDEX attributes_int64_idx_key mapKeys(attributes_number) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
-    INDEX attributes_int64_idx_val mapValues(attributes_number) TYPE minmax GRANULARITY 1,
+    INDEX attributes_int64_idx_val mapValues(attributes_number) TYPE bloom_filter GRANULARITY 1,
     INDEX attributes_bool_idx_key mapKeys(attributes_bool) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
     INDEX resources_string_idx_key mapKeys(resources_string) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
     INDEX resources_string_idx_val mapValues(resources_string) TYPE tokenbf_v1(5000, 2, 0) GRANULARITY 1
