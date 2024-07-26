@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2_resource_bucket ON CLUSTER {{.SI
     `labels` String CODEC(ZSTD(5)),
     `fingerprint` String CODEC(ZSTD(1)),
     `seen_at_ts_bucket_start` Int64 CODEC(Delta(8), ZSTD(1)),
-    INDEX idx_labels labels TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
+    INDEX idx_labels lower(labels) TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
 )
 ENGINE = ReplacingMergeTree
 PARTITION BY toDate(seen_at_ts_bucket_start / 1000)
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     `scope_version` String CODEC(ZSTD(1)),
     `scope_string_key` Array(String) CODEC(ZSTD(1)),
     `scope_string_value` Array(String) CODEC(ZSTD(1)),
-    INDEX body_idx body TYPE ngrambf_v1(4, 60000, 5, 0) GRANULARITY 1,
+    INDEX body_idx lower(body) TYPE ngrambf_v1(4, 60000, 5, 0) GRANULARITY 1,
     INDEX id_minmax id TYPE minmax GRANULARITY 1,
     INDEX severity_number_idx severity_number TYPE set(25) GRANULARITY 4,
     INDEX severity_text_idx severity_text TYPE set(25) GRANULARITY 4,
