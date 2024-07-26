@@ -506,10 +506,10 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			time.Now(),
 			v,
 			tagType,
-			"int64",
+			"float64",
+			nil,
 			nil,
 			attrs.IntValues[i],
-			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("could not append number attribute to batch, err: %s", err)

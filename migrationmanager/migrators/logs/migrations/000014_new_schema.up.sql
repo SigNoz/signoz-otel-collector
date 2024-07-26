@@ -85,3 +85,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2 ON CLUSTER {{.SIGNOZ
     `scope_string_value` Array(String) CODEC(ZSTD(1))
 )
 ENGINE = Distributed('cluster', 'signoz_logs', 'logs_v2', cityHash64(id));
+
+
+ALTER TABLE signoz_logs.tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
+ALTER TABLE signoz_logs.distributed_tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
