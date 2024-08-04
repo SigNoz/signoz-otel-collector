@@ -553,7 +553,7 @@ require (
 replace (
 	github.com/ClickHouse/ch-go v0.58.2 => github.com/SigNoz/ch-go v0.61.2-dd
 	github.com/ClickHouse/clickhouse-go/v2 v2.15.0 => github.com/SigNoz/clickhouse-go/v2 v2.15.2
-	github.com/golang-migrate/migrate/v4 => github.com/SigNoz/golang-migrate/v4 v4.16.3-0.20240804092812-40bc5a2eb965
+	github.com/golang-migrate/migrate/v4 => github.com/SigNoz/golang-migrate/v4 v4.16.3-0.20240804100008-c6f0a95a1fc8
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
 	// using 0.23.0 as there is an issue with 0.24.0 stats that results in
