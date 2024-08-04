@@ -13,7 +13,7 @@ type zapLoggerAdapter struct {
 
 func newZapLoggerAdapter(logger *zap.Logger, verboseLoggingEnabled bool) *zapLoggerAdapter {
 	return &zapLoggerAdapter{
-		Logger:               logger,
+		Logger:                logger,
 		VerboseLoggingEnabled: verboseLoggingEnabled,
 	}
 }

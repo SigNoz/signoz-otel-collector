@@ -64,7 +64,7 @@ func (m *BaseMigrator) dropSchemaMigrationsTable(ctx context.Context, database s
 	return nil
 }
 
-func (m *BaseMigrator) runSqlMigrations(ctx context.Context, migrationFolder, database string) error {
+func (m *BaseMigrator) runSqlMigrations(_ context.Context, migrationFolder, database string) error {
 	clickhouseUrl, err := m.buildClickhouseMigrateURL(database)
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse migrate url, err: %s", err)
