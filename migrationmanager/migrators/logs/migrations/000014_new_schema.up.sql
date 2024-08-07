@@ -87,3 +87,35 @@ ENGINE = Distributed('cluster', 'signoz_logs', 'logs_v2', cityHash64(id));
 
 ALTER TABLE signoz_logs.tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
 ALTER TABLE signoz_logs.distributed_tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
+
+-- remove the old mv
+DROP TABLE IF EXISTS signoz_logs.resource_keys_string_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
+DROP TABLE IF EXISTS signoz_logs.attribute_keys_float64_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
+DROP TABLE IF EXISTS signoz_logs.attribute_keys_int64_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
+DROP TABLE IF EXISTS signoz_logs.attribute_keys_string_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
+DROP TABLE IF EXISTS signoz_logs.attribute_keys_bool_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
+
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS  attribute_keys_string_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}} TO signoz_logs.logs_attribute_keys AS
+SELECT
+distinct arrayJoin(mapKeys(attributes_string)) as name, 'String' datatype
+FROM signoz_logs.logs_v2
+ORDER BY name;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS  attribute_keys_float64_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}} TO signoz_logs.logs_attribute_keys AS
+SELECT
+distinct arrayJoin(mapKeys(attributes_number)) as name, 'Float64' datatype
+FROM signoz_logs.logs_v2
+ORDER BY  name;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS  signoz_logs.attribute_keys_bool_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}} TO signoz_logs.logs_attribute_keys AS
+SELECT
+distinct arrayJoin(mapKeys(attributes_bool)) as name, 'Bool' datatype
+FROM signoz_logs.logs_v2
+ORDER BY name;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS  resource_keys_string_final_mv  ON CLUSTER  {{.SIGNOZ_CLUSTER}} TO signoz_logs.logs_resource_keys AS
+SELECT
+distinct arrayJoin(mapKeys(resources_string)) as name, 'String' datatype
+FROM signoz_logs.logs_v2
+ORDER BY  name;
