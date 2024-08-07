@@ -75,7 +75,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		return nil, err
 	}
 
-	insertLogsSQL := renderInsertLogsSQL(cfg)
+	// insertLogsSQL := renderInsertLogsSQL(cfg)
 	insertLogsSQLV2 := renderInsertLogsSQLV2(cfg)
 	id := uuid.New()
 	collector := usage.NewUsageCollector(
@@ -99,9 +99,9 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
-		id:              id,
-		db:              client,
-		insertLogsSQL:   insertLogsSQL,
+		id: id,
+		db: client,
+		// insertLogsSQL:   insertLogsSQL,
 		insertLogsSQLV2: insertLogsSQLV2,
 		logger:          logger,
 		cfg:             cfg,
@@ -219,14 +219,14 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 	var insertLogsStmtV2 driver.Batch
 	var insertResourcesStmtV2 driver.Batch
-	var statement driver.Batch
+	// var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
 
 	defer func() {
-		if statement != nil {
-			_ = statement.Abort()
-		}
+		// if statement != nil {
+		// 	_ = statement.Abort()
+		// }
 		if tagStatement != nil {
 			_ = tagStatement.Abort()
 		}
@@ -243,10 +243,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		return errors.New("shutdown has been called")
 	default:
 		start := time.Now()
-		statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareBatch:%w", err)
-		}
+		// statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
+		// if err != nil {
+		// 	return fmt.Errorf("PrepareBatch:%w", err)
+		// }
 
 		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES), driver.WithReleaseConnection())
 		if err != nil {
@@ -281,7 +281,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			}
 
 			// remove after sometime
-			resources = addTemporaryUnderscoreSupport(resources)
+			// resources = addTemporaryUnderscoreSupport(resources)
 
 			for j := 0; j < logs.ScopeLogs().Len(); j++ {
 				scope := logs.ScopeLogs().At(j).Scope()
@@ -334,7 +334,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					// remove after sometime
-					attributes = addTemporaryUnderscoreSupport(attributes)
+					// attributes = addTemporaryUnderscoreSupport(attributes)
 
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
@@ -361,40 +361,52 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return fmt.Errorf("LOGSv2: StatementAppend:%w", err)
 					}
 
-					err = statement.Append(
-						ts,
-						ots,
-						e.ksuid.String(),
-						utils.TraceIDToHexOrEmptyString(r.TraceID()),
-						utils.SpanIDToHexOrEmptyString(r.SpanID()),
-						uint32(r.Flags()),
-						r.SeverityText(),
-						uint8(r.SeverityNumber()),
-						getStringifiedBody(r.Body()),
-						resources.StringKeys,
-						resources.StringValues,
-						attributes.StringKeys,
-						attributes.StringValues,
-						attributes.IntKeys,
-						attributes.IntValues,
-						attributes.FloatKeys,
-						attributes.FloatValues,
-						attributes.BoolKeys,
-						attributes.BoolValues,
-						scopeName,
-						scopeVersion,
-						scopeAttributes.StringKeys,
-						scopeAttributes.StringValues,
-					)
-					if err != nil {
-						return fmt.Errorf("StatementAppend:%w", err)
-					}
+					// old table
+					// err = statement.Append(
+					// 	ts,
+					// 	ots,
+					// 	e.ksuid.String(),
+					// 	utils.TraceIDToHexOrEmptyString(r.TraceID()),
+					// 	utils.SpanIDToHexOrEmptyString(r.SpanID()),
+					// 	uint32(r.Flags()),
+					// 	r.SeverityText(),
+					// 	uint8(r.SeverityNumber()),
+					// 	getStringifiedBody(r.Body()),
+					// 	resources.StringKeys,
+					// 	resources.StringValues,
+					// 	attributes.StringKeys,
+					// 	attributes.StringValues,
+					// 	attributes.IntKeys,
+					// 	attributes.IntValues,
+					// 	attributes.FloatKeys,
+					// 	attributes.FloatValues,
+					// 	attributes.BoolKeys,
+					// 	attributes.BoolValues,
+					// 	scopeName,
+					// 	scopeVersion,
+					// 	scopeAttributes.StringKeys,
+					// 	scopeAttributes.StringValues,
+					// )
+					// if err != nil {
+					// 	return fmt.Errorf("StatementAppend:%w", err)
+					// }
 					e.ksuid = e.ksuid.Next()
 				}
 			}
 		}
+
+		var errResource error
 		dbWriteStart := time.Now()
-		err = statement.Send()
+		// err = statement.Send()
+		// insert to the new table
+		err = insertLogsStmtV2.Send()
+		// insert into the resource bucket table
+		insertResourcesStmtV2, errResource = e.db.PrepareBatch(
+			ctx,
+			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2),
+			driver.WithReleaseConnection(),
+		)
+
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
 				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
@@ -405,11 +417,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		if err != nil {
 			return fmt.Errorf("StatementSend:%w", err)
 		}
-
-		// insert to the new table
-		err = insertLogsStmtV2.Send()
-		if err != nil {
-			return fmt.Errorf("couldn't send batch insert logs statement:%w", err)
+		if errResource != nil {
+			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 		}
 
 		duration := time.Since(start)
@@ -418,16 +427,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		for k, v := range metrics {
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
-		}
-
-		// insert into the resource bucket table
-		insertResourcesStmtV2, err = e.db.PrepareBatch(
-			ctx,
-			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2),
-			driver.WithReleaseConnection(),
-		)
-		if err != nil {
-			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 		}
 
 		resourceCount := 0
@@ -643,58 +642,58 @@ func formatKey(k string) string {
 	return strings.ReplaceAll(k, ".", "_")
 }
 
-const (
-	// language=ClickHouse SQL
-	insertLogsSQLTemplate = `INSERT INTO %s.%s (
-							timestamp,
-							observed_timestamp,
-							id,
-							trace_id,
-							span_id,
-							trace_flags,
-							severity_text,
-							severity_number,
-							body,
-							resources_string_key,
-							resources_string_value,
-							attributes_string_key, 
-							attributes_string_value,
-							attributes_int64_key,
-							attributes_int64_value,
-							attributes_float64_key,
-							attributes_float64_value,
-							attributes_bool_key,
-							attributes_bool_value,
-							scope_name,
-							scope_version,
-							scope_string_key,
-							scope_string_value
-							) VALUES (
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								?,
-								)`
-)
+// const (
+// 	// language=ClickHouse SQL
+// 	insertLogsSQLTemplate = `INSERT INTO %s.%s (
+// 							timestamp,
+// 							observed_timestamp,
+// 							id,
+// 							trace_id,
+// 							span_id,
+// 							trace_flags,
+// 							severity_text,
+// 							severity_number,
+// 							body,
+// 							resources_string_key,
+// 							resources_string_value,
+// 							attributes_string_key,
+// 							attributes_string_value,
+// 							attributes_int64_key,
+// 							attributes_int64_value,
+// 							attributes_float64_key,
+// 							attributes_float64_value,
+// 							attributes_bool_key,
+// 							attributes_bool_value,
+// 							scope_name,
+// 							scope_version,
+// 							scope_string_key,
+// 							scope_string_value
+// 							) VALUES (
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								?,
+// 								)`
+// )
 
 const (
 	// language=ClickHouse SQL
@@ -768,9 +767,9 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	return db, nil
 }
 
-func renderInsertLogsSQL(cfg *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
-}
+// func renderInsertLogsSQL(cfg *Config) string {
+// 	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
+// }
 
 func renderInsertLogsSQLV2(cfg *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, DISTRIBUTED_LOGS_TABLE_V2)

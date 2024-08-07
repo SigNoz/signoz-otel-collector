@@ -48,12 +48,10 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     INDEX trace_flags_idx trace_flags TYPE bloom_filter GRANULARITY 4,
     INDEX scope_name_idx scope_name TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4,
     INDEX attributes_string_idx_key mapKeys(attributes_string) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
-    INDEX attributes_string_idx_val mapValues(attributes_string) TYPE tokenbf_v1(5000, 2, 0) GRANULARITY 1,
+    INDEX attributes_string_idx_val mapValues(attributes_string) TYPE ngrambf_v1(4, 5000, 2, 0) GRANULARITY 1,
     INDEX attributes_int64_idx_key mapKeys(attributes_number) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
     INDEX attributes_int64_idx_val mapValues(attributes_number) TYPE bloom_filter GRANULARITY 1,
-    INDEX attributes_bool_idx_key mapKeys(attributes_bool) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
-    INDEX resources_string_idx_key mapKeys(resources_string) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1,
-    INDEX resources_string_idx_val mapValues(resources_string) TYPE tokenbf_v1(5000, 2, 0) GRANULARITY 1
+    INDEX attributes_bool_idx_key mapKeys(attributes_bool) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1
 )
 ENGINE = MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
