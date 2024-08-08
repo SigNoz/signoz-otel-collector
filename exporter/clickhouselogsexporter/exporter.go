@@ -248,6 +248,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			// remove after sometime
 			resources = addTemporaryUnderscoreSupport(resources)
 
+			resourcesMap := attributesToMap(res.Attributes(), true)
+
 			for j := 0; j < logs.ScopeLogs().Len(); j++ {
 				scope := logs.ScopeLogs().At(j).Scope()
 				scopeName := scope.Name()
@@ -280,6 +282,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					attributes := attributesToSlice(r.Attributes(), false)
+					attrsMap := attributesToMap(r.Attributes(), false)
 
 					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
 					if err != nil {
@@ -313,6 +316,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						scopeVersion,
 						scopeAttributes.StringKeys,
 						scopeAttributes.StringValues,
+						attrsMap.StringData,
+						attrsMap.IntData,
+						attrsMap.FloatData,
+						attrsMap.BoolData,
+						resourcesMap.StringData,
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
@@ -368,6 +376,13 @@ type attributesToSliceResponse struct {
 	FloatValues  []float64
 	BoolKeys     []string
 	BoolValues   []bool
+}
+
+type attributesToMapRes struct {
+	StringData map[string]string
+	IntData    map[string]int64
+	FloatData  map[string]float64
+	BoolData   map[string]bool
 }
 
 func getStringifiedBody(body pcommon.Value) string {
@@ -439,6 +454,34 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		}
 	}
 	return nil
+}
+
+func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response attributesToMapRes) {
+	response.BoolData = map[string]bool{}
+	response.StringData = map[string]string{}
+	response.IntData = map[string]int64{}
+	response.FloatData = map[string]float64{}
+	attributes.Range(func(k string, v pcommon.Value) bool {
+		// Support for . , remove the above section once done.
+		if forceStringValues {
+			// store everything as string
+			response.StringData[k] = v.AsString()
+		} else {
+			switch v.Type() {
+			case pcommon.ValueTypeInt:
+				response.IntData[k] = v.Int()
+			case pcommon.ValueTypeDouble:
+				response.FloatData[k] = v.Double()
+			case pcommon.ValueTypeBool:
+				response.BoolData[k] = v.Bool()
+			default: // store it as string
+				response.StringData[k] = v.AsString()
+			}
+		}
+
+		return true
+	})
+	return response
 }
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
@@ -530,7 +573,12 @@ const (
 							scope_name,
 							scope_version,
 							scope_string_key,
-							scope_string_value
+							scope_string_value,
+							attributes_string,
+							attributes_int64,
+							attributes_float64,
+							attributes_bool,
+							resources_string
 							) VALUES (
 								?,
 								?,
