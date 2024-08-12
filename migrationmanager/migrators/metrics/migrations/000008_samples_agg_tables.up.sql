@@ -69,11 +69,11 @@ SELECT
     metric_name,
     fingerprint,
     intDiv(unix_milli, 1800000) * 1800000 as unix_milli,
-    anyLast(value) as last,
-    min(value) as min,
-    max(value) as max,
-    sum(value) as sum,
-    count(*) as count
+    anyLast(last) as last,
+    min(min) as min,
+    max(max) as max,
+    sum(sum) as sum,
+    sum(count) as count
 FROM signoz_metrics.samples_v4_agg_5m 
 GROUP BY
     env,
