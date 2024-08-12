@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_5m;
+DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_5m_mv;
+DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_30m;
+DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_30m_mv;
+DROP TABLE IF EXISTS signoz_metrics.distributed_samples_v4_agg_5m;
+DROP TABLE IF EXISTS signoz_metrics.distributed_samples_v4_agg_30m;
+DROP TABLE IF EXISTS signoz_metrics.time_series_v4_1week;
+DROP TABLE IF EXISTS signoz_metrics.distributed_time_series_v4_1week;
+DROP TABLE IF EXISTS signoz_metrics.time_series_v4_1week_mv;
