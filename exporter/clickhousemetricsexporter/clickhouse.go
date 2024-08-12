@@ -305,7 +305,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	metrics := map[string]usage.Metric{}
 	err = func() error {
 		ctx := context.Background()
 
@@ -317,23 +316,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
-
-				// usage collection checks
-				tenant := "default"
-				collectUsage := true
-				for _, val := range timeSeries[fingerprint] {
-					if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
-						collectUsage = false
-						break
-					}
-					if val.Name == "tenant" {
-						tenant = val.Value
-					}
-				}
-
-				if collectUsage {
-					usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
-				}
 
 				err = statement.Append(
 					fingerprintToName[fingerprint][nameLabel],
@@ -359,12 +341,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
-	}
-
 	// write to distributed_samples_v4 table
 	if ch.writeTSToV4 {
+		metrics := map[string]usage.Metric{}
 		err = func() error {
 			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
@@ -386,6 +365,23 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					if err != nil {
 						return err
 					}
+
+					// usage collection checks
+					tenant := "default"
+					collectUsage := true
+					for _, val := range timeSeries[fingerprint] {
+						if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
+							collectUsage = false
+							break
+						}
+						if val.Name == "tenant" {
+							tenant = val.Value
+						}
+					}
+
+					if collectUsage {
+						usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+					}
 				}
 			}
 
@@ -401,6 +397,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		if err != nil {
 			return err
+		}
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
 	}
 
