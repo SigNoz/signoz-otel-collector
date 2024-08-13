@@ -46,7 +46,7 @@ func (node *DimensionHierarchyNode) Identifier(attributes map[string]any) []IdLa
 	return result
 }
 
-// TODO(Raj): Consider parsing this stuff out from json
+// TODO(Raj/Nitya): Consider parsing this stuff out from json
 func ResourceHierarchy() *DimensionHierarchyNode {
 	return &DimensionHierarchyNode{
 		labels: []string{
