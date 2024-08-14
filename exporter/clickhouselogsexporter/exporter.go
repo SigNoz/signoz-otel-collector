@@ -288,6 +288,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				scopeVersion := scope.Version()
 
 				scopeAttributes := attributesToSlice(scope.Attributes(), true)
+				scopeMap := attributesToMap(scope.Attributes(), true)
 
 				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes)
 				if err != nil {
@@ -353,8 +354,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						resourcesMap.StringData,
 						scopeName,
 						scopeVersion,
-						scopeAttributes.StringKeys,
-						scopeAttributes.StringValues,
+						scopeMap.StringData,
 					)
 					if err != nil {
 						return fmt.Errorf("StatementAppendLogsV2:%w", err)
@@ -413,13 +413,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			}
 		}
 
-		var errResource error
 		dbWriteStart := time.Now()
 		err = statement.Send()
 		// insert to the new table
 		errV2 := insertLogsStmtV2.Send()
 		// insert into the resource bucket table
-		errResource = insertResourcesStmtV2.Send()
+		errResource := insertResourcesStmtV2.Send()
 		if err != nil {
 			return fmt.Errorf("couldn't send batch insert resources statement:%w", err)
 		}
@@ -560,7 +559,6 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 	response.StringData = map[string]string{}
 	response.NumberData = map[string]float64{}
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		// Support for . , remove the above section once done.
 		if forceStringValues {
 			// store everything as string
 			response.StringData[k] = v.AsString()
@@ -584,7 +582,6 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		// Support for . , remove the above section once done.
 		if forceStringValues {
 			// store everything as string
 			response.StringKeys = append(response.StringKeys, k)
@@ -719,10 +716,8 @@ const (
 							resources_string,
 							scope_name,
 							scope_version,
-							scope_string_key,
-							scope_string_value
+							scope_string
 							) VALUES (
-								?,
 								?,
 								?,
 								?,

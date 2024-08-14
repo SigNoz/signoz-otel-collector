@@ -7,7 +7,6 @@ import (
 
 type DimensionHierarchyNode struct {
 	// labels that map to this node in dimension hierarchy
-	// TODO(Raj): Can labels be a concat of 2 keys?
 	labels []string
 
 	// List of potential subhierachies in the order of preference.
@@ -57,115 +56,118 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 			labels: []string{"cloud.account.id"},
 
 			subHierachies: []DimensionHierarchyNode{{
-				labels: []string{
-					"cloud.region",
-					"aws.region",
-				},
+				labels: []string{"gcp.project"},
 
 				subHierachies: []DimensionHierarchyNode{{
-					labels: []string{"cloud.platform"},
+					labels: []string{
+						"cloud.region",
+						"aws.region",
+					},
 
 					subHierachies: []DimensionHierarchyNode{{
-						labels: []string{
-							"k8s.cluster.name",
-							"k8s.cluster.uid",
-							"aws.ecs.cluster.arn",
-							"gcp.project",
-						},
+						labels: []string{"cloud.platform"},
 
-						subHierachies: []DimensionHierarchyNode{
-							// Logical/service oriented view
-							{
-								labels: []string{
-									"service.namespace",
-									"k8s.namespace.name",
-									"ec2.tag.service-group", // is this standard enough?
-								},
+						subHierachies: []DimensionHierarchyNode{{
+							labels: []string{
+								"k8s.cluster.name",
+								"k8s.cluster.uid",
+								"aws.ecs.cluster.arn",
+							},
 
-								subHierachies: []DimensionHierarchyNode{{
+							subHierachies: []DimensionHierarchyNode{
+								// Logical/service oriented view
+								{
 									labels: []string{
-										"service.name",
-										"cloudwatch.log.group.name",
-										"k8s.deployment.name",
-										"k8s.deployment.uid",
-										"k8s.statefulset.name",
-										"k8s.statefulset.uid",
-										"k8s.daemonset.name",
-										"k8s.daemonset.uid",
-										"k8s.job.name",
-										"k8s.job.uid",
-										"k8s.cronjob.name",
-										"k8s.cronjob.uid",
-										"faas.name",
-										"ec2.tag.service", // is this standard enough?
+										"service.namespace",
+										"k8s.namespace.name",
+										"ec2.tag.service-group", // is this standard enough?
 									},
 
 									subHierachies: []DimensionHierarchyNode{{
 										labels: []string{
-											"deployment.environment",
-											"ec2.tag.env-short", // is this standard enough?
-											"ec2.tag.env",       // is this standard enough?
+											"service.name",
+											"cloudwatch.log.group.name",
+											"k8s.deployment.name",
+											"k8s.deployment.uid",
+											"k8s.statefulset.name",
+											"k8s.statefulset.uid",
+											"k8s.daemonset.name",
+											"k8s.daemonset.uid",
+											"k8s.job.name",
+											"k8s.job.uid",
+											"k8s.cronjob.name",
+											"k8s.cronjob.uid",
+											"faas.name",
+											"ec2.tag.service", // is this standard enough?
 										},
 
 										subHierachies: []DimensionHierarchyNode{{
 											labels: []string{
-												"service.instance.id",
+												"deployment.environment",
+												"ec2.tag.env-short", // is this standard enough?
+												"ec2.tag.env",       // is this standard enough?
+											},
+
+											subHierachies: []DimensionHierarchyNode{{
+												labels: []string{
+													"service.instance.id",
+													"k8s.pod.name",
+													"k8s.pod.uid",
+													"aws.ecs.task.id",
+													"aws.ecs.task.arn",
+													"cloudwatch.log.stream",
+													"cloud.resource_id",
+													"faas.instance",
+													"host.id",
+													"host.name",
+													"host.ip",
+													"host",
+												},
+
+												subHierachies: []DimensionHierarchyNode{{
+													labels: []string{
+														"k8s.container.name",
+														"container.name",
+														"container_name",
+													},
+												}},
+											}},
+										}},
+									}},
+								},
+
+								// Node oriented view
+								{
+									labels: []string{"cloud.availability_zone"},
+
+									subHierachies: []DimensionHierarchyNode{{
+										labels: []string{
+											"k8s.node.name",
+											"k8s.node.uid",
+											"host.id",
+											"host.name",
+											"host.ip",
+											"host",
+										},
+
+										subHierachies: []DimensionHierarchyNode{{
+											labels: []string{
 												"k8s.pod.name",
 												"k8s.pod.uid",
 												"aws.ecs.task.id",
 												"aws.ecs.task.arn",
-												"cloudwatch.log.stream",
-												"cloud.resource_id",
-												"faas.instance",
-												"host.id",
-												"host.name",
-												"host.ip",
-												"host",
 											},
 
 											subHierachies: []DimensionHierarchyNode{{
 												labels: []string{
 													"k8s.container.name",
 													"container.name",
-													"container_name",
 												},
 											}},
 										}},
 									}},
 								}},
-							},
-
-							// Node oriented view
-							{
-								labels: []string{"cloud.availability_zone"},
-
-								subHierachies: []DimensionHierarchyNode{{
-									labels: []string{
-										"k8s.node.name",
-										"k8s.node.uid",
-										"host.id",
-										"host.name",
-										"host.ip",
-										"host",
-									},
-
-									subHierachies: []DimensionHierarchyNode{{
-										labels: []string{
-											"k8s.pod.name",
-											"k8s.pod.uid",
-											"aws.ecs.task.id",
-											"aws.ecs.task.arn",
-										},
-
-										subHierachies: []DimensionHierarchyNode{{
-											labels: []string{
-												"k8s.container.name",
-												"container.name",
-											},
-										}},
-									}},
-								}},
-							}},
+						}},
 					}},
 				}},
 			}},
@@ -176,6 +178,8 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 // Calculates fingerprint for attributes that when sorted would keep fingerprints
 // for the same set of attributes next to each other while also colocating
 // entries at all levels of the hierarchy
+// For example, fingerprints like "k8s.deployment.name=webserver;k8s.pod.name=webserver-0"
+// will calculate logs for each webserver pod while also calculate all logs for the webserver deployment
 func CalculateFingerprint(
 	attributes map[string]any, hierarchy *DimensionHierarchyNode,
 ) string {

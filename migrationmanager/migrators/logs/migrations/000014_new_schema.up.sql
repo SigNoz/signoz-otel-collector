@@ -39,8 +39,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     `resources_string` Map(String, String) CODEC(ZSTD(1)),
     `scope_name` String CODEC(ZSTD(1)),
     `scope_version` String CODEC(ZSTD(1)),
-    `scope_string_key` Array(String) CODEC(ZSTD(1)),
-    `scope_string_value` Array(String) CODEC(ZSTD(1)),
+    `scope_string` Map(String, String) CODEC(ZSTD(1)),
     INDEX body_idx lower(body) TYPE ngrambf_v1(4, 60000, 5, 0) GRANULARITY 1,
     INDEX id_minmax id TYPE minmax GRANULARITY 1,
     INDEX severity_number_idx severity_number TYPE set(25) GRANULARITY 4,
@@ -79,8 +78,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2 ON CLUSTER {{.SIGNOZ
     `resources_string` Map(String, String) CODEC(ZSTD(1)),
     `scope_name` String CODEC(ZSTD(1)),
     `scope_version` String CODEC(ZSTD(1)),
-    `scope_string_key` Array(String) CODEC(ZSTD(1)),
-    `scope_string_value` Array(String) CODEC(ZSTD(1))
+    `scope_string` Map(String, String) CODEC(ZSTD(1))
 )
 ENGINE = Distributed('cluster', 'signoz_logs', 'logs_v2', cityHash64(id));
 
