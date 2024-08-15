@@ -156,8 +156,8 @@ github.com/SigNoz/ch-go v0.61.2-dd h1:pRQ8dnd7cMq6WtymZ7gwqw17WO0XlTJ+QvN+O0OcQp
 github.com/SigNoz/ch-go v0.61.2-dd/go.mod h1:ZSVIE1A7mGJNcJeBvVF1v5bo12n0Wmnw30RhnPCpLzg=
 github.com/SigNoz/clickhouse-go/v2 v2.15.2 h1:490Beie2CMtq6fdgTv7oETzYPg+yt0h8b9jGMcxw0ZM=
 github.com/SigNoz/clickhouse-go/v2 v2.15.2/go.mod h1:j1m1ED8GQbRvgZpcwMZq2Mhb+9893pUbmgkFgMHArvs=
-github.com/SigNoz/golang-migrate/v4 v4.16.3-0.20240727091343-56924d90c47c h1:j3YTj0VZyBiBveRin+7q52wEPA4wQ0wANhSAnOab85E=
-github.com/SigNoz/golang-migrate/v4 v4.16.3-0.20240727091343-56924d90c47c/go.mod h1:LOW45ixsVo/YpAn8NajhG5o+QSwMEFgsHOf5KK7obF4=
+github.com/SigNoz/golang-migrate/v4 v4.16.5 h1:W3GQLdV8F3EbyKw/TvZhnRzmoFcR6jNBz2S/m4jsjyM=
+github.com/SigNoz/golang-migrate/v4 v4.16.5/go.mod h1:LOW45ixsVo/YpAn8NajhG5o+QSwMEFgsHOf5KK7obF4=
 github.com/VividCortex/gohistogram v1.0.0 h1:6+hBz+qvs0JOrrNhhmR7lFxo5sINxBCGXrdtl/UvroE=
 github.com/VividCortex/gohistogram v1.0.0/go.mod h1:Pf5mBqqDxYaXu3hDrrU+w6nw50o/4+TcAqDqk/vUH7g=
 github.com/alecthomas/assert/v2 v2.3.0 h1:mAsH2wmvjsuvyBvAmCtm7zFsBlb8mIHx5ySLVdDZXL0=
