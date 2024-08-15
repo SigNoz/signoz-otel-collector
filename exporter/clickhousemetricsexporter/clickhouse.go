@@ -28,6 +28,7 @@ import (
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/sirupsen/logrus"
@@ -63,6 +64,8 @@ type clickHouse struct {
 	l                    *logrus.Entry
 	database             string
 	maxTimeSeriesInQuery int
+
+	cache *ttlcache.Cache[string, bool]
 
 	timeSeriesRW sync.RWMutex
 	// Maintains the lookup map for fingerprints that are
@@ -113,11 +116,18 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
+	cache := ttlcache.New[string, bool](
+		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[string, bool](),
+	)
+	go cache.Start()
+
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    l,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
+		cache:                cache,
 
 		timeSeries: make(map[uint64]struct{}, 8192),
 
@@ -295,49 +305,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	// Write to distributed_time_series_v3 table
-	err = func() error {
-
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V3), driver.WithReleaseConnection())
-		if err != nil {
-			return err
-		}
-		timestamp := model.Now().Time().UnixMilli()
-		for fingerprint, labels := range newTimeSeries {
-			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
-			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-			err = statement.Append(
-				fingerprintToName[fingerprint][envLabel],
-				meta.Temporality.String(),
-				fingerprintToName[fingerprint][nameLabel],
-				fingerprint,
-				timestamp,
-				encodedLabels,
-				meta.Description,
-				meta.Unit,
-				meta.Typ.String(),
-				meta.IsMonotonic,
-			)
-			if err != nil {
-				return err
-			}
-		}
-
-		start := time.Now()
-		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V3),
-		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-		return err
-	}()
-
-	if err != nil {
-		return err
-	}
-
-	metrics := map[string]usage.Metric{}
 	err = func() error {
 		ctx := context.Background()
 
@@ -349,23 +316,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
-
-				// usage collection checks
-				tenant := "default"
-				collectUsage := true
-				for _, val := range timeSeries[fingerprint] {
-					if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
-						collectUsage = false
-						break
-					}
-					if val.Name == "tenant" {
-						tenant = val.Value
-					}
-				}
-
-				if collectUsage {
-					usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
-				}
 
 				err = statement.Append(
 					fingerprintToName[fingerprint][nameLabel],
@@ -391,12 +341,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
-	}
-
 	// write to distributed_samples_v4 table
 	if ch.writeTSToV4 {
+		metrics := map[string]usage.Metric{}
 		err = func() error {
 			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
@@ -418,6 +365,23 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					if err != nil {
 						return err
 					}
+
+					// usage collection checks
+					tenant := "default"
+					collectUsage := true
+					for _, val := range timeSeries[fingerprint] {
+						if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
+							collectUsage = false
+							break
+						}
+						if val.Name == "tenant" {
+							tenant = val.Value
+						}
+					}
+
+					if collectUsage {
+						usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+					}
 				}
 			}
 
@@ -434,6 +398,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+		}
 	}
 
 	// write to distributed_time_series_v4 table
@@ -447,6 +414,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
 			for fingerprint, labels := range timeSeries {
+				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
+				if ch.cache.Get(key) != nil && ch.cache.Get(key).Value() {
+					continue
+				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 				err = statement.Append(
@@ -464,6 +435,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				if err != nil {
 					return err
 				}
+				ch.cache.Set(key, true, ttlcache.DefaultTTL)
 			}
 
 			start := time.Now()
