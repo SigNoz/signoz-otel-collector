@@ -13,13 +13,13 @@ require (
 	github.com/aws/aws-sdk-go v1.53.11
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v1.0.2
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/knadh/koanf v1.5.0
 	github.com/lightstep/go-expohisto v1.0.0
 	github.com/oklog/ulid v1.3.1
@@ -312,7 +312,6 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/ionos-cloud/sdk-go/v6 v6.1.11 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
-	github.com/jellydator/ttlcache/v3 v3.2.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
@@ -521,7 +520,7 @@ require (
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/spf13/cobra v1.8.0 // indirect
+	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
@@ -554,7 +553,6 @@ require (
 replace (
 	github.com/ClickHouse/ch-go v0.58.2 => github.com/SigNoz/ch-go v0.61.2-dd
 	github.com/ClickHouse/clickhouse-go/v2 v2.15.0 => github.com/SigNoz/clickhouse-go/v2 v2.15.2
-	github.com/golang-migrate/migrate/v4 => github.com/SigNoz/golang-migrate/v4 v4.16.5
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
 	// using 0.23.0 as there is an issue with 0.24.0 stats that results in
