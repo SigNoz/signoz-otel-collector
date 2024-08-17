@@ -424,7 +424,7 @@ ORDER BY
 						OrderBy:     "(traceID)",
 						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
 						Settings: TableSettings{
-							{Name: "index_granularity", Value: "8192"},
+							{Name: "index_granularity", Value: "1024"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
 					},
@@ -672,7 +672,7 @@ GROUP BY
 					Database: "signoz_traces",
 					Table:    "usage_explorer",
 					Columns: []Column{
-						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, LZ4"},
+						{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
 						{Name: "service_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 						{Name: "count", Type: ColumnTypeUInt64, Codec: "T64, ZSTD(1)"},
 					},
@@ -702,7 +702,7 @@ GROUP BY
 					ViewName:  "usage_explorer_mv",
 					DestTable: "usage_explorer",
 					Columns: []Column{
-						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, LZ4"},
+						{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
 						{Name: "service_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 						{Name: "count", Type: ColumnTypeUInt64, Codec: "T64, ZSTD(1)"},
 					},
@@ -730,7 +730,7 @@ GROUP BY
 					Database: "signoz_traces",
 					Table:    "distributed_usage_explorer",
 					Columns: []Column{
-						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, LZ4"},
+						{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
 						{Name: "service_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 						{Name: "count", Type: ColumnTypeUInt64, Codec: "T64, ZSTD(1)"},
 					},
@@ -859,7 +859,7 @@ WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
 					Database: "signoz_traces",
 					Table:    "span_attributes",
 					Columns: []Column{
-						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, LZ4"},
+						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, ZSTD(1)"},
 						{Name: "tagKey", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 						{Name: "tagType", Type: EnumerationColumnType{Values: []string{"'tag' = 1", "'resource' = 2"}, Size: 8}, Codec: "ZSTD(1)"},
 						{Name: "dataType", Type: EnumerationColumnType{Values: []string{"'string' = 1", "'bool' = 2", "'float64' = 3"}, Size: 8}, Codec: "ZSTD(1)"},
@@ -894,7 +894,7 @@ WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
 					Database: "signoz_traces",
 					Table:    "distributed_span_attributes",
 					Columns: []Column{
-						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, LZ4"},
+						{Name: "timestamp", Type: DateTimeColumnType{}, Codec: "DoubleDelta, ZSTD(1)"},
 						{Name: "tagKey", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 						{Name: "tagType", Type: EnumerationColumnType{Values: []string{"'tag' = 1", "'resource' = 2"}, Size: 8}, Codec: "ZSTD(1)"},
 						{Name: "dataType", Type: EnumerationColumnType{Values: []string{"'string' = 1", "'bool' = 2", "'float64' = 3"}, Size: 8}, Codec: "ZSTD(1)"},
