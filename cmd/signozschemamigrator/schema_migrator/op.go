@@ -1,4 +1,4 @@
-package main
+package schemamigrator
 
 // Operation is the interface that all operations must implement.
 // An Operation that is not mutation, idempotent and lightweight is expected
@@ -26,4 +26,7 @@ type Operation interface {
 	// OnCluster returns a new operation with the cluster name set
 	// This is used when the operation is run on a specific cluster
 	OnCluster(string) Operation
+
+	// WithReplication returns a new operation with the replication set
+	WithReplication() Operation
 }

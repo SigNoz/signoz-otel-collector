@@ -1,13 +1,14 @@
-package main
+package schemamigrator
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
+// SQLSchemaMigration is the interface that wraps the methods for a schema migration.
+// It is used to represent the schema migration in the SQL.
 type SQLSchemaMigration interface {
 	Version() int
 	// Apply applies the migration to the database
@@ -16,25 +17,29 @@ type SQLSchemaMigration interface {
 	DownItems(ctx context.Context) []Operation
 }
 
-type schemaMigration struct {
-	version   int
-	upItems   []Operation
-	downItems []Operation
+type SchemaMigrationRecord struct {
+	MigrationID int
+	UpItems     []Operation
+	DownItems   []Operation
 }
 
+// MigrationManager is the manager for the schema migrations.
 type MigrationManager struct {
-	dsn         string
-	addrs       []string
-	addrsMux    sync.Mutex
-	clusterName string
+	dsn                string
+	addrs              []string
+	addrsMux           sync.Mutex
+	clusterName        string
+	replicationEnabled bool
 
 	conn clickhouse.Conn
 }
 
-func NewMigrationManager(dsn string, clusterName string) *MigrationManager {
-	return &MigrationManager{dsn: dsn, clusterName: clusterName}
+// NewMigrationManager creates a new migration manager.
+func NewMigrationManager(dsn string, clusterName string, replicationEnabled bool) *MigrationManager {
+	return &MigrationManager{dsn: dsn, clusterName: clusterName, replicationEnabled: replicationEnabled}
 }
 
+// Init initializes the migration manager.
 func (m *MigrationManager) Init() error {
 	options := &clickhouse.Options{
 		Addr: []string{m.dsn},
@@ -47,6 +52,7 @@ func (m *MigrationManager) Init() error {
 	return nil
 }
 
+// HostAddrs returns the addresses of the all hosts in the cluster.
 func (m *MigrationManager) HostAddrs() ([]string, error) {
 	m.addrsMux.Lock()
 	defer m.addrsMux.Unlock()
@@ -102,14 +108,17 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 	return addrs, nil
 }
 
+// WaitForRunningMutations waits for all the mutations to be completed on all the hosts in the cluster.
 func (m *MigrationManager) WaitForRunningMutations(ctx context.Context) error {
 	return nil
 }
 
+// WaitDistributedDDLQueue waits for all the DDLs to be completed on all the hosts in the cluster.
 func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 	return nil
 }
 
+// MigrateUp migrates the schema up.
 func (m *MigrationManager) MigrateUp(ctx context.Context, migrations []SQLSchemaMigration) error {
 
 	for _, migration := range migrations {
@@ -129,6 +138,7 @@ func (m *MigrationManager) MigrateUp(ctx context.Context, migrations []SQLSchema
 	return nil
 }
 
+// MigrateDown migrates the schema down.
 func (m *MigrationManager) MigrateDown(ctx context.Context, migrations []SQLSchemaMigration) error {
 	for _, migration := range migrations {
 		if err := m.WaitForRunningMutations(ctx); err != nil {
@@ -147,18 +157,18 @@ func (m *MigrationManager) MigrateDown(ctx context.Context, migrations []SQLSche
 func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation) error {
 	var sql string
 	if m.clusterName != "" {
-		sql = operation.OnCluster(m.clusterName).ToSQL()
-	} else {
-		sql = operation.ToSQL()
+		operation = operation.OnCluster(m.clusterName)
 	}
-	fmt.Println(sql)
+	if m.replicationEnabled {
+		operation = operation.WithReplication()
+	}
+	sql = operation.ToSQL()
+	rows, err := m.conn.Query(ctx, sql)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 	return nil
-	// rows, err := m.conn.Query(ctx, sql)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer rows.Close()
-	// return nil
 }
 
 func (m *MigrationManager) Close() error {
