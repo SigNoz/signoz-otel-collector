@@ -32,6 +32,7 @@ type CreateTableOperation struct {
 // This is useful when the operation is to be performed on a cluster setup.
 func (c CreateTableOperation) OnCluster(cluster string) Operation {
 	c.cluster = cluster
+	c.Engine = c.Engine.OnCluster(cluster)
 	return &c
 }
 
@@ -97,6 +98,7 @@ func (d DropTableOperation) OnCluster(cluster string) Operation {
 }
 
 func (d DropTableOperation) WithReplication() Operation {
+	// no-op
 	return &d
 }
 

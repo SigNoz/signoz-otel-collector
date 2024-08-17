@@ -9,6 +9,7 @@ import (
 type TableEngine interface {
 	ToSQL() string
 	EngineType() string
+	OnCluster(cluster string) TableEngine
 	WithReplication() TableEngine
 }
 
@@ -41,6 +42,11 @@ type MergeTree struct {
 	SampleBy    string
 	TTL         string
 	Settings    TableSettings
+}
+
+func (m MergeTree) OnCluster(cluster string) TableEngine {
+	// no-op
+	return &m
 }
 
 func (m MergeTree) WithReplication() TableEngine {
@@ -168,6 +174,11 @@ type Distributed struct {
 	Database    string
 	Table       string
 	ShardingKey string
+}
+
+func (d Distributed) OnCluster(cluster string) TableEngine {
+	d.Cluster = cluster
+	return &d
 }
 
 func (d Distributed) WithReplication() TableEngine {
