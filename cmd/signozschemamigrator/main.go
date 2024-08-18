@@ -81,12 +81,14 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 
-			options := &clickhouse.Options{
-				Addr: []string{dsn},
-			}
-			conn, err := clickhouse.Open(options)
+			opts, err := clickhouse.ParseDSN(dsn)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse dsn: %w", err)
+			}
+
+			conn, err := clickhouse.Open(opts)
+			if err != nil {
+				return fmt.Errorf("failed to open connection: %w", err)
 			}
 
 			manager, err := schema_migrator.NewMigrationManager(
@@ -96,21 +98,17 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithLogger(getLogger()),
 			)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create migration manager: %w", err)
 			}
 			err = manager.Bootstrap()
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to bootstrap migrations: %w", err)
 			}
 			err = manager.RunSquashedMigrations(context.Background())
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to run migrations: %w", err)
 			}
-			downMigrations := strings.Split(cmd.Flags().Lookup("down").Value.String(), ",")
-			if len(downMigrations) > 0 {
-				return manager.MigrateDownSync(context.Background(), downMigrations)
-			}
-			return manager.MigrateUpSync(context.Background(), nil)
+			return manager.MigrateUpSync(context.Background())
 		},
 	}
 
@@ -127,12 +125,13 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 
-			options := &clickhouse.Options{
-				Addr: []string{dsn},
-			}
-			conn, err := clickhouse.Open(options)
+			opts, err := clickhouse.ParseDSN(dsn)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse dsn: %w", err)
+			}
+			conn, err := clickhouse.Open(opts)
+			if err != nil {
+				return fmt.Errorf("failed to open connection: %w", err)
 			}
 
 			manager, err := schema_migrator.NewMigrationManager(
@@ -141,14 +140,10 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConn(conn),
 			)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create migration manager: %w", err)
 			}
 
-			downMigrations := strings.Split(cmd.Flags().Lookup("down").Value.String(), ",")
-			if len(downMigrations) > 0 {
-				return manager.MigrateDownAsync(context.Background(), downMigrations)
-			}
-			return manager.MigrateUpAsync(context.Background(), nil)
+			return manager.MigrateUpAsync(context.Background())
 		},
 	}
 
