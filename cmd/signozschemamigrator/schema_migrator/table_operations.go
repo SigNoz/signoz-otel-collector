@@ -41,6 +41,10 @@ func (c CreateTableOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c CreateTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, c.Database, c.Table
+}
+
 func (c CreateTableOperation) IsMutation() bool {
 	// Create table is not a mutation.
 	return false
@@ -102,6 +106,10 @@ func (d DropTableOperation) WithReplication() Operation {
 	return &d
 }
 
+func (d DropTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, d.Database, d.Table
+}
+
 func (d DropTableOperation) IsMutation() bool {
 	return true
 }
@@ -147,6 +155,10 @@ func (c CreateMaterializedViewOperation) OnCluster(cluster string) Operation {
 func (c CreateMaterializedViewOperation) WithReplication() Operation {
 	// no-op
 	return &c
+}
+
+func (c CreateMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, c.Database, c.ViewName
 }
 
 func (c CreateMaterializedViewOperation) IsMutation() bool {

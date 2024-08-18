@@ -48,6 +48,10 @@ func (a AlterTableAddIndex) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableAddIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
 func (a AlterTableAddIndex) IsMutation() bool {
 	// Adding an index is not a mutation. It will create a new index.
 	return false
@@ -105,6 +109,10 @@ func (a AlterTableDropIndex) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableDropIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
 func (a AlterTableDropIndex) IsMutation() bool {
 	// Dropping an index is a mutation. It will remove the index from the table.
 	return true
@@ -155,6 +163,10 @@ func (a AlterTableMaterializeIndex) OnCluster(cluster string) Operation {
 func (a AlterTableMaterializeIndex) WithReplication() Operation {
 	// no-op
 	return &a
+}
+
+func (a AlterTableMaterializeIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
 }
 
 func (a AlterTableMaterializeIndex) IsMutation() bool {
@@ -211,6 +223,10 @@ func (a AlterTableClearIndex) OnCluster(cluster string) Operation {
 func (a AlterTableClearIndex) WithReplication() Operation {
 	// no-op
 	return &a
+}
+
+func (a AlterTableClearIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
 }
 
 func (a AlterTableClearIndex) IsMutation() bool {

@@ -2,12 +2,49 @@ package schemamigrator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"go.uber.org/multierr"
+	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
 )
+
+var (
+	ErrFailedToGetConn                  = errors.New("failed to get conn")
+	ErrFailedToGetHostAddrs             = errors.New("failed to get host addrs")
+	ErrFailedToCreateDBs                = errors.New("failed to create dbs")
+	ErrFailedToRunOperation             = errors.New("failed to run operation")
+	ErrFailedToWaitForMutations         = errors.New("failed to wait for mutations")
+	ErrFailedToWaitForDDLQueue          = errors.New("failed to wait for DDL queue")
+	ErrFailedToWaitForDistributionQueue = errors.New("failed to wait for distribution queue")
+	ErrFailedToRunSquashedMigrations    = errors.New("failed to run squashed migrations")
+	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs"}
+	legacyMigrationsTable               = "schema_migrations"
+)
+
+type Mutation struct {
+	Database         string    `ch:"database"`
+	Table            string    `ch:"table"`
+	MutationID       string    `ch:"mutation_id"`
+	Command          string    `ch:"command"`
+	CreateTime       time.Time `ch:"create_time"`
+	PartsToDo        int64     `ch:"parts_to_do"`
+	LatestFailReason string    `ch:"latest_fail_reason"`
+}
+
+type DistributedDDLQueue struct {
+	Entry           string    `ch:"entry"`
+	Cluster         string    `ch:"cluster"`
+	Query           string    `ch:"query"`
+	QueryCreateTime time.Time `ch:"query_create_time"`
+	Host            string    `ch:"host"`
+	Port            uint16    `ch:"port"`
+	Status          string    `ch:"status"`
+	ExceptionCode   string    `ch:"exception_code"`
+}
 
 type SchemaMigrationRecord struct {
 	MigrationID int
@@ -17,28 +54,37 @@ type SchemaMigrationRecord struct {
 
 // MigrationManager is the manager for the schema migrations.
 type MigrationManager struct {
-	addrs              []string
-	addrsMux           sync.Mutex
+	// addrs is the list of addresses of the hosts in the cluster.
+	addrs    []string
+	addrsMux sync.Mutex
+	conn     clickhouse.Conn
+	conns    map[string]clickhouse.Conn
+
 	clusterName        string
 	replicationEnabled bool
-
-	conn clickhouse.Conn
-
-	logger *zap.Logger
+	logger             *zap.Logger
+	backoff            *backoff.ExponentialBackOff
 }
 
 type Option func(*MigrationManager)
 
 // NewMigrationManager creates a new migration manager.
-func NewMigrationManager(opts ...Option) *MigrationManager {
-	mgr := &MigrationManager{}
+func NewMigrationManager(opts ...Option) (*MigrationManager, error) {
+	mgr := &MigrationManager{
+		logger: zap.NewNop(),
+		// the default backoff is good enough for our use case
+		// no mutation should be running for more than 15 minutes, if it is, we should fail fast
+		backoff:            backoff.NewExponentialBackOff(),
+		clusterName:        "cluster",
+		replicationEnabled: false,
+	}
 	for _, opt := range opts {
 		opt(mgr)
 	}
-	if mgr.logger == nil {
-		mgr.logger = zap.NewNop()
+	if mgr.conn == nil {
+		return nil, errors.New("conn is required")
 	}
-	return mgr
+	return mgr, nil
 }
 
 func WithClusterName(clusterName string) Option {
@@ -65,30 +111,51 @@ func WithLogger(logger *zap.Logger) Option {
 	}
 }
 
-func (m *MigrationManager) createDBs() error {
-	if m.clusterName != "" {
-		tracesErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_traces ON CLUSTER '"+m.clusterName+"'")
-		metricsErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_metrics ON CLUSTER '"+m.clusterName+"'")
-		logsErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_logs ON CLUSTER '"+m.clusterName+"'")
-		return multierr.Combine(tracesErr, metricsErr, logsErr)
-	} else {
-		tracesErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_traces")
-		metricsErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_metrics")
-		logsErr := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS signoz_logs")
-		return multierr.Combine(tracesErr, metricsErr, logsErr)
+func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
+	return func(mgr *MigrationManager) {
+		mgr.backoff = backoff
 	}
+}
+
+func (m *MigrationManager) createDBs() error {
+	for _, db := range dbs {
+		if err := m.conn.Exec(context.Background(), "CREATE DATABASE IF NOT EXISTS $1 ON CLUSTER $2", db, m.clusterName); err != nil {
+			return errors.Join(ErrFailedToCreateDBs, err)
+		}
+	}
+	return nil
 }
 
 // Bootstrap migrates the schema up for the migrations tables
 func (m *MigrationManager) Bootstrap() error {
 	if err := m.createDBs(); err != nil {
-		return err
+		return errors.Join(ErrFailedToCreateDBs, err)
 	}
 	// migrate up the v2 schama migrations tables
 	return m.MigrateUp(context.Background(), V2Tables)
 }
 
-func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
+// legacyMigrationsTableExists checks if the legacy migrations table exists in the given database.
+func (m *MigrationManager) legacyMigrationsTableExists(ctx context.Context, db string) (bool, error) {
+	var count uint64
+	err := m.conn.QueryRow(ctx, "SELECT count(*) FROM FROM clusterAllReplicas($1, system.tables) WHERE database = $2 AND name = $3", m.clusterName, db, legacyMigrationsTable).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
+	exists, err := m.legacyMigrationsTableExists(ctx, "signoz_logs")
+	if err != nil {
+		return err
+	}
+	// if the legacy migrations table exists, we don't need to run the squashed migrations
+	if exists {
+		m.logger.Info("Legacy migrations table for logs exists, skipping squashed migrations")
+		return nil
+	}
+	m.logger.Info("Running squashed migrations for logs")
 	for _, migration := range SquashedLogsMigrations {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(ctx, item); err != nil {
@@ -96,6 +163,20 @@ func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 			}
 		}
 	}
+	m.logger.Info("Squashed migrations for logs completed")
+	return nil
+}
+
+func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) error {
+	exists, err := m.legacyMigrationsTableExists(ctx, "signoz_metrics")
+	if err != nil {
+		return err
+	}
+	if exists {
+		m.logger.Info("Legacy migrations table for metrics exists, skipping squashed migrations")
+		return nil
+	}
+	m.logger.Info("Running squashed migrations for metrics")
 	for _, migration := range SquashedMetricsMigrations {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(ctx, item); err != nil {
@@ -103,12 +184,40 @@ func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 			}
 		}
 	}
+	m.logger.Info("Squashed migrations for metrics completed")
+	return nil
+}
+
+func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) error {
+	exists, err := m.legacyMigrationsTableExists(ctx, "signoz_traces")
+	if err != nil {
+		return err
+	}
+	if exists {
+		m.logger.Info("Legacy migrations table for traces exists, skipping squashed migrations")
+		return nil
+	}
+	m.logger.Info("Running squashed migrations for traces")
 	for _, migration := range SquashedTracesMigrations {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(ctx, item); err != nil {
 				return err
 			}
 		}
+	}
+	m.logger.Info("Squashed migrations for traces completed")
+	return nil
+}
+
+func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
+	if err := m.runSquashedMigrationsForLogs(ctx); err != nil {
+		return errors.Join(ErrFailedToRunSquashedMigrations, err)
+	}
+	if err := m.runSquashedMigrationsForMetrics(ctx); err != nil {
+		return errors.Join(ErrFailedToRunSquashedMigrations, err)
+	}
+	if err := m.runSquashedMigrationsForTraces(ctx); err != nil {
+		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
 	return nil
 }
@@ -122,40 +231,43 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 	}
 
 	hostAddrs := make(map[string]struct{})
-	query := "SELECT DISTINCT host_address FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1'] AND cluster = '" + m.clusterName + "'"
-	rows, err := m.conn.Query(context.Background(), query)
+	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1'] AND cluster = $1"
+	rows, err := m.conn.Query(context.Background(), query, m.clusterName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var hostAddr string
-		if err := rows.Scan(&hostAddr); err != nil {
-			return nil, err
+		var port uint16
+		if err := rows.Scan(&hostAddr, &port); err != nil {
+			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 		}
-		hostAddrs[hostAddr] = struct{}{}
+		hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
 	}
 
 	if len(hostAddrs) != 0 {
 		// connect to other host and do the same thing
 		for hostAddr := range hostAddrs {
+			m.logger.Info("Connecting to new host", zap.String("host", hostAddr))
 			conn, err := clickhouse.Open(&clickhouse.Options{
 				Addr: []string{hostAddr},
 			})
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(ErrFailedToGetConn, err)
 			}
 			rows, err := conn.Query(context.Background(), query)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(ErrFailedToGetConn, err)
 			}
 			defer rows.Close()
 			for rows.Next() {
 				var hostAddr string
-				if err := rows.Scan(&hostAddr); err != nil {
-					return nil, err
+				var port uint16
+				if err := rows.Scan(&hostAddr, &port); err != nil {
+					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 				}
-				hostAddrs[hostAddr] = struct{}{}
+				hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
 			}
 			break
 		}
@@ -169,13 +281,170 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 	return addrs, nil
 }
 
+func (m *MigrationManager) getConn(hostAddr string) (clickhouse.Conn, error) {
+	m.addrsMux.Lock()
+	defer m.addrsMux.Unlock()
+	if conn, ok := m.conns[hostAddr]; ok {
+		return conn, nil
+	}
+	conn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{hostAddr},
+	})
+	if err != nil {
+		return nil, err
+	}
+	m.conns[hostAddr] = conn
+	return conn, nil
+}
+
+func (m *MigrationManager) waitForMutationsOnHost(ctx context.Context, hostAddr string) error {
+	// reset backoff
+	m.backoff.Reset()
+
+	m.logger.Info("Fetching mutations on host", zap.String("host", hostAddr))
+	conn, err := m.getConn(hostAddr)
+	if err != nil {
+		return err
+	}
+	for {
+		if m.backoff.NextBackOff() == backoff.Stop {
+			return errors.New("backoff stopped")
+		}
+		var mutations []Mutation
+		if err := conn.Select(ctx, &mutations, "SELECT * FROM system.mutations WHERE is_done = 0"); err != nil {
+			return err
+		}
+		if len(mutations) != 0 {
+			m.logger.Info("Waiting for mutations to be completed", zap.Int("count", len(mutations)), zap.String("host", hostAddr))
+			for _, mutation := range mutations {
+				m.logger.Info("Mutation details",
+					zap.String("database", mutation.Database),
+					zap.String("table", mutation.Table),
+					zap.String("command", mutation.Command),
+					zap.String("mutation_id", mutation.MutationID),
+					zap.String("latest_fail_reason", mutation.LatestFailReason),
+				)
+			}
+			time.Sleep(m.backoff.NextBackOff())
+			continue
+		}
+		m.logger.Info("No mutations found on host", zap.String("host", hostAddr))
+		break
+	}
+	return nil
+}
+
 // WaitForRunningMutations waits for all the mutations to be completed on all the hosts in the cluster.
 func (m *MigrationManager) WaitForRunningMutations(ctx context.Context) error {
+	addrs, err := m.HostAddrs()
+	if err != nil {
+		return errors.Join(ErrFailedToWaitForMutations, err)
+	}
+	for _, hostAddr := range addrs {
+		m.logger.Info("Waiting for mutations on host", zap.String("host", hostAddr))
+		if err := m.waitForMutationsOnHost(ctx, hostAddr); err != nil {
+			return errors.Join(ErrFailedToWaitForMutations, err)
+		}
+	}
 	return nil
 }
 
 // WaitDistributedDDLQueue waits for all the DDLs to be completed on all the hosts in the cluster.
 func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
+	// reset backoff
+	m.backoff.Reset()
+	m.logger.Info("Fetching non-finished DDLs from distributed DDL queue")
+	for {
+		if m.backoff.NextBackOff() == backoff.Stop {
+			return errors.New("backoff stopped")
+		}
+		query := "SELECT * FROM system.distributed_ddl_queue WHERE status != 'Finished'"
+		var ddlQueue []DistributedDDLQueue
+		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+			return err
+		}
+		if len(ddlQueue) != 0 {
+			m.logger.Info("Waiting for distributed DDL queue to be completed", zap.Int("count", len(ddlQueue)))
+			for _, ddl := range ddlQueue {
+				m.logger.Info("DDL details",
+					zap.String("query", ddl.Query),
+					zap.String("status", ddl.Status),
+					zap.String("host", ddl.Host),
+					zap.String("exception_code", ddl.ExceptionCode),
+				)
+			}
+			time.Sleep(m.backoff.NextBackOff())
+			continue
+		}
+		m.logger.Info("No pending DDLs found in distributed DDL queue")
+		break
+	}
+	return nil
+}
+
+func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, conn clickhouse.Conn, db, table string) error {
+	query := "SELECT count(*) FROM system.distribution_queue WHERE database = $1 AND table = $2 AND data_files > 0"
+	// Should this be configurable and/or higher?
+	t := time.NewTimer(2 * time.Minute)
+	defer t.Stop()
+	minimumInsertsCompletedChan := make(chan struct{})
+
+	// count for the number of inserts in the queue with non-zero data_files
+	go func() {
+		insertsInQueue := 0
+		for {
+			var count uint64
+			// if the count of inserts in the queue with non-zero data_files is greater than 0, then it counts towards
+			// one insert, while technically it is more than one insert, we are mainly interested in number of such actions
+			if err := conn.QueryRow(ctx, query, db, table).Scan(&count); err != nil {
+				m.logger.Error("Failed to fetch inserts in queue, will retry", zap.Error(err))
+				continue
+			}
+			if count > 0 {
+				insertsInQueue++
+			}
+			if insertsInQueue >= 16 {
+				minimumInsertsCompletedChan <- struct{}{}
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			// we waited for graceful period to complete, it might happen that no inserts occur after the migration
+			// so we can't wait for ever
+			return nil
+		case <-minimumInsertsCompletedChan:
+			return nil
+		}
+	}
+}
+
+// When dropping a column, we need to make sure that there are no pending items in `distribution_queue`
+// for the table. This is because if we drop a column on local table, but there is a pending insert on remote
+// table, it will fail.
+// There is no deterministic way to find out if there are pending items in `distribution_queue` for a table with
+// old schema, so we try to wait for 2 minutes or at least 16 inserts with non-zero `data_files` in the queue
+// for the table.
+// We need to do this for all hosts in the cluster.
+func (m *MigrationManager) WaitForDistributionQueue(ctx context.Context, db, table string) error {
+	addrs, err := m.HostAddrs()
+	if err != nil {
+		return errors.Join(ErrFailedToWaitForDistributionQueue, err)
+	}
+	for _, hostAddr := range addrs {
+		conn, err := m.getConn(hostAddr)
+		if err != nil {
+			return errors.Join(ErrFailedToWaitForDistributionQueue, err)
+		}
+		if err := m.waitForDistributionQueueOnHost(ctx, conn, db, table); err != nil {
+			return errors.Join(ErrFailedToWaitForDistributionQueue, err)
+		}
+	}
 	return nil
 }
 
@@ -245,13 +514,19 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 	if m.replicationEnabled {
 		operation = operation.WithReplication()
 	}
+
+	if shouldWaitForDistributionQueue, database, table := operation.ShouldWaitForDistributionQueue(); shouldWaitForDistributionQueue {
+		if err := m.WaitForDistributionQueue(ctx, database, table); err != nil {
+			return err
+		}
+	}
+
 	sql = operation.ToSQL()
 	m.logger.Info("Running operation", zap.String("sql", sql))
-	rows, err := m.conn.Query(ctx, sql)
+	err := m.conn.Exec(ctx, sql)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	return nil
 }
 

@@ -19,6 +19,7 @@ import (
 func getLogger() *zap.Logger {
 	// Always verbose logging for schema migrator
 	config := zap.NewDevelopmentConfig()
+	config.Encoding = "json"
 	config.EncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
 	config.EncoderConfig.TimeKey = "timestamp"
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -88,12 +89,15 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				return err
 			}
 
-			manager := schema_migrator.NewMigrationManager(
+			manager, err := schema_migrator.NewMigrationManager(
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
 				schema_migrator.WithConn(conn),
 				schema_migrator.WithLogger(getLogger()),
 			)
+			if err != nil {
+				return err
+			}
 			err = manager.Bootstrap()
 			if err != nil {
 				return err
@@ -131,11 +135,14 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				return err
 			}
 
-			manager := schema_migrator.NewMigrationManager(
+			manager, err := schema_migrator.NewMigrationManager(
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
 				schema_migrator.WithConn(conn),
 			)
+			if err != nil {
+				return err
+			}
 
 			downMigrations := strings.Split(cmd.Flags().Lookup("down").Value.String(), ",")
 			if len(downMigrations) > 0 {

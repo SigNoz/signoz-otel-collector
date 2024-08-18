@@ -29,6 +29,10 @@ func (a AlterTableAddColumn) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableAddColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
 func (a AlterTableAddColumn) IsMutation() bool {
 	// Adding a column is not a mutation. It simply updates the metadata of the table.
 	return false
@@ -84,6 +88,10 @@ func (a AlterTableDropColumn) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableDropColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return true, a.Database, a.Table
+}
+
 func (a AlterTableDropColumn) IsMutation() bool {
 	// Dropping a column is a mutation. It will remove the column from the table.
 	return true
@@ -135,6 +143,10 @@ func (a AlterTableModifyColumn) OnCluster(cluster string) Operation {
 func (a AlterTableModifyColumn) WithReplication() Operation {
 	// no-op
 	return &a
+}
+
+func (a AlterTableModifyColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
 }
 
 func (a AlterTableModifyColumn) IsMutation() bool {
@@ -214,6 +226,10 @@ func (a AlterTableModifyColumnRemove) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableModifyColumnRemove) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
 func (a AlterTableModifyColumnRemove) IsMutation() bool {
 	// Removing a column property is not a mutation. It simply updates the metadata of the table.
 	return false
@@ -267,6 +283,10 @@ func (a AlterTableModifyColumnModifySettings) OnCluster(cluster string) Operatio
 func (a AlterTableModifyColumnModifySettings) WithReplication() Operation {
 	// no-op
 	return &a
+}
+
+func (a AlterTableModifyColumnModifySettings) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
 }
 
 func (a AlterTableModifyColumnModifySettings) IsMutation() bool {
@@ -324,6 +344,10 @@ func (a AlterTableModifyColumnResetSettings) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableModifyColumnResetSettings) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
 func (a AlterTableModifyColumnResetSettings) IsMutation() bool {
 	// Resetting the settings of a column is not a mutation. It simply updates the metadata of the table.
 	return false
@@ -378,6 +402,10 @@ func (a AlterTableMaterializeColumn) OnCluster(cluster string) Operation {
 func (a AlterTableMaterializeColumn) WithReplication() Operation {
 	// no-op
 	return &a
+}
+
+func (a AlterTableMaterializeColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
 }
 
 func (a AlterTableMaterializeColumn) IsMutation() bool {

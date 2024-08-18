@@ -29,4 +29,7 @@ type Operation interface {
 
 	// WithReplication returns a new operation with the replication set
 	WithReplication() Operation
+
+	// ShouldWaitForDistributionQueue returns true if the operation should wait for the distribution queue to be empty
+	ShouldWaitForDistributionQueue() (bool, string, string)
 }
