@@ -4,14 +4,13 @@ import "time"
 
 type MigrationSchemaMigrationRecord struct {
 	MigrationID uint64    `ch:"migration_id"`
-	Name        string    `ch:"name"`
 	Status      string    `ch:"status"`
 	Error       string    `ch:"error"`
 	CreatedAt   time.Time `ch:"created_at"`
 	UpdatedAt   time.Time `ch:"updated_at"`
 }
 
-var V2Tables = []SchemaMigrationRecord{
+var V2MigrationTablesLogs = []SchemaMigrationRecord{
 	{
 		MigrationID: 1,
 		UpItems: []Operation{
@@ -19,8 +18,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_logs",
 				Table:    "schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
@@ -28,8 +26,8 @@ var V2Tables = []SchemaMigrationRecord{
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree{
-						OrderBy:    "id",
-						PrimaryKey: "id",
+						OrderBy:    "migration_id",
+						PrimaryKey: "migration_id",
 					},
 				},
 			},
@@ -42,8 +40,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_logs",
 				Table:    "distributed_schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
@@ -57,6 +54,9 @@ var V2Tables = []SchemaMigrationRecord{
 			},
 		},
 	},
+}
+
+var V2MigrationTablesTraces = []SchemaMigrationRecord{
 	{
 		MigrationID: 3,
 		UpItems: []Operation{
@@ -64,8 +64,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
@@ -73,8 +72,8 @@ var V2Tables = []SchemaMigrationRecord{
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree{
-						OrderBy:    "id",
-						PrimaryKey: "id",
+						OrderBy:    "migration_id",
+						PrimaryKey: "migration_id",
 					},
 				},
 			},
@@ -87,8 +86,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "distributed_schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
@@ -102,6 +100,9 @@ var V2Tables = []SchemaMigrationRecord{
 			},
 		},
 	},
+}
+
+var V2MigrationTablesMetrics = []SchemaMigrationRecord{
 	{
 		MigrationID: 5,
 		UpItems: []Operation{
@@ -109,8 +110,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_metrics",
 				Table:    "schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
@@ -118,8 +118,8 @@ var V2Tables = []SchemaMigrationRecord{
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree{
-						OrderBy:    "id",
-						PrimaryKey: "id",
+						OrderBy:    "migration_id",
+						PrimaryKey: "migration_id",
 					},
 				},
 			},
@@ -132,8 +132,7 @@ var V2Tables = []SchemaMigrationRecord{
 				Database: "signoz_metrics",
 				Table:    "distributed_schema_migrations_v2",
 				Columns: []Column{
-					{Name: "id", Type: ColumnTypeUInt64},
-					{Name: "name", Type: ColumnTypeString},
+					{Name: "migration_id", Type: ColumnTypeUInt64},
 					{Name: "status", Type: ColumnTypeString},
 					{Name: "error", Type: ColumnTypeString},
 					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},

@@ -102,6 +102,10 @@ type ReplacingMergeTree struct {
 	MergeTree
 }
 
+func (r ReplacingMergeTree) OnCluster(cluster string) TableEngine {
+	return &r
+}
+
 func (r ReplacingMergeTree) WithReplication() TableEngine {
 	r.Replicated = true
 	return &r
@@ -115,6 +119,7 @@ func (r ReplacingMergeTree) EngineType() string {
 }
 
 func (r ReplacingMergeTree) ToSQL() string {
+	fmt.Println("ReplacingMergeTree.ToSQL")
 	var sql strings.Builder
 	sql.WriteString(r.EngineType())
 	sql.WriteString(r.EngineParams())
@@ -124,6 +129,10 @@ func (r ReplacingMergeTree) ToSQL() string {
 // AggregatingMergeTree represents the AggregatingMergeTree engine of the table.
 type AggregatingMergeTree struct {
 	MergeTree
+}
+
+func (a AggregatingMergeTree) OnCluster(cluster string) TableEngine {
+	return &a
 }
 
 func (a AggregatingMergeTree) WithReplication() TableEngine {
@@ -147,6 +156,10 @@ func (a AggregatingMergeTree) ToSQL() string {
 
 type SummingMergeTree struct {
 	MergeTree
+}
+
+func (s SummingMergeTree) OnCluster(cluster string) TableEngine {
+	return &s
 }
 
 func (s SummingMergeTree) WithReplication() TableEngine {

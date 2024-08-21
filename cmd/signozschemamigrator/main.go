@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -56,12 +57,10 @@ func main() {
 	var dsn string
 	var replicationEnabled bool
 	var clusterName string
-	var downMigrations []string
 
 	cmd.PersistentFlags().StringVar(&dsn, "dsn", "", "Clickhouse DSN")
 	cmd.PersistentFlags().BoolVar(&replicationEnabled, "replication", false, "Enable replication")
 	cmd.PersistentFlags().StringVar(&clusterName, "cluster-name", "cluster", "Cluster name to use while running migrations")
-	cmd.PersistentFlags().StringArrayVar(&downMigrations, "down", []string{}, "Down migrations to run")
 
 	registerSyncMigrate(cmd)
 	registerAsyncMigrate(cmd)
@@ -73,6 +72,9 @@ func main() {
 
 func registerSyncMigrate(cmd *cobra.Command) {
 
+	var upVersions string
+	var downVersions string
+
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Run migrations in sync mode",
@@ -80,6 +82,32 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			dsn := cmd.Flags().Lookup("dsn").Value.String()
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
+
+			upVersions := []uint64{}
+			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
+				if version == "" {
+					continue
+				}
+				v, err := strconv.ParseUint(version, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to parse version: %w", err)
+				}
+				upVersions = append(upVersions, v)
+			}
+			downVersions := []uint64{}
+			for _, version := range strings.Split(cmd.Flags().Lookup("down").Value.String(), ",") {
+				if version == "" {
+					continue
+				}
+				v, err := strconv.ParseUint(version, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to parse version: %w", err)
+				}
+				downVersions = append(downVersions, v)
+			}
+			if len(upVersions) != 0 && len(downVersions) != 0 {
+				return fmt.Errorf("cannot provide both up and down migrations")
+			}
 
 			opts, err := clickhouse.ParseDSN(dsn)
 			if err != nil {
@@ -108,14 +136,23 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("failed to run migrations: %w", err)
 			}
-			return manager.MigrateUpSync(context.Background())
+			if len(downVersions) != 0 {
+				return manager.MigrateDownSync(context.Background(), downVersions)
+			}
+			return manager.MigrateUpSync(context.Background(), upVersions)
 		},
 	}
+
+	syncCmd.Flags().StringVar(&upVersions, "up", "", "Up migrations to run, comma separated. Leave empty to run all up migrations")
+	syncCmd.Flags().StringVar(&downVersions, "down", "", "Down migrations to run, comma separated. Must provide all down migrations to run")
 
 	cmd.AddCommand(syncCmd)
 }
 
 func registerAsyncMigrate(cmd *cobra.Command) {
+
+	var upVersions string
+	var downVersions string
 
 	asyncCmd := &cobra.Command{
 		Use:   "async",
@@ -124,6 +161,32 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			dsn := cmd.Flags().Lookup("dsn").Value.String()
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
+
+			upVersions := []uint64{}
+			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
+				if version == "" {
+					continue
+				}
+				v, err := strconv.ParseUint(version, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to parse version: %w", err)
+				}
+				upVersions = append(upVersions, v)
+			}
+			downVersions := []uint64{}
+			for _, version := range strings.Split(cmd.Flags().Lookup("down").Value.String(), ",") {
+				if version == "" {
+					continue
+				}
+				v, err := strconv.ParseUint(version, 10, 64)
+				if err != nil {
+					return fmt.Errorf("failed to parse version: %w", err)
+				}
+				downVersions = append(downVersions, v)
+			}
+			if len(upVersions) != 0 && len(downVersions) != 0 {
+				return fmt.Errorf("cannot provide both up and down migrations")
+			}
 
 			opts, err := clickhouse.ParseDSN(dsn)
 			if err != nil {
@@ -143,9 +206,15 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				return fmt.Errorf("failed to create migration manager: %w", err)
 			}
 
-			return manager.MigrateUpAsync(context.Background())
+			if len(downVersions) != 0 {
+				return manager.MigrateDownAsync(context.Background(), downVersions)
+			}
+			return manager.MigrateUpAsync(context.Background(), upVersions)
 		},
 	}
+
+	asyncCmd.Flags().StringVar(&upVersions, "up", "", "Up migrations to run, comma separated. Leave empty to run all up migrations")
+	asyncCmd.Flags().StringVar(&downVersions, "down", "", "Down migrations to run, comma separated. Must provide all down migrations to run")
 
 	cmd.AddCommand(asyncCmd)
 }

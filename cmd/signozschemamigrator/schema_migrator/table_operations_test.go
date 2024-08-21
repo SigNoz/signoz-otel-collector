@@ -28,6 +28,25 @@ func TestCreateTable(t *testing.T) {
 			want: "CREATE TABLE IF NOT EXISTS db.table (id Int16) ENGINE = MergeTree",
 		},
 		{
+			name: "create-table-with-replacing-merge-tree-engine-params",
+			op: CreateTableOperation{
+				Database: "db",
+				Table:    "table",
+				Columns: []Column{
+					{
+						Name: "id",
+						Type: ColumnTypeInt16,
+					},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree{
+						OrderBy: "id",
+					},
+				},
+			},
+			want: "CREATE TABLE IF NOT EXISTS db.table (id Int16) ENGINE = ReplacingMergeTree ORDER BY id",
+		},
+		{
 			name: "create-table-with-engine-param-order-by",
 			op: CreateTableOperation{
 				Database: "db",
@@ -180,6 +199,41 @@ func TestCreateMaterializedView(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
+
+func TestCreateWithCluster(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "create-table-with-replacing-merge-tree-engine-params",
+			op: CreateTableOperation{
+				Database: "db",
+				Table:    "table",
+				Columns: []Column{
+					{
+						Name: "id",
+						Type: ColumnTypeInt16,
+					},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree{
+						OrderBy: "id",
+					},
+				},
+			},
+			want: "CREATE TABLE IF NOT EXISTS db.table ON CLUSTER cluster (id Int16) ENGINE = ReplacingMergeTree ORDER BY id",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			op := tc.op.OnCluster("cluster")
+			require.Equal(t, tc.want, op.ToSQL())
 		})
 	}
 }
