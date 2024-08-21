@@ -42,11 +42,11 @@ import (
 )
 
 const (
-	DISTRIBUTED_LOGS_TABLE                      = "distributed_logs"
-	DISTRIBUTED_TAG_ATTRIBUTES                  = "distributed_tag_attributes"
-	DISTRIBUTED_LOGS_TABLE_V2                   = "distributed_logs_v2"
-	DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2         = "distributed_logs_v2_resource_bucket"
-	DISTRIBUTES_LOGS_RESOURCE_BUCKET_V2_SECONDS = 1800
+	DISTRIBUTED_LOGS_TABLE               = "distributed_logs"
+	DISTRIBUTED_TAG_ATTRIBUTES           = "distributed_tag_attributes"
+	DISTRIBUTED_LOGS_TABLE_V2            = "distributed_logs_v2"
+	DISTRIBUTED_LOGS_RESOURCE_V2         = "distributed_logs_v2_resource"
+	DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS = 1800
 )
 
 type clickhouseLogsExporter struct {
@@ -314,7 +314,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						ts = ots
 					}
 
-					lBucketStart := tsBucket(int64(ts/1000000000), DISTRIBUTES_LOGS_RESOURCE_BUCKET_V2_SECONDS)
+					lBucketStart := tsBucket(int64(ts/1000000000), DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS)
 
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
 						resourcesSeen[int64(lBucketStart)] = map[string]string{}
@@ -396,7 +396,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
-			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_BUCKET_V2),
+			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_V2),
 			driver.WithReleaseConnection(),
 		)
 		if err != nil {
@@ -413,31 +413,34 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			}
 		}
 
-		dbWriteStart := time.Now()
-		err = statement.Send()
-		// insert to the new table
-		errV2 := insertLogsStmtV2.Send()
-		// insert into the resource bucket table
-		errResource := insertResourcesStmtV2.Send()
-		if err != nil {
-			return fmt.Errorf("couldn't send batch insert resources statement:%w", err)
+		var wg sync.WaitGroup
+		chErr := make(chan error, 3)
+		chDuration := make(chan time.Duration, 3)
+
+		wg.Add(3)
+		go send(statement, chDuration, chErr, &wg)
+		go send(insertLogsStmtV2, chDuration, chErr, &wg)
+		go send(insertResourcesStmtV2, chDuration, chErr, &wg)
+		wg.Wait()
+		close(chErr)
+
+		// store the duration to send the data
+		for _, table := range []string{DISTRIBUTED_LOGS_TABLE, DISTRIBUTED_LOGS_TABLE_V2, DISTRIBUTED_LOGS_RESOURCE_V2} {
+			duration := <-chDuration
+			stats.RecordWithTags(ctx,
+				[]tag.Mutator{
+					tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+					tag.Upsert(tableKey, table),
+				},
+				writeLatencyMillis.M(int64(duration.Milliseconds())),
+			)
 		}
 
-		stats.RecordWithTags(ctx,
-			[]tag.Mutator{
-				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
-				tag.Upsert(tableKey, DISTRIBUTED_LOGS_TABLE),
-			},
-			writeLatencyMillis.M(int64(time.Since(dbWriteStart).Milliseconds())),
-		)
-		if err != nil {
-			return fmt.Errorf("StatementSend:%w", err)
-		}
-		if errV2 != nil {
-			return fmt.Errorf("StatementSendV2:%w", err)
-		}
-		if errResource != nil {
-			return fmt.Errorf("ResourceStatementSendV2:%w", err)
+		// check the errors
+		for i := 0; i < 3; i++ {
+			if r := <-chErr; r != nil {
+				return fmt.Errorf("StatementSend:%w", err)
+			}
 		}
 
 		duration := time.Since(start)
@@ -464,6 +467,14 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		return err
 	}
+}
+
+func send(statement driver.Batch, durationCh chan<- time.Duration, chErr chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	start := time.Now()
+	err := statement.Send()
+	chErr <- err
+	durationCh <- time.Since(start)
 }
 
 type attributesToSliceResponse struct {

@@ -1,23 +1,23 @@
-CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2_resource_bucket ON CLUSTER {{.SIGNOZ_CLUSTER}}
+CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2_resource ON CLUSTER {{.SIGNOZ_CLUSTER}}
 (
     `labels` String CODEC(ZSTD(5)),
     `fingerprint` String CODEC(ZSTD(1)),
     `seen_at_ts_bucket_start` Int64 CODEC(Delta(8), ZSTD(1)),
     INDEX idx_labels lower(labels) TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
 )
-ENGINE = ReplacingMergeTree
+ENGINE = {{.SIGNOZ_REPLICATED}}ReplacingMergeTree
 PARTITION BY toDate(seen_at_ts_bucket_start / 1000)
 ORDER BY (labels, fingerprint, seen_at_ts_bucket_start)
 SETTINGS ttl_only_drop_parts = 1, index_granularity = 8192;
 
 
-CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2_resource_bucket ON CLUSTER {{.SIGNOZ_CLUSTER}}
+CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2_resource ON CLUSTER {{.SIGNOZ_CLUSTER}}
 (
     `labels` String CODEC(ZSTD(5)),
     `fingerprint` String CODEC(ZSTD(1)),
     `seen_at_ts_bucket_start` Int64 CODEC(Delta(8), ZSTD(1))
 )
-ENGINE = Distributed('cluster', 'signoz_logs', 'logs_v2_resource_bucket', cityHash64(labels, fingerprint, seen_at_ts_bucket_start));
+ENGINE = Distributed({{.SIGNOZ_CLUSTER}}, 'signoz_logs', 'logs_v2_resource', cityHash64(labels, fingerprint));
 
 
 CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     INDEX attributes_int64_idx_val mapValues(attributes_number) TYPE bloom_filter GRANULARITY 1,
     INDEX attributes_bool_idx_key mapKeys(attributes_bool) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)
 SETTINGS index_granularity = 8192;
@@ -80,11 +80,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2 ON CLUSTER {{.SIGNOZ
     `scope_version` String CODEC(ZSTD(1)),
     `scope_string` Map(String, String) CODEC(ZSTD(1))
 )
-ENGINE = Distributed('cluster', 'signoz_logs', 'logs_v2', cityHash64(id));
-
-
-ALTER TABLE signoz_logs.tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
-ALTER TABLE signoz_logs.distributed_tag_attributes ON CLUSTER {{.SIGNOZ_CLUSTER}} modify column tagDataType Enum('string', 'bool', 'int64', 'float64', 'number') CODEC(ZSTD(1));
+ENGINE = Distributed({{.SIGNOZ_CLUSTER}}, 'signoz_logs', 'logs_v2', cityHash64(id));
 
 -- remove the old mv
 DROP TABLE IF EXISTS signoz_logs.resource_keys_string_final_mv ON CLUSTER  {{.SIGNOZ_CLUSTER}};
