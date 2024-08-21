@@ -33,13 +33,13 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     `severity_text` LowCardinality(String) CODEC(ZSTD(1)),
     `severity_number` UInt8,
     `body` String CODEC(ZSTD(2)),
-    `attributes_string` Map(String, String) CODEC(ZSTD(1)),
-    `attributes_number` Map(String, Float64) CODEC(ZSTD(1)),
-    `attributes_bool` Map(String, Bool) CODEC(ZSTD(1)),
-    `resources_string` Map(String, String) CODEC(ZSTD(1)),
+    `attributes_string` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `attributes_number` Map(LowCardinality(String), Float64) CODEC(ZSTD(1)),
+    `attributes_bool` Map(LowCardinality(String), Bool) CODEC(ZSTD(1)),
+    `resources_string` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `scope_name` String CODEC(ZSTD(1)),
     `scope_version` String CODEC(ZSTD(1)),
-    `scope_string` Map(String, String) CODEC(ZSTD(1)),
+    `scope_string` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     INDEX body_idx lower(body) TYPE ngrambf_v1(4, 60000, 5, 0) GRANULARITY 1,
     INDEX id_minmax id TYPE minmax GRANULARITY 1,
     INDEX severity_number_idx severity_number TYPE set(25) GRANULARITY 4,
@@ -72,13 +72,13 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.distributed_logs_v2 ON CLUSTER {{.SIGNOZ
     `severity_text` LowCardinality(String) CODEC(ZSTD(1)),
     `severity_number` UInt8,
     `body` String CODEC(ZSTD(2)),
-    `attributes_string` Map(String, String) CODEC(ZSTD(1)),
-    `attributes_number` Map(String, Float64) CODEC(ZSTD(1)),
-    `attributes_bool` Map(String, Bool) CODEC(ZSTD(1)),
-    `resources_string` Map(String, String) CODEC(ZSTD(1)),
+    `attributes_string` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `attributes_number` Map(LowCardinality(String), Float64) CODEC(ZSTD(1)),
+    `attributes_bool` Map(LowCardinality(String), Bool) CODEC(ZSTD(1)),
+    `resources_string` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     `scope_name` String CODEC(ZSTD(1)),
     `scope_version` String CODEC(ZSTD(1)),
-    `scope_string` Map(String, String) CODEC(ZSTD(1))
+    `scope_string` Map(LowCardinality(String), String) CODEC(ZSTD(1))
 )
 ENGINE = Distributed({{.SIGNOZ_CLUSTER}}, 'signoz_logs', 'logs_v2', cityHash64(id));
 
