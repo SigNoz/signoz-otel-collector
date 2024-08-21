@@ -50,7 +50,6 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 	return &DimensionHierarchyNode{
 		labels: []string{
 			"cloud.provider",
-			"source_type",
 		},
 		subHierachies: []DimensionHierarchyNode{{
 			labels: []string{"cloud.account.id"},
@@ -65,7 +64,10 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 					},
 
 					subHierachies: []DimensionHierarchyNode{{
-						labels: []string{"cloud.platform"},
+						labels: []string{
+							"cloud.platform",
+							"source_type",
+						},
 
 						subHierachies: []DimensionHierarchyNode{{
 							labels: []string{

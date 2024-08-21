@@ -30,7 +30,7 @@ func TestCalculateFingerprint(t *testing.T) {
 		{
 			Name:          "Vector and gcp",
 			ResourceAttrs: map[string]any{"gcp.project": "myproject", "source_type": "gcp", "random_key": "val"},
-			FingerPrint:   "source_type=gcp;gcp.project=myproject;hash=11162778839006855273",
+			FingerPrint:   "gcp.project=myproject;source_type=gcp;hash=11162778839006855273",
 		},
 	}
 
