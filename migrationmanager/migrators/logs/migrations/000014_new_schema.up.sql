@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2_resource ON CLUSTER {{.SIGNOZ_CL
 ENGINE = {{.SIGNOZ_REPLICATED}}ReplacingMergeTree
 PARTITION BY toDate(seen_at_ts_bucket_start / 1000)
 ORDER BY (labels, fingerprint, seen_at_ts_bucket_start)
+TTL toDateTime(seen_at_ts_bucket_start) + INTERVAL 1296000 SECOND + INTERVAL 1800 SECOND DELETE
 SETTINGS ttl_only_drop_parts = 1, index_granularity = 8192;
 
 
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
 ENGINE = {{.SIGNOZ_REPLICATED}}MergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)
-SETTINGS index_granularity = 8192;
+TTL toDateTime(timestamp / 1000000000) + INTERVAL 1296000 SECOND DELETE
+SETTINGS ttl_only_drop_parts = 1, index_granularity = 8192;
 
 
 
