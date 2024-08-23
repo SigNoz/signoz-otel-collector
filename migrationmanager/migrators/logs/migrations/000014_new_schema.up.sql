@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2_resource ON CLUSTER {{.SIGNOZ_CL
     `seen_at_ts_bucket_start` Int64 CODEC(Delta(8), ZSTD(1)),
     INDEX idx_labels lower(labels) TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1
 )
-ENGINE = {{.SIGNOZ_REPLICATED}}ReplacingMergeTree
+ENGINE = ReplicatedReplacingMergeTree
 PARTITION BY toDate(seen_at_ts_bucket_start / 1000)
 ORDER BY (labels, fingerprint, seen_at_ts_bucket_start)
 TTL toDateTime(seen_at_ts_bucket_start) + INTERVAL 1296000 SECOND + INTERVAL 1800 SECOND DELETE
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS  signoz_logs.logs_v2 ON CLUSTER {{.SIGNOZ_CLUSTER}}
     INDEX attributes_int64_idx_val mapValues(attributes_number) TYPE bloom_filter GRANULARITY 1,
     INDEX attributes_bool_idx_key mapKeys(attributes_bool) TYPE tokenbf_v1(1024, 2, 0) GRANULARITY 1
 )
-ENGINE = {{.SIGNOZ_REPLICATED}}MergeTree
+ENGINE = ReplicatedMergeTree
 PARTITION BY toDate(timestamp / 1000000000)
 ORDER BY (ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)
 TTL toDateTime(timestamp / 1000000000) + INTERVAL 1296000 SECOND DELETE
