@@ -191,7 +191,7 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 		if err != nil {
 			// StatementSend:code: 252, message: Too many partitions for single INSERT block
 			// iterating twice since we want to try once after removing the old data
-			if i == 1 || !strings.Contains(err.Error(), "StatementSend:code: 252") {
+			if i == 1 || !strings.Contains(err.Error(), "code: 252") {
 				// TODO(nitya): after returning it will be retried, ideally it should be pushed to DLQ
 				return err
 			}
@@ -439,7 +439,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		// check the errors
 		for i := 0; i < 3; i++ {
 			if r := <-chErr; r != nil {
-				return fmt.Errorf("StatementSend:%w", err)
+				return fmt.Errorf("StatementSend:%w", r)
 			}
 		}
 
