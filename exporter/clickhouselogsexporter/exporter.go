@@ -27,6 +27,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/logsv2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
@@ -41,15 +42,19 @@ import (
 )
 
 const (
-	DISTRIBUTED_LOGS_TABLE     = "distributed_logs"
-	DISTRIBUTED_TAG_ATTRIBUTES = "distributed_tag_attributes"
+	DISTRIBUTED_LOGS_TABLE               = "distributed_logs"
+	DISTRIBUTED_TAG_ATTRIBUTES           = "distributed_tag_attributes"
+	DISTRIBUTED_LOGS_TABLE_V2            = "distributed_logs_v2"
+	DISTRIBUTED_LOGS_RESOURCE_V2         = "distributed_logs_v2_resource"
+	DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS = 1800
 )
 
 type clickhouseLogsExporter struct {
-	id            uuid.UUID
-	db            clickhouse.Conn
-	insertLogsSQL string
-	ksuid         ksuid.KSUID
+	id              uuid.UUID
+	db              clickhouse.Conn
+	insertLogsSQL   string
+	insertLogsSQLV2 string
+	ksuid           ksuid.KSUID
 
 	logger *zap.Logger
 	cfg    *Config
@@ -71,6 +76,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	insertLogsSQL := renderInsertLogsSQL(cfg)
+	insertLogsSQLV2 := renderInsertLogsSQLV2(cfg)
 	id := uuid.New()
 	collector := usage.NewUsageCollector(
 		id,
@@ -93,15 +99,16 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	}
 
 	return &clickhouseLogsExporter{
-		id:             id,
-		db:             client,
-		insertLogsSQL:  insertLogsSQL,
-		logger:         logger,
-		cfg:            cfg,
-		ksuid:          ksuid.New(),
-		usageCollector: collector,
-		wg:             new(sync.WaitGroup),
-		closeChan:      make(chan struct{}),
+		id:              id,
+		db:              client,
+		insertLogsSQL:   insertLogsSQL,
+		insertLogsSQLV2: insertLogsSQLV2,
+		logger:          logger,
+		cfg:             cfg,
+		ksuid:           ksuid.New(),
+		usageCollector:  collector,
+		wg:              new(sync.WaitGroup),
+		closeChan:       make(chan struct{}),
 	}, nil
 }
 
@@ -202,7 +209,15 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 	return nil
 }
 
+func tsBucket(ts int64, bucketSize int64) int64 {
+	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
+}
+
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
+	resourcesSeen := map[int64]map[string]string{}
+
+	var insertLogsStmtV2 driver.Batch
+	var insertResourcesStmtV2 driver.Batch
 	var statement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -213,6 +228,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 		if tagStatement != nil {
 			_ = tagStatement.Abort()
+		}
+		if insertLogsStmtV2 != nil {
+			_ = insertLogsStmtV2.Abort()
+		}
+		if insertResourcesStmtV2 != nil {
+			_ = insertResourcesStmtV2.Abort()
 		}
 	}()
 
@@ -231,6 +252,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			return fmt.Errorf("PrepareTagBatch:%w", err)
 		}
 
+		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+		if err != nil {
+			return fmt.Errorf("PrepareBatchV2:%w", err)
+		}
+
 		metrics := map[string]usage.Metric{}
 
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
@@ -240,7 +266,15 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 			resources := attributesToSlice(res.Attributes(), true)
 
-			err := addAttrsToTagStatement(tagStatement, "resource", resources)
+			resourcesMap := attributesToMap(res.Attributes(), true)
+
+			serializedRes, err := json.Marshal(res.Attributes().AsRaw())
+			if err != nil {
+				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
+			}
+			resourceJson := string(serializedRes)
+
+			err = addAttrsToTagStatement(tagStatement, "resource", resources)
 			if err != nil {
 				return err
 			}
@@ -254,6 +288,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				scopeVersion := scope.Version()
 
 				scopeAttributes := attributesToSlice(scope.Attributes(), true)
+				scopeMap := attributesToMap(scope.Attributes(), true)
 
 				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes)
 				if err != nil {
@@ -279,7 +314,19 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						ts = ots
 					}
 
+					lBucketStart := tsBucket(int64(ts/1000000000), DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS)
+
+					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
+						resourcesSeen[int64(lBucketStart)] = map[string]string{}
+					}
+					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
+					if !exists {
+						fp = logsv2.CalculateFingerprint(res.Attributes().AsRaw(), logsv2.ResourceHierarchy())
+						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
+					}
+
 					attributes := attributesToSlice(r.Attributes(), false)
+					attrsMap := attributesToMap(r.Attributes(), false)
 
 					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
 					if err != nil {
@@ -289,6 +336,31 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					// remove after sometime
 					attributes = addTemporaryUnderscoreSupport(attributes)
 
+					err = insertLogsStmtV2.Append(
+						uint64(lBucketStart),
+						fp,
+						ts,
+						ots,
+						e.ksuid.String(),
+						utils.TraceIDToHexOrEmptyString(r.TraceID()),
+						utils.SpanIDToHexOrEmptyString(r.SpanID()),
+						uint32(r.Flags()),
+						r.SeverityText(),
+						uint8(r.SeverityNumber()),
+						getStringifiedBody(r.Body()),
+						attrsMap.StringData,
+						attrsMap.NumberData,
+						attrsMap.BoolData,
+						resourcesMap.StringData,
+						scopeName,
+						scopeVersion,
+						scopeMap.StringData,
+					)
+					if err != nil {
+						return fmt.Errorf("StatementAppendLogsV2:%w", err)
+					}
+
+					// old table
 					err = statement.Append(
 						ts,
 						ots,
@@ -321,18 +393,56 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				}
 			}
 		}
-		dbWriteStart := time.Now()
-		err = statement.Send()
-		stats.RecordWithTags(ctx,
-			[]tag.Mutator{
-				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
-				tag.Upsert(tableKey, DISTRIBUTED_LOGS_TABLE),
-			},
-			writeLatencyMillis.M(int64(time.Since(dbWriteStart).Milliseconds())),
+
+		insertResourcesStmtV2, err = e.db.PrepareBatch(
+			ctx,
+			fmt.Sprintf("INSERT into %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_V2),
+			driver.WithReleaseConnection(),
 		)
 		if err != nil {
-			return fmt.Errorf("StatementSend:%w", err)
+			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 		}
+
+		for bucketTs, resources := range resourcesSeen {
+			for resourceLabels, fingerprint := range resources {
+				insertResourcesStmtV2.Append(
+					resourceLabels,
+					fingerprint,
+					bucketTs,
+				)
+			}
+		}
+
+		var wg sync.WaitGroup
+		chErr := make(chan error, 3)
+		chDuration := make(chan statementSendDuration, 3)
+
+		wg.Add(3)
+		go send(statement, DISTRIBUTED_LOGS_TABLE, chDuration, chErr, &wg)
+		go send(insertLogsStmtV2, DISTRIBUTED_LOGS_TABLE_V2, chDuration, chErr, &wg)
+		go send(insertResourcesStmtV2, DISTRIBUTED_LOGS_RESOURCE_V2, chDuration, chErr, &wg)
+		wg.Wait()
+		close(chErr)
+
+		// store the duration for send the data
+		for i := 0; i < 3; i++ {
+			sendDuration := <-chDuration
+			stats.RecordWithTags(ctx,
+				[]tag.Mutator{
+					tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+					tag.Upsert(tableKey, sendDuration.Name),
+				},
+				writeLatencyMillis.M(int64(sendDuration.duration.Milliseconds())),
+			)
+		}
+
+		// check the errors
+		for i := 0; i < 3; i++ {
+			if r := <-chErr; r != nil {
+				return fmt.Errorf("StatementSend:%w", err)
+			}
+		}
+
 		duration := time.Since(start)
 		e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
 			zap.String("cost", duration.String()))
@@ -356,6 +466,22 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 
 		return err
+	}
+}
+
+type statementSendDuration struct {
+	Name     string
+	duration time.Duration
+}
+
+func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	start := time.Now()
+	err := statement.Send()
+	chErr <- err
+	durationCh <- statementSendDuration{
+		Name:     tableName,
+		duration: time.Since(start),
 	}
 }
 
@@ -401,10 +527,10 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			time.Now(),
 			v,
 			tagType,
-			"int64",
+			"float64",
+			nil,
 			nil,
 			attrs.IntValues[i],
-			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
@@ -441,9 +567,40 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 	return nil
 }
 
+type attributeMap struct {
+	StringData map[string]string
+	NumberData map[string]float64
+	BoolData   map[string]bool
+}
+
+func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response attributeMap) {
+	response.BoolData = map[string]bool{}
+	response.StringData = map[string]string{}
+	response.NumberData = map[string]float64{}
+	attributes.Range(func(k string, v pcommon.Value) bool {
+		if forceStringValues {
+			// store everything as string
+			response.StringData[k] = v.AsString()
+		} else {
+			switch v.Type() {
+			case pcommon.ValueTypeInt:
+				response.NumberData[k] = float64(v.Int())
+			case pcommon.ValueTypeDouble:
+				response.NumberData[k] = v.Double()
+			case pcommon.ValueTypeBool:
+				response.BoolData[k] = v.Bool()
+			default: // store it as string
+				response.StringData[k] = v.AsString()
+			}
+		}
+
+		return true
+	})
+	return response
+}
+
 func attributesToSlice(attributes pcommon.Map, forceStringValues bool) (response attributesToSliceResponse) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		// Support for . , remove the above section once done.
 		if forceStringValues {
 			// store everything as string
 			response.StringKeys = append(response.StringKeys, k)
@@ -519,7 +676,7 @@ const (
 							body,
 							resources_string_key,
 							resources_string_value,
-							attributes_string_key, 
+							attributes_string_key,
 							attributes_string_value,
 							attributes_int64_key,
 							attributes_int64_value,
@@ -558,6 +715,49 @@ const (
 								)`
 )
 
+const (
+	// language=ClickHouse SQL
+	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
+							ts_bucket_start,
+							resource_fingerprint,
+							timestamp,
+							observed_timestamp,
+							id,
+							trace_id,
+							span_id,
+							trace_flags,
+							severity_text,
+							severity_number,
+							body,
+							attributes_string,
+							attributes_number,
+							attributes_bool,
+							resources_string,
+							scope_name,
+							scope_version,
+							scope_string
+							) VALUES (
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?
+								)`
+)
+
 // newClickhouseClient create a clickhouse client.
 func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	// use empty database to create database
@@ -587,4 +787,8 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 
 func renderInsertLogsSQL(cfg *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
+}
+
+func renderInsertLogsSQLV2(cfg *Config) string {
+	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, DISTRIBUTED_LOGS_TABLE_V2)
 }
