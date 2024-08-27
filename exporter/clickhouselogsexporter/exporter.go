@@ -63,6 +63,8 @@ type clickhouseLogsExporter struct {
 
 	wg        *sync.WaitGroup
 	closeChan chan struct{}
+
+	useNewSchema bool
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -109,6 +111,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		usageCollector:  collector,
 		wg:              new(sync.WaitGroup),
 		closeChan:       make(chan struct{}),
+		useNewSchema:    cfg.UseNewSchema,
 	}, nil
 }
 
@@ -274,7 +277,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			}
 			resourceJson := string(serializedRes)
 
-			err = addAttrsToTagStatement(tagStatement, "resource", resources)
+			err = addAttrsToTagStatement(tagStatement, "resource", resources, e.useNewSchema)
 			if err != nil {
 				return err
 			}
@@ -290,7 +293,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				scopeAttributes := attributesToSlice(scope.Attributes(), true)
 				scopeMap := attributesToMap(scope.Attributes(), true)
 
-				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes)
+				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes, e.useNewSchema)
 				if err != nil {
 					return err
 				}
@@ -328,7 +331,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					attributes := attributesToSlice(r.Attributes(), false)
 					attrsMap := attributesToMap(r.Attributes(), false)
 
-					err := addAttrsToTagStatement(tagStatement, "tag", attributes)
+					err := addAttrsToTagStatement(tagStatement, "tag", attributes, e.useNewSchema)
 					if err != nil {
 						return err
 					}
@@ -507,7 +510,7 @@ func getStringifiedBody(body pcommon.Value) string {
 	return strBody
 }
 
-func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse) error {
+func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse, useNewSchema bool) error {
 	for i, v := range attrs.StringKeys {
 		err := statement.Append(
 			time.Now(),
@@ -522,12 +525,17 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
 		}
 	}
+
+	intTypeName := "int64"
+	if useNewSchema {
+		intTypeName = "float64"
+	}
 	for i, v := range attrs.IntKeys {
 		err := statement.Append(
 			time.Now(),
 			v,
 			tagType,
-			"float64",
+			intTypeName,
 			nil,
 			nil,
 			attrs.IntValues[i],
