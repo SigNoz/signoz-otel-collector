@@ -34,6 +34,7 @@ type Config struct {
 	DSN string `mapstructure:"dsn"`
 	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
 	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
+	UseNewSchema           bool `mapstructure:"use_new_schema" default:"false"`
 }
 
 var (
