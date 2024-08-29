@@ -54,7 +54,6 @@ type clickhouseLogsExporter struct {
 	db              clickhouse.Conn
 	insertLogsSQL   string
 	insertLogsSQLV2 string
-	ksuid           ksuid.KSUID
 
 	logger *zap.Logger
 	cfg    *Config
@@ -107,7 +106,6 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		insertLogsSQLV2: insertLogsSQLV2,
 		logger:          logger,
 		cfg:             cfg,
-		ksuid:           ksuid.New(),
 		usageCollector:  collector,
 		wg:              new(sync.WaitGroup),
 		closeChan:       make(chan struct{}),
@@ -317,6 +315,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						ts = ots
 					}
 
+					// generate the id from timestamp
+					id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(ts)))
+					if err != nil {
+						return fmt.Errorf("IdGenError:%w", err)
+					}
+
 					lBucketStart := tsBucket(int64(ts/1000000000), DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS)
 
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
@@ -331,7 +335,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					attributes := attributesToSlice(r.Attributes(), false)
 					attrsMap := attributesToMap(r.Attributes(), false)
 
-					err := addAttrsToTagStatement(tagStatement, "tag", attributes, e.useNewSchema)
+					err = addAttrsToTagStatement(tagStatement, "tag", attributes, e.useNewSchema)
 					if err != nil {
 						return err
 					}
@@ -344,7 +348,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						fp,
 						ts,
 						ots,
-						e.ksuid.String(),
+						id.String(),
 						utils.TraceIDToHexOrEmptyString(r.TraceID()),
 						utils.SpanIDToHexOrEmptyString(r.SpanID()),
 						uint32(r.Flags()),
@@ -367,7 +371,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					err = statement.Append(
 						ts,
 						ots,
-						e.ksuid.String(),
+						id.String(),
 						utils.TraceIDToHexOrEmptyString(r.TraceID()),
 						utils.SpanIDToHexOrEmptyString(r.SpanID()),
 						uint32(r.Flags()),
@@ -392,7 +396,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
 					}
-					e.ksuid = e.ksuid.Next()
 				}
 			}
 		}
