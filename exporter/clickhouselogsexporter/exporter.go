@@ -243,9 +243,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		return errors.New("shutdown has been called")
 	default:
 		start := time.Now()
-		statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareBatch:%w", err)
+		chLen := 2
+		if !e.useNewSchema {
+			chLen = 3
+			statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
+			if err != nil {
+				return fmt.Errorf("PrepareBatch:%w", err)
+			}
 		}
 
 		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES), driver.WithReleaseConnection())
@@ -368,31 +372,33 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					// old table
-					err = statement.Append(
-						ts,
-						ots,
-						id.String(),
-						utils.TraceIDToHexOrEmptyString(r.TraceID()),
-						utils.SpanIDToHexOrEmptyString(r.SpanID()),
-						uint32(r.Flags()),
-						r.SeverityText(),
-						uint8(r.SeverityNumber()),
-						getStringifiedBody(r.Body()),
-						resources.StringKeys,
-						resources.StringValues,
-						attributes.StringKeys,
-						attributes.StringValues,
-						attributes.IntKeys,
-						attributes.IntValues,
-						attributes.FloatKeys,
-						attributes.FloatValues,
-						attributes.BoolKeys,
-						attributes.BoolValues,
-						scopeName,
-						scopeVersion,
-						scopeAttributes.StringKeys,
-						scopeAttributes.StringValues,
-					)
+					if !e.useNewSchema {
+						err = statement.Append(
+							ts,
+							ots,
+							id.String(),
+							utils.TraceIDToHexOrEmptyString(r.TraceID()),
+							utils.SpanIDToHexOrEmptyString(r.SpanID()),
+							uint32(r.Flags()),
+							r.SeverityText(),
+							uint8(r.SeverityNumber()),
+							getStringifiedBody(r.Body()),
+							resources.StringKeys,
+							resources.StringValues,
+							attributes.StringKeys,
+							attributes.StringValues,
+							attributes.IntKeys,
+							attributes.IntValues,
+							attributes.FloatKeys,
+							attributes.FloatValues,
+							attributes.BoolKeys,
+							attributes.BoolValues,
+							scopeName,
+							scopeVersion,
+							scopeAttributes.StringKeys,
+							scopeAttributes.StringValues,
+						)
+					}
 					if err != nil {
 						return fmt.Errorf("StatementAppend:%w", err)
 					}
@@ -420,18 +426,20 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 
 		var wg sync.WaitGroup
-		chErr := make(chan error, 3)
-		chDuration := make(chan statementSendDuration, 3)
+		chErr := make(chan error, chLen)
+		chDuration := make(chan statementSendDuration, chLen)
 
-		wg.Add(3)
-		go send(statement, DISTRIBUTED_LOGS_TABLE, chDuration, chErr, &wg)
+		wg.Add(chLen)
+		if !e.useNewSchema {
+			go send(statement, DISTRIBUTED_LOGS_TABLE, chDuration, chErr, &wg)
+		}
 		go send(insertLogsStmtV2, DISTRIBUTED_LOGS_TABLE_V2, chDuration, chErr, &wg)
 		go send(insertResourcesStmtV2, DISTRIBUTED_LOGS_RESOURCE_V2, chDuration, chErr, &wg)
 		wg.Wait()
 		close(chErr)
 
 		// store the duration for send the data
-		for i := 0; i < 3; i++ {
+		for i := 0; i < chLen; i++ {
 			sendDuration := <-chDuration
 			stats.RecordWithTags(ctx,
 				[]tag.Mutator{
@@ -443,7 +451,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 
 		// check the errors
-		for i := 0; i < 3; i++ {
+		for i := 0; i < chLen; i++ {
 			if r := <-chErr; r != nil {
 				return fmt.Errorf("StatementSend:%w", r)
 			}
