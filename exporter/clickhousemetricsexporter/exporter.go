@@ -92,6 +92,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		MaxTimeSeriesInQuery: 50,
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
+		DisableV2:            cfg.DisableV2,
 		ExporterId:           id,
 	}
 	ch, err := NewClickHouse(params)

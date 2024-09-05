@@ -7,18 +7,18 @@ on:
 
 jobs:
   test:
-    uses: signoz/primus/.github/workflows/go-test.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-test.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
       GO_TEST_CONTEXT: ./...
   fmt:
-    uses: signoz/primus/.github/workflows/go-fmt.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-fmt.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
   lint:
-    uses: signoz/primus/.github/workflows/go-lint.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-lint.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main

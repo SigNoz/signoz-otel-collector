@@ -75,6 +75,7 @@ type clickHouse struct {
 	prevShardCount  uint64
 	watcherInterval time.Duration
 	writeTSToV4     bool
+	disableV2       bool
 
 	mWrittenTimeSeries prometheus.Counter
 
@@ -89,6 +90,7 @@ type ClickHouseParams struct {
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
 	WriteTSToV4          bool
+	DisableV2            bool
 	ExporterId           uuid.UUID
 }
 
@@ -139,6 +141,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		}),
 		watcherInterval: params.WatcherInterval,
 		writeTSToV4:     params.WriteTSToV4,
+		disableV2:       params.DisableV2,
 		exporterID:      params.ExporterId,
 	}
 
@@ -267,6 +270,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	ch.timeSeriesRW.Unlock()
 
 	err := func() error {
+		if ch.disableV2 {
+			return nil
+		}
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
@@ -306,6 +312,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}
 
 	err = func() error {
+		if ch.disableV2 {
+			return nil
+		}
 		ctx := context.Background()
 
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE), driver.WithReleaseConnection())

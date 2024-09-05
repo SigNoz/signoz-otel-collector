@@ -126,5 +126,6 @@ func createDefaultConfig() component.Config {
 		},
 		WatcherInterval: 30 * time.Second,
 		WriteTSToV4:     true,
+		DisableV2:       false,
 	}
 }
