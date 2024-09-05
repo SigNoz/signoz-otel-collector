@@ -26,6 +26,7 @@ type service struct {
 
 	l      *zap.Logger
 	client opamp.Client
+
 }
 
 func New(
