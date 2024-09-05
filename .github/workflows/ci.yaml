@@ -1,4 +1,4 @@
-name: test-pipeline
+name: ci
 
 on:
   pull_request:
