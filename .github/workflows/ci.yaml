@@ -12,7 +12,6 @@ jobs:
     with:
       PRIMUS_REF: main
       GO_TEST_CONTEXT: ./...
-      GO_TEST_TAGS: testing
   fmt:
     uses: signoz/primus/.github/workflows/go-fmt.yaml@main
     secrets: inherit
