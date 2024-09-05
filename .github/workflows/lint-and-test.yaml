@@ -6,19 +6,20 @@ on:
       - "**"
 
 jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.21
-
-      - name: Install tools
-        run: make install-ci
-
-      - name: Run unit tests and lint
-        run: make test-and-lint
+  test:
+    uses: signoz/primus/.github/workflows/go-test.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      GO_TEST_CONTEXT: ./...
+      GO_TEST_TAGS: testing
+  fmt:
+    uses: signoz/primus/.github/workflows/go-fmt.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+  lint:
+    uses: signoz/primus/.github/workflows/go-lint.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
