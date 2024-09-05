@@ -88,3 +88,4 @@ func (s *service) Shutdown(ctx context.Context) error {
 func (s *service) Error() <-chan error {
 	return s.client.Error()
 }
+
