@@ -35,7 +35,7 @@ func FingerprintHash(attribs map[string]any) uint64 {
 	}
 
 	keys := []string{}
-	for k, _ := range attribs {
+	for k := range attribs {
 		keys = append(keys, k)
 	}
 
