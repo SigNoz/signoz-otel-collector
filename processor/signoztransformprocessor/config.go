@@ -8,11 +8,11 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/logs"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metrics"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/traces"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
 // Config defines the configuration for the processor.
