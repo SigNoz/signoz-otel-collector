@@ -12,8 +12,8 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
 type Processor struct {

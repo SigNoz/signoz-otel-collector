@@ -94,7 +94,7 @@ func prepareFilterEvaluators(logger *zap.Logger, policyFilterCfg PolicyFilterCfg
 	return filterEvaluators
 }
 
-// Evaluate executes policy filter first to determine if the policy applies to current trace data	 
+// Evaluate executes policy filter first to determine if the policy applies to current trace data
 // and if it succeeds, then sampling is performed based on sampling params set on the
 // selected policy. This method works for both root and sub-policies.
 func (de *defaultEvaluator) Evaluate(traceId pcommon.TraceID, trace *sampling.TraceData) (sampling.Decision, error) {

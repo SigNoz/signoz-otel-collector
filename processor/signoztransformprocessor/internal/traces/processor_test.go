@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 )
 
 var (
