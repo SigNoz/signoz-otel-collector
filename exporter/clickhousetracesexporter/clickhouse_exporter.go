@@ -206,9 +206,9 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			span.MsgOperation = v.Str()
 		} else if k == "db.system" {
 			span.DBSystem = v.Str()
-		} else if k == "db.name" {
+		} else if k == "db.name" || k == "db.namespace" {
 			span.DBName = v.Str()
-		} else if k == "db.operation" {
+		} else if k == "db.operation" || k == "db.operation.name" {
 			span.DBOperation = v.Str()
 		} else if k == "peer.service" {
 			span.PeerService = v.Str()

@@ -37,7 +37,7 @@ func TestLoadConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	assert.Equal(t, len(cfg.Exporters), 2)
+	assert.Equal(t, len(cfg.Exporters), 3)
 
 	defaultCfg := factory.CreateDefaultConfig()
 	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000/?dial_timeout=5s"
@@ -64,4 +64,8 @@ func TestLoadConfig(t *testing.T) {
 			QueueSize:    100,
 		},
 	})
+
+	defaultCfg.(*Config).UseNewSchema = true
+	r2 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "new_schema")]
+	assert.Equal(t, r2, defaultCfg)
 }
