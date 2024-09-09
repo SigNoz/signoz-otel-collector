@@ -1,0 +1,26 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - v*
+
+jobs:
+  build-and-push-signoz-collector:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/signozcollector/main.go
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozcollector/Dockerfile
+
+  build-and-push-signoz-schema-migrator:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    with:
+        PRIMUS_REF: main
+        GO_BUILD_CONTEXT: ./cmd/signozschemamigrator/migrate.go
+        DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile
