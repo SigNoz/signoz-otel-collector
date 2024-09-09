@@ -1,3 +1,5 @@
+// Brought in as is from logstransform processor in opentelemetry-collector-contrib
+// with identifiers changed for the new processor
 package signozlogspipelineprocessor
 
 import (

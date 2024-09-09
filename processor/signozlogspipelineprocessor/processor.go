@@ -1,3 +1,5 @@
+// A sync implementation of stanza based processor.Logs
+// logstransform processor in opentelemetry-collector-contrib is async
 package signozlogspipelineprocessor
 
 import (

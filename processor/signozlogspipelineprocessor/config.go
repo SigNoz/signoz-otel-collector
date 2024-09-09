@@ -1,3 +1,4 @@
+// Brought in as is from logstransform processor in opentelemetry-collector-contrib
 package signozlogspipelineprocessor
 
 import (
@@ -19,8 +20,5 @@ func (cfg *Config) Validate() error {
 	if len(cfg.BaseConfig.Operators) == 0 {
 		return errors.New("no operators were configured for this logs transform processor")
 	}
-
-	// TODO(Raj): validate stanza config
-
 	return nil
 }
