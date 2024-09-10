@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -19,6 +20,8 @@ import (
 // Test happy path for supported logs pipeline processors
 func TestSignozPipelineProcessors(t *testing.T) {
 	require := require.New(t)
+
+	grok.RegisterStanzaParser()
 
 	tests := []struct {
 		name           string
@@ -115,6 +118,24 @@ func TestSignozPipelineProcessors(t *testing.T) {
 				map[string]any{
 					"a": "aval",
 					"b": "bval",
+				},
+			)},
+		}, {
+			name: "test grok processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: grok_parser
+            pattern: 'status: %{INT:status_code:int}'
+            parse_from: body
+            parse_to: attributes`),
+			input: []plog.Logs{makePlog(
+				"status: 200",
+				map[string]any{},
+			)},
+			expectedOutput: []plog.Logs{makePlog(
+				"status: 200",
+				map[string]any{
+					"status_code": 200,
 				},
 			)},
 		},
