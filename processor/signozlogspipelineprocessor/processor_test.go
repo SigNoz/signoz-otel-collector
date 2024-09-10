@@ -18,258 +18,256 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Test happy path for supported logs pipeline processors
-func TestSignozPipelineProcessors(t *testing.T) {
-	require := require.New(t)
+func init() {
 
 	grok.RegisterStanzaParser()
-
-	tests := []struct {
-		name           string
-		config         component.Config
-		input          []plog.Logs
-		expectedOutput []plog.Logs
-	}{
-		{
-			name: "test add processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: add
-            field: attributes.test
-            value: testValue`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test": "testValue",
-				},
-			)},
-		}, {
-			name: "test remove processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: remove
-            field: attributes.test`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test": "testValue",
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{},
-			)},
-		}, {
-			name: "test move processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: move
-            from: attributes.test
-            to: attributes.test1`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test": "testValue",
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test1": "testValue",
-				},
-			)},
-		}, {
-			name: "test copy processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: copy
-            from: attributes.test
-            to: attributes.test1`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test": "testValue",
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"test":  "testValue",
-					"test1": "testValue",
-				},
-			)},
-		}, {
-			name: "test regex processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: regex_parser
-            regex: ^a=(?P<a>.+);b=(?P<b>.+)$
-            parse_from: body
-            parse_to: attributes`),
-			input: []plog.Logs{makePlog(
-				"a=aval;b=bval",
-				map[string]any{},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"a=aval;b=bval",
-				map[string]any{
-					"a": "aval",
-					"b": "bval",
-				},
-			)},
-		}, {
-			name: "test grok processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: grok_parser
-            pattern: 'status: %{INT:status_code:int}'
-            parse_from: body
-            parse_to: attributes`),
-			input: []plog.Logs{makePlog(
-				"status: 200",
-				map[string]any{},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				"status: 200",
-				map[string]any{
-					"status_code": 200,
-				},
-			)},
-		}, {
-			name: "test JSON processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: json_parser
-            parse_from: body
-            parse_to: attributes`),
-			input: []plog.Logs{makePlog(
-				`{"status": "ok"}`,
-				map[string]any{},
-			)},
-			expectedOutput: []plog.Logs{makePlog(
-				`{"status": "ok"}`,
-				map[string]any{
-					"status": "ok",
-				},
-			)},
-		}, {
-			name: "test Trace processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: trace_parser
-            trace_id:
-              parse_from: attributes.traceId`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"traceId": "e37e734349000e2eda9c07cca0ceb692",
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
-				t,
-				"test log",
-				map[string]any{
-					"traceId": "e37e734349000e2eda9c07cca0ceb692",
-				},
-				map[string]any{
-					"trace_id": "e37e734349000e2eda9c07cca0ceb692",
-				},
-			)},
-		}, {
-			name: "test Severity processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: severity_parser
-            parse_from: attributes.sev
-            mapping:
-              error: oops
-            overwrite_text: true`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"sev": "oops",
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
-				t,
-				"test log",
-				map[string]any{
-					"sev": "oops",
-				},
-				map[string]any{
-					"severity_text":   "ERROR",
-					"severity_number": 17,
-				},
-			)},
-		}, {
-			name: "test timestamp processor works",
-			config: parseLogsTransformConfig(t, `
-        operators:
-          - type: time_parser
-            parse_from: attributes.tsUnixEpoch
-            layout_type: epoch
-            layout: s
-            overwrite_text: true`),
-			input: []plog.Logs{makePlog(
-				"test log",
-				map[string]any{
-					"tsUnixEpoch": 9999,
-				},
-			)},
-			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
-				t,
-				"test log",
-				map[string]any{
-					"tsUnixEpoch": 9999,
-				},
-				map[string]any{
-					"timestamp": time.Unix(9999, 0),
-				},
-			)},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tln := new(consumertest.LogsSink)
-			factory := NewFactory()
-			ltp, err := factory.CreateLogsProcessor(context.Background(), processortest.NewNopCreateSettings(), tt.config, tln)
-			require.NoError(err)
-
-			err = ltp.Start(context.Background(), nil)
-			require.NoError(err)
-
-			for _, inputPlog := range tt.input {
-				err = ltp.ConsumeLogs(context.Background(), inputPlog)
-				require.NoError(err)
-			}
-
-			output := tln.AllLogs()
-			require.Len(output, len(tt.expectedOutput))
-			for i, expected := range tt.expectedOutput {
-				found := output[i]
-				require.NoError(plogtest.CompareLogs(expected, found))
-			}
-
-		})
-	}
-
 }
 
-func parseLogsTransformConfig(t *testing.T, confYaml string) component.Config {
+// Tests for processors (stanza operators) supported in log pipelines
 
+func TestAddProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: add
+      field: attributes.test
+      value: testValue
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"test log", map[string]any{"test": "testValue"},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestRemoveProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: remove
+      field: attributes.test
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"test": "testValue"},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"test log", map[string]any{},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestMoveProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: move
+      from: attributes.test
+      to: attributes.test1
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"test": "testValue"},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"test log", map[string]any{"test1": "testValue"},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestCopyProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: copy
+      from: attributes.test
+      to: attributes.test1
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"test": "testValue"},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"test log", map[string]any{"test": "testValue", "test1": "testValue"},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestRegexProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: regex_parser
+      regex: ^a=(?P<a>.+);b=(?P<b>.+)$
+      parse_from: body
+      parse_to: attributes
+  `
+
+	input := []plog.Logs{makePlog(
+		"a=aval;b=bval", map[string]any{},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"a=aval;b=bval", map[string]any{
+			"a": "aval",
+			"b": "bval",
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestGrokProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: grok_parser
+      pattern: 'status: %{INT:status_code:int}'
+      parse_from: body
+      parse_to: attributes
+  `
+
+	input := []plog.Logs{makePlog(
+		"status: 200", map[string]any{},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		"status: 200", map[string]any{"status_code": 200},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestJSONProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: json_parser
+      parse_from: body
+      parse_to: attributes
+  `
+
+	input := []plog.Logs{makePlog(
+		`{"status": "ok"}`, map[string]any{},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		`{"status": "ok"}`, map[string]any{"status": "ok"},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestTraceProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: trace_parser
+      trace_id:
+        parse_from: attributes.traceId
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+	)}
+	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
+		t, "test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+		map[string]any{
+			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestSeverityProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: severity_parser
+      parse_from: attributes.sev
+      mapping:
+        error: oops
+      overwrite_text: true
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"sev": "oops"},
+	)}
+	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
+		t, "test log", map[string]any{"sev": "oops"},
+		map[string]any{
+			"severity_text":   "ERROR",
+			"severity_number": 17,
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func TestTimeProcessor(t *testing.T) {
+	confYaml := `
+  operators:
+    - type: time_parser
+      parse_from: attributes.tsUnixEpoch
+      layout_type: epoch
+      layout: s
+      overwrite_text: true
+  `
+
+	input := []plog.Logs{makePlog(
+		"test log", map[string]any{"tsUnixEpoch": 9999},
+	)}
+	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
+		t, "test log", map[string]any{"tsUnixEpoch": 9999},
+		map[string]any{"timestamp": time.Unix(9999, 0)},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+func validateProcessorBehavior(
+	t *testing.T,
+	confYaml string,
+	inputLogs []plog.Logs,
+	expectedOutput []plog.Logs,
+) {
+	require := require.New(t)
+
+	factory := NewFactory()
+
+	config := parseProcessorConfig(t, confYaml)
+	testSink := new(consumertest.LogsSink)
+	ltp, err := factory.CreateLogsProcessor(
+		context.Background(),
+		processortest.NewNopCreateSettings(),
+		config, testSink,
+	)
+	require.NoError(err)
+
+	err = ltp.Start(context.Background(), nil)
+	require.NoError(err)
+
+	for _, inputPlog := range inputLogs {
+		err = ltp.ConsumeLogs(context.Background(), inputPlog)
+		require.NoError(err)
+	}
+
+	output := testSink.AllLogs()
+	require.Len(output, len(expectedOutput))
+	for i, expected := range expectedOutput {
+		found := output[i]
+		require.NoError(plogtest.CompareLogs(expected, found))
+	}
+}
+
+func parseProcessorConfig(t *testing.T, confYaml string) component.Config {
 	var rawConf map[string]any
 	err := yaml.Unmarshal([]byte(confYaml), &rawConf)
-	require.NoError(t, err, "couldn't parse yaml config")
+	require.NoError(t, err, "couldn't parse config yaml")
 	cm := confmap.NewFromStringMap(rawConf)
 
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
-	require.NoError(t, component.UnmarshalConfig(cm, cfg))
+	require.NoError(
+		t, component.UnmarshalConfig(cm, cfg),
+		"couldn't unmarshal parsed yaml into processor config",
+	)
 	return cfg
 }
 
