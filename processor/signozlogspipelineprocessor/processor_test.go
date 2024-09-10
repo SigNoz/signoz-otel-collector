@@ -2,6 +2,7 @@ package signozlogspipelineprocessor
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -138,6 +139,97 @@ func TestSignozPipelineProcessors(t *testing.T) {
 					"status_code": 200,
 				},
 			)},
+		}, {
+			name: "test JSON processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: json_parser
+            parse_from: body
+            parse_to: attributes`),
+			input: []plog.Logs{makePlog(
+				`{"status": "ok"}`,
+				map[string]any{},
+			)},
+			expectedOutput: []plog.Logs{makePlog(
+				`{"status": "ok"}`,
+				map[string]any{
+					"status": "ok",
+				},
+			)},
+		}, {
+			name: "test Trace processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: trace_parser
+            trace_id:
+              parse_from: attributes.traceId`),
+			input: []plog.Logs{makePlog(
+				"test log",
+				map[string]any{
+					"traceId": "e37e734349000e2eda9c07cca0ceb692",
+				},
+			)},
+			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
+				t,
+				"test log",
+				map[string]any{
+					"traceId": "e37e734349000e2eda9c07cca0ceb692",
+				},
+				map[string]any{
+					"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+				},
+			)},
+		}, {
+			name: "test Severity processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: severity_parser
+            parse_from: attributes.sev
+            mapping:
+              error: oops
+            overwrite_text: true`),
+			input: []plog.Logs{makePlog(
+				"test log",
+				map[string]any{
+					"sev": "oops",
+				},
+			)},
+			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
+				t,
+				"test log",
+				map[string]any{
+					"sev": "oops",
+				},
+				map[string]any{
+					"severity_text":   "ERROR",
+					"severity_number": 17,
+				},
+			)},
+		}, {
+			name: "test timestamp processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: time_parser
+            parse_from: attributes.tsUnixEpoch
+            layout_type: epoch
+            layout: s
+            overwrite_text: true`),
+			input: []plog.Logs{makePlog(
+				"test log",
+				map[string]any{
+					"tsUnixEpoch": 9999,
+				},
+			)},
+			expectedOutput: []plog.Logs{makePlogWithTopLevelFields(
+				t,
+				"test log",
+				map[string]any{
+					"tsUnixEpoch": 9999,
+				},
+				map[string]any{
+					"timestamp": time.Unix(9999, 0),
+				},
+			)},
 		},
 	}
 
@@ -188,6 +280,31 @@ func makePlog(body string, attributes map[string]any) plog.Logs {
 	lr.Attributes().FromRaw(attributes)
 
 	lr.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Unix(500, 0)))
+
+	return ld
+}
+
+func makePlogWithTopLevelFields(t *testing.T, body string, attributes map[string]any, fields map[string]any) plog.Logs {
+	ld := makePlog(body, attributes)
+	lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+
+	if traceId, exists := fields["trace_id"]; exists {
+		traceIdBytes, err := hex.DecodeString(traceId.(string))
+		require.NoError(t, err)
+
+		lr.SetTraceID(pcommon.TraceID(traceIdBytes))
+	}
+
+	if sevText, exists := fields["severity_text"]; exists {
+		lr.SetSeverityText(sevText.(string))
+	}
+	if sevNum, exists := fields["severity_number"]; exists {
+		lr.SetSeverityNumber(plog.SeverityNumber(sevNum.(int)))
+	}
+
+	if timestamp, exists := fields["timestamp"]; exists {
+		lr.SetTimestamp(pcommon.NewTimestampFromTime(timestamp.(time.Time)))
+	}
 
 	return ld
 }
