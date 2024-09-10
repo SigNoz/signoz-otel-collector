@@ -221,6 +221,96 @@ func TestTimeProcessor(t *testing.T) {
 	validateProcessorBehavior(t, confYaml, input, expectedOutput)
 }
 
+// Test that translated Signoz logs pipelines work as expected
+func TestSignozLogPipelineWithRouterOp(t *testing.T) {
+	confYaml := `
+  operators:
+      - default: noop
+        id: router_signoz
+        routes:
+          - expr: attributes["container_name"] == "hotrod"
+            output: 61357da4-6d61-47f7-bcc5-1a2f00801b9a
+        type: router
+      - id: 61357da4-6d61-47f7-bcc5-1a2f00801b9a
+        if: body != nil && body matches "^(?P<ts>.*)\\t(?P<log_level>.*)\\t(?P<location>.*)\\t(?P<msg>.*)\\t(?P<data_json>.*)$$"
+        on_error: send
+        output: f2ff87ad-f051-46d4-89c3-0cef056d8677
+        parse_from: body
+        parse_to: attributes
+        regex: ^(?P<ts>.*)\t(?P<log_level>.*)\t(?P<location>.*)\t(?P<msg>.*)\t(?P<data_json>.*)$$
+        type: regex_parser
+      - id: f2ff87ad-f051-46d4-89c3-0cef056d8677
+        if: attributes?.data_json != nil && attributes.data_json matches "^\\s*{.*}\\s*$$"
+        output: dde26fcc-9140-4415-b1fb-d6daeab5e744
+        parse_from: attributes.data_json
+        parse_to: attributes
+        type: json_parser
+      - id: dde26fcc-9140-4415-b1fb-d6daeab5e744
+        if: attributes?.log_level != nil && ( type(attributes.log_level) == "string" || ( type(attributes.log_level) in ["int", "float"] && attributes.log_level == float(int(attributes.log_level)) ) )
+        mapping:
+          debug:
+              - DEBUG
+          error:
+              - ERROR
+          fatal:
+              - FATAL
+          info:
+              - INFO
+          trace:
+              - TRACE
+          warn:
+              - WARN
+        overwrite_text: true
+        parse_from: attributes.log_level
+        type: severity_parser
+      - id: 01ee2767-5d86-43c7-b0c4-a66651850b51
+        type: remove
+        if: attributes?.data_json != nil
+        field: attributes.data_json
+      - id: noop
+        type: noop
+  `
+
+	// A matching log should get processed.
+	input := []plog.Logs{makePlog(
+		`2024-09-04T09:58:39.635Z	ERROR	driver/server.go:85	Retrying GetDriver after error	{"service": "driver", "trace_id": "738d1c34020ba19e", "span_id": "69e77f208cb24e9b", "retry_no": 1, "error": "redis timeout"}`,
+		map[string]any{"container_name": "hotrod"},
+	)}
+	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
+		t,
+		`2024-09-04T09:58:39.635Z	ERROR	driver/server.go:85	Retrying GetDriver after error	{"service": "driver", "trace_id": "738d1c34020ba19e", "span_id": "69e77f208cb24e9b", "retry_no": 1, "error": "redis timeout"}`,
+		map[string]any{
+			"container_name": "hotrod",
+			"error":          "redis timeout",
+			"location":       "driver/server.go:85",
+			"log_level":      "ERROR",
+			"msg":            "Retrying GetDriver after error",
+			"retry_no":       float64(1),
+			"service":        "driver",
+			"span_id":        "69e77f208cb24e9b",
+			"trace_id":       "738d1c34020ba19e",
+			"ts":             "2024-09-04T09:58:39.635Z",
+		},
+		map[string]any{
+			"severity_text":   "ERROR",
+			"severity_number": 17,
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+
+	// A non-matching log should get ignored.
+	input = []plog.Logs{makePlog(
+		`2024-09-04T09:58:39.635Z	ERROR	driver/server.go:85	Retrying GetDriver after error	{"service": "driver", "trace_id": "738d1c34020ba19e", "span_id": "69e77f208cb24e9b", "retry_no": 1, "error": "redis timeout"}`,
+		map[string]any{"container_name": "not-hotrod"},
+	)}
+	expectedOutput = []plog.Logs{makePlog(
+		`2024-09-04T09:58:39.635Z	ERROR	driver/server.go:85	Retrying GetDriver after error	{"service": "driver", "trace_id": "738d1c34020ba19e", "span_id": "69e77f208cb24e9b", "retry_no": 1, "error": "redis timeout"}`,
+		map[string]any{"container_name": "not-hotrod"},
+	)}
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
 func validateProcessorBehavior(
 	t *testing.T,
 	confYaml string,
