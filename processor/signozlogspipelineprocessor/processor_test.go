@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Test happy path for supported logs pipeline processors
 func TestSignozPipelineProcessors(t *testing.T) {
 	require := require.New(t)
 
@@ -95,6 +96,25 @@ func TestSignozPipelineProcessors(t *testing.T) {
 				map[string]any{
 					"test":  "testValue",
 					"test1": "testValue",
+				},
+			)},
+		}, {
+			name: "test regex processor works",
+			config: parseLogsTransformConfig(t, `
+        operators:
+          - type: regex_parser
+            regex: ^a=(?P<a>.+);b=(?P<b>.+)$
+            parse_from: body
+            parse_to: attributes`),
+			input: []plog.Logs{makePlog(
+				"a=aval;b=bval",
+				map[string]any{},
+			)},
+			expectedOutput: []plog.Logs{makePlog(
+				"a=aval;b=bval",
+				map[string]any{
+					"a": "aval",
+					"b": "bval",
 				},
 			)},
 		},
