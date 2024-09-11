@@ -88,6 +88,7 @@ func Test_loadConfig(t *testing.T) {
 			WatcherInterval:             30 * time.Second,
 			WriteTSToV4:                 true,
 			DisableV2:                   false,
+			EnableExpHist:               false,
 		})
 }
 
