@@ -1,4 +1,4 @@
-// A sync implementation of stanza based processor.Logs
+// A sync implementation of stanza based otel collector processor.Logs
 // logstransform processor in opentelemetry-collector-contrib is async
 package signozlogspipelineprocessor
 
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/pipeline"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -28,6 +29,7 @@ func newProcessor(
 		nextConsumer: nextConsumer,
 		logger:       telemetrySettings.Logger,
 	}
+
 	stanzaPipeline, err := pipeline.Config{
 		Operators:     processorConfig.BaseConfig.Operators,
 		DefaultOutput: sink,
@@ -54,6 +56,7 @@ type logsPipelineProcessor struct {
 
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
+	firstOp         operator.Operator
 
 	shutdownFns []component.ShutdownFunc
 
@@ -73,12 +76,14 @@ func (p *logsPipelineProcessor) Start(ctx context.Context, _ component.Host) err
 		return p.stanzaPipeline.Stop()
 	})
 
+	// .Operators() returns topologically sorted operators for the stanza operator graph
+	// logs will be fed into p.firstOp for processing
+	p.firstOp = p.stanzaPipeline.Operators()[0]
+
 	return nil
 }
 
 // Collector shutting down
-// - must not accept any more data after call to Shutdown
-// - must be idempotent
 func (p *logsPipelineProcessor) Shutdown(ctx context.Context) error {
 	p.telemetrySettings.Logger.Info("Stopping logsPipelineProcessor")
 
@@ -99,7 +104,6 @@ func (p *logsPipelineProcessor) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
-// receive a Log for processing
 func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	p.telemetrySettings.Logger.Info(
 		"logsPipelineProcessor received logs",
@@ -108,23 +112,17 @@ func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) e
 
 	entries := plogToEntries(ld)
 
-	// .Operators() returns topologically sorted operators
-	// for the stanza operator graph
-	firstOp := p.stanzaPipeline.Operators()[0]
-
 	for _, e := range entries {
-		if err := firstOp.Process(ctx, e); err != nil {
+		if err := p.firstOp.Process(ctx, e); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
 	}
 
-	// TODO(Raj): Call flush on the sink at this point
-	// this ensures we don't emit one plog per entry
+	// Flush processed entries as a single plog.Logs to next consumer.
 	return p.sink.flush(ctx)
-
-	// return p.nextConsumer.ConsumeLogs(ctx, ld)
 }
 
+// Helpers below have been brought in as is from stanza adapter for logstransform
 func plogToEntries(src plog.Logs) []*entry.Entry {
 	result := []*entry.Entry{}
 	for rlIdx := 0; rlIdx < src.ResourceLogs().Len(); rlIdx++ {

@@ -15,8 +15,7 @@ import (
 // for passing them on to the next otel consumer.
 type stanzaToOtelConsumer struct {
 	nextConsumer consumer.Logs
-
-	logger *zap.Logger
+	logger       *zap.Logger
 
 	// One plog.Logs can contain many log records. While the otel processor ConsumeLogs works
 	// with one plog.Logs at a time, the stanza pipeline works with one log entry at a time.
