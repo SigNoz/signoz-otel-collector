@@ -105,7 +105,7 @@ func (p *logsPipelineProcessor) Capabilities() consumer.Capabilities {
 }
 
 func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
-	p.telemetrySettings.Logger.Info(
+	p.telemetrySettings.Logger.Debug(
 		"logsPipelineProcessor received logs",
 		zap.Any("logs", ld),
 	)
