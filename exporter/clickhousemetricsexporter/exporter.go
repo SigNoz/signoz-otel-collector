@@ -63,6 +63,7 @@ type PrwExporter struct {
 	metricNameToMeta map[string]base.MetricMeta
 	mux              *sync.Mutex
 	logger           *zap.Logger
+	enableExpHist    bool
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -135,6 +136,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		metricNameToMeta: make(map[string]base.MetricMeta),
 		mux:              new(sync.Mutex),
 		logger:           set.Logger,
+		enableExpHist:    cfg.EnableExpHist,
 	}, nil
 }
 
@@ -252,7 +254,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
@@ -261,23 +263,26 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped summary metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
+						if !prwe.enableExpHist {
+							continue
+						}
 						// we don't support cumulative exponential histograms
 						if temporality == pmetric.AggregationTemporalityCumulative {
 							dropped++
-							prwe.logger.Warn("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
 							continue
 						}
 
 						dataPoints := metric.ExponentialHistogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 
 						for x := 0; x < dataPoints.Len(); x++ {

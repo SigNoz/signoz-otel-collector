@@ -48,8 +48,9 @@ type Config struct {
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
 
-	WriteTSToV4 bool `mapstructure:"write_ts_to_v4"`
-	DisableV2   bool `mapstructure:"disable_v2"`
+	WriteTSToV4   bool `mapstructure:"write_ts_to_v4"`
+	DisableV2     bool `mapstructure:"disable_v2"`
+	EnableExpHist bool `mapstructure:"enable_exp_hist"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.
