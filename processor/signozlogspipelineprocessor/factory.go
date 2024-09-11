@@ -1,4 +1,4 @@
-// Brought in as is from logstransform processor in opentelemetry-collector-contrib
+// Brought in as is from signozlogspipeline processor in opentelemetry-collector-contrib
 // with identifiers changed for the new processor
 package signozlogspipelineprocessor
 
@@ -14,7 +14,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 )
 
-// NewFactory returns a new factory for the Logs Transform processor.
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		component.MustNewType("signozlogspipeline"),
@@ -22,7 +21,7 @@ func NewFactory() processor.Factory {
 		processor.WithLogs(createLogsProcessor, component.StabilityLevelDevelopment))
 }
 
-// Note: This isn't a valid configuration because the processor would do no work.
+// Note: This isn't a valid configuration (no operators would lead to no work being done)
 func createDefaultConfig() component.Config {
 	return &Config{
 		BaseConfig: adapter.BaseConfig{
@@ -38,11 +37,11 @@ func createLogsProcessor(
 	nextConsumer consumer.Logs) (processor.Logs, error) {
 	pCfg, ok := cfg.(*Config)
 	if !ok {
-		return nil, errors.New("could not initialize logs transform processor")
+		return nil, errors.New("could not initialize signozlogspipeline processor")
 	}
 
 	if len(pCfg.BaseConfig.Operators) == 0 {
-		return nil, errors.New("no operators were configured for this logs transform processor")
+		return nil, errors.New("no operators were configured for this signozlogspipeline processor")
 	}
 
 	return newProcessor(pCfg, nextConsumer, set.TelemetrySettings)
