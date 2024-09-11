@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -17,11 +16,6 @@ import (
 	"go.opentelemetry.io/collector/processor/processortest"
 	"gopkg.in/yaml.v2"
 )
-
-func init() {
-
-	grok.RegisterStanzaParser()
-}
 
 // Tests for processors (stanza operators) supported in log pipelines
 

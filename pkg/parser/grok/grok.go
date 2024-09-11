@@ -14,7 +14,7 @@ import (
 const operatorType = "grok_parser"
 
 func init() {
-	RegisterStanzaParser()
+	operator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
 // NewConfig creates a new grok parser config with default values
@@ -160,14 +160,4 @@ func (r *Parser) match(value string) (interface{}, error) {
 	}
 
 	return parsedValues, nil
-}
-
-var isRegistered bool = false
-
-func RegisterStanzaParser() {
-	if isRegistered {
-		return
-	}
-	operator.Register(operatorType, func() operator.Builder { return NewConfig() })
-	isRegistered = true
 }
