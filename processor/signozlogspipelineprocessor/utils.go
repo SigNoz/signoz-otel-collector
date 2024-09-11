@@ -1,32 +1,24 @@
+// Brought in as is from pkg/stanza/adapter/converter.go in opentelemetry-collector-contrib
 package signozlogspipelineprocessor
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-func HashResource(d map[string]any) string {
-	// TODO(Raj): Bring in hashing logic from logstransform
-	j, err := json.Marshal(d)
-	if err != nil {
-		panic(err)
-	}
-	return string(j)
-}
-
 func convertEntriesToPlogs(entries []*entry.Entry) plog.Logs {
-	resourceHashToIdx := make(map[string]int)
-	scopeIdxByResource := make(map[string]map[string]int)
+	resourceHashToIdx := make(map[uint64]int)
+	scopeIdxByResource := make(map[uint64]map[string]int)
 
 	pLogs := plog.NewLogs()
 	var sl plog.ScopeLogs
 
 	for _, e := range entries {
-		resourceID := HashResource(e.Resource)
+		resourceID := adapter.HashResource(e.Resource)
 		var rl plog.ResourceLogs
 
 		resourceIdx, ok := resourceHashToIdx[resourceID]

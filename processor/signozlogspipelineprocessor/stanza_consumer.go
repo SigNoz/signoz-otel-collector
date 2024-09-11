@@ -18,11 +18,11 @@ type stanzaToOtelConsumer struct {
 
 	logger *zap.Logger
 
-	// One plog.Logs can contain many log records. While the otel processor ConsumeLogs
-	// works with one plog.Logs at a time, the stanza pipeline works one log entry at a time.
-	// `processedEntries` accumulates entries processed for a single plog.Logs until the
+	// One plog.Logs can contain many log records. While the otel processor ConsumeLogs works
+	// with one plog.Logs at a time, the stanza pipeline works with one log entry at a time.
+	// `processedEntries` accumulates processed entries for a single plog.Logs until the
 	// signozlogspipeline processor flushes these entries out - converting them back into
-	// a single plog.Logs sent to `nextConsumer.ConsumeLogs`
+	// a single plog.Logs that gets sent to `nextConsumer.ConsumeLogs`
 	processedEntries []*entry.Entry
 
 	lock sync.Mutex
@@ -78,11 +78,11 @@ func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) 
 	return nil
 }
 
-// One plog.Logs can contain many log records. While the otel processor ConsumeLogs
-// works with one plog.Logs at a time, the stanza pipeline works one log entry at a time.
-// `processedEntries` accumulates entries processed for a single plog.Logs until the
+// One plog.Logs can contain many log records. While the otel processor ConsumeLogs works
+// with one plog.Logs at a time, the stanza pipeline works with one log entry at a time.
+// `processedEntries` accumulates processed entries for a single plog.Logs until the
 // signozlogspipeline processor flushes these entries out - converting them back into
-// a single plog.Logs sent to `nextConsumer.ConsumeLogs`
+// a single plog.Logs that gets sent to `nextConsumer.ConsumeLogs`
 func (c *stanzaToOtelConsumer) flush(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
