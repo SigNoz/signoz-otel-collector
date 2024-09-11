@@ -1,4 +1,4 @@
-// Brought in as is from signozlogspipeline processor in opentelemetry-collector-contrib
+// Brought in as is from logstransform processor in opentelemetry-collector-contrib
 // with identifiers changed for the new processor
 package signozlogspipelineprocessor
 
@@ -41,7 +41,7 @@ func createLogsProcessor(
 	}
 
 	if len(pCfg.BaseConfig.Operators) == 0 {
-		return nil, errors.New("no operators were configured for this signozlogspipeline processor")
+		return nil, errors.New("no operators were configured for signozlogspipeline processor")
 	}
 
 	return newProcessor(pCfg, nextConsumer, set.TelemetrySettings)

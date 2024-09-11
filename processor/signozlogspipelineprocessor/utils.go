@@ -1,110 +1,13 @@
 package signozlogspipelineprocessor
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.uber.org/zap"
 )
-
-// Stanza operator that consumes stanza entries, converts
-// them to pdata.Log and and passes them on to the next otel consumer
-
-// Implements stanza operator.Operator
-type stanzaToOtelConsumer struct {
-	nextConsumer consumer.Logs
-
-	logger *zap.Logger
-
-	lock             sync.Mutex
-	processedEntries []*entry.Entry
-}
-
-// Operator interface
-func (c *stanzaToOtelConsumer) ID() string {
-	return "stanza-otel-consumer"
-}
-
-// Type returns the type of the operator.
-func (c *stanzaToOtelConsumer) Type() string {
-	return "stanza-otel-consumer"
-}
-
-// Start will start the operator.
-func (c *stanzaToOtelConsumer) Start(_ operator.Persister) error {
-	return nil
-}
-
-// Stop will stop the operator.
-func (c *stanzaToOtelConsumer) Stop() error {
-	return nil
-}
-
-// CanOutput indicates if the operator will output entries to other operators.
-func (c *stanzaToOtelConsumer) CanOutput() bool {
-	return false
-}
-
-// Outputs returns the list of connected outputs.
-func (c *stanzaToOtelConsumer) Outputs() []operator.Operator {
-	return []operator.Operator{}
-}
-
-// GetOutputIDs returns the list of connected outputs.
-func (c *stanzaToOtelConsumer) GetOutputIDs() []string {
-	return []string{}
-}
-
-// SetOutputs will set the connected outputs.
-func (c *stanzaToOtelConsumer) SetOutputs([]operator.Operator) error {
-	return fmt.Errorf("outputs not supported")
-}
-
-// SetOutputIDs will set the connected outputs' IDs.
-func (c *stanzaToOtelConsumer) SetOutputIDs([]string) {
-}
-
-// CanProcess indicates if the operator will process entries from other operators.
-func (c *stanzaToOtelConsumer) CanProcess() bool {
-	return true
-}
-
-// Process will process an entry from an operator.
-func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) error {
-	// Convert to pdata.Log and pass it on to c.nextConsumer
-	// fmt.Println("stanza to otel sink received", entry)
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.processedEntries = append(c.processedEntries, entry)
-	return nil
-}
-
-func (c *stanzaToOtelConsumer) flush(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	plogs := convertEntriesToPlogs(c.processedEntries)
-
-	err := c.nextConsumer.ConsumeLogs(ctx, plogs)
-	if err != nil {
-		return err
-	}
-
-	c.processedEntries = []*entry.Entry{}
-
-	return nil
-}
-
-func (c *stanzaToOtelConsumer) Logger() *zap.Logger {
-	return c.logger
-}
 
 func HashResource(d map[string]any) string {
 	// TODO(Raj): Bring in hashing logic from logstransform

@@ -317,18 +317,18 @@ func validateProcessorBehavior(
 
 	config := parseProcessorConfig(t, confYaml)
 	testSink := new(consumertest.LogsSink)
-	ltp, err := factory.CreateLogsProcessor(
+	proc, err := factory.CreateLogsProcessor(
 		context.Background(),
 		processortest.NewNopCreateSettings(),
 		config, testSink,
 	)
 	require.NoError(err)
 
-	err = ltp.Start(context.Background(), nil)
+	err = proc.Start(context.Background(), nil)
 	require.NoError(err)
 
 	for _, inputPlog := range inputLogs {
-		err = ltp.ConsumeLogs(context.Background(), inputPlog)
+		err = proc.ConsumeLogs(context.Background(), inputPlog)
 		require.NoError(err)
 	}
 
