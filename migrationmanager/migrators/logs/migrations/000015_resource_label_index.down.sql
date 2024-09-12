@@ -1,0 +1,1 @@
+ALTER TABLE signoz_logs.logs_v2_resource ON CLUSTER {{.SIGNOZ_CLUSTER}} DROP INDEX IF EXISTS idx_labels_v1;
