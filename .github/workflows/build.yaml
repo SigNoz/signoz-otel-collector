@@ -11,18 +11,30 @@ on:
 jobs:
   build-and-push-signoz-collector:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    permissions:
+      contents: read
+      id-token: write
     secrets: inherit
     with:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/signozcollector/main.go
+      GO_BUILD_FLAGS: '-v'
+      DOCKER_BASE_IMAGES: '["alpine:latest"]' #placeholder
+      DOCKER_MANIFEST: true
       DOCKER_DOCKERFILE_PATH: ./cmd/signozcollector/Dockerfile
       PROVIDERS: aws,gcp,dockerhub
 
   build-and-push-signoz-schema-migrator:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    permissions:
+      contents: read
+      id-token: write
     secrets: inherit
     with:
-        PRIMUS_REF: main
-        GO_BUILD_CONTEXT: ./cmd/signozschemamigrator/migrate.go
-        DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile
-        PROVIDERS: aws,gcp,dockerhub
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/signozschemamigrator/migrate.go
+      GO_BUILD_FLAGS: '-v'
+      DOCKER_BASE_IMAGES: '["alpine:latest"]' #placeholder
+      DOCKER_MANIFEST: true
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile
+      PROVIDERS: aws,gcp,dockerhub
