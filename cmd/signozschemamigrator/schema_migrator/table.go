@@ -119,7 +119,6 @@ func (r ReplacingMergeTree) EngineType() string {
 }
 
 func (r ReplacingMergeTree) ToSQL() string {
-	fmt.Println("ReplacingMergeTree.ToSQL")
 	var sql strings.Builder
 	sql.WriteString(r.EngineType())
 	sql.WriteString(r.EngineParams())
