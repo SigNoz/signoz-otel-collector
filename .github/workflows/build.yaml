@@ -16,6 +16,7 @@ jobs:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/signozcollector/main.go
       DOCKER_DOCKERFILE_PATH: ./cmd/signozcollector/Dockerfile
+      PROVIDERS: aws,gcp,dockerhub
 
   build-and-push-signoz-schema-migrator:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
@@ -24,3 +25,4 @@ jobs:
         PRIMUS_REF: main
         GO_BUILD_CONTEXT: ./cmd/signozschemamigrator/migrate.go
         DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile
+        PROVIDERS: aws,gcp,dockerhub
