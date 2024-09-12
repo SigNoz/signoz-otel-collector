@@ -208,13 +208,14 @@ func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) err
 		return nil
 	}
 	m.logger.Info("Running squashed migrations for logs")
-	for _, migration := range SquashedLogsMigrations {
-		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
-				return err
-			}
-		}
-	}
+	// TODO(srikanthccv): enable in upcoming PR
+	// for _, migration := range SquashedLogsMigrations {
+	// 	for _, item := range migration.UpItems {
+	// 		if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 	m.logger.Info("Squashed migrations for logs completed")
 	return nil
 }
@@ -229,13 +230,14 @@ func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) 
 		return nil
 	}
 	m.logger.Info("Running squashed migrations for metrics")
-	for _, migration := range SquashedMetricsMigrations {
-		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
-				return err
-			}
-		}
-	}
+	// TODO(srikanthccv): enable in upcoming PR
+	// for _, migration := range SquashedMetricsMigrations {
+	// 	for _, item := range migration.UpItems {
+	// 		if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 	m.logger.Info("Squashed migrations for metrics completed")
 	return nil
 }
@@ -250,13 +252,14 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 		return nil
 	}
 	m.logger.Info("Running squashed migrations for traces")
-	for _, migration := range SquashedTracesMigrations {
-		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
-				return err
-			}
-		}
-	}
+	// TODO(srikanthccv): enable in upcoming PR
+	// for _, migration := range SquashedTracesMigrations {
+	// 	for _, item := range migration.UpItems {
+	// 		if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 	m.logger.Info("Squashed migrations for traces completed")
 	return nil
 }
