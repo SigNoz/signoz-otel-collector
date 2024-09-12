@@ -26,6 +26,19 @@ func TestAlterTableAddColumn(t *testing.T) {
 			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String",
 		},
 		{
+			name: "col-with-name-and-type-and-cluster-and-codec",
+			op: AlterTableAddColumn{
+				Database: "db",
+				Table:    "table",
+				Column: Column{
+					Name:  "col",
+					Type:  ColumnTypeString,
+					Codec: "ZSTD(5)",
+				},
+			}.OnCluster("cluster"),
+			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String CODEC(ZSTD(5))",
+		},
+		{
 			name: "col-with-name-and-type-without-cluster",
 			op: AlterTableAddColumn{
 				Database: "db",
