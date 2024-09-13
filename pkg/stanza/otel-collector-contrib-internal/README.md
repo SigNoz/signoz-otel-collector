@@ -1,0 +1,1 @@
+# Stuff brought over from opentelemetry-collector-contrib internal to get this copy of stanza to work
