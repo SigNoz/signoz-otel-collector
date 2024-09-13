@@ -298,9 +298,6 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 		if err := rows.Scan(&hostAddr, &port); err != nil {
 			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 		}
-		if hostAddr == "172.21.0.3" {
-			hostAddr = "localhost"
-		}
 		hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
 	}
 
