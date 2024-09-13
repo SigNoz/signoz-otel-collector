@@ -3,7 +3,6 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
@@ -23,8 +22,6 @@ type stanzaToOtelConsumer struct {
 	// signozlogspipeline processor flushes these entries out - converting them back into
 	// a single plog.Logs that gets sent to `nextConsumer.ConsumeLogs`
 	processedEntries []*entry.Entry
-
-	lock sync.Mutex
 }
 
 // stanzaToOtelConsumer must implement the stanza operator.Operator interface
@@ -70,9 +67,6 @@ func (c *stanzaToOtelConsumer) CanProcess() bool {
 // Process an entry passed on to this operator by a stanza pipeline
 // This operator is expected to be used as a sink in the stanza pipeline
 func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	c.processedEntries = append(c.processedEntries, entry)
 	return nil
 }
@@ -83,17 +77,13 @@ func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) 
 // signozlogspipeline processor flushes these entries out - converting them back into
 // a single plog.Logs that gets sent to `nextConsumer.ConsumeLogs`
 func (c *stanzaToOtelConsumer) flush(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	plogs := convertEntriesToPlogs(c.processedEntries)
+	c.processedEntries = []*entry.Entry{}
 
 	err := c.nextConsumer.ConsumeLogs(ctx, plogs)
 	if err != nil {
 		return err
 	}
-
-	c.processedEntries = []*entry.Entry{}
 
 	return nil
 }
