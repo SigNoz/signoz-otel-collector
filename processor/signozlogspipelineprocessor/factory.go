@@ -50,7 +50,7 @@ func createLogsProcessor(
 
 	proc, err := newLogsPipelineProcessor(pCfg, set.TelemetrySettings)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't build \"logspipeline\" processor %w", err)
+		return nil, fmt.Errorf("couldn't build \"signozlogspipeline\" processor %w", err)
 	}
 
 	return processorhelper.NewLogsProcessor(
