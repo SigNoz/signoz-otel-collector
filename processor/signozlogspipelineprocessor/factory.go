@@ -5,10 +5,12 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
+	"go.opentelemetry.io/collector/processor/processorhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
@@ -30,19 +32,35 @@ func createDefaultConfig() component.Config {
 	}
 }
 
+var processorCapabilities = consumer.Capabilities{MutatesData: true}
+
 func createLogsProcessor(
-	_ context.Context,
+	ctx context.Context,
 	set processor.CreateSettings,
 	cfg component.Config,
-	nextConsumer consumer.Logs) (processor.Logs, error) {
+	nextConsumer consumer.Logs,
+) (processor.Logs, error) {
 	pCfg, ok := cfg.(*Config)
 	if !ok {
 		return nil, errors.New("could not initialize signozlogspipeline processor")
 	}
-
 	if len(pCfg.BaseConfig.Operators) == 0 {
 		return nil, errors.New("no operators were configured for signozlogspipeline processor")
 	}
 
-	return newProcessor(pCfg, nextConsumer, set.TelemetrySettings)
+	proc, err := newLogsPipelineProcessor(pCfg, set.TelemetrySettings)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't build \"logspipeline\" processor %w", err)
+	}
+
+	return processorhelper.NewLogsProcessor(
+		ctx,
+		set,
+		cfg,
+		nextConsumer,
+		proc.ProcessLogs,
+		processorhelper.WithStart(proc.Start),
+		processorhelper.WithShutdown(proc.Shutdown),
+		processorhelper.WithCapabilities(processorCapabilities),
+	)
 }
