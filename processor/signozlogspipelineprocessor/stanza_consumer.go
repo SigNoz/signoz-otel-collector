@@ -6,15 +6,14 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
 
 // A stanza operator that consumes stanza entries and converts them to pdata.Log
 // for passing them on to the next otel consumer.
 type stanzaToOtelConsumer struct {
-	nextConsumer consumer.Logs
-	logger       *zap.Logger
+	logger *zap.Logger
 
 	// One plog.Logs can contain many log records. While the otel processor ConsumeLogs works
 	// with one plog.Logs at a time, the stanza pipeline works with one log entry at a time.
@@ -76,16 +75,10 @@ func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) 
 // `processedEntries` accumulates processed entries for a single plog.Logs until the
 // signozlogspipeline processor flushes these entries out - converting them back into
 // a single plog.Logs that gets sent to `nextConsumer.ConsumeLogs`
-func (c *stanzaToOtelConsumer) flush(ctx context.Context) error {
+func (c *stanzaToOtelConsumer) flush(ctx context.Context) plog.Logs {
 	plogs := convertEntriesToPlogs(c.processedEntries)
 	c.processedEntries = []*entry.Entry{}
-
-	err := c.nextConsumer.ConsumeLogs(ctx, plogs)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return plogs
 }
 
 func (c *stanzaToOtelConsumer) Logger() *zap.Logger {
