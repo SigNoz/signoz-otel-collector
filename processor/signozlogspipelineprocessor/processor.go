@@ -11,7 +11,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/pipeline"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/extension/experimental/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
@@ -19,15 +18,13 @@ import (
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
 
-func newProcessor(
+func newLogsPipelineProcessor(
 	processorConfig *Config,
-	nextConsumer consumer.Logs,
 	telemetrySettings component.TelemetrySettings,
 ) (*logsPipelineProcessor, error) {
 
 	sink := &stanzaToOtelConsumer{
-		nextConsumer: nextConsumer,
-		logger:       telemetrySettings.Logger,
+		logger: telemetrySettings.Logger,
 	}
 
 	stanzaPipeline, err := pipeline.Config{
@@ -40,7 +37,6 @@ func newProcessor(
 
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
-		nextConsumer:      nextConsumer,
 
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
@@ -49,10 +45,8 @@ func newProcessor(
 	}, nil
 }
 
-// Implements processor.Logs
 type logsPipelineProcessor struct {
 	telemetrySettings component.TelemetrySettings
-	nextConsumer      consumer.Logs
 
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
@@ -99,12 +93,7 @@ func (p *logsPipelineProcessor) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// baseConsumer interface
-func (p *logsPipelineProcessor) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: true}
-}
-
-func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
+func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
 	p.telemetrySettings.Logger.Debug(
 		"logsPipelineProcessor received logs",
 		zap.Any("logs", ld),
@@ -118,8 +107,8 @@ func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) e
 		}
 	}
 
-	// Flush processed entries as a single plog.Logs to next consumer.
-	return p.sink.flush(ctx)
+	// Return processed entries as a single plog.Logs
+	return p.sink.flush(ctx), nil
 }
 
 // Helpers below have been brought in as is from stanza adapter for logstransform
