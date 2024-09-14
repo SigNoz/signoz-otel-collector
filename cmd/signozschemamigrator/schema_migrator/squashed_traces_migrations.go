@@ -62,6 +62,13 @@ var (
 						{Name: "idx_resourceTagsMapValues", Expression: "mapValues(resourceTagsMap)", Type: "bloom_filter(0.01)", Granularity: 64},
 						{Name: "idx_statusCodeString", Expression: "statusCodeString", Type: "set(3)", Granularity: 4},
 						{Name: "idx_spanKind", Expression: "spanKind", Type: "set(5)", Granularity: 4},
+						{Name: "idx_stringTagMapKeys", Expression: "mapKeys(stringTagMap)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+						{Name: "idx_stringTagMapValues", Expression: "mapValues(stringTagMap)", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
+						{Name: "idx_numberTagMapKeys", Expression: "mapKeys(numberTagMap)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+						{Name: "idx_numberTagMapValues", Expression: "mapValues(numberTagMap)", Type: "bloom_filter(0.01)", Granularity: 1},
+						{Name: "idx_boolTagMapKeys", Expression: "mapKeys(boolTagMap)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+						{Name: "idx_resourceTagMapKeys", Expression: "mapKeys(resourceTagsMap)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+						{Name: "idx_resourceTagMapValues", Expression: "mapValues(resourceTagsMap)", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					},
 					Projections: []Projection{
 						{Name: "timestampSort", Query: "SELECT * ORDER BY timestamp"},
