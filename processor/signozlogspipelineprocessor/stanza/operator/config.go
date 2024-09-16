@@ -1,3 +1,7 @@
+// Mostly Brought in as is from opentelemetry-collector-contrib
+// Maintaining our own copy/version of Config allows us to use our own
+// registry of stanza operators in Config.Unmarshal
+
 package signozlogspipelinestanzaoperator
 
 import (
