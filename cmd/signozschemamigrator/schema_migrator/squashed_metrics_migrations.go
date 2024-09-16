@@ -379,7 +379,7 @@ var (
 					},
 					Engine: Distributed{
 						Database:    "signoz_metrics",
-						Table:       "time_series_v4",
+						Table:       "time_series_v4_6hrs",
 						ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
 					},
 				},
