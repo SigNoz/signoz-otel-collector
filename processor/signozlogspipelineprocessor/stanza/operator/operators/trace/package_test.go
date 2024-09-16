@@ -1,6 +1,6 @@
 // Brought in as is from opentelemetry-collector-contrib
 
-package severity
+package trace
 
 import (
 	"testing"
