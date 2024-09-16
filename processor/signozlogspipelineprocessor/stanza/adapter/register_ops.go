@@ -2,5 +2,6 @@
 package signozlogspipelinestanzaadapter
 
 import (
+	_ "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operators/add"
 	_ "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operators/copy"
 )
