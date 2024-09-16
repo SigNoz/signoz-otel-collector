@@ -7,13 +7,12 @@ import (
 	"errors"
 	"fmt"
 
+	signozlogspipelinestanzaadapter "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/adapter"
+	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 )
 
 func NewFactory() processor.Factory {
@@ -26,8 +25,8 @@ func NewFactory() processor.Factory {
 // Note: This isn't a valid configuration (no operators would lead to no work being done)
 func createDefaultConfig() component.Config {
 	return &Config{
-		BaseConfig: adapter.BaseConfig{
-			Operators: []operator.Config{},
+		BaseConfig: signozlogspipelinestanzaadapter.BaseConfig{
+			Operators: []signozlogspipelinestanzaoperator.Config{},
 		},
 	}
 }

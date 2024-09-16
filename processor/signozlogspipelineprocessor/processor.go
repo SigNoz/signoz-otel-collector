@@ -28,7 +28,7 @@ func newLogsPipelineProcessor(
 	}
 
 	stanzaPipeline, err := pipeline.Config{
-		Operators:     processorConfig.BaseConfig.Operators,
+		Operators:     processorConfig.OperatorConfigs(),
 		DefaultOutput: sink,
 	}.Build(telemetrySettings)
 	if err != nil {
