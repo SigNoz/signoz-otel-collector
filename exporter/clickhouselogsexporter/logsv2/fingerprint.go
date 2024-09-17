@@ -46,7 +46,7 @@ func (node *DimensionHierarchyNode) Identifier(attributes map[string]any) []IdLa
 	return result
 }
 
-// Get list of synonymous labels in a hierarchy for `attribute` or `nil“
+// Get list of synonymous labels in a hierarchy for `attribute` or `nil`
 func (node *DimensionHierarchyNode) Synonyms(attribute string) []string {
 	if node == nil {
 		return nil
@@ -58,7 +58,7 @@ func (node *DimensionHierarchyNode) Synonyms(attribute string) []string {
 
 	for _, h := range node.subHierachies {
 		synonyms := h.Synonyms(attribute)
-		if synonyms != nil {
+		if len(synonyms) > 0 {
 			return synonyms
 		}
 	}
