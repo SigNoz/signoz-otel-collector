@@ -2,6 +2,7 @@ package logsv2
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -43,6 +44,26 @@ func (node *DimensionHierarchyNode) Identifier(attributes map[string]any) []IdLa
 	}
 
 	return result
+}
+
+// Get list of synonymous labels in a hierarchy for `attribute` or `nil“
+func (node *DimensionHierarchyNode) Synonyms(attribute string) []string {
+	if node == nil {
+		return nil
+	}
+
+	if slices.Contains(node.labels, attribute) {
+		return node.labels[:]
+	}
+
+	for _, h := range node.subHierachies {
+		synonyms := h.Synonyms(attribute)
+		if synonyms != nil {
+			return synonyms
+		}
+	}
+
+	return nil
 }
 
 // TODO(Raj/Nitya): Consider parsing this stuff out from json
