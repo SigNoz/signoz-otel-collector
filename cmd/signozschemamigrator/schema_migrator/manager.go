@@ -551,7 +551,7 @@ func (m *MigrationManager) shouldRunMigration(db string, migrationID uint64, ver
 	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
 	m.logger.Info("Fetching migration status", zap.String("query", query))
 	var migrationSchemaMigrationRecord MigrationSchemaMigrationRecord
-	if err := m.conn.QueryRow(context.Background(), query).Scan(&migrationSchemaMigrationRecord); err != nil {
+	if err := m.conn.QueryRow(context.Background(), query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
 		if err == sql.ErrNoRows {
 			m.logger.Info("Migration not run", zap.Uint64("migration_id", migrationID))
 			return true
