@@ -19,7 +19,7 @@ jobs:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/signozcollector/main.go
       GO_BUILD_FLAGS: '-v'
-      DOCKER_BASE_IMAGES: '["alpine:latest"]' #placeholder
+      DOCKER_BASE_IMAGES: '["alpine:3"]' #placeholder
       DOCKER_MANIFEST: true
       DOCKER_DOCKERFILE_PATH: ./cmd/signozcollector/Dockerfile
       PROVIDERS: aws,gcp,dockerhub
@@ -34,7 +34,7 @@ jobs:
       PRIMUS_REF: main
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator/migrate.go
       GO_BUILD_FLAGS: '-v'
-      DOCKER_BASE_IMAGES: '["alpine:latest"]' #placeholder
+      DOCKER_BASE_IMAGES: '["alpine:3.17"]' #placeholder
       DOCKER_MANIFEST: true
       DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile
       PROVIDERS: aws,gcp,dockerhub
