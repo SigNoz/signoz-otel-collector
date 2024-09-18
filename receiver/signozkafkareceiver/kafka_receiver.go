@@ -149,8 +149,10 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
-			logger:        c.settings.Logger,
-			retryInterval: 1 * time.Second,
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
 		},
 	}
 	go func() {
@@ -159,6 +161,18 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		}
 	}()
 	<-consumerGroup.ready
+
+	select {
+	case p := <-consumerGroup.pausePartition:
+		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+	case p := <-consumerGroup.resumePartition:
+		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+	case <-ctx.Done():
+		return nil
+	}
+
 	return nil
 }
 
@@ -251,8 +265,10 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
-			logger:        c.settings.Logger,
-			retryInterval: 1 * time.Second,
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
 		},
 	}
 	go func() {
@@ -261,6 +277,18 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		}
 	}()
 	<-metricsConsumerGroup.ready
+
+	select {
+	case p := <-metricsConsumerGroup.pausePartition:
+		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+	case p := <-metricsConsumerGroup.resumePartition:
+		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+	case <-ctx.Done():
+		return nil
+	}
+
 	return nil
 }
 
@@ -381,8 +409,10 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
-			logger:        c.settings.Logger,
-			retryInterval: 1 * time.Second,
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
 		},
 	}
 	go func() {
@@ -391,6 +421,18 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		}
 	}()
 	<-logsConsumerGroup.ready
+
+	select {
+	case p := <-logsConsumerGroup.pausePartition:
+		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+	case p := <-logsConsumerGroup.resumePartition:
+		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+	case <-ctx.Done():
+		return nil
+	}
+
 	return nil
 }
 
@@ -416,8 +458,10 @@ func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
 }
 
 type baseConsumerGroupHandler struct {
-	logger        *zap.Logger
-	retryInterval time.Duration
+	logger          *zap.Logger
+	retryInterval   time.Duration
+	pausePartition  chan int32
+	resumePartition chan int32
 }
 
 // wrap is now a method of BaseConsumerGroupHandler
@@ -433,16 +477,19 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 	defer ticker.Stop()
 
 	b.logger.Info("applying initial backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-	claim.Partition()
+	b.pausePartition <- claim.Partition()
 
 	for {
 		select {
 		case <-ticker.C:
 			err := consume()
 			if err == nil {
+				b.logger.Info("resuming normal operation", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
+				b.resumePartition <- claim.Partition()
 				return nil
 			}
 			if !errors.Is(err, errHighMemoryUsage) {
+				b.resumePartition <- claim.Partition()
 				return err
 			}
 			b.logger.Info("continuing to apply backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
