@@ -1036,8 +1036,9 @@ func (t testConsumerGroupSession) Context() context.Context {
 }
 
 type testConsumerGroup struct {
-	once sync.Once
-	err  error
+	once   sync.Once
+	err    error
+	paused bool
 }
 
 var _ sarama.ConsumerGroup = (*testConsumerGroup)(nil)
@@ -1058,7 +1059,7 @@ func (t *testConsumerGroup) Close() error {
 }
 
 func (t *testConsumerGroup) Pause(_ map[string][]int32) {
-	panic("implement me")
+	t.paused = true
 }
 
 func (t *testConsumerGroup) PauseAll() {
@@ -1066,7 +1067,7 @@ func (t *testConsumerGroup) PauseAll() {
 }
 
 func (t *testConsumerGroup) Resume(_ map[string][]int32) {
-	panic("implement me")
+	t.paused = false
 }
 
 func (t *testConsumerGroup) ResumeAll() {
