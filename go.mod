@@ -25,9 +25,11 @@ require (
 	github.com/lightstep/go-expohisto v1.0.0
 	github.com/oklog/ulid v1.3.1
 	github.com/open-telemetry/opamp-go v0.5.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.102.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/loadbalancingexporter v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opencensusexporter v0.102.0
@@ -89,6 +91,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/elasticsearchreceiver v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/fluentforwardreceiver v0.102.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v0.102.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.102.0
@@ -150,6 +153,7 @@ require (
 	go.opentelemetry.io/collector/confmap/converter/expandconverter v0.102.0
 	go.opentelemetry.io/collector/confmap/provider/envprovider v0.102.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v0.102.0
+	go.opentelemetry.io/collector/connector v0.102.0
 	go.opentelemetry.io/collector/consumer v0.102.1
 	go.opentelemetry.io/collector/exporter v0.102.0
 	go.opentelemetry.io/collector/exporter/loggingexporter v0.102.0
@@ -179,7 +183,13 @@ require (
 )
 
 require (
+	cloud.google.com/go/auth v0.4.2 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	cloud.google.com/go/iam v1.1.8 // indirect
+	cloud.google.com/go/logging v1.10.0 // indirect
+	cloud.google.com/go/longrunning v0.5.7 // indirect
+	cloud.google.com/go/pubsub v1.38.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
@@ -293,7 +303,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
-	github.com/googleapis/gax-go/v2 v2.12.2 // indirect
+	github.com/googleapis/gax-go/v2 v2.12.4 // indirect
 	github.com/gophercloud/gophercloud v1.8.0 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/grobie/gomemcache v0.0.0-20230213081705-239240bbc445 // indirect
@@ -413,7 +423,6 @@ require (
 	go.opentelemetry.io/collector/confmap/provider/httpprovider v0.102.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/httpsprovider v0.102.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v0.102.0 // indirect
-	go.opentelemetry.io/collector/connector v0.102.0 // indirect
 	go.opentelemetry.io/collector/extension/auth v0.102.1 // indirect
 	go.opentelemetry.io/collector/filter v0.102.0 // indirect
 	go.opentelemetry.io/collector/pdata/testdata v0.102.1 // indirect
@@ -435,7 +444,8 @@ require (
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	google.golang.org/api v0.169.0 // indirect
+	google.golang.org/api v0.182.0 // indirect
+	google.golang.org/genproto v0.0.0-20240513163218-0867130af1f8 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/api v0.29.3 // indirect
@@ -547,7 +557,7 @@ require (
 	golang.org/x/sys v0.21.0 // indirect
 	gonum.org/v1/gonum v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240520151616-dc85e6b867a5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240520151616-dc85e6b867a5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240521202816-d264139d666e // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
