@@ -20,6 +20,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/golang-lru v1.0.2
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/knadh/koanf v1.5.0
 	github.com/lightstep/go-expohisto v1.0.0
 	github.com/oklog/ulid v1.3.1
@@ -168,6 +169,7 @@ require (
 	go.opentelemetry.io/collector/semconv v0.102.0
 	go.opentelemetry.io/otel/trace v1.27.0
 	go.uber.org/atomic v1.11.0
+	go.uber.org/goleak v1.3.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/text v0.16.0
@@ -312,7 +314,6 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/ionos-cloud/sdk-go/v6 v6.1.11 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
-	github.com/jellydator/ttlcache/v3 v3.2.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect

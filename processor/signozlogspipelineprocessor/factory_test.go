@@ -5,14 +5,14 @@ import (
 	"context"
 	"testing"
 
+	signozlogspipelinestanzaadapter "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/adapter"
+	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/processor/processortest"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/parser/regex"
 )
@@ -27,8 +27,8 @@ func TestCreateDefaultConfig(t *testing.T) {
 func TestCreateProcessor(t *testing.T) {
 	factory := NewFactory()
 	cfg := &Config{
-		BaseConfig: adapter.BaseConfig{
-			Operators: []operator.Config{
+		BaseConfig: signozlogspipelinestanzaadapter.BaseConfig{
+			Operators: []signozlogspipelinestanzaoperator.Config{
 				{
 					Builder: func() *regex.Config {
 						cfg := regex.NewConfig()
@@ -57,8 +57,8 @@ func TestCreateProcessor(t *testing.T) {
 func TestInvalidOperators(t *testing.T) {
 	factory := NewFactory()
 	cfg := &Config{
-		BaseConfig: adapter.BaseConfig{
-			Operators: []operator.Config{
+		BaseConfig: signozlogspipelinestanzaadapter.BaseConfig{
+			Operators: []signozlogspipelinestanzaoperator.Config{
 				{
 					// invalid due to missing regex
 					Builder: regex.NewConfig(),
