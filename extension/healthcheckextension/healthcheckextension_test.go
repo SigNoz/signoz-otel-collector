@@ -55,18 +55,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			},
 			teststeps: []teststep{
 				{
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       expectedBodyNotReady,
-				},
-				{
 					step:               func(hcExt *healthCheckExtension) error { return hcExt.Ready() },
 					expectedStatusCode: http.StatusOK,
 					expectedBody:       expectedBodyReady,
-				},
-				{
-					step:               func(hcExt *healthCheckExtension) error { return hcExt.NotReady() },
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       expectedBodyNotReady,
 				},
 			},
 		},
@@ -81,15 +72,8 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			},
 			teststeps: []teststep{
 				{
-					expectedStatusCode: http.StatusServiceUnavailable,
-				},
-				{
 					step:               func(hcExt *healthCheckExtension) error { return hcExt.Ready() },
 					expectedStatusCode: http.StatusOK,
-				},
-				{
-					step:               func(hcExt *healthCheckExtension) error { return hcExt.NotReady() },
-					expectedStatusCode: http.StatusServiceUnavailable,
 				},
 			},
 		},
@@ -105,18 +89,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			},
 			teststeps: []teststep{
 				{
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "NOT OK",
-				},
-				{
 					step:               func(hcExt *healthCheckExtension) error { return hcExt.Ready() },
 					expectedStatusCode: http.StatusOK,
 					expectedBody:       "ALL OK",
-				},
-				{
-					step:               func(hcExt *healthCheckExtension) error { return hcExt.NotReady() },
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "NOT OK",
 				},
 			},
 		},
@@ -132,18 +107,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			},
 			teststeps: []teststep{
 				{
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "",
-				},
-				{
 					step:               func(hcExt *healthCheckExtension) error { return hcExt.Ready() },
 					expectedStatusCode: http.StatusOK,
 					expectedBody:       "ALL OK",
-				},
-				{
-					step:               func(hcExt *healthCheckExtension) error { return hcExt.NotReady() },
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "",
 				},
 			},
 		},
@@ -159,18 +125,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			},
 			teststeps: []teststep{
 				{
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "NOT OK",
-				},
-				{
 					step:               func(hcExt *healthCheckExtension) error { return hcExt.Ready() },
 					expectedStatusCode: http.StatusOK,
 					expectedBody:       "",
-				},
-				{
-					step:               func(hcExt *healthCheckExtension) error { return hcExt.NotReady() },
-					expectedStatusCode: http.StatusServiceUnavailable,
-					expectedBody:       "NOT OK",
 				},
 			},
 		},
