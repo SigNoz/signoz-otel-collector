@@ -159,7 +159,7 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 
 	nextWaitSeconds := uint32(0)
 	if nextScrapeMinServerTs > serverTsNow {
-		// Do the subtraction only if it will not lead to a
+		// Do the subtraction only if it will not lead to an overflow/wrap around
 		nextWaitSeconds = nextScrapeMinServerTs - serverTsNow
 	}
 
