@@ -127,4 +127,14 @@ func TestReceiver(t *testing.T) {
 	et, exists := lr.Attributes().Get("event_time")
 	require.True(exists)
 	require.Equal(et.Str(), testQlEventTime.Format(time.RFC3339))
+
+	// should scrape again immediately if scrape is too far behind the server ts
+	// for example: this can happen if clickhouse goes down for some time
+	mockQuerrier.tsNow += 10 * testScrapeIntervalSeconds
+	testQl4 := makeTestQueryLog("host-4", time.Now(), "test query 4")
+	mockQuerrier.nextScrapeResult = []QueryLog{testQl4}
+
+	waitSeconds, err = testReceiver.scrapeQueryLogIfReady(context.Background())
+	require.Nil(err)
+	require.Equal(uint32(0), waitSeconds)
 }
