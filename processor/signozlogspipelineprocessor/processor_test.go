@@ -3,6 +3,7 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
@@ -303,6 +304,47 @@ func TestSignozLogPipelineWithRouterOp(t *testing.T) {
 		map[string]any{"container_name": "not-hotrod"},
 	)}
 	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+}
+
+// logstransform in otel-collector-contrib
+func TestSeverityBasedRouteExpressions(t *testing.T) {
+	for _, routeExpr := range []string{
+		`severity_number == 9`,
+		`severity_text == "INFO"`,
+	} {
+		confYaml := fmt.Sprintf(`
+    operators:
+        - default: noop
+          id: router_signoz
+          routes:
+            - expr: %s
+              output: add-test-value
+          type: router
+        - id: add-test-value
+          on_error: send
+          type: add
+          field: attributes.test
+          value: test-value
+        - id: noop
+          type: noop
+    `, routeExpr)
+
+		// should process matching log
+		input := []plog.Logs{makePlogWithTopLevelFields(
+			t, "test log", map[string]any{},
+			map[string]any{"severity_text": "INFO", "severity_number": 9},
+		)}
+		expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
+			t, "test log", map[string]any{"test": "test-value"},
+			map[string]any{"severity_text": "INFO", "severity_number": 9},
+		)}
+		validateProcessorBehavior(t, confYaml, input, expectedOutput)
+
+		// should ignore non-matching log
+		input = []plog.Logs{makePlog("test log", map[string]any{})}
+		expectedOutput = []plog.Logs{makePlog("test log", map[string]any{})}
+		validateProcessorBehavior(t, confYaml, input, expectedOutput)
+	}
 }
 
 func validateProcessorBehavior(
