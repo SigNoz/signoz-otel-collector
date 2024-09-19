@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
@@ -15,6 +16,7 @@ const operatorType = "grok_parser"
 
 func init() {
 	operator.Register(operatorType, func() operator.Builder { return NewConfig() })
+	signozlogspipelinestanzaoperator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
 // NewConfig creates a new grok parser config with default values
