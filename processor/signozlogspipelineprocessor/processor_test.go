@@ -306,7 +306,7 @@ func TestSignozLogPipelineWithRouterOp(t *testing.T) {
 	validateProcessorBehavior(t, confYaml, input, expectedOutput)
 }
 
-// logstransform in otel-collector-contrib
+// logstransform in otel-collector-contrib doesn't support using severity text and number in route expressions
 func TestSeverityBasedRouteExpressions(t *testing.T) {
 	for _, routeExpr := range []string{
 		`severity_number == 9`,
@@ -341,8 +341,14 @@ func TestSeverityBasedRouteExpressions(t *testing.T) {
 		validateProcessorBehavior(t, confYaml, input, expectedOutput)
 
 		// should ignore non-matching log
-		input = []plog.Logs{makePlog("test log", map[string]any{})}
-		expectedOutput = []plog.Logs{makePlog("test log", map[string]any{})}
+		input = []plog.Logs{makePlogWithTopLevelFields(
+			t, "test log", map[string]any{},
+			map[string]any{"severity_text": "ERROR", "severity_number": 17},
+		)}
+		expectedOutput = []plog.Logs{makePlogWithTopLevelFields(
+			t, "test log", map[string]any{},
+			map[string]any{"severity_text": "ERROR", "severity_number": 17},
+		)}
 		validateProcessorBehavior(t, confYaml, input, expectedOutput)
 	}
 }
