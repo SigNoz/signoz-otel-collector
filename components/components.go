@@ -117,6 +117,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
+	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
@@ -304,6 +305,7 @@ func CoreComponents() (
 		oidcauthextension.NewFactory(),
 		healthcheckextension.NewFactory(),
 		pprofextension.NewFactory(),
+		signozhealthcheckextension.NewFactory(),
 		zpagesextension.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)
