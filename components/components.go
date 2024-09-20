@@ -97,6 +97,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/udplogreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zipkinreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zookeeperreceiver"
+	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/loggingexporter"
 	"go.opentelemetry.io/collector/exporter/otlpexporter"
@@ -116,6 +117,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
+	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
@@ -124,6 +126,9 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver"
 )
 
 func Components() (otelcol.Factories, error) {
@@ -200,6 +205,7 @@ func Components() (otelcol.Factories, error) {
 		zookeeperreceiver.NewFactory(),
 		httplogreceiver.NewFactory(),
 		signozkafkareceiver.NewFactory(),
+		googlecloudpubsubreceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
@@ -224,6 +230,7 @@ func Components() (otelcol.Factories, error) {
 		prometheusremotewriteexporter.NewFactory(),
 		pulsarexporter.NewFactory(),
 		zipkinexporter.NewFactory(),
+		googlecloudpubsubexporter.NewFactory(),
 	}
 	for _, exp := range factories.Exporters {
 		exporters = append(exporters, exp)
@@ -266,6 +273,14 @@ func Components() (otelcol.Factories, error) {
 		errs = append(errs, err)
 	}
 
+	connectors := []connector.Factory{
+		failoverconnector.NewFactory(),
+	}
+	factories.Connectors, err = connector.MakeFactoryMap(connectors...)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	return factories, multierr.Combine(errs...)
 }
 
@@ -290,6 +305,7 @@ func CoreComponents() (
 		oidcauthextension.NewFactory(),
 		healthcheckextension.NewFactory(),
 		pprofextension.NewFactory(),
+		signozhealthcheckextension.NewFactory(),
 		zpagesextension.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)

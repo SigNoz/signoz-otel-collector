@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCalculateFingerprint(t *testing.T) {
@@ -38,4 +39,44 @@ func TestCalculateFingerprint(t *testing.T) {
 		res := CalculateFingerprint(ts.ResourceAttrs, ResourceHierarchy())
 		assert.Equal(t, ts.FingerPrint, res)
 	}
+}
+
+func TestFindAttributeSynonyms(t *testing.T) {
+	testHierarchy := &DimensionHierarchyNode{
+		labels: []string{"1.a", "1.b"},
+
+		subHierachies: []DimensionHierarchyNode{{
+			labels: []string{"1.1.a", "1.1.b"},
+
+			subHierachies: []DimensionHierarchyNode{{
+				labels: []string{"1.1.1.a", "1.1.1.b"},
+			}},
+		}, {
+			labels: []string{"1.2.a", "1.2.b"},
+		}},
+	}
+
+	for _, tc := range []struct {
+		Attribute        string
+		ExpectedSynonyms []string
+	}{
+		{
+			Attribute:        "non-existent-attribute",
+			ExpectedSynonyms: nil,
+		}, {
+			Attribute:        "1.b",
+			ExpectedSynonyms: []string{"1.a", "1.b"},
+		}, {
+			Attribute:        "1.2.a",
+			ExpectedSynonyms: []string{"1.2.a", "1.2.b"},
+		}, {
+			Attribute:        "1.1.1.b",
+			ExpectedSynonyms: []string{"1.1.1.a", "1.1.1.b"},
+		},
+	} {
+
+		synonyms := testHierarchy.Synonyms(tc.Attribute)
+		require.Equal(t, tc.ExpectedSynonyms, synonyms)
+	}
+
 }
