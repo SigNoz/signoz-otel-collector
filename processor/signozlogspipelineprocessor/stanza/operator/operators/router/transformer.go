@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
 	"go.uber.org/zap"
 
@@ -35,8 +36,8 @@ func (t *Transformer) CanProcess() bool {
 
 // Process will route incoming entries based on matching expressions
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
-	env := helper.GetExprEnv(entry)
-	defer helper.PutExprEnv(env)
+	env := signozstanzahelper.GetExprEnv(entry)
+	defer signozstanzahelper.PutExprEnv(env)
 
 	for _, route := range t.routes {
 		matches, err := vm.Run(route.Expression, env)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -33,8 +34,8 @@ func (t *Transformer) Transform(e *entry.Entry) error {
 		return e.Set(t.Field, t.Value)
 	}
 	if t.program != nil {
-		env := helper.GetExprEnv(e)
-		defer helper.PutExprEnv(env)
+		env := signozstanzahelper.GetExprEnv(e)
+		defer signozstanzahelper.PutExprEnv(env)
 
 		result, err := vm.Run(t.program, env)
 		if err != nil {
