@@ -156,7 +156,12 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	// For example, this can happen if this was the first successful scrape
 	// after several failed attempts and subsequent waits for r.ScrapeIntervalSeconds
 	nextScrapeMinServerTs := r.nextScrapeIntervalStartTs + r.scrapeIntervalSeconds + r.scrapeDelaySeconds
-	nextWaitSeconds := max(0, nextScrapeMinServerTs-serverTsNow)
+
+	nextWaitSeconds := uint32(0)
+	if nextScrapeMinServerTs > serverTsNow {
+		// Do the subtraction only if it will not lead to an overflow/wrap around
+		nextWaitSeconds = nextScrapeMinServerTs - serverTsNow
+	}
 
 	return nextWaitSeconds, nil
 }
