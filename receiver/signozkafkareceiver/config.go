@@ -74,6 +74,9 @@ type Config struct {
 	MessageMarking MessageMarking `mapstructure:"message_marking"`
 
 	SaramaConsumerConfig SaramaConsumerConfig `mapstructure:"sarama_consumer_config"`
+
+	BatchSize    int           `mapstructure:"batch_size"`
+	BatchTimeout time.Duration `mapstructure:"batch_timeout"`
 }
 
 const (
