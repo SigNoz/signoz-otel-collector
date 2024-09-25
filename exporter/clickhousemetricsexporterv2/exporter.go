@@ -1,0 +1,783 @@
+package clickhousemetricsexporterv2
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"strconv"
+	"sync"
+	"time"
+
+	chproto "github.com/ClickHouse/ch-go/proto"
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	semconv "go.opentelemetry.io/collector/semconv/v1.5.0"
+	"go.uber.org/zap"
+)
+
+var (
+	countSuffix       = ".count"
+	sumSuffix         = ".sum"
+	minSuffix         = ".min"
+	maxSuffix         = ".max"
+	bucketSuffix      = ".bucket"
+	quantilesSuffix   = ".quantile"
+	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)"
+	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+type clickhouseMetricsExporter struct {
+	cfg           *Config
+	logger        *zap.Logger
+	cache         *ttlcache.Cache[string, bool]
+	conn          clickhouse.Conn
+	wg            sync.WaitGroup
+	enableExpHist bool
+
+	samplesSQL    string
+	timeSeriesSQL string
+	expHistSQL    string
+}
+
+// sample represents a single metric sample
+// directly mapped to the table `samples_v4` schema
+type sample struct {
+	env         string
+	temporality pmetric.AggregationTemporality
+	metricName  string
+	fingerprint uint64
+	unixMilli   int64
+	value       float64
+}
+
+// exponentialHistogramSample represents a single exponential histogram sample
+// directly mapped to the table `exp_hist` schema
+type exponentialHistogramSample struct {
+	env         string
+	temporality pmetric.AggregationTemporality
+	metricName  string
+	fingerprint uint64
+	unixMilli   int64
+	sketch      chproto.DD
+	count       float64
+	sum         float64
+	min         float64
+	max         float64
+}
+
+// ts represents a single time series
+// directly mapped to the table `time_series_v4` schema
+type ts struct {
+	env           string
+	temporality   pmetric.AggregationTemporality
+	metricName    string
+	description   string
+	unit          string
+	typ           pmetric.MetricType
+	isMonotonic   bool
+	fingerprint   uint64
+	unixMilli     int64
+	labels        string
+	attrs         map[string]string
+	scopeAttrs    map[string]string
+	resourceAttrs map[string]string
+}
+
+type writeBatch struct {
+	samples []sample
+	expHist []exponentialHistogramSample
+	ts      []ts
+}
+
+type ExporterOption func(e *clickhouseMetricsExporter) error
+
+func WithLogger(logger *zap.Logger) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.logger = logger
+		return nil
+	}
+}
+
+func WithEnableExpHist(enableExpHist bool) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.enableExpHist = enableExpHist
+		return nil
+	}
+}
+
+func WithCache(cache *ttlcache.Cache[string, bool]) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.cache = cache
+		return nil
+	}
+}
+
+func WithConn(conn clickhouse.Conn) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.conn = conn
+		return nil
+	}
+}
+
+func WithConfig(cfg *Config) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.cfg = cfg
+		return nil
+	}
+}
+
+func defaultOptions() []ExporterOption {
+
+	cache := ttlcache.New[string, bool](
+		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[string, bool](),
+	)
+	go cache.Start()
+
+	return []ExporterOption{
+		WithCache(cache),
+		WithLogger(zap.NewNop()),
+		WithEnableExpHist(false),
+	}
+}
+
+func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, error) {
+
+	chExporter := &clickhouseMetricsExporter{}
+
+	newOptions := append(defaultOptions(), opts...)
+
+	for _, opt := range newOptions {
+		if err := opt(chExporter); err != nil {
+			return nil, err
+		}
+	}
+
+	chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+	chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
+	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
+
+	return chExporter, nil
+}
+
+func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
+	return nil
+}
+
+func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
+	c.wg.Wait()
+	return c.conn.Close()
+}
+
+// processGauge processes gauge metrics
+func (c *clickhouseMetricsExporter) processGauge(batch *writeBatch, metric pmetric.Metric, resAttrs pcommon.Map, scopeAttrs pcommon.Map) {
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	// gauge metrics do not have a temporality
+	temporality := pmetric.AggregationTemporalityUnspecified
+	env := ""
+	if de, ok := resAttrs.Get(semconv.AttributeDeploymentEnvironment); ok {
+		env = de.AsString()
+	}
+	// there is no monotonicity for gauge metrics
+	isMonotonic := false
+
+	for i := 0; i < metric.Gauge().DataPoints().Len(); i++ {
+		dp := metric.Gauge().DataPoints().At(i)
+		var value float64
+		switch dp.ValueType() {
+		case pmetric.NumberDataPointValueTypeInt:
+			value = float64(dp.IntValue())
+		case pmetric.NumberDataPointValueTypeDouble:
+			value = dp.DoubleValue()
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointAttrs := dp.Attributes()
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:   unixMilli,
+			value:       value,
+		})
+
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+}
+
+// processSum processes sum metrics
+func (c *clickhouseMetricsExporter) processSum(batch *writeBatch, metric pmetric.Metric, resAttrs pcommon.Map, scopeAttrs pcommon.Map) {
+
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	// sum metrics have a temporality
+	temporality := metric.Sum().AggregationTemporality()
+	env := ""
+	if de, ok := resAttrs.Get(semconv.AttributeDeploymentEnvironment); ok {
+		env = de.AsString()
+	}
+	isMonotonic := metric.Sum().IsMonotonic()
+
+	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
+		dp := metric.Sum().DataPoints().At(i)
+		var value float64
+		switch dp.ValueType() {
+		case pmetric.NumberDataPointValueTypeInt:
+			value = float64(dp.IntValue())
+		case pmetric.NumberDataPointValueTypeDouble:
+			value = dp.DoubleValue()
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointAttrs := dp.Attributes()
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:   unixMilli,
+			value:       value,
+		})
+
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+}
+
+// processHistogram processes histogram metrics
+func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric pmetric.Metric, resAttrs pcommon.Map, scopeAttrs pcommon.Map) {
+
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	temporality := metric.Histogram().AggregationTemporality()
+	env := ""
+	if de, ok := resAttrs.Get(semconv.AttributeDeploymentEnvironment); ok {
+		env = de.AsString()
+	}
+	// monotonicity is assumed for histograms
+	isMonotonic := true
+
+	addSample := func(batch *writeBatch, dp pmetric.HistogramDataPoint, suffix string) {
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		var value float64
+		switch suffix {
+		case countSuffix:
+			value = float64(dp.Count())
+		case sumSuffix:
+			value = dp.Sum()
+		case minSuffix:
+			value = dp.Min()
+		case maxSuffix:
+			value = dp.Max()
+		}
+		pointAttrs := dp.Attributes()
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name + suffix,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:   unixMilli,
+			value:       value,
+		})
+
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name + suffix,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+
+	addBucketSample := func(batch *writeBatch, dp pmetric.HistogramDataPoint, suffix string) {
+		var cumulativeCount uint64
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointAttrs := dp.Attributes()
+
+		for i := 0; i < dp.ExplicitBounds().Len() && i < dp.BucketCounts().Len(); i++ {
+			bound := dp.ExplicitBounds().At(i)
+			cumulativeCount += dp.BucketCounts().At(i)
+			boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
+			pointAttrs.PutStr("le", boundStr)
+
+			batch.samples = append(batch.samples, sample{
+				env:         env,
+				temporality: temporality,
+				metricName:  name + suffix,
+				fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+				unixMilli:   unixMilli,
+				value:       float64(cumulativeCount),
+			})
+			batch.ts = append(batch.ts, ts{
+				env:           env,
+				temporality:   temporality,
+				metricName:    name + suffix,
+				description:   desc,
+				unit:          unit,
+				typ:           typ,
+				isMonotonic:   isMonotonic,
+				fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+				unixMilli:     unixMilli,
+				labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+				attrs:         getAttrMap(pointAttrs),
+				scopeAttrs:    getAttrMap(scopeAttrs),
+				resourceAttrs: getAttrMap(resAttrs),
+			})
+		}
+		// add le=+Inf sample
+		pointAttrs.PutStr("le", "+Inf")
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name + suffix,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:   unixMilli,
+			value:       float64(dp.Count()),
+		})
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name + suffix,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+
+	for i := 0; i < metric.Histogram().DataPoints().Len(); i++ {
+		dp := metric.Histogram().DataPoints().At(i)
+		// we need to create five samples for each histogram dp
+		// 1. count
+		// 2. sum
+		// 3. min
+		// 4. max
+		// 5. bucket counts
+		addSample(batch, dp, countSuffix)
+		addSample(batch, dp, sumSuffix)
+		addSample(batch, dp, minSuffix)
+		addSample(batch, dp, maxSuffix)
+		addBucketSample(batch, dp, bucketSuffix)
+	}
+}
+
+func (c *clickhouseMetricsExporter) processSummary(batch *writeBatch, metric pmetric.Metric, resAttrs pcommon.Map, scopeAttrs pcommon.Map) {
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	temporality := pmetric.AggregationTemporalityUnspecified
+	env := ""
+	if de, ok := resAttrs.Get(semconv.AttributeDeploymentEnvironment); ok {
+		env = de.AsString()
+	}
+	// monotonicity is assumed for summaries
+	isMonotonic := true
+
+	addSample := func(batch *writeBatch, dp pmetric.SummaryDataPoint, suffix string) {
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		var value float64
+		switch suffix {
+		case countSuffix:
+			value = float64(dp.Count())
+		case sumSuffix:
+			value = dp.Sum()
+		}
+		pointAttrs := dp.Attributes()
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name + suffix,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:   unixMilli,
+			value:       value,
+		})
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name + suffix,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+
+	addQuantileSample := func(batch *writeBatch, dp pmetric.SummaryDataPoint, suffix string) {
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointAttrs := dp.Attributes()
+		for i := 0; i < dp.QuantileValues().Len(); i++ {
+			quantile := dp.QuantileValues().At(i)
+			quantileStr := strconv.FormatFloat(quantile.Quantile(), 'f', -1, 64)
+			quantileValue := quantile.Value()
+			pointAttrs.PutStr("quantile", quantileStr)
+			batch.samples = append(batch.samples, sample{
+				env:         env,
+				temporality: temporality,
+				metricName:  name + suffix,
+				fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+				unixMilli:   unixMilli,
+				value:       quantileValue,
+			})
+			batch.ts = append(batch.ts, ts{
+				env:           env,
+				temporality:   temporality,
+				metricName:    name + suffix,
+				description:   desc,
+				unit:          unit,
+				typ:           typ,
+				isMonotonic:   isMonotonic,
+				fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+				unixMilli:     unixMilli,
+				labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+				attrs:         getAttrMap(pointAttrs),
+				scopeAttrs:    getAttrMap(scopeAttrs),
+				resourceAttrs: getAttrMap(resAttrs),
+			})
+		}
+	}
+
+	for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
+		dp := metric.Summary().DataPoints().At(i)
+		// for summary metrics, we need to create three samples
+		// 1. count
+		// 2. sum
+		// 3. quantiles
+		addSample(batch, dp, countSuffix)
+		addSample(batch, dp, sumSuffix)
+		addQuantileSample(batch, dp, quantilesSuffix)
+	}
+}
+
+func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatch, metric pmetric.Metric, resAttrs pcommon.Map, scopeAttrs pcommon.Map) {
+	if !c.enableExpHist {
+		c.logger.Debug("exponential histogram is not enabled")
+		return
+	}
+
+	if metric.ExponentialHistogram().AggregationTemporality() != pmetric.AggregationTemporalityDelta {
+		c.logger.Warn("exponential histogram temporality is not delta", zap.String("metric_name", metric.Name()), zap.String("temporality", metric.ExponentialHistogram().AggregationTemporality().String()))
+		return
+	}
+
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	temporality := metric.ExponentialHistogram().AggregationTemporality()
+
+	env := ""
+	if de, ok := resAttrs.Get(semconv.AttributeDeploymentEnvironment); ok {
+		env = de.AsString()
+	}
+
+	isMonotonic := true
+
+	addSample := func(batch *writeBatch, dp pmetric.ExponentialHistogramDataPoint, suffix string) {
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		var value float64
+		switch suffix {
+		case countSuffix:
+			value = float64(dp.Count())
+		case sumSuffix:
+			value = dp.Sum()
+		case minSuffix:
+			value = dp.Min()
+		case maxSuffix:
+			value = dp.Max()
+		}
+		pointAttrs := dp.Attributes()
+		batch.samples = append(batch.samples, sample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name + suffix,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:   unixMilli,
+			value:       value,
+		})
+
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name + suffix,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name+suffix),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name+suffix)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+
+	toStore := func(buckets pmetric.ExponentialHistogramDataPointBuckets) *chproto.Store {
+		bincounts := make([]float64, 0, buckets.BucketCounts().Len())
+		for _, bucket := range buckets.BucketCounts().AsRaw() {
+			bincounts = append(bincounts, float64(bucket))
+		}
+
+		store := &chproto.Store{
+			ContiguousBinIndexOffset: int32(buckets.Offset()),
+			ContiguousBinCounts:      bincounts,
+		}
+		return store
+	}
+
+	addDDSketchSample := func(batch *writeBatch, dp pmetric.ExponentialHistogramDataPoint) {
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointAttrs := dp.Attributes()
+		positive := toStore(dp.Positive())
+		negative := toStore(dp.Negative())
+		gamma := math.Pow(2, math.Pow(2, float64(-dp.Scale())))
+		dd := chproto.DD{
+			Mapping:        &chproto.IndexMapping{Gamma: gamma},
+			PositiveValues: positive,
+			NegativeValues: negative,
+			ZeroCount:      float64(dp.ZeroCount()),
+		}
+		batch.expHist = append(batch.expHist, exponentialHistogramSample{
+			env:         env,
+			temporality: temporality,
+			metricName:  name,
+			fingerprint: Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:   unixMilli,
+			sketch:      dd,
+			count:       float64(dp.Count()),
+			sum:         dp.Sum(),
+			min:         dp.Min(),
+			max:         dp.Max(),
+		})
+
+		batch.ts = append(batch.ts, ts{
+			env:           env,
+			temporality:   temporality,
+			metricName:    name,
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			fingerprint:   Fingerprint(pointAttrs, scopeAttrs, resAttrs, name),
+			unixMilli:     unixMilli,
+			labels:        getJSONString(getAllLabels(pointAttrs, scopeAttrs, resAttrs, name)),
+			attrs:         getAttrMap(pointAttrs),
+			scopeAttrs:    getAttrMap(scopeAttrs),
+			resourceAttrs: getAttrMap(resAttrs),
+		})
+	}
+
+	for i := 0; i < metric.ExponentialHistogram().DataPoints().Len(); i++ {
+		dp := metric.ExponentialHistogram().DataPoints().At(i)
+		// we need to create five samples for each exponential histogram dp
+		// 1. count
+		// 2. sum
+		// 3. min
+		// 4. max
+		// 5. ddsketch
+		addSample(batch, dp, countSuffix)
+		addSample(batch, dp, sumSuffix)
+		addSample(batch, dp, minSuffix)
+		addSample(batch, dp, maxSuffix)
+		addDDSketchSample(batch, dp)
+	}
+
+}
+
+func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch {
+	batch := &writeBatch{}
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		rm := md.ResourceMetrics().At(i)
+		resAttrs := rm.Resource().Attributes()
+		resAttrs.PutStr("__resource.schema_url__", rm.SchemaUrl())
+		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
+			sm := rm.ScopeMetrics().At(j)
+			scopeAttrs := sm.Scope().Attributes()
+			scopeAttrs.PutStr("__scope.name__", sm.Scope().Name())
+			scopeAttrs.PutStr("__scope.version__", sm.Scope().Version())
+			scopeAttrs.PutStr("__scope.schema_url__", sm.SchemaUrl())
+			for k := 0; k < sm.Metrics().Len(); k++ {
+				metric := sm.Metrics().At(k)
+				switch metric.Type() {
+				case pmetric.MetricTypeGauge:
+					c.processGauge(batch, metric, resAttrs, scopeAttrs)
+				case pmetric.MetricTypeSum:
+					c.processSum(batch, metric, resAttrs, scopeAttrs)
+				case pmetric.MetricTypeHistogram:
+					c.processHistogram(batch, metric, resAttrs, scopeAttrs)
+				case pmetric.MetricTypeSummary:
+					c.processSummary(batch, metric, resAttrs, scopeAttrs)
+				case pmetric.MetricTypeExponentialHistogram:
+					c.processExponentialHistogram(batch, metric, resAttrs, scopeAttrs)
+				case pmetric.MetricTypeEmpty:
+					c.logger.Warn("metric type is set to empty", zap.String("metric_name", metric.Name()), zap.String("metric_type", metric.Type().String()))
+				default:
+					c.logger.Warn("unknown metric type", zap.String("metric_name", metric.Name()), zap.String("metric_type", metric.Type().String()))
+				}
+			}
+		}
+	}
+	return batch
+}
+
+func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	c.wg.Add(1)
+	defer c.wg.Done()
+	return c.writeBatch(ctx, c.prepareBatch(md))
+}
+
+func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *writeBatch) error {
+
+	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
+		statement, err := c.conn.PrepareBatch(ctx, c.timeSeriesSQL, driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		for _, ts := range timeSeries {
+			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
+			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
+			if c.cache.Get(cacheKey) != nil && c.cache.Get(cacheKey).Value() {
+				continue
+			}
+			err = statement.Append(
+				ts.env,
+				ts.temporality.String(),
+				ts.metricName,
+				ts.description,
+				ts.unit,
+				ts.typ.String(),
+				ts.isMonotonic,
+				ts.fingerprint,
+				roundedUnixMilli,
+				ts.labels,
+				ts.attrs,
+				ts.scopeAttrs,
+				ts.resourceAttrs,
+			)
+			if err != nil {
+				return err
+			}
+			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
+		}
+		return statement.Send()
+	}
+
+	if err := writeTimeSeries(ctx, batch.ts); err != nil {
+		return err
+	}
+
+	writeSamples := func(ctx context.Context, samples []sample) error {
+		statement, err := c.conn.PrepareBatch(ctx, c.samplesSQL, driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		for _, sample := range samples {
+			err = statement.Append(
+				sample.env,
+				sample.temporality.String(),
+				sample.metricName,
+				sample.fingerprint,
+				sample.unixMilli,
+				sample.value,
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return statement.Send()
+	}
+
+	if err := writeSamples(ctx, batch.samples); err != nil {
+		return err
+	}
+
+	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
+		statement, err := c.conn.PrepareBatch(ctx, c.expHistSQL, driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		for _, expHist := range expHist {
+			err = statement.Append(
+				expHist.env,
+				expHist.temporality.String(),
+				expHist.metricName,
+				expHist.fingerprint,
+				expHist.unixMilli,
+				expHist.count,
+				expHist.sum,
+				expHist.min,
+				expHist.max,
+				expHist.sketch,
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return statement.Send()
+	}
+
+	if err := writeExpHist(ctx, batch.expHist); err != nil {
+		return err
+	}
+
+	return nil
+}
