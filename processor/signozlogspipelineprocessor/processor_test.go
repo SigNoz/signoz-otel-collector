@@ -407,6 +407,32 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 	}
 }
 
+func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
+	// Happy cases that should work for JSON body
+	confYaml := `
+  operators:
+    - type: add
+      field: attributes.request_id
+      value: body.request.id
+  `
+
+	input := []plog.Logs{makePlog(
+		`{"request": {"id": "test-request-id"}, "status": "ok"}`, map[string]any{},
+	)}
+	expectedOutput := []plog.Logs{makePlog(
+		`{"request": {"id": "test-request-id"}, "status": "ok"}`, map[string]any{
+			"request_id": "test-request-id",
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+
+	// Unhappy case when field is not present in JSON body
+
+	// Unhappy case when body is not JSON
+
+}
+
 func validateProcessorBehavior(
 	t *testing.T,
 	confYaml string,
