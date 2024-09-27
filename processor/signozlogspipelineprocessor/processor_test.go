@@ -411,9 +411,9 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	// Happy cases that should work for JSON body
 	confYaml := `
   operators:
-    - type: add
-      field: attributes.request_id
-      value: body.request.id
+    - type: copy
+      from: body.request.id
+      to: attributes.request_id
   `
 
 	input := []plog.Logs{makePlog(

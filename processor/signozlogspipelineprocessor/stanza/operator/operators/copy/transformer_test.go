@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
@@ -44,7 +45,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -66,7 +67,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("nested", "nestedkey")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("nested", "nestedkey")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -88,7 +89,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("nested", "key2")
 				return cfg
 			}(),
@@ -110,7 +111,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewAttributeField("key2")
 				return cfg
 			}(),
@@ -132,7 +133,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField()
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField()}
 				cfg.To = entry.NewAttributeField("one", "two")
 				return cfg
 			}(),
@@ -157,7 +158,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField()
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField()}
 				cfg.To = entry.NewResourceField("one", "two")
 				return cfg
 			}(),
@@ -182,7 +183,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewAttributeField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -209,7 +210,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewAttributeField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
 				cfg.To = entry.NewResourceField("key2")
 				return cfg
 			}(),
@@ -230,7 +231,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("nested")
 				return cfg
 			}(),
@@ -249,7 +250,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewAttributeField()
 				return cfg
 			}(),
@@ -261,7 +262,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewBodyField("key")
+				cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
 				cfg.To = entry.NewResourceField()
 				return cfg
 			}(),
@@ -273,7 +274,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = entry.NewAttributeField("nonexistentkey")
+				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("nonexistentkey")}
 				cfg.To = entry.NewResourceField("key2")
 				return cfg
 			}(),

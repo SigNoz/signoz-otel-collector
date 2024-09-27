@@ -56,6 +56,29 @@ func (f BodyField) String() string {
 func (f BodyField) Get(entry *entry.Entry) (any, bool) {
 	var currentValue = entry.Body
 
+	fmt.Println("DEBUG: body field keys", f.Keys)
+	fmt.Println()
+	// If path inside body field has been specified and body is string
+	// try parsing JSON out of it for reference.
+	if len(f.Keys) > 0 {
+		bodyBytes, hasBytes := currentValue.([]byte)
+		if !hasBytes {
+			bodyStr, isStr := currentValue.(string)
+			if isStr {
+				bodyBytes = []byte(bodyStr)
+				hasBytes = true
+			}
+		}
+
+		if hasBytes {
+			var parsedBody map[string]any
+			err := json.Unmarshal(bodyBytes, &parsedBody)
+			if err == nil {
+				currentValue = parsedBody
+			}
+		}
+	}
+
 	for _, key := range f.Keys {
 		currentMap, ok := currentValue.(map[string]any)
 		if !ok {

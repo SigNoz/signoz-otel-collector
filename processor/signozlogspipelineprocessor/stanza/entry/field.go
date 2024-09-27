@@ -104,7 +104,7 @@ func newField(s string, rootable bool) (Field, error) {
 		}
 		return Field{entry.NewResourceField(keys[1:]...)}, nil
 	case entry.BodyPrefix:
-		return Field{entry.NewBodyField(keys[1:]...)}, nil
+		return Field{NewBodyField(keys[1:]...)}, nil
 	default:
 		return Field{}, fmt.Errorf("unrecognized prefix")
 	}
