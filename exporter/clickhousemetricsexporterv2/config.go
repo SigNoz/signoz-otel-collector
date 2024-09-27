@@ -22,6 +22,7 @@ type Config struct {
 	SamplesTable    string
 	TimeSeriesTable string
 	ExpHistTable    string
+	MetadataTable   string
 }
 
 var _ component.Config = (*Config)(nil)

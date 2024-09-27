@@ -115,6 +115,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
@@ -219,6 +220,7 @@ func Components() (otelcol.Factories, error) {
 		awss3exporter.NewFactory(),
 		carbonexporter.NewFactory(),
 		clickhousemetricsexporter.NewFactory(),
+		clickhousemetricsexporterv2.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
 		clickhouselogsexporter.NewFactory(),
 		fileexporter.NewFactory(),

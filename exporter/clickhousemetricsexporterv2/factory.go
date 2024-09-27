@@ -101,6 +101,7 @@ func createDefaultConfig() component.Config {
 		Database:        "signoz_metrics",
 		SamplesTable:    "distributed_samples_v4",
 		TimeSeriesTable: "distributed_time_series_v4",
-		ExpHistTable:    "distributed_exp_hist_v4",
+		ExpHistTable:    "distributed_exp_hist",
+		MetadataTable:   "distributed_metadata",
 	}
 }

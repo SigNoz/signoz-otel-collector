@@ -2,11 +2,14 @@ package clickhousemetricsexporterv2
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"testing"
 
+	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/zeebo/assert"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 )
 
 func Test_prepareBatchGauge(t *testing.T) {
@@ -310,21 +313,147 @@ func Test_prepareBatchHistogram(t *testing.T) {
 }
 
 func Test_prepareBatchExponentialHistogram(t *testing.T) {
-	metrics := generateExponentialHistogramMetrics(1, 1, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{}
+	metrics := generateExponentialHistogramMetrics(2, 1, 1, 1, 1)
+	exp := &clickhouseMetricsExporter{enableExpHist: true, logger: zap.NewNop()}
 	batch := exp.prepareBatch(metrics)
 	assert.NotNil(t, batch)
+
+	expectedSamples := []sample{
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityDelta,
+			metricName:  "http.server.duration1.count",
+			unixMilli:   1727286182000,
+			value:       1,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityDelta,
+			metricName:  "http.server.duration1.sum",
+			unixMilli:   1727286182000,
+			value:       1,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityDelta,
+			metricName:  "http.server.duration1.min",
+			unixMilli:   1727286182000,
+			value:       0,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityDelta,
+			metricName:  "http.server.duration1.max",
+			unixMilli:   1727286182000,
+			value:       1,
+		},
+	}
+
+	for idx, sample := range expectedSamples {
+		curSample := batch.samples[idx]
+		assert.Equal(t, sample.env, curSample.env)
+		assert.Equal(t, sample.temporality, curSample.temporality)
+		assert.Equal(t, sample.metricName, curSample.metricName)
+		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
+		assert.Equal(t, sample.value, curSample.value)
+	}
+
+	expectedExpHistSamples := []exponentialHistogramSample{
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityDelta,
+			metricName:  "http.server.duration1",
+			unixMilli:   1727286182000,
+			sketch: chproto.DD{
+				Mapping: &chproto.IndexMapping{Gamma: math.Pow(2, math.Pow(2, float64(-2)))},
+				PositiveValues: &chproto.Store{
+					ContiguousBinIndexOffset: 1,
+					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
+				},
+				NegativeValues: &chproto.Store{
+					ContiguousBinIndexOffset: 1,
+					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
+				},
+				ZeroCount: 0,
+			},
+		},
+	}
+
+	for idx, sample := range expectedExpHistSamples {
+		curSample := batch.expHist[idx]
+		assert.Equal(t, sample.env, curSample.env)
+		assert.Equal(t, sample.temporality, curSample.temporality)
+		assert.Equal(t, sample.metricName, curSample.metricName)
+		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
+		assert.Equal(t, sample.sketch, curSample.sketch)
+	}
 }
 
 func Test_prepareBatchSummary(t *testing.T) {
-	metrics := generateSummaryMetrics(1, 1, 1, 1, 1)
+	metrics := generateSummaryMetrics(1, 2, 1, 1, 1)
 	exp := &clickhouseMetricsExporter{}
 	batch := exp.prepareBatch(metrics)
 	assert.NotNil(t, batch)
+
+	expectedSamples := []sample{
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.count",
+			unixMilli:   1727286182000,
+			value:       0,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.sum",
+			unixMilli:   1727286182000,
+			value:       0,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.quantile",
+			unixMilli:   1727286182000,
+			value:       0,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.count",
+			unixMilli:   1727286183000,
+			value:       1,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.sum",
+			unixMilli:   1727286183000,
+			value:       1,
+		},
+		{
+			env:         "",
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "zk.duration0.quantile",
+			unixMilli:   1727286183000,
+			value:       1,
+		},
+	}
+
+	for idx, sample := range expectedSamples {
+		curSample := batch.samples[idx]
+		assert.Equal(t, sample.env, curSample.env)
+		assert.Equal(t, sample.temporality, curSample.temporality)
+		assert.Equal(t, sample.metricName, curSample.metricName)
+		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
+		assert.Equal(t, sample.value, curSample.value)
+	}
 }
 
 func Benchmark_prepareBatchGauge(b *testing.B) {
-	metrics := generateGaugeMetrics(100000, 10, 10, 10, 10)
+	// 10k gauge metrics * 10 data points = 100k data point in total
+	// each with 30 total attributes
+	metrics := generateGaugeMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp := &clickhouseMetricsExporter{}
@@ -334,7 +463,9 @@ func Benchmark_prepareBatchGauge(b *testing.B) {
 }
 
 func Benchmark_prepareBatchSum(b *testing.B) {
-	metrics := generateSumMetrics(100000, 10, 10, 10, 10)
+	// 10k sum * 10 data points = 100k data point in total
+	// each with 30 total attributes
+	metrics := generateSumMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp := &clickhouseMetricsExporter{}
@@ -344,7 +475,9 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 }
 
 func Benchmark_prepareBatchHistogram(b *testing.B) {
-	metrics := generateHistogramMetrics(10000, 10, 10, 10, 10)
+	// 1k histogram * 10 datapoints * 20 buckets = 200k samples in total
+	// each with 30 total attributes
+	metrics := generateHistogramMetrics(1000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp := &clickhouseMetricsExporter{}
@@ -354,16 +487,20 @@ func Benchmark_prepareBatchHistogram(b *testing.B) {
 }
 
 func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
+	// 1k histogram * 10 datapoints * (20 positive + 20 negative) buckets = 400k samples in total
+	// each with 30 total attributes
 	metrics := generateExponentialHistogramMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{}
+	exp := &clickhouseMetricsExporter{enableExpHist: true, logger: zap.NewNop()}
 	for i := 0; i < b.N; i++ {
 		exp.prepareBatch(metrics)
 	}
 }
 
 func Benchmark_prepareBatchSummary(b *testing.B) {
+	// 10k summary * 10 datapoints = 100k+ samples in total
+	// each with 30 total attributes
 	metrics := generateSummaryMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()

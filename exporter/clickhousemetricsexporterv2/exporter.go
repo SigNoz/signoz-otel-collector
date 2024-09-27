@@ -20,6 +20,9 @@ import (
 )
 
 var (
+	resourceAttrType  = "resource"
+	scopeAttrType     = "scope"
+	pointAttrType     = "point"
 	countSuffix       = ".count"
 	sumSuffix         = ".sum"
 	minSuffix         = ".min"
@@ -29,6 +32,7 @@ var (
 	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)"
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 type clickhouseMetricsExporter struct {
@@ -42,6 +46,7 @@ type clickhouseMetricsExporter struct {
 	samplesSQL    string
 	timeSeriesSQL string
 	expHistSQL    string
+	metadataSQL   string
 }
 
 // sample represents a single metric sample
@@ -88,10 +93,29 @@ type ts struct {
 	resourceAttrs map[string]string
 }
 
+// metadata represents a single metric metadata
+// directly mapped to the table `metadata` schema
+type metadata struct {
+	metricName      string
+	temporality     pmetric.AggregationTemporality
+	description     string
+	unit            string
+	typ             pmetric.MetricType
+	isMonotonic     bool
+	attrName        string
+	attrType        string
+	attrDatatype    pcommon.ValueType
+	attrStringValue string
+}
+
+// writeBatch is a batch of data to be written to the database
 type writeBatch struct {
-	samples []sample
-	expHist []exponentialHistogramSample
-	ts      []ts
+	samples  []sample
+	expHist  []exponentialHistogramSample
+	ts       []ts
+	metadata []metadata
+
+	metaSeen map[string]struct{}
 }
 
 type ExporterOption func(e *clickhouseMetricsExporter) error
@@ -161,6 +185,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 	chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
 	chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
 	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
+	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
 
 	return chExporter, nil
 }
@@ -172,6 +197,33 @@ func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Ho
 func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	c.wg.Wait()
 	return c.conn.Close()
+}
+
+func (c *clickhouseMetricsExporter) processMetadata(
+	batch *writeBatch, name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, attrs pcommon.Map, attrType string) {
+	attrs.Range(func(key string, value pcommon.Value) bool {
+		// there should never be a conflicting key (either with resource, scope, or point attributes) in metrics
+		// it breaks the fingerprinting, we assume this will never happen
+		// even if it does, we will not handle it on our end (because we can't reliably which should take
+		// precedence), the user should be responsible for ensuring no conflicting keys in their metrics
+		if _, ok := batch.metaSeen[key]; ok {
+			return true
+		}
+		batch.metaSeen[key] = struct{}{}
+		batch.metadata = append(batch.metadata, metadata{
+			metricName:      name,
+			temporality:     temporality,
+			description:     desc,
+			unit:            unit,
+			typ:             typ,
+			isMonotonic:     isMonotonic,
+			attrName:        key,
+			attrType:        attrType,
+			attrDatatype:    value.Type(),
+			attrStringValue: value.AsString(),
+		})
+		return true
+	})
 }
 
 // processGauge processes gauge metrics
@@ -188,6 +240,9 @@ func (c *clickhouseMetricsExporter) processGauge(batch *writeBatch, metric pmetr
 	}
 	// there is no monotonicity for gauge metrics
 	isMonotonic := false
+
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, resAttrs, resourceAttrType)
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, scopeAttrs, scopeAttrType)
 
 	for i := 0; i < metric.Gauge().DataPoints().Len(); i++ {
 		dp := metric.Gauge().DataPoints().At(i)
@@ -208,6 +263,7 @@ func (c *clickhouseMetricsExporter) processGauge(batch *writeBatch, metric pmetr
 			unixMilli:   unixMilli,
 			value:       value,
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 
 		batch.ts = append(batch.ts, ts{
 			env:           env,
@@ -242,6 +298,9 @@ func (c *clickhouseMetricsExporter) processSum(batch *writeBatch, metric pmetric
 	}
 	isMonotonic := metric.Sum().IsMonotonic()
 
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, resAttrs, resourceAttrType)
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, scopeAttrs, scopeAttrType)
+
 	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
 		dp := metric.Sum().DataPoints().At(i)
 		var value float64
@@ -261,6 +320,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *writeBatch, metric pmetric
 			unixMilli:   unixMilli,
 			value:       value,
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 
 		batch.ts = append(batch.ts, ts{
 			env:           env,
@@ -295,6 +355,9 @@ func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric p
 	// monotonicity is assumed for histograms
 	isMonotonic := true
 
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, resAttrs, resourceAttrType)
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, scopeAttrs, scopeAttrType)
+
 	addSample := func(batch *writeBatch, dp pmetric.HistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		var value float64
@@ -317,6 +380,7 @@ func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric p
 			unixMilli:   unixMilli,
 			value:       value,
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 
 		batch.ts = append(batch.ts, ts{
 			env:           env,
@@ -354,6 +418,8 @@ func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric p
 				unixMilli:   unixMilli,
 				value:       float64(cumulativeCount),
 			})
+			c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
+
 			batch.ts = append(batch.ts, ts{
 				env:           env,
 				temporality:   temporality,
@@ -380,6 +446,7 @@ func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric p
 			unixMilli:   unixMilli,
 			value:       float64(dp.Count()),
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 		batch.ts = append(batch.ts, ts{
 			env:           env,
 			temporality:   temporality,
@@ -426,6 +493,9 @@ func (c *clickhouseMetricsExporter) processSummary(batch *writeBatch, metric pme
 	// monotonicity is assumed for summaries
 	isMonotonic := true
 
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, resAttrs, resourceAttrType)
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, scopeAttrs, scopeAttrType)
+
 	addSample := func(batch *writeBatch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		var value float64
@@ -444,6 +514,8 @@ func (c *clickhouseMetricsExporter) processSummary(batch *writeBatch, metric pme
 			unixMilli:   unixMilli,
 			value:       value,
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
+
 		batch.ts = append(batch.ts, ts{
 			env:           env,
 			temporality:   temporality,
@@ -477,6 +549,7 @@ func (c *clickhouseMetricsExporter) processSummary(batch *writeBatch, metric pme
 				unixMilli:   unixMilli,
 				value:       quantileValue,
 			})
+			c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 			batch.ts = append(batch.ts, ts{
 				env:           env,
 				temporality:   temporality,
@@ -531,6 +604,9 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 
 	isMonotonic := true
 
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, resAttrs, resourceAttrType)
+	c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, scopeAttrs, scopeAttrType)
+
 	addSample := func(batch *writeBatch, dp pmetric.ExponentialHistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		var value float64
@@ -553,6 +629,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 			unixMilli:   unixMilli,
 			value:       value,
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 
 		batch.ts = append(batch.ts, ts{
 			env:           env,
@@ -608,6 +685,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 			min:         dp.Min(),
 			max:         dp.Max(),
 		})
+		c.processMetadata(batch, name, desc, unit, typ, temporality, isMonotonic, pointAttrs, pointAttrType)
 
 		batch.ts = append(batch.ts, ts{
 			env:           env,
@@ -644,7 +722,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch {
-	batch := &writeBatch{}
+	batch := &writeBatch{metaSeen: make(map[string]struct{})}
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
 		resAttrs := rm.Resource().Attributes()
@@ -688,6 +766,9 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *writeBatch) error {
 
 	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
+		if len(timeSeries) == 0 {
+			return nil
+		}
 		statement, err := c.conn.PrepareBatch(ctx, c.timeSeriesSQL, driver.WithReleaseConnection())
 		if err != nil {
 			return err
@@ -726,6 +807,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 	}
 
 	writeSamples := func(ctx context.Context, samples []sample) error {
+		if len(samples) == 0 {
+			return nil
+		}
 		statement, err := c.conn.PrepareBatch(ctx, c.samplesSQL, driver.WithReleaseConnection())
 		if err != nil {
 			return err
@@ -751,6 +835,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 	}
 
 	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
+		if len(expHist) == 0 {
+			return nil
+		}
 		statement, err := c.conn.PrepareBatch(ctx, c.expHistSQL, driver.WithReleaseConnection())
 		if err != nil {
 			return err
@@ -777,6 +864,43 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 
 	if err := writeExpHist(ctx, batch.expHist); err != nil {
 		return err
+	}
+
+	writeMetadata := func(ctx context.Context, metadata []metadata) error {
+		if len(metadata) == 0 {
+			return nil
+		}
+		statement, err := c.conn.PrepareBatch(ctx, c.metadataSQL, driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		for _, meta := range metadata {
+			err = statement.Append(
+				meta.metricName,
+				meta.temporality.String(),
+				meta.description,
+				meta.unit,
+				meta.typ.String(),
+				meta.isMonotonic,
+				meta.attrName,
+				meta.attrType,
+				meta.attrDatatype,
+				meta.attrStringValue,
+				time.Now().UnixMilli(),
+				time.Now().UnixMilli(),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return statement.Send()
+	}
+
+	if err := writeMetadata(ctx, batch.metadata); err != nil {
+		// we don't need to return an error here because the metadata is not critical to the operation of the exporter
+		// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
+		// if there were a generic error, it would have been returned in the other write functions
+		c.logger.Error("error writing metadata", zap.Error(err))
 	}
 
 	return nil

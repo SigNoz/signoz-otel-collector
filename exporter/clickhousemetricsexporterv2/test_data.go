@@ -35,15 +35,16 @@ func generateGaugeMetrics(numMetrics, numDataPoints, numPointAttributes, numScop
 		m.SetName("system.memory.usage" + strconv.Itoa(i))
 		m.SetUnit("bytes")
 		m.SetDescription("memory usage of the host")
-		dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
+		dpSlice := m.SetEmptyGauge().DataPoints()
 		for j := 0; j < numDataPoints; j++ {
+			dp := dpSlice.AppendEmpty()
 			dp.SetIntValue(int64(i))
 			dp.SetFlags(pmetric.DefaultDataPointFlags)
 			for k := 0; k < numPointAttributes; k++ {
 				dp.Attributes().PutStr("gauge.attr_"+strconv.Itoa(k), "1")
 			}
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182, 0)))
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182, 0)))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
 		}
 	}
 	return metrics
@@ -77,13 +78,12 @@ func generateSumMetrics(numMetrics, numDataPoints, numPointAttributes, numScopeA
 	}
 	sm.Scope().SetName("go.signoz.io/app/reader")
 	sm.Scope().SetVersion("1.0.0")
-	timestamp := time.Unix(1727286182, 0)
 	for i := 0; i < numMetrics; i++ {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName("system.cpu.time" + strconv.Itoa(i))
 		m.SetUnit("s")
 		m.SetDescription("cpu time of the host")
-		dp := m.SetEmptySum().DataPoints().AppendEmpty()
+		dpSlice := m.SetEmptySum().DataPoints()
 		if i%2 == 0 {
 			m.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 		} else {
@@ -95,13 +95,14 @@ func generateSumMetrics(numMetrics, numDataPoints, numPointAttributes, numScopeA
 			m.Sum().SetIsMonotonic(false)
 		}
 		for j := 0; j < numDataPoints; j++ {
+			dp := dpSlice.AppendEmpty()
 			dp.SetIntValue(int64(i))
 			dp.SetFlags(pmetric.DefaultDataPointFlags)
 			for k := 0; k < numPointAttributes; k++ {
 				dp.Attributes().PutStr("sum.attr_"+strconv.Itoa(k), "1")
 			}
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(timestamp))
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
 		}
 	}
 	return metrics
@@ -135,26 +136,26 @@ func generateHistogramMetrics(numMetrics, numDataPoints, numPointAttributes, num
 	}
 	sm.Scope().SetName("go.signoz.io/app/reader")
 	sm.Scope().SetVersion("1.0.0")
-	timestamp := time.Unix(1727286182, 0)
 	for i := 0; i < numMetrics; i++ {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName("http.server.duration" + strconv.Itoa(i))
 		m.SetUnit("ms")
 		m.SetDescription("server duration of the http server")
-		dp := m.SetEmptyHistogram().DataPoints().AppendEmpty()
+		dpSlice := m.SetEmptyHistogram().DataPoints()
 		if i%2 == 0 {
 			m.Histogram().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 		} else {
 			m.Histogram().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 		}
 		for j := 0; j < numDataPoints; j++ {
+			dp := dpSlice.AppendEmpty()
 			dp.SetCount(30)
 			dp.SetSum(35)
 			for k := 0; k < numPointAttributes; k++ {
 				dp.Attributes().PutStr("histogram.attr_"+strconv.Itoa(k), "1")
 			}
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(timestamp))
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
 			dp.ExplicitBounds().FromRaw([]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19})
 			dp.BucketCounts().FromRaw([]uint64{1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1})
 			dp.SetMin(0)
@@ -189,21 +190,22 @@ func generateExponentialHistogramMetrics(numMetrics, numDataPoints, numPointAttr
 	}
 	sm.Scope().SetName("go.signoz.io/app/reader")
 	sm.Scope().SetVersion("1.0.0")
-	timestamp := time.Unix(1727286182, 0)
 	for i := 0; i < numMetrics; i++ {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName("http.server.duration" + strconv.Itoa(i))
 		m.SetUnit("ms")
 		m.SetDescription("server duration of the http server but in exponential histogram format")
-		dp := m.SetEmptyExponentialHistogram().DataPoints().AppendEmpty()
+		dpSlice := m.SetEmptyExponentialHistogram().DataPoints()
 		if i%2 == 0 {
 			m.ExponentialHistogram().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 		} else {
 			m.ExponentialHistogram().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 		}
 		for j := 0; j < numDataPoints; j++ {
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(timestamp))
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+			dp := dpSlice.AppendEmpty()
+			dp.SetScale(2)
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
 			dp.SetSum(1)
 			dp.SetMin(0)
 			dp.SetMax(1)
@@ -243,24 +245,25 @@ func generateSummaryMetrics(numMetrics, numDataPoints, numPointAttributes, numSc
 	}
 	sm.Scope().SetName("go.signoz.io/app/reader")
 	sm.Scope().SetVersion("1.0.0")
-	timestamp := time.Unix(1727286182, 0)
+
 	for i := 0; i < numMetrics; i++ {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName("zk.duration" + strconv.Itoa(i))
 		m.SetUnit("ms")
 		m.SetDescription("This is a summary metrics")
-		dp := m.SetEmptySummary().DataPoints().AppendEmpty()
+		slice := m.SetEmptySummary().DataPoints()
 		for j := 0; j < numDataPoints; j++ {
-			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(timestamp))
-			dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
-			dp.SetCount(1)
-			dp.SetSum(1)
+			dp := slice.AppendEmpty()
+			dp.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(1727286182+int64(j), 0)))
+			dp.SetCount(uint64(j))
+			dp.SetSum(float64(j))
 			for k := 0; k < numPointAttributes; k++ {
 				dp.Attributes().PutStr("summary.attr_"+strconv.Itoa(k), "1")
 			}
 			quantileValues := dp.QuantileValues().AppendEmpty()
-			quantileValues.SetValue(1)
-			quantileValues.SetQuantile(1)
+			quantileValues.SetValue(float64(j))
+			quantileValues.SetQuantile(float64(j))
 		}
 	}
 	return metrics
