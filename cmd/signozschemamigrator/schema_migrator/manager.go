@@ -22,6 +22,8 @@ var (
 	ErrFailedToWaitForDDLQueue          = errors.New("failed to wait for DDL queue")
 	ErrFailedToWaitForDistributionQueue = errors.New("failed to wait for distribution queue")
 	ErrFailedToRunSquashedMigrations    = errors.New("failed to run squashed migrations")
+	ErrFailedToCreateSchemaMigrationsV2 = errors.New("failed to create schema_migrations_v2 table")
+	ErrDistributionQueueError           = errors.New("distribution_queue has entries with error_count != 0 or is_blocked = 1")
 	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs"}
 	legacyMigrationsTable               = "schema_migrations"
 	signozLogsDB                        = "signoz_logs"
@@ -145,7 +147,7 @@ func (m *MigrationManager) Bootstrap() error {
 	for _, migration := range V2MigrationTablesLogs {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozLogsDB, true); err != nil {
-				return err
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
 	}
@@ -153,7 +155,7 @@ func (m *MigrationManager) Bootstrap() error {
 	for _, migration := range V2MigrationTablesMetrics {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozMetricsDB, true); err != nil {
-				return err
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
 	}
@@ -161,7 +163,7 @@ func (m *MigrationManager) Bootstrap() error {
 	for _, migration := range V2MigrationTablesTraces {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozTracesDB, true); err != nil {
-				return err
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
 	}
@@ -198,6 +200,7 @@ func (m *MigrationManager) shouldRunSquashed(ctx context.Context, db string) (bo
 }
 
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
+	m.logger.Info("Checking if should run squashed migrations for logs")
 	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
 	if err != nil {
 		return err
@@ -220,6 +223,7 @@ func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) err
 }
 
 func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) error {
+	m.logger.Info("Checking if should run squashed migrations for metrics")
 	should, err := m.shouldRunSquashed(ctx, signozMetricsDB)
 	if err != nil {
 		return err
@@ -241,6 +245,7 @@ func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) 
 }
 
 func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) error {
+	m.logger.Info("Checking if should run squashed migrations for traces")
 	should, err := m.shouldRunSquashed(ctx, signozTracesDB)
 	if err != nil {
 		return err
@@ -262,6 +267,7 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 }
 
 func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
+	m.logger.Info("Running squashed migrations")
 	if err := m.runSquashedMigrationsForLogs(ctx); err != nil {
 		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
@@ -271,6 +277,7 @@ func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 	if err := m.runSquashedMigrationsForTraces(ctx); err != nil {
 		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
+	m.logger.Info("Squashed migrations completed")
 	return nil
 }
 
@@ -327,9 +334,6 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 
 	addrs := make([]string, 0, len(hostAddrs))
 	for addr := range hostAddrs {
-		if addr == "172.21.0.3:9000" {
-			addr = "localhost:9000"
-		}
 		addrs = append(addrs, addr)
 	}
 	m.addrs = addrs
@@ -438,16 +442,38 @@ func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 }
 
 func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, conn clickhouse.Conn, db, table string) error {
+	errCountQuery := "SELECT count(*) FROM system.distribution_queue WHERE database = $1 AND table = $2 AND (error_count != 0 OR is_blocked = 1)"
+
+	var errCount uint64
+	if err := conn.QueryRow(ctx, errCountQuery, db, table).Scan(&errCount); err != nil {
+		return errors.Join(ErrFailedToWaitForDistributionQueue, err)
+	}
+
+	if errCount != 0 {
+		return ErrDistributionQueueError
+	}
+
 	query := "SELECT count(*) FROM system.distribution_queue WHERE database = $1 AND table = $2 AND data_files > 0"
 	// Should this be configurable and/or higher?
 	t := time.NewTimer(2 * time.Minute)
 	defer t.Stop()
 	minimumInsertsCompletedChan := make(chan struct{})
+	errChan := make(chan error)
 
 	// count for the number of inserts in the queue with non-zero data_files
 	go func() {
 		insertsInQueue := 0
 		for {
+			var errCount uint64
+			if err := conn.QueryRow(ctx, errCountQuery, db, table).Scan(&errCount); err != nil {
+				errChan <- errors.Join(ErrFailedToWaitForDistributionQueue, err)
+				return
+			}
+			if errCount != 0 {
+				errChan <- ErrDistributionQueueError
+				return
+			}
+
 			var count uint64
 			// if the count of inserts in the queue with non-zero data_files is greater than 0, then it counts towards
 			// one insert, while technically it is more than one insert, we are mainly interested in number of such actions
@@ -473,6 +499,8 @@ func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, c
 			// we waited for graceful period to complete, it might happen that no inserts occur after the migration
 			// so we can't wait forever
 			return nil
+		case err := <-errChan:
+			return err
 		case <-minimumInsertsCompletedChan:
 			return nil
 		}
@@ -504,6 +532,7 @@ func (m *MigrationManager) WaitForDistributionQueue(ctx context.Context, db, tab
 }
 
 func (m *MigrationManager) shouldRunMigration(db string, migrationID uint64, versions []uint64) bool {
+	m.logger.Info("Checking if migration should run", zap.String("db", db), zap.Uint64("migration_id", migrationID), zap.Any("versions", versions))
 	// if versions are provided, we only run the migrations that are in the versions slice
 	if len(versions) != 0 {
 		var doesExist bool
@@ -514,21 +543,24 @@ func (m *MigrationManager) shouldRunMigration(db string, migrationID uint64, ver
 			}
 		}
 		if !doesExist {
+			m.logger.Info("Migration should not run as it is not in the provided versions", zap.Uint64("migration_id", migrationID), zap.Any("versions", versions))
 			return false
 		}
 	}
 
 	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
+	m.logger.Info("Fetching migration status", zap.String("query", query))
 	var migrationSchemaMigrationRecord MigrationSchemaMigrationRecord
-	if err := m.conn.QueryRow(context.Background(), query).Scan(&migrationSchemaMigrationRecord); err != nil {
+	if err := m.conn.QueryRow(context.Background(), query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
 		if err == sql.ErrNoRows {
 			m.logger.Info("Migration not run", zap.Uint64("migration_id", migrationID))
 			return true
 		}
 		// this should not happen
 		m.logger.Error("Failed to fetch migration status", zap.Error(err))
-		return false
+		panic(err)
 	}
+	m.logger.Info("Migration status", zap.Uint64("migration_id", migrationID), zap.String("status", migrationSchemaMigrationRecord.Status))
 	if migrationSchemaMigrationRecord.Status != inProgressStatus && migrationSchemaMigrationRecord.Status != finishedStatus {
 		m.logger.Info("Migration not run", zap.Uint64("migration_id", migrationID), zap.String("status", migrationSchemaMigrationRecord.Status))
 		return true
@@ -584,12 +616,54 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 // MigrateDownSync migrates the schema down.
 func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []uint64) error {
 
+	m.logger.Info("Running migrations down sync")
+
+	for _, migration := range TracesMigrations {
+		if !m.shouldRunMigration(signozTracesDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range LogsMigrations {
+		if !m.shouldRunMigration(signozLogsDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozLogsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range MetricsMigrations {
+		if !m.shouldRunMigration(signozMetricsDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
 // MigrateUpAsync migrates the schema up.
 func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint64) error {
 
+	m.logger.Info("Running migrations up async")
 	for _, migration := range TracesMigrations {
 		if !m.shouldRunMigration(signozTracesDB, migration.MigrationID, upVersions) {
 			continue
@@ -650,20 +724,80 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 // MigrateDownAsync migrates the schema down.
 func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []uint64) error {
 
+	m.logger.Info("Running migrations down async")
+
+	for _, migration := range TracesMigrations {
+		if !m.shouldRunMigration(signozTracesDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the sync operation
+				continue
+			}
+			if item.IsIdempotent() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range MetricsMigrations {
+		if !m.shouldRunMigration(signozMetricsDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the sync operation
+				continue
+			}
+			if item.IsIdempotent() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range LogsMigrations {
+		if !m.shouldRunMigration(signozLogsDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the sync operation
+				continue
+			}
+			if item.IsIdempotent() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozLogsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
 func (m *MigrationManager) insertMigrationEntry(ctx context.Context, db string, migrationID uint64, status string) error {
-	query := fmt.Sprintf("INSERT INTO %s.distributed_schema_migrations_v2 (migration_id, status, created_at) VALUES (%d, '%s', now())", db, migrationID, status)
+	query := fmt.Sprintf("INSERT INTO %s.distributed_schema_migrations_v2 (migration_id, status, created_at) VALUES (%d, '%s', '%s')", db, migrationID, status, time.Now().UTC().Format("2006-01-02 15:04:05"))
+	m.logger.Info("Inserting migration entry", zap.String("query", query))
 	return m.conn.Exec(ctx, query)
 }
 
 func (m *MigrationManager) updateMigrationEntry(ctx context.Context, db string, migrationID uint64, status string, error string) error {
-	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = '%s', error = '%s', updated_at = now() WHERE migration_id = %d", db, m.clusterName, status, error, migrationID)
+	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = '%s', error = '%s', updated_at = '%s' WHERE migration_id = %d", db, m.clusterName, status, error, time.Now().UTC().Format("2006-01-02 15:04:05"), migrationID)
+	m.logger.Info("Updating migration entry", zap.String("query", query))
 	return m.conn.Exec(ctx, query)
 }
 
 func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation, migrationID uint64, database string, skipStatusUpdate bool) error {
+	m.logger.Info("Running operation", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Bool("skip_status_update", skipStatusUpdate))
+	start := time.Now()
 	var sql string
 	if m.clusterName != "" {
 		operation = operation.OnCluster(m.clusterName)
@@ -672,8 +806,30 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 		operation = operation.WithReplication()
 	}
 
+	m.logger.Info("Waiting for running mutations before running the operation")
+
+	if err := m.WaitForRunningMutations(ctx); err != nil {
+		updateErr := m.updateMigrationEntry(ctx, database, migrationID, failedStatus, err.Error())
+		if updateErr != nil {
+			return errors.Join(err, updateErr)
+		}
+		return err
+	}
+	if err := m.WaitDistributedDDLQueue(ctx); err != nil {
+		updateErr := m.updateMigrationEntry(ctx, database, migrationID, failedStatus, err.Error())
+		if updateErr != nil {
+			return errors.Join(err, updateErr)
+		}
+		return err
+	}
+
 	if shouldWaitForDistributionQueue, database, table := operation.ShouldWaitForDistributionQueue(); shouldWaitForDistributionQueue {
+		m.logger.Info("Waiting for distribution queue", zap.String("database", database), zap.String("table", table))
 		if err := m.WaitForDistributionQueue(ctx, database, table); err != nil {
+			updateErr := m.updateMigrationEntry(ctx, database, migrationID, failedStatus, err.Error())
+			if updateErr != nil {
+				return errors.Join(err, updateErr)
+			}
 			return err
 		}
 	}
@@ -695,6 +851,9 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 		}
 		return err
 	}
+
+	m.logger.Info("Waiting for running mutations after running the operation")
+
 	if err := m.WaitForRunningMutations(ctx); err != nil {
 		updateErr := m.updateMigrationEntry(ctx, database, migrationID, failedStatus, err.Error())
 		if updateErr != nil {
@@ -715,6 +874,8 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 			return updateErr
 		}
 	}
+	duration := time.Since(start)
+	m.logger.Info("Operation completed", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Duration("duration", duration))
 
 	return nil
 }

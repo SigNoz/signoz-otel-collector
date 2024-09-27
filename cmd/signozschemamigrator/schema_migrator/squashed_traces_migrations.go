@@ -77,7 +77,7 @@ var (
 						PartitionBy: "toDate(timestamp)",
 						PrimaryKey:  "(serviceName, hasError, toStartOfHour(timestamp), name)",
 						OrderBy:     "(serviceName, hasError, toStartOfHour(timestamp), name, timestamp)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -199,7 +199,7 @@ var (
 					Engine: MergeTree{
 						PartitionBy: "toDate(timestamp)",
 						OrderBy:     "(durationNano, timestamp)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{
 								Name:  "index_granularity",
@@ -367,7 +367,7 @@ ORDER BY
 					Engine: MergeTree{
 						PartitionBy: "toDate(timestamp)",
 						OrderBy:     "(timestamp, groupID)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -429,7 +429,7 @@ ORDER BY
 					Engine: MergeTree{
 						PartitionBy: "toDate(timestamp)",
 						OrderBy:     "(traceID)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "1024"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -489,7 +489,7 @@ ORDER BY
 					Engine: AggregatingMergeTree{MergeTree{
 						PartitionBy: "toDate(timestamp)",
 						OrderBy:     "(timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 						},
@@ -686,7 +686,7 @@ GROUP BY
 					Engine: SummingMergeTree{MergeTree{
 						PartitionBy: "toDate(timestamp)",
 						OrderBy:     "(timestamp, service_name)",
-						TTL:         "toDateTime(timestamp) + toIntervalSecond(604800)",
+						TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
