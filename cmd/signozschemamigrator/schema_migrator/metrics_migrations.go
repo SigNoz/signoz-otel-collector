@@ -82,6 +82,240 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					Default: "map()",
 				},
 			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_6hrs",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_6hrs",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_6hrs",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1day",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1day",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1day",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1week",
+				Column: Column{
+					Name: "attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1week",
+				Column: Column{
+					Name: "scope_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1week",
+				Column: Column{
+					Name: "resource_attrs",
+					Type: MapColumnType{
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
+						ValueType: ColumnTypeString,
+					},
+					Codec:   "ZSTD(1)",
+					Default: "map()",
+				},
+			},
 			CreateTableOperation{
 				Database: "signoz_metrics",
 				Table:    "metadata",
