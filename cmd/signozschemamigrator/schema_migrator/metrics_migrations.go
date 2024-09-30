@@ -10,7 +10,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -23,7 +23,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "scope_attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -36,7 +36,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "resource_attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -49,7 +49,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -62,7 +62,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "scope_attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -75,7 +75,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "resource_attrs",
 					Type: MapColumnType{
-						KeyType:   ColumnTypeString,
+						KeyType:   LowCardinalityColumnType{ColumnTypeString},
 						ValueType: ColumnTypeString,
 					},
 					Codec:   "ZSTD(1)",
@@ -149,9 +149,9 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					{Name: "atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "scope_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "resource_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "scope_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "resource_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
 env,
@@ -184,9 +184,9 @@ FROM signoz_metrics.time_series_v4`,
 					{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					{Name: "atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "scope_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "resource_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "scope_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "resource_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
 env,
@@ -219,9 +219,9 @@ FROM signoz_metrics.time_series_v4_6hrs`,
 					{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					{Name: "atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "scope_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "resource_atts", Type: MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "scope_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "resource_atts", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
 env,
@@ -241,110 +241,4 @@ FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
 	},
-	/*{
-			MigrationID: 1001,
-			UpItems: []Operation{
-				DropTableOperation{
-					Database: "signoz_metrics",
-					Table:    "time_series_v4_6hrs_mv",
-				},
-				DropTableOperation{
-					Database: "signoz_metrics",
-					Table:    "time_series_v4_1day_mv",
-				},
-				DropTableOperation{
-					Database: "signoz_metrics",
-					Table:    "time_series_v4_1week_mv",
-				},
-			},
-			DownItems: []Operation{
-				CreateMaterializedViewOperation{
-					Database:  "signoz_metrics",
-					ViewName:  "time_series_v4_6hrs_mv",
-					DestTable: "time_series_v4_6hrs",
-					Columns: []Column{
-						{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
-						{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
-						{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-						{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
-						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Query: `SELECT
-	env,
-	temporality,
-	metric_name,
-	description,
-	unit,
-	type,
-	is_monotonic,
-	fingerprint,
-	floor(unix_milli / 21600000) * 21600000 AS unix_milli,
-	labels
-	FROM signoz_metrics.time_series_v4`,
-				},
-				CreateMaterializedViewOperation{
-					Database:  "signoz_metrics",
-					ViewName:  "time_series_v4_1day_mv",
-					DestTable: "time_series_v4_1day",
-					Columns: []Column{
-						{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
-						{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
-						{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-						{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
-						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Query: `SELECT
-	env,
-	temporality,
-	metric_name,
-	description,
-	unit,
-	type,
-	is_monotonic,
-	fingerprint,
-	floor(unix_milli / 86400000) * 86400000 AS unix_milli,
-	labels
-	FROM signoz_metrics.time_series_v4`,
-				},
-				CreateMaterializedViewOperation{
-					Database:  "signoz_metrics",
-					ViewName:  "time_series_v4_1week_mv",
-					DestTable: "time_series_v4_1week",
-					Columns: []Column{
-						{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
-						{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
-						{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-						{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
-						{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
-						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Query: `SELECT
-	env,
-	temporality,
-	metric_name,
-	description,
-	unit,
-	type,
-	is_monotonic,
-	fingerprint,
-	floor(unix_milli / 604800000) * 604800000 AS unix_milli,
-	labels
-	FROM signoz_metrics.time_series_v4_1day`,
-				},
-			},
-		},*/
 }
