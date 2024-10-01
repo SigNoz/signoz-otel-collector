@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -350,6 +351,57 @@ func TestSeverityBasedRouteExpressions(t *testing.T) {
 			map[string]any{"severity_text": "ERROR", "severity_number": 17},
 		)}
 		validateProcessorBehavior(t, confYaml, input, expectedOutput)
+	}
+}
+
+// When used with server based receivers like (http, otlp etc)
+// ConsumeLogs will be called concurrently
+func TestConcurrentConsumeLogs(t *testing.T) {
+	require := require.New(t)
+
+	factory := NewFactory()
+
+	confYaml := `
+  operators:
+    - type: add
+      field: attributes.test
+      value: testValue
+  `
+
+	config := parseProcessorConfig(t, confYaml)
+	testSink := new(consumertest.LogsSink)
+	proc, err := factory.CreateLogsProcessor(
+		context.Background(),
+		processortest.NewNopCreateSettings(),
+		config, testSink,
+	)
+	require.NoError(err)
+
+	err = proc.Start(context.Background(), nil)
+	require.NoError(err)
+
+	var wg sync.WaitGroup
+
+	processSomeLogs := func(count int) {
+		defer wg.Done()
+
+		for i := 0; i < count; i++ {
+			testPlog := makePlog("test log", map[string]any{})
+			consumeErr := proc.ConsumeLogs(context.Background(), testPlog)
+			require.NoError(consumeErr)
+		}
+	}
+
+	for j := 0; j < 10; j++ {
+		wg.Add(1)
+		go processSomeLogs(10)
+	}
+
+	output := testSink.AllLogs()
+	for _, l := range output {
+		require.NoError(plogtest.CompareLogs(l, makePlog("test log", map[string]any{
+			"test": "testValue",
+		})))
 	}
 }
 
