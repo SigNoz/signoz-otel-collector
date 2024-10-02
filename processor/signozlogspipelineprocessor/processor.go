@@ -107,8 +107,11 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 		}
 	}
 
+	plog := convertEntriesToPlogs(entries)
+	return plog, nil
+
 	// Return processed entries as a single plog.Logs
-	return p.sink.flush(ctx), nil
+	// return p.sink.flush(ctx), nil
 }
 
 // Helpers below have been brought in as is from stanza adapter for logstransform

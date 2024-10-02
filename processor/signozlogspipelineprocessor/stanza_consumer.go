@@ -66,7 +66,7 @@ func (c *stanzaToOtelConsumer) CanProcess() bool {
 // Process an entry passed on to this operator by a stanza pipeline
 // This operator is expected to be used as a sink in the stanza pipeline
 func (c *stanzaToOtelConsumer) Process(ctx context.Context, entry *entry.Entry) error {
-	c.processedEntries = append(c.processedEntries, entry)
+	// c.processedEntries = append(c.processedEntries, entry)
 	return nil
 }
 
