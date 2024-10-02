@@ -397,6 +397,8 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 		go processSomeLogs(10)
 	}
 
+	wg.Wait()
+
 	output := testSink.AllLogs()
 	for _, l := range output {
 		require.NoError(plogtest.CompareLogs(l, makePlog("test log", map[string]any{
