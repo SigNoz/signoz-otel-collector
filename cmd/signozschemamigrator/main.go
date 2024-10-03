@@ -133,6 +133,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
 				schema_migrator.WithConn(conn),
+				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 			)
 			if err != nil {
@@ -228,6 +229,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
 				schema_migrator.WithConn(conn),
+				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 			)
 			if err != nil {
