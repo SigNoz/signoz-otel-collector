@@ -67,6 +67,7 @@ type MigrationManager struct {
 	addrs    []string
 	addrsMux sync.Mutex
 	conn     clickhouse.Conn
+	connOpts clickhouse.Options
 	conns    map[string]clickhouse.Conn
 
 	clusterName        string
@@ -112,6 +113,12 @@ func WithReplicationEnabled(replicationEnabled bool) Option {
 func WithConn(conn clickhouse.Conn) Option {
 	return func(mgr *MigrationManager) {
 		mgr.conn = conn
+	}
+}
+
+func WithConnOptions(opts clickhouse.Options) Option {
+	return func(mgr *MigrationManager) {
+		mgr.connOpts = opts
 	}
 }
 
@@ -309,9 +316,9 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 		// connect to other host and do the same thing
 		for hostAddr := range hostAddrs {
 			m.logger.Info("Connecting to new host", zap.String("host", hostAddr))
-			conn, err := clickhouse.Open(&clickhouse.Options{
-				Addr: []string{hostAddr},
-			})
+			opts := m.connOpts
+			opts.Addr = []string{hostAddr}
+			conn, err := clickhouse.Open(&opts)
 			if err != nil {
 				return nil, errors.Join(ErrFailedToGetConn, err)
 			}
@@ -346,9 +353,9 @@ func (m *MigrationManager) getConn(hostAddr string) (clickhouse.Conn, error) {
 	if conn, ok := m.conns[hostAddr]; ok {
 		return conn, nil
 	}
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{hostAddr},
-	})
+	opts := m.connOpts
+	opts.Addr = []string{hostAddr}
+	conn, err := clickhouse.Open(&opts)
 	if err != nil {
 		return nil, err
 	}
