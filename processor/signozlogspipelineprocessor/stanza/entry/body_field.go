@@ -51,31 +51,56 @@ func (f BodyField) String() string {
 	return toJSONDot(entry.BodyPrefix, f.Keys)
 }
 
+// returns nil if the body was not JSON
+func parseBodyJson(entry *entry.Entry) map[string]any {
+	bodyMap, ok := entry.Body.(map[string]any)
+	if ok {
+		return bodyMap
+	}
+
+	cachedBodyJsonKey := InternalTempAttributePrefix + "parsedBodyJson"
+
+	if entry.Attributes == nil {
+		entry.Attributes = map[string]any{}
+	}
+
+	bodyJson, exists := entry.Attributes[cachedBodyJsonKey]
+	if exists {
+		return bodyJson.(map[string]any)
+	}
+
+	bodyBytes, hasBytes := entry.Body.([]byte)
+	if !hasBytes {
+		bodyStr, isStr := entry.Body.(string)
+		if isStr {
+			bodyBytes = []byte(bodyStr)
+			hasBytes = true
+		}
+	}
+
+	if hasBytes {
+		var parsedBody map[string]any
+		err := json.Unmarshal(bodyBytes, &parsedBody)
+		if err == nil {
+			entry.Attributes[cachedBodyJsonKey] = parsedBody
+			return parsedBody
+		}
+	}
+
+	return nil
+}
+
 // Get will retrieve a value from an entry's body using the field.
 // It will return the value and whether the field existed.
 func (f BodyField) Get(entry *entry.Entry) (any, bool) {
 	var currentValue = entry.Body
 
-	fmt.Println("DEBUG: body field keys", f.Keys)
-	fmt.Println()
 	// If path inside body field has been specified and body is string
 	// try parsing JSON out of it for reference.
 	if len(f.Keys) > 0 {
-		bodyBytes, hasBytes := currentValue.([]byte)
-		if !hasBytes {
-			bodyStr, isStr := currentValue.(string)
-			if isStr {
-				bodyBytes = []byte(bodyStr)
-				hasBytes = true
-			}
-		}
-
-		if hasBytes {
-			var parsedBody map[string]any
-			err := json.Unmarshal(bodyBytes, &parsedBody)
-			if err == nil {
-				currentValue = parsedBody
-			}
+		bodyJson := parseBodyJson(entry)
+		if bodyJson != nil {
+			currentValue = bodyJson
 		}
 	}
 
