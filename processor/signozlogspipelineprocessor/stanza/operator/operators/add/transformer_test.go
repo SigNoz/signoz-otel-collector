@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
@@ -44,7 +43,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_value",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("new")}
+				cfg.Field = entry.NewBodyField("new")
 				cfg.Value = "randomMessage"
 				return cfg
 			}(),
@@ -60,7 +59,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_expr",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("new")}
+				cfg.Field = entry.NewBodyField("new")
 				cfg.Value = `EXPR(body.key + "_suffix")`
 				return cfg
 			}(),
@@ -76,7 +75,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_nest",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("new")}
+				cfg.Field = entry.NewBodyField("new")
 				cfg.Value = map[any]any{
 					"nest": map[any]any{
 						"key": "val",
@@ -106,7 +105,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_attribute",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewAttributeField("new")}
+				cfg.Field = entry.NewAttributeField("new")
 				cfg.Value = "some.attribute"
 				return cfg
 			}(),
@@ -122,7 +121,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_resource",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewResourceField("new")}
+				cfg.Field = entry.NewResourceField("new")
 				cfg.Value = "some.resource"
 				return cfg
 			}(),
@@ -138,7 +137,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_resource_expr",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewResourceField("new")}
+				cfg.Field = entry.NewResourceField("new")
 				cfg.Value = `EXPR(body.key + "_suffix")`
 				return cfg
 			}(),
@@ -154,7 +153,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_int_to_body",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("new")}
+				cfg.Field = entry.NewBodyField("new")
 				cfg.Value = 1
 				return cfg
 			}(),
@@ -176,7 +175,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_array_to_body",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("new")}
+				cfg.Field = entry.NewBodyField("new")
 				cfg.Value = []int{1, 2, 3, 4}
 				return cfg
 			}(),
@@ -198,7 +197,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"overwrite",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewBodyField("key")}
+				cfg.Field = entry.NewBodyField("key")
 				cfg.Value = []int{1, 2, 3, 4}
 				return cfg
 			}(),
@@ -219,7 +218,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_int_to_resource",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewResourceField("new")}
+				cfg.Field = entry.NewResourceField("new")
 				cfg.Value = 1
 				return cfg
 			}(),
@@ -237,7 +236,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_int_to_attributes",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewAttributeField("new")}
+				cfg.Field = entry.NewAttributeField("new")
 				cfg.Value = 1
 				return cfg
 			}(),
@@ -255,7 +254,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_nested_to_attributes",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewAttributeField("one", "two")}
+				cfg.Field = entry.NewAttributeField("one", "two")
 				cfg.Value = map[string]any{
 					"new": 1,
 				}
@@ -279,7 +278,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_nested_to_resource",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewResourceField("one", "two")}
+				cfg.Field = entry.NewResourceField("one", "two")
 				cfg.Value = map[string]any{
 					"new": 1,
 				}
@@ -303,7 +302,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_expr",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewAttributeField("fookey")}
+				cfg.Field = entry.NewAttributeField("fookey")
 				cfg.Value = "EXPR('foo_' + body.key)"
 				return cfg
 			}(),
@@ -321,7 +320,7 @@ func TestProcessAndBuild(t *testing.T) {
 			"add_expr_env",
 			func() *Config {
 				cfg := NewConfig()
-				cfg.Field = signozstanzaentry.Field{entry.NewAttributeField("fookey")}
+				cfg.Field = entry.NewAttributeField("fookey")
 				cfg.Value = "EXPR('foo_' + env('TEST_EXPR_STRING_ENV'))"
 				return cfg
 			}(),

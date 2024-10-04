@@ -20,7 +20,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "body_to_body",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
+					cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
 					cfg.To = entry.NewBodyField("key2")
 					return cfg
 				}(),
@@ -29,7 +29,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "body_to_attribute",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewBodyField("key")}
+					cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
 					cfg.To = entry.NewAttributeField("key2")
 					return cfg
 				}(),

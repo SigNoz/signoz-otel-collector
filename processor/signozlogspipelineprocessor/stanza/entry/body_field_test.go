@@ -3,12 +3,12 @@ package signozstanzaentry
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
-	"gotest.tools/v3/assert"
 )
 
 func testMap() map[string]any {
@@ -176,7 +176,9 @@ func TestBodyFieldDelete(t *testing.T) {
 			val, ok := entry.Delete(tc.field)
 			require.Equal(t, tc.expectedOk, ok)
 			require.Equal(t, tc.expectedReturned, val)
-			assert.Equal(t, tc.expectedBody, entry.Body)
+			if !reflect.DeepEqual(tc.expectedBody, entry.Body) {
+				t.Errorf("Expected body %v, got %v", tc.expectedBody, entry.Body)
+			}
 		})
 	}
 }
@@ -273,7 +275,9 @@ func TestBodyFieldSet(t *testing.T) {
 			entry := entry.New()
 			entry.Body = tc.body
 			require.NoError(t, entry.Set(tc.field, tc.setTo))
-			assert.Equal(t, tc.expectedVal, entry.Body)
+			if !reflect.DeepEqual(tc.expectedVal, entry.Body) {
+				t.Errorf("Expected body %v, found %v", tc.expectedVal, entry.Body)
+			}
 		})
 	}
 }

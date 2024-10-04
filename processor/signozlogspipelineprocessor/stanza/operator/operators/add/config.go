@@ -8,8 +8,8 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -35,8 +35,8 @@ func NewConfigWithID(operatorID string) *Config {
 // Config is the configuration of an add operator
 type Config struct {
 	helper.TransformerConfig `mapstructure:",squash"`
-	Field                    signozstanzaentry.Field `mapstructure:"field"`
-	Value                    any                     `mapstructure:"value,omitempty"`
+	Field                    entry.Field `mapstructure:"field"`
+	Value                    any         `mapstructure:"value,omitempty"`
 }
 
 // Build will build an add operator from the supplied configuration

@@ -20,32 +20,32 @@ func TestFieldUnmarshalJSON(t *testing.T) {
 		{
 			name:     "BodyLong",
 			input:    []byte(`"body"`),
-			expected: Field{entry.NewBodyField()},
+			expected: Field{NewBodyField()},
 		},
 		{
 			name:     "SimpleField",
 			input:    []byte(`"body.test1"`),
-			expected: Field{entry.NewBodyField("test1")},
+			expected: Field{NewBodyField("test1")},
 		},
 		{
 			name:     "ComplexField",
 			input:    []byte(`"body.test1.test2"`),
-			expected: Field{entry.NewBodyField("test1", "test2")},
+			expected: Field{NewBodyField("test1", "test2")},
 		},
 		{
 			name:     "BracketedField",
 			input:    []byte(`"body.test1['file.name']"`),
-			expected: Field{entry.NewBodyField("test1", "file.name")},
+			expected: Field{NewBodyField("test1", "file.name")},
 		},
 		{
 			name:     "DoubleBracketedField",
 			input:    []byte(`"body.test1['file.details']['file.name']"`),
-			expected: Field{entry.NewBodyField("test1", "file.details", "file.name")},
+			expected: Field{NewBodyField("test1", "file.details", "file.name")},
 		},
 		{
 			name:     "PostBracketField",
 			input:    []byte(`"body.test1['file.details'].name"`),
-			expected: Field{entry.NewBodyField("test1", "file.details", "name")},
+			expected: Field{NewBodyField("test1", "file.details", "name")},
 		},
 		{
 			name:     "AttributesSimpleField",
@@ -169,22 +169,22 @@ func TestFieldUnmarshalYAML(t *testing.T) {
 		{
 			"BodyRoot",
 			[]byte(`"body"`),
-			Field{entry.NewBodyField()},
+			Field{NewBodyField()},
 		},
 		{
 			"SimpleField",
 			[]byte(`"body.test1"`),
-			Field{entry.NewBodyField("test1")},
+			Field{NewBodyField("test1")},
 		},
 		{
 			"UnquotedField",
 			[]byte(`body.test1`),
-			Field{entry.NewBodyField("test1")},
+			Field{NewBodyField("test1")},
 		},
 		{
 			"ComplexField",
 			[]byte(`"body.test1.test2"`),
-			Field{entry.NewBodyField("test1", "test2")},
+			Field{NewBodyField("test1", "test2")},
 		},
 	}
 

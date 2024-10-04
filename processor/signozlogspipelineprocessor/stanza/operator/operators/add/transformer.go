@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
 
@@ -19,7 +18,7 @@ import (
 type Transformer struct {
 	helper.TransformerOperator
 
-	Field   signozstanzaentry.Field
+	Field   entry.Field
 	Value   any
 	program *vm.Program
 }
