@@ -539,6 +539,34 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// Sev parser
+	testSevParserConf := `
+  operators:
+    - type: severity_parser
+      parse_from: body.request.status
+      mapping:
+        error: 404
+      overwrite_text: true
+  `
+	testCases = append(testCases, testCase{
+		"sev/happy_case", testSevParserConf,
+		makePlog(`{"request": {"status": 404}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"status": 404}}`, map[string]any{}, map[string]any{
+			"severity_text":   "ERROR",
+			"severity_number": 17,
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"sev/missing_field", testSevParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"sev/body_not_json", testSevParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
