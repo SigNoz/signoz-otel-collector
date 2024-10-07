@@ -489,6 +489,29 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// JSON
+	testJSONConf := `
+  operators:
+    - type: json_parser
+      parse_from: body.request
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"json/happy_case", testJSONConf,
+		makePlog(`{"request": "{\"status\": \"ok\"}"}`, map[string]any{}),
+		makePlog(`{"request": "{\"status\": \"ok\"}"}`, map[string]any{"status": "ok"}),
+	})
+	testCases = append(testCases, testCase{
+		"json/missing_field", testJSONConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"json/body_not_json", testJSONConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
