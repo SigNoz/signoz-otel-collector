@@ -512,6 +512,33 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// time
+	testTimeParserConf := `
+  operators:
+    - type: time_parser
+      parse_from: body.request.unix_ts
+      layout_type: epoch
+      layout: s
+      overwrite_text: true
+  `
+	testCases = append(testCases, testCase{
+		"ts/happy_case", testTimeParserConf,
+		makePlog(`{"request": {"unix_ts": 1000}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"unix_ts": 1000}}`, map[string]any{}, map[string]any{
+			"timestamp": time.Unix(1000, 0),
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"ts/missing_field", testTimeParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"ts/body_not_json", testTimeParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
