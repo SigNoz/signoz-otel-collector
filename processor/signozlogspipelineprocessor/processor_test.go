@@ -408,29 +408,44 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 }
 
 func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
-	// Happy cases that should work for JSON body
-	confYaml := `
+	type testCase struct {
+		name           string
+		confYaml       string
+		input          plog.Logs
+		expectedOutput plog.Logs
+	}
+	testCases := []testCase{}
+
+	testCopyOpConf := `
   operators:
     - type: copy
       from: body.request.id
       to: attributes.request_id
   `
+	testCases = append(testCases, testCase{
+		"copy/happy_case", testCopyOpConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/missing_field", testCopyOpConf,
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+	})
 
-	input := []plog.Logs{makePlog(
-		`{"request": {"id": "test-request-id"}, "status": "ok"}`, map[string]any{},
-	)}
-	expectedOutput := []plog.Logs{makePlog(
-		`{"request": {"id": "test-request-id"}, "status": "ok"}`, map[string]any{
-			"request_id": "test-request-id",
-		},
-	)}
+	testCases = append(testCases, testCase{
+		"copy/body_not_json", testCopyOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
 
-	validateProcessorBehavior(t, confYaml, input, expectedOutput)
-
-	// Unhappy case when field is not present in JSON body
-
-	// Unhappy case when body is not JSON
-
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			validateProcessorBehavior(
+				t, tc.confYaml, []plog.Logs{tc.input}, []plog.Logs{tc.expectedOutput},
+			)
+		})
+	}
 }
 
 func validateProcessorBehavior(
