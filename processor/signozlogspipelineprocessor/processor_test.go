@@ -416,6 +416,9 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	}
 	testCases := []testCase{}
 
+	// Collect test cases for each op that supports reading fields from JSON body
+
+	// copy
 	testCopyOpConf := `
   operators:
     - type: copy
@@ -432,9 +435,32 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
 		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
 	})
-
 	testCases = append(testCases, testCase{
 		"copy/body_not_json", testCopyOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// grok
+	testGrokConf := `
+  operators:
+    - type: grok_parser
+      pattern: 'status: %{INT:status_code:int}'
+      parse_from: body.request.status
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"copy/happy_case", testGrokConf,
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{"status_code": 404}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/missing_field", testGrokConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/body_not_json", testGrokConf,
 		makePlog(`test`, map[string]any{}),
 		makePlog(`test`, map[string]any{}),
 	})
