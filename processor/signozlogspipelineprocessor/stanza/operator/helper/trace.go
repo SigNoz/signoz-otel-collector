@@ -7,15 +7,16 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/errors"
 )
 
 // NewTraceParser creates a new trace parser with default values
 func NewTraceParser() TraceParser {
-	traceID := entry.NewBodyField("trace_id")
-	spanID := entry.NewBodyField("span_id")
-	traceFlags := entry.NewBodyField("trace_flags")
+	traceID := signozstanzaentry.Field{entry.NewBodyField("trace_id")}
+	spanID := signozstanzaentry.Field{entry.NewBodyField("span_id")}
+	traceFlags := signozstanzaentry.Field{entry.NewBodyField("trace_flags")}
 	return TraceParser{
 		TraceID: &TraceIDConfig{
 			ParseFrom: &traceID,
@@ -37,15 +38,15 @@ type TraceParser struct {
 }
 
 type TraceIDConfig struct {
-	ParseFrom *entry.Field `mapstructure:"parse_from,omitempty"`
+	ParseFrom *signozstanzaentry.Field `mapstructure:"parse_from,omitempty"`
 }
 
 type SpanIDConfig struct {
-	ParseFrom *entry.Field `mapstructure:"parse_from,omitempty"`
+	ParseFrom *signozstanzaentry.Field `mapstructure:"parse_from,omitempty"`
 }
 
 type TraceFlagsConfig struct {
-	ParseFrom *entry.Field `mapstructure:"parse_from,omitempty"`
+	ParseFrom *signozstanzaentry.Field `mapstructure:"parse_from,omitempty"`
 }
 
 // Validate validates a TraceParser, and reconfigures it if necessary
@@ -54,28 +55,28 @@ func (t *TraceParser) Validate() error {
 		t.TraceID = &TraceIDConfig{}
 	}
 	if t.TraceID.ParseFrom == nil {
-		field := entry.NewBodyField("trace_id")
+		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("trace_id")}
 		t.TraceID.ParseFrom = &field
 	}
 	if t.SpanID == nil {
 		t.SpanID = &SpanIDConfig{}
 	}
 	if t.SpanID.ParseFrom == nil {
-		field := entry.NewBodyField("span_id")
+		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("span_id")}
 		t.SpanID.ParseFrom = &field
 	}
 	if t.TraceFlags == nil {
 		t.TraceFlags = &TraceFlagsConfig{}
 	}
 	if t.TraceFlags.ParseFrom == nil {
-		field := entry.NewBodyField("trace_flags")
+		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("trace_flags")}
 		t.TraceFlags.ParseFrom = &field
 	}
 	return nil
 }
 
 // Best effort hex parsing for trace, spans and flags
-func parseHexField(entry *entry.Entry, field *entry.Field) ([]byte, error) {
+func parseHexField(entry *entry.Entry, field *signozstanzaentry.Field) ([]byte, error) {
 	value, ok := entry.Get(field)
 	if !ok {
 		return nil, nil

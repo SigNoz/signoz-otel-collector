@@ -567,6 +567,31 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// Trace parser
+	testTraceParserConf := `
+  operators:
+    - type: trace_parser
+      trace_id:
+        parse_from: body.request.traceId
+  `
+	testCases = append(testCases, testCase{
+		"trace_parser/happy_case", testTraceParserConf,
+		makePlog(`{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692"}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692"}}`, map[string]any{}, map[string]any{
+			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"trace_parser/missing_field", testTraceParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"trace_parser/body_not_json", testTraceParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
