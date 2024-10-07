@@ -465,6 +465,30 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// Regex
+	testRegexConf := `
+  operators:
+    - type: regex_parser
+      regex: "^status: (?P<status_code>[0-9]+)$"
+      parse_from: body.request.status
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"regex/happy_case", testRegexConf,
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{"status_code": "404"}),
+	})
+	testCases = append(testCases, testCase{
+		"regex/missing_field", testRegexConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"regex/body_not_json", testRegexConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
