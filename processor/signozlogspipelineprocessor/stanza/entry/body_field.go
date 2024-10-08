@@ -1,3 +1,5 @@
+// brought in as-is from opentelemetry-collector-contrib with
+// changes to Get() to enable reading fields inside JSON body directly
 package signozstanzaentry
 
 import (
@@ -53,22 +55,23 @@ func (f BodyField) String() string {
 
 // returns nil if the body was not JSON
 func parseBodyJson(entry *entry.Entry) map[string]any {
+	// If body is already a map, return it as-is
 	bodyMap, ok := entry.Body.(map[string]any)
 	if ok {
 		return bodyMap
 	}
 
+	// If body JSON has already been parsed and cached, return it
 	cachedBodyJsonKey := InternalTempAttributePrefix + "parsedBodyJson"
-
 	if entry.Attributes == nil {
 		entry.Attributes = map[string]any{}
 	}
-
-	bodyJson, exists := entry.Attributes[cachedBodyJsonKey]
+	cachedParsedBody, exists := entry.Attributes[cachedBodyJsonKey]
 	if exists {
-		return bodyJson.(map[string]any)
+		return cachedParsedBody.(map[string]any)
 	}
 
+	// try to parse body as JSON. If successful cache it and return it
 	bodyBytes, hasBytes := entry.Body.([]byte)
 	if !hasBytes {
 		bodyStr, isStr := entry.Body.(string)
@@ -82,6 +85,9 @@ func parseBodyJson(entry *entry.Entry) map[string]any {
 		var parsedBody map[string]any
 		err := json.Unmarshal(bodyBytes, &parsedBody)
 		if err == nil {
+			// Attributes keys starting with InternalTempAttributePrefix
+			// get ignored when entries are converted back to plog.Logs
+			// See `convertEntriesToPlogs` in signozlogspipelineprocess/utils.go
 			entry.Attributes[cachedBodyJsonKey] = parsedBody
 			return parsedBody
 		}
@@ -95,8 +101,8 @@ func parseBodyJson(entry *entry.Entry) map[string]any {
 func (f BodyField) Get(entry *entry.Entry) (any, bool) {
 	var currentValue = entry.Body
 
-	// If path inside body field has been specified and body is string
-	// try parsing JSON out of it for reference.
+	// If path inside body field has been specified, try to
+	// interpret body as a map[string]any - parsing JSON if needed
 	if len(f.Keys) > 0 {
 		bodyJson := parseBodyJson(entry)
 		if bodyJson != nil {

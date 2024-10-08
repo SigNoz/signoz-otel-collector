@@ -203,7 +203,6 @@ func TestTimeProcessor(t *testing.T) {
       parse_from: attributes.tsUnixEpoch
       layout_type: epoch
       layout: s
-      overwrite_text: true
   `
 
 	input := []plog.Logs{makePlog(
@@ -519,7 +518,6 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
       parse_from: body.request.unix_ts
       layout_type: epoch
       layout: s
-      overwrite_text: true
   `
 	testCases = append(testCases, testCase{
 		"ts/happy_case", testTimeParserConf,

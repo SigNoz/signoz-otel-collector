@@ -1,3 +1,5 @@
+// brought in as-is from opentelemetry-collector-contrib
+// with changes to use the customized BodyField copy in this package
 package signozstanzaentry
 
 import (
@@ -19,8 +21,6 @@ type Field struct {
 type RootableField struct {
 	Field
 }
-
-//
 
 // UnmarshalJSON will unmarshal a field from JSON
 func (f *Field) UnmarshalJSON(raw []byte) error {

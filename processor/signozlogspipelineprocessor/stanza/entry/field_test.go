@@ -1,3 +1,4 @@
+// brought in as-is from opentelemetry-collector-contrib
 package signozstanzaentry
 
 import (
