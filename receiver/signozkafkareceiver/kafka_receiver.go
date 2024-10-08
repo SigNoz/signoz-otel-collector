@@ -495,7 +495,7 @@ type baseConsumerGroupHandler struct {
 func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim sarama.ConsumerGroupClaim, consume func() error) error {
 	// Execute f() immediately
 	err := consume()
-	if err == nil || !errors.Is(err, errHighMemoryUsage) {
+	if err == nil || !(err.Error() == errHighMemoryUsage.Error()) {
 		return err
 	}
 
@@ -515,7 +515,7 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 				b.resumePartition <- claim.Partition()
 				return nil
 			}
-			if !errors.Is(err, errHighMemoryUsage) {
+			if !(err.Error() == errHighMemoryUsage.Error()) {
 				b.resumePartition <- claim.Partition()
 				return err
 			}
