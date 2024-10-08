@@ -190,11 +190,20 @@ func TestTraceProcessor(t *testing.T) {
 	// if provided hex strings are not of the expected length
 	// See https://github.com/SigNoz/signoz/issues/3859 for an example
 
-	input = []plog.Logs{makePlog("test log", map[string]any{"traceId": "da9c07cca0ceb692"})}
+	input = []plog.Logs{makePlog("test log", map[string]any{
+		"traceId": "da9c07cca0ceb692",
+		"spanId":  "ceb692",
+	})}
 
 	expectedOutput = []plog.Logs{makePlogWithTopLevelFields(
-		t, "test log", map[string]any{"traceId": "da9c07cca0ceb692"},
-		map[string]any{"trace_id": "0000000000000000da9c07cca0ceb692"},
+		t, "test log", map[string]any{
+			"traceId": "da9c07cca0ceb692",
+			"spanId":  "ceb692",
+		},
+		map[string]any{
+			"trace_id": "0000000000000000da9c07cca0ceb692",
+			"span_id":  "0000000000ceb692",
+		},
 	)}
 
 	validateProcessorBehavior(t, confYaml, input, expectedOutput)
