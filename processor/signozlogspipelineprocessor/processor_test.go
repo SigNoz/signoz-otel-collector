@@ -573,12 +573,15 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
     - type: trace_parser
       trace_id:
         parse_from: body.request.traceId
+      span_id:
+        parse_from: body.request.spanId
   `
 	testCases = append(testCases, testCase{
 		"trace_parser/happy_case", testTraceParserConf,
-		makePlog(`{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692"}}`, map[string]any{}),
-		makePlogWithTopLevelFields(t, `{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692"}}`, map[string]any{}, map[string]any{
+		makePlog(`{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692", "spanId": "da9c07cca0ceb692"}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692", "spanId": "da9c07cca0ceb692"}}`, map[string]any{}, map[string]any{
 			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+			"span_id":  "da9c07cca0ceb692",
 		}),
 	})
 	testCases = append(testCases, testCase{
@@ -669,8 +672,12 @@ func makePlogWithTopLevelFields(t *testing.T, body string, attributes map[string
 	if traceId, exists := fields["trace_id"]; exists {
 		traceIdBytes, err := hex.DecodeString(traceId.(string))
 		require.NoError(t, err)
-
 		lr.SetTraceID(pcommon.TraceID(traceIdBytes))
+	}
+	if spanId, exists := fields["span_id"]; exists {
+		spanIdBytes, err := hex.DecodeString(spanId.(string))
+		require.NoError(t, err)
+		lr.SetSpanID(pcommon.SpanID(spanIdBytes))
 	}
 
 	if sevText, exists := fields["severity_text"]; exists {
