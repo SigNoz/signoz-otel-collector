@@ -5,6 +5,7 @@ package signozkafkareceiver // import "github.com/SigNoz/signoz-otel-collector/r
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -28,6 +29,9 @@ const (
 
 var errUnrecognizedEncoding = fmt.Errorf("unrecognized encoding")
 var errInvalidInitialOffset = fmt.Errorf("invalid initial offset")
+
+// errHighMemoryUsage is a sentinel error for high memory usage
+var errHighMemoryUsage = errors.New("data refused due to high memory usage")
 
 // kafkaTracesConsumer uses sarama to consume and handle messages from kafka.
 type kafkaTracesConsumer struct {
@@ -143,6 +147,12 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
+		},
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, consumerGroup); err != nil {
@@ -150,7 +160,28 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		}
 	}()
 	<-consumerGroup.ready
+
+	go func() {
+		c.errorLoop(ctx, consumerGroup)
+	}()
+
 	return nil
+}
+
+func (c *kafkaTracesConsumer) errorLoop(ctx context.Context, tracesConsumerGroup *tracesConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-tracesConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-tracesConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaTracesConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -241,6 +272,12 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
+		},
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, metricsConsumerGroup); err != nil {
@@ -248,7 +285,28 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		}
 	}()
 	<-metricsConsumerGroup.ready
+
+	go func() {
+		c.errorLoop(ctx, metricsConsumerGroup)
+	}()
+
 	return nil
+}
+
+func (c *kafkaMetricsConsumer) errorLoop(ctx context.Context, metricsConsumerGroup *metricsConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-metricsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-metricsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaMetricsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -367,6 +425,12 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		obsrecv:           obsrecv,
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			logger:          c.settings.Logger,
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan int32),
+			resumePartition: make(chan int32),
+		},
 	}
 	go func() {
 		if err := c.consumeLoop(ctx, logsConsumerGroup); err != nil {
@@ -374,7 +438,28 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		}
 	}()
 	<-logsConsumerGroup.ready
+
+	go func() {
+		c.errorLoop(ctx, logsConsumerGroup)
+	}()
+
 	return nil
+}
+
+func (c *kafkaLogsConsumer) errorLoop(ctx context.Context, logsConsumerGroup *logsConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-logsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-logsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -398,7 +483,50 @@ func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
 	return c.consumerGroup.Close()
 }
 
+type baseConsumerGroupHandler struct {
+	logger          *zap.Logger
+	retryInterval   time.Duration
+	pausePartition  chan int32
+	resumePartition chan int32
+}
+
+// wrap is now a method of BaseConsumerGroupHandler
+func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim sarama.ConsumerGroupClaim, consume func() error) error {
+	// Execute f() immediately
+	err := consume()
+	if err == nil || !(err.Error() == errHighMemoryUsage.Error()) {
+		return err
+	}
+
+	// If errHighMemoryUsage is encountered, enter the retry loop
+	ticker := time.NewTicker(b.retryInterval)
+	defer ticker.Stop()
+
+	b.logger.Info("applying initial backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
+	b.pausePartition <- claim.Partition()
+
+	for {
+		select {
+		case <-ticker.C:
+			err := consume()
+			if err == nil {
+				b.logger.Info("resuming normal operation", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
+				b.resumePartition <- claim.Partition()
+				return nil
+			}
+			if !(err.Error() == errHighMemoryUsage.Error()) {
+				b.resumePartition <- claim.Partition()
+				return err
+			}
+			b.logger.Info("continuing to apply backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
 type tracesConsumerGroupHandler struct {
+	baseConsumerGroupHandler
 	id           component.ID
 	unmarshaler  TracesUnmarshaler
 	nextConsumer consumer.Traces
@@ -414,6 +542,7 @@ type tracesConsumerGroupHandler struct {
 }
 
 type metricsConsumerGroupHandler struct {
+	baseConsumerGroupHandler
 	id           component.ID
 	unmarshaler  MetricsUnmarshaler
 	nextConsumer consumer.Metrics
@@ -429,6 +558,7 @@ type metricsConsumerGroupHandler struct {
 }
 
 type logsConsumerGroupHandler struct {
+	baseConsumerGroupHandler
 	id           component.ID
 	unmarshaler  LogsUnmarshaler
 	nextConsumer consumer.Logs
@@ -499,15 +629,17 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			spanCount := traces.SpanCount()
-			err = c.nextConsumer.ConsumeTraces(session.Context(), traces)
+			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeTraces(session.Context(), traces) })
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
 				if c.messageMarking.After && c.messageMarking.OnError {
 					session.MarkMessage(message, "")
 				}
+
 				return err
 			}
+
 			if c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
@@ -580,7 +712,7 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			}
 
 			dataPointCount := metrics.DataPointCount()
-			err = c.nextConsumer.ConsumeMetrics(session.Context(), metrics)
+			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeMetrics(session.Context(), metrics) })
 			c.obsrecv.EndMetricsOp(ctx, c.unmarshaler.Encoding(), dataPointCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export metrics", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
@@ -633,6 +765,7 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 	if !c.autocommitEnabled {
 		defer session.Commit()
 	}
+
 	for {
 		select {
 		case message, ok := <-claim.Messages():
@@ -666,9 +799,9 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 				return err
 			}
 
-			err = c.nextConsumer.ConsumeLogs(session.Context(), logs)
-			// TODO
-			c.obsrecv.EndLogsOp(ctx, c.unmarshaler.Encoding(), logs.LogRecordCount(), err)
+			logCount := logs.LogRecordCount()
+			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeLogs(session.Context(), logs) })
+			c.obsrecv.EndLogsOp(ctx, c.unmarshaler.Encoding(), logCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export logs", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
 				if c.messageMarking.After && c.messageMarking.OnError {
