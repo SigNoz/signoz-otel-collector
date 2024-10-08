@@ -68,7 +68,7 @@ type PrwExporter struct {
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
 // client parameter cannot be nil.
-func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, error) {
+func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 
 	sanitizedLabels, err := validateAndSanitizeExternalLabels(cfg.ExternalLabels)
 	if err != nil {

@@ -22,7 +22,7 @@ func TestCreateReceiverLogsFirst(t *testing.T) {
 	cfg := factory.CreateDefaultConfig().(*Config)
 	cfg.Endpoint = "localhost:1" // Endpoint is required, not going to be used here.
 
-	lReceiver, err := factory.CreateLogsReceiver(context.Background(), receivertest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	lReceiver, err := factory.CreateLogs(context.Background(), receivertest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.Nil(t, err, "receiver creation failed")
 	assert.NotNil(t, lReceiver, "receiver creation failed")
 }

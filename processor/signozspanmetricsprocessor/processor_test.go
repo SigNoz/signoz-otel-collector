@@ -35,6 +35,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor/processortest"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
@@ -109,8 +110,8 @@ func TestProcessorStart(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Prepare
-			exporters := map[component.DataType]map[component.ID]component.Component{
-				component.DataTypeMetrics: {
+			exporters := map[pipeline.Signal]map[component.ID]component.Component{
+				pipeline.SignalMetrics: {
 					componentID: tc.exporter,
 				},
 			}
@@ -122,7 +123,7 @@ func TestProcessorStart(t *testing.T) {
 			cfg := factory.CreateDefaultConfig().(*Config)
 			cfg.MetricsExporter = tc.metricsExporter
 
-			procCreationParams := processortest.NewNopCreateSettings()
+			procCreationParams := processortest.NewNopSettings()
 			traceProcessor, err := factory.CreateTracesProcessor(context.Background(), procCreationParams, cfg, consumertest.NewNop())
 			require.NoError(t, err)
 
@@ -742,7 +743,7 @@ func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Tr
 			Endpoint: "example.com:1234",
 		},
 	}
-	expCreationParams := exportertest.NewNopCreateSettings()
+	expCreationParams := exportertest.NewNopSettings()
 	mexp, err := otlpExpFactory.CreateMetricsExporter(context.Background(), expCreationParams, otlpConfig)
 	require.NoError(t, err)
 	texp, err := otlpExpFactory.CreateTracesExporter(context.Background(), expCreationParams, otlpConfig)

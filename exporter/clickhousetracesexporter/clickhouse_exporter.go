@@ -54,7 +54,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	id := uuid.New()
 
-	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
+	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueConfig.NumConsumers)
 
 	err := f.Initialize(logger)
 	if err != nil {

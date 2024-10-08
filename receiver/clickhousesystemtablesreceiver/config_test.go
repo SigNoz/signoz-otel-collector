@@ -42,7 +42,7 @@ func TestLoadConfig(t *testing.T) {
 		sub, err := cm.Sub("clickhousesystemtablesreceiver")
 		require.Nil(err)
 
-		require.NoError(component.UnmarshalConfig(sub, cfg))
+		require.NoError(sub.Unmarshal(cfg))
 
 		if tt.expectedErr {
 			require.Error(component.ValidateConfig(cfg))

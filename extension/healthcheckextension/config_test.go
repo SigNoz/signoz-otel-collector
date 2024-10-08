@@ -68,9 +68,9 @@ func TestLoadConfig(t *testing.T) {
 			cfg := factory.CreateDefaultConfig()
 			sub, err := cm.Sub(tt.id.String())
 			require.NoError(t, err)
-			require.NoError(t, component.UnmarshalConfig(sub, cfg))
+			require.NoError(t, sub.Unmarshal(cfg))
 			if tt.expectedErr != nil {
-				assert.ErrorIs(t, component.ValidateConfig(cfg), tt.expectedErr)
+				assert.ErrorIs(t, sub.Unmarshal(cfg), tt.expectedErr)
 				return
 			}
 			assert.NoError(t, component.ValidateConfig(cfg))

@@ -48,7 +48,7 @@ func TestCreateDefaultConfig(t *testing.T) {
 func TestFactory_CreateLogsExporter_Fail(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
-	params := exportertest.NewNopCreateSettings()
+	params := exportertest.NewNopSettings()
 	_, err := factory.CreateLogsExporter(context.Background(), params, cfg)
 	require.Error(t, err, "expected an error when creating a logs exporter")
 }

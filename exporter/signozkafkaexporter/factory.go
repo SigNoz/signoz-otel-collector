@@ -90,10 +90,10 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
-		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
-		Brokers:         []string{defaultBroker},
+		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+		Brokers:       []string{defaultBroker},
 		// using an empty topic to track when it has not been set by user, default is based on traces or metrics.
 		Topic:    "",
 		Encoding: defaultEncoding,
@@ -121,7 +121,7 @@ type kafkaExporterFactory struct {
 
 func (f *kafkaExporterFactory) createTracesExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
@@ -143,15 +143,15 @@ func (f *kafkaExporterFactory) createTracesExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
 		// and will rely on the sarama Producer Timeout logic.
-		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
+		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueSettings),
+		exporterhelper.WithQueue(oCfg.QueueConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
 func (f *kafkaExporterFactory) createMetricsExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
@@ -173,15 +173,15 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
 		// and will rely on the sarama Producer Timeout logic.
-		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
+		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueSettings),
+		exporterhelper.WithQueue(oCfg.QueueConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
 func (f *kafkaExporterFactory) createLogsExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
@@ -203,8 +203,8 @@ func (f *kafkaExporterFactory) createLogsExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
 		// and will rely on the sarama Producer Timeout logic.
-		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
+		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueSettings),
+		exporterhelper.WithQueue(oCfg.QueueConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
