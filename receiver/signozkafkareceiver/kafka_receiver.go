@@ -162,18 +162,27 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 	}()
 	<-consumerGroup.ready
 
-	select {
-	case p := <-consumerGroup.pausePartition:
-		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-	case p := <-consumerGroup.resumePartition:
-		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
-	case <-ctx.Done():
-		return nil
-	}
+	go func() {
+		c.errorLoop(ctx, consumerGroup)
+	}()
 
 	return nil
+}
+
+func (c *kafkaTracesConsumer) errorLoop(ctx context.Context, tracesConsumerGroup *tracesConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-tracesConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-tracesConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaTracesConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -278,18 +287,27 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 	}()
 	<-metricsConsumerGroup.ready
 
-	select {
-	case p := <-metricsConsumerGroup.pausePartition:
-		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-	case p := <-metricsConsumerGroup.resumePartition:
-		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
-	case <-ctx.Done():
-		return nil
-	}
+	go func() {
+		c.errorLoop(ctx, metricsConsumerGroup)
+	}()
 
 	return nil
+}
+
+func (c *kafkaMetricsConsumer) errorLoop(ctx context.Context, metricsConsumerGroup *metricsConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-metricsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-metricsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaMetricsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -422,18 +440,27 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 	}()
 	<-logsConsumerGroup.ready
 
-	select {
-	case p := <-logsConsumerGroup.pausePartition:
-		c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-		c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-	case p := <-logsConsumerGroup.resumePartition:
-		c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-		c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
-	case <-ctx.Done():
-		return nil
-	}
+	go func() {
+		c.errorLoop(ctx, logsConsumerGroup)
+	}()
 
 	return nil
+}
+
+func (c *kafkaLogsConsumer) errorLoop(ctx context.Context, logsConsumerGroup *logsConsumerGroupHandler) {
+	for {
+		select {
+		case p := <-logsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
+			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
+		case p := <-logsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
+			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-ctx.Done():
+			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
+			return
+		}
+	}
 }
 
 func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
