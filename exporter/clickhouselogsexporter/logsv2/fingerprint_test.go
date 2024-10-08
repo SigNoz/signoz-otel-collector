@@ -33,6 +33,11 @@ func TestCalculateFingerprint(t *testing.T) {
 			ResourceAttrs: map[string]any{"gcp.project": "myproject", "source_type": "gcp", "random_key": "val"},
 			FingerPrint:   "gcp.project=myproject;source_type=gcp;hash=11162778839006855273",
 		},
+		{
+			Name:          "service, env and component",
+			ResourceAttrs: map[string]any{"service.name": "service", "env": "prod", "component": "service-component"},
+			FingerPrint:   "service.name=service;env=prod;component=service-component;hash=18170521368096690780",
+		},
 	}
 
 	for _, ts := range testCases {

@@ -129,6 +129,7 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 												"deployment.environment",
 												"ec2.tag.env-short", // is this standard enough?
 												"ec2.tag.env",       // is this standard enough?
+												"env",
 											},
 
 											subHierachies: []DimensionHierarchyNode{{
@@ -153,6 +154,12 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 														"container.name",
 														"container_name",
 													},
+
+													subHierachies: []DimensionHierarchyNode{{
+														labels: []string{
+															"component",
+														},
+													}},
 												}},
 											}},
 										}},
