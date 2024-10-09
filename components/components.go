@@ -277,7 +277,6 @@ func Components() (otelcol.Factories, error) {
 		saphanareceiver.NewFactory(),
 		sapmreceiver.NewFactory(),
 		signalfxreceiver.NewFactory(),
-		signozkafkareceiver.NewFactory(),
 		simpleprometheusreceiver.NewFactory(),
 		skywalkingreceiver.NewFactory(),
 		snmpreceiver.NewFactory(),
@@ -299,7 +298,6 @@ func Components() (otelcol.Factories, error) {
 		windowsperfcountersreceiver.NewFactory(),
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
-		httplogreceiver.NewFactory(),
 		signozkafkareceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
