@@ -8,7 +8,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/cassandraexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kineticaexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/loadbalancingexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opencensusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
@@ -323,12 +322,8 @@ func Components() (otelcol.Factories, error) {
 		fileexporter.NewFactory(),
 		googlecloudpubsubexporter.NewFactory(),
 		kafkaexporter.NewFactory(),
-		kineticaexporter.NewFactory(),
 		loadbalancingexporter.NewFactory(),
-		loggingexporter.NewFactory(),
 		opencensusexporter.NewFactory(),
-		otlpexporter.NewFactory(),
-		otlphttpexporter.NewFactory(),
 		prometheusexporter.NewFactory(),
 		prometheusremotewriteexporter.NewFactory(),
 		pulsarexporter.NewFactory(),
@@ -347,7 +342,6 @@ func Components() (otelcol.Factories, error) {
 
 	processors := []processor.Factory{
 		attributesprocessor.NewFactory(),
-		batchprocessor.NewFactory(),
 		cumulativetodeltaprocessor.NewFactory(),
 		deltatorateprocessor.NewFactory(),
 		filterprocessor.NewFactory(),
@@ -355,7 +349,6 @@ func Components() (otelcol.Factories, error) {
 		groupbytraceprocessor.NewFactory(),
 		k8sattributesprocessor.NewFactory(),
 		logstransformprocessor.NewFactory(),
-		memorylimiterprocessor.NewFactory(),
 		metricsgenerationprocessor.NewFactory(),
 		metricstransformprocessor.NewFactory(),
 		probabilisticsamplerprocessor.NewFactory(),
@@ -364,10 +357,7 @@ func Components() (otelcol.Factories, error) {
 		resourceprocessor.NewFactory(),
 		routingprocessor.NewFactory(),
 		schemaprocessor.NewFactory(),
-		signozlogspipelineprocessor.NewFactory(),
 		signozspanmetricsprocessor.NewFactory(),
-		signoztailsampler.NewFactory(),
-		signoztransformprocessor.NewFactory(),
 		spanprocessor.NewFactory(),
 		tailsamplingprocessor.NewFactory(),
 		transformprocessor.NewFactory(),

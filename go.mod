@@ -43,7 +43,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.111.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter v0.111.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.111.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kineticaexporter v0.111.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/loadbalancingexporter v0.111.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opencensusexporter v0.111.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.111.0
@@ -440,7 +439,6 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
-	github.com/kineticadb/kinetica-api-go v0.0.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/knadh/koanf/v2 v2.1.1 // indirect
 	github.com/kolo/xmlrpc v0.0.0-20220921171641-a4b6fa1dd06b // indirect
@@ -527,7 +525,6 @@ require (
 	github.com/relvacode/iso8601 v1.4.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
-	github.com/samber/lo v1.47.0 // indirect
 	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.29 // indirect
 	github.com/seccomp/libseccomp-golang v0.9.2-0.20220502022130-f33da4d89646 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.7.0 // indirect
@@ -561,7 +558,6 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
-	github.com/ztrue/tracerr v0.4.0 // indirect
 	go.etcd.io/bbolt v1.3.11 // indirect
 	go.mongodb.org/atlas v0.37.0 // indirect
 	go.mongodb.org/mongo-driver v1.17.1 // indirect
