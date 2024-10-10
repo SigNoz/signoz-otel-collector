@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -61,7 +62,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	routes := make([]*Route, 0, len(c.Routes))
 	for _, routeConfig := range c.Routes {
-		compiled, err := helper.ExprCompileBool(routeConfig.Expression)
+		compiled, hasBodyFieldRef, err := signozstanzahelper.ExprCompileBool(routeConfig.Expression)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile expression '%s': %w", routeConfig.Expression, err)
 		}
@@ -72,9 +73,10 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		}
 
 		route := Route{
-			Attributer: attributer,
-			Expression: compiled,
-			OutputIDs:  routeConfig.OutputIDs,
+			Attributer:          attributer,
+			Expression:          compiled,
+			exprHasBodyFieldRef: hasBodyFieldRef,
+			OutputIDs:           routeConfig.OutputIDs,
 		}
 		routes = append(routes, &route)
 	}

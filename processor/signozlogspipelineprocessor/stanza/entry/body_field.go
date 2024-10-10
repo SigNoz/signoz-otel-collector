@@ -55,7 +55,7 @@ func (f BodyField) String() string {
 }
 
 // returns nil if the body was not JSON
-func parseBodyJson(entry *entry.Entry) map[string]any {
+func ParseBodyJson(entry *entry.Entry) map[string]any {
 	// If body is already a map, return it as-is
 	bodyMap, ok := entry.Body.(map[string]any)
 	if ok {
@@ -105,7 +105,7 @@ func (f BodyField) Get(entry *entry.Entry) (any, bool) {
 	// If path inside body field has been specified, try to
 	// interpret body as a map[string]any - parsing JSON if needed
 	if len(f.Keys) > 0 {
-		bodyJson := parseBodyJson(entry)
+		bodyJson := ParseBodyJson(entry)
 		if bodyJson != nil {
 			currentValue = bodyJson
 		}
