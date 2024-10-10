@@ -23,7 +23,7 @@ var envPool = sync.Pool{
 }
 
 // GetExprEnv returns a map of key/value pairs that can be be used to evaluate an expression
-func GetExprEnv(e *entry.Entry, includeBodyMap bool) map[string]any {
+func GetExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool) map[string]any {
 	env := envPool.Get().(map[string]any)
 	env["$"] = e.Body
 	env["body"] = e.Body
@@ -33,7 +33,7 @@ func GetExprEnv(e *entry.Entry, includeBodyMap bool) map[string]any {
 	env["severity_text"] = e.SeverityText
 	env["severity_number"] = int(e.Severity)
 
-	if includeBodyMap {
+	if forExprWithBodyFieldRef {
 		env["body_map"] = signozstanzaentry.ParseBodyJson(e)
 	}
 
@@ -48,38 +48,61 @@ func PutExprEnv(e map[string]any) {
 func ExprCompile(input string) (
 	program *vm.Program, hasBodyFieldRef bool, err error,
 ) {
-	patcher := &exprPatcher{}
-	program, err = expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(patcher))
+	patcher := &signozExprPatcher{}
+	program, err = expr.Compile(
+		input, expr.AllowUndefinedVariables(), expr.Patch(patcher),
+	)
 	if err != nil {
 		return nil, false, err
 	}
-	return program, patcher.hasBodyFieldRef, err
+
+	return program, patcher.foundBodyFieldRef, err
 }
 
 func ExprCompileBool(input string) (
 	program *vm.Program, hasBodyFieldRef bool, err error,
 ) {
-	patcher := &exprPatcher{}
-	program, err = expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(patcher), expr.AsBool())
+	patcher := &signozExprPatcher{}
+	program, err = expr.Compile(
+		input, expr.AllowUndefinedVariables(), expr.Patch(patcher), expr.AsBool(),
+	)
 	if err != nil {
 		return nil, false, err
 	}
-	return program, patcher.hasBodyFieldRef, err
+
+	return program, patcher.foundBodyFieldRef, err
 }
 
-type exprPatcher struct {
-	hasBodyFieldRef bool
+type signozExprPatcher struct {
+	// set to true if the patcher encounters a reference to a body field
+	// (like `body.request.id`) while compiling an expression
+	foundBodyFieldRef bool
 }
 
-func (p *exprPatcher) Visit(node *ast.Node) {
-	// Change all references to fields inside body
-	// to refer inside bodyMap (supplied in expr env)
-	memberAccess, ok := (*node).(*ast.MemberNode)
-	if ok {
-		identifier, ok := (memberAccess.Node).(*ast.IdentifierNode)
-		if ok && identifier.Value == "body" {
-			identifier.Value = "body_map"
-			p.hasBodyFieldRef = true
+func (p *signozExprPatcher) Visit(node *ast.Node) {
+	// Change all references to fields inside body (eg: body.request.id)
+	// to refer inside body_map instead (eg: body_map.request.id)
+	//
+	// `body_map` is supplied in expr env's by JSON parsing the log body
+	// when it contains serialized JSON
+	memberAccessNode, isMemberNode := (*node).(*ast.MemberNode)
+	if isMemberNode {
+		// MemberNode represents a member access in expr
+		// It can be a field access, a method call, or an array element access.
+		// Example: `foo.bar` or `foo["bar"]` or `foo.bar()` or `array[0]`
+		//
+		// `memberNode.Node` is the node whose property/member is being accessed.
+		// Eg: the node for `body` in `body.request.id`
+		//
+		// `memberNode.Property` is the property being accessed on `memberNode.Node`
+		// Eg: the AST for `request.id` in `body.request.id`
+		//
+		// Change all `MemberNode`s where the target (`memberNode.Node`)
+		// is `body` to target `body_map` instead.
+		identifierNode, isIdentifierNode := (memberAccessNode.Node).(*ast.IdentifierNode)
+		if isIdentifierNode && identifierNode.Value == "body" {
+			identifierNode.Value = "body_map"
+			p.foundBodyFieldRef = true
 		}
 	}
 

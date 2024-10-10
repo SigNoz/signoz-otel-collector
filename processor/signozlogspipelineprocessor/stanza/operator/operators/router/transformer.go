@@ -40,9 +40,9 @@ func (t *Transformer) CanProcess() bool {
 
 // Process will route incoming entries based on matching expressions
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
-	routesHaveBodyFieldRef := slices.ContainsFunc(t.routes, func(r *Route) bool {
-		return r.exprHasBodyFieldRef
-	})
+	routesHaveBodyFieldRef := slices.ContainsFunc(
+		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
+	)
 	env := signozstanzahelper.GetExprEnv(entry, routesHaveBodyFieldRef)
 	defer signozstanzahelper.PutExprEnv(env)
 
