@@ -7,8 +7,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 const operatorType = "json_parser"
@@ -25,13 +25,13 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new JSON parser config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		ParserConfig: helper.NewParserConfig(operatorID, operatorType),
+		ParserConfig: signozstanzahelper.NewParserConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of a JSON parser operator.
 type Config struct {
-	helper.ParserConfig `mapstructure:",squash"`
+	signozstanzahelper.ParserConfig `mapstructure:",squash"`
 }
 
 // Build will build a JSON parser operator.

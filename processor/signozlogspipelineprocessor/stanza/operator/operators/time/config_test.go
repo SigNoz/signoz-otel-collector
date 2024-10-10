@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operatortest"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
 func TestUnmarshal(t *testing.T) {
@@ -30,7 +30,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_strptime",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := entry.NewBodyField("from")
+					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					cfg.LayoutType = "strptime"
 					cfg.Layout = "%Y-%m-%d"
@@ -41,7 +41,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_gotime",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := entry.NewBodyField("from")
+					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					cfg.LayoutType = "gotime"
 					cfg.Layout = "2006-01-02"

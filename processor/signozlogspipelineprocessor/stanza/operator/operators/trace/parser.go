@@ -5,6 +5,7 @@ package trace
 import (
 	"context"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -12,7 +13,7 @@ import (
 // Config is an operator that parses traces from fields to an entry.
 type Parser struct {
 	helper.TransformerOperator
-	helper.TraceParser
+	signozstanzahelper.TraceParser
 }
 
 // Process will parse traces from an entry.

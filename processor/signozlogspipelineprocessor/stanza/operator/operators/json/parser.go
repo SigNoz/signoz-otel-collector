@@ -6,15 +6,15 @@ import (
 	"context"
 	"fmt"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Parser is an operator that parses JSON.
 type Parser struct {
-	helper.ParserOperator
+	signozstanzahelper.ParserOperator
 	json jsoniter.API
 }
 
