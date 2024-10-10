@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
@@ -34,8 +35,8 @@ func NewConfigWithID(operatorID string) *Config {
 // Config is the configuration of a copy operator
 type Config struct {
 	helper.TransformerConfig `mapstructure:",squash"`
-	From                     entry.Field `mapstructure:"from"`
-	To                       entry.Field `mapstructure:"to"`
+	From                     signozstanzaentry.Field `mapstructure:"from"`
+	To                       entry.Field             `mapstructure:"to"`
 }
 
 // Build will build a copy operator from the supplied configuration
@@ -45,7 +46,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
-	if c.From == entry.NewNilField() {
+	if c.From == (signozstanzaentry.Field{entry.NewNilField()}) {
 		return nil, fmt.Errorf("copy: missing from field")
 	}
 

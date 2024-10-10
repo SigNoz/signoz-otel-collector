@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operatortest"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 func TestConfig(t *testing.T) {
@@ -30,8 +30,8 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "spanid",
 				Expect: func() *Config {
-					parseFrom := entry.NewBodyField("app_span_id")
-					cfg := helper.SpanIDConfig{}
+					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_span_id")}
+					cfg := signozstanzahelper.SpanIDConfig{}
 					cfg.ParseFrom = &parseFrom
 
 					c := NewConfig()
@@ -42,8 +42,8 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "traceid",
 				Expect: func() *Config {
-					parseFrom := entry.NewBodyField("app_trace_id")
-					cfg := helper.TraceIDConfig{}
+					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_trace_id")}
+					cfg := signozstanzahelper.TraceIDConfig{}
 					cfg.ParseFrom = &parseFrom
 
 					c := NewConfig()
@@ -54,8 +54,8 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "trace_flags",
 				Expect: func() *Config {
-					parseFrom := entry.NewBodyField("app_trace_flags_id")
-					cfg := helper.TraceFlagsConfig{}
+					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_trace_flags_id")}
+					cfg := signozstanzahelper.TraceFlagsConfig{}
 					cfg.ParseFrom = &parseFrom
 
 					c := NewConfig()
