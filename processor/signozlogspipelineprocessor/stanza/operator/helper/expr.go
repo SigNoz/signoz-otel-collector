@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/vm"
@@ -22,7 +23,7 @@ var envPool = sync.Pool{
 }
 
 // GetExprEnv returns a map of key/value pairs that can be be used to evaluate an expression
-func GetExprEnv(e *entry.Entry) map[string]any {
+func GetExprEnv(e *entry.Entry, includeBodyMap bool) map[string]any {
 	env := envPool.Get().(map[string]any)
 	env["$"] = e.Body
 	env["body"] = e.Body
@@ -32,6 +33,10 @@ func GetExprEnv(e *entry.Entry) map[string]any {
 	env["severity_text"] = e.SeverityText
 	env["severity_number"] = int(e.Severity)
 
+	if includeBodyMap {
+		env["body_map"] = signozstanzaentry.ParseBodyJson(e)
+	}
+
 	return env
 }
 
@@ -40,17 +45,35 @@ func PutExprEnv(e map[string]any) {
 	envPool.Put(e)
 }
 
-func ExprCompile(input string) (*vm.Program, error) {
-	return expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(&exprPatcher{}))
+func ExprCompile(input string) (program *vm.Program, hasBodyFieldRef bool, err error) {
+	patcher := &exprPatcher{}
+	program, err = expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(patcher))
+	if err != nil {
+		return nil, false, err
+	}
+	return program, patcher.hasBodyFieldRef, err
 }
 
 func ExprCompileBool(input string) (*vm.Program, error) {
 	return expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(&exprPatcher{}), expr.AsBool())
 }
 
-type exprPatcher struct{}
+type exprPatcher struct {
+	hasBodyFieldRef bool
+}
 
 func (p *exprPatcher) Visit(node *ast.Node) {
+	// Change all references to fields inside body
+	// to refer inside bodyMap (supplied in expr env)
+	memberAccess, ok := (*node).(*ast.MemberNode)
+	if ok {
+		identifier, ok := (memberAccess.Node).(*ast.IdentifierNode)
+		if ok && identifier.Value == "body" {
+			identifier.Value = "body_map"
+			p.hasBodyFieldRef = true
+		}
+	}
+
 	n, ok := (*node).(*ast.CallNode)
 	if !ok {
 		return

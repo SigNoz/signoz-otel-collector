@@ -18,9 +18,10 @@ import (
 type Transformer struct {
 	helper.TransformerOperator
 
-	Field   entry.Field
-	Value   any
-	program *vm.Program
+	Field           entry.Field
+	Value           any
+	program         *vm.Program
+	hasBodyFieldRef bool
 }
 
 // Process will process an entry with a add transformation.
@@ -34,7 +35,7 @@ func (t *Transformer) Transform(e *entry.Entry) error {
 		return e.Set(t.Field, t.Value)
 	}
 	if t.program != nil {
-		env := signozstanzahelper.GetExprEnv(e)
+		env := signozstanzahelper.GetExprEnv(e, t.hasBodyFieldRef)
 		defer signozstanzahelper.PutExprEnv(env)
 
 		result, err := vm.Run(t.program, env)

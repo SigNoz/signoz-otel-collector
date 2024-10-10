@@ -36,7 +36,7 @@ func (t *Transformer) CanProcess() bool {
 
 // Process will route incoming entries based on matching expressions
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
-	env := signozstanzahelper.GetExprEnv(entry)
+	env := signozstanzahelper.GetExprEnv(entry, false)
 	defer signozstanzahelper.PutExprEnv(env)
 
 	for _, route := range t.routes {
