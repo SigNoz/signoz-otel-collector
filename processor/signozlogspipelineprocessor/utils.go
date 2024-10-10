@@ -136,12 +136,15 @@ func convertInto(ent *entry.Entry, dest plog.LogRecord) {
 
 	if ent.TraceID != nil {
 		var buffer [16]byte
-		copy(buffer[0:16], ent.TraceID)
+		// ensure buffer gets padded to left if len(ent.TraceID) != 16
+		copyStartIdx := (max(0, 16-len(ent.TraceID)))
+		copy(buffer[copyStartIdx:16], ent.TraceID)
 		dest.SetTraceID(buffer)
 	}
 	if ent.SpanID != nil {
 		var buffer [8]byte
-		copy(buffer[0:8], ent.SpanID)
+		copyStartIdx := (max(0, 8-len(ent.SpanID)))
+		copy(buffer[copyStartIdx:8], ent.SpanID)
 		dest.SetSpanID(buffer)
 	}
 	if ent.TraceFlags != nil && len(ent.TraceFlags) > 0 {
