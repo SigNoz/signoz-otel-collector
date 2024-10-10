@@ -66,9 +66,9 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
-		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
+		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig: configretry.NewDefaultBackOffConfig(),
 	}
 }
 
@@ -76,7 +76,7 @@ func createDefaultConfig() component.Config {
 // Logs are directly insert into clickhouse.
 func createLogsExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	c := cfg.(*Config)
@@ -91,8 +91,8 @@ func createLogsExporter(
 		cfg,
 		exporter.pushLogsData,
 		exporterhelper.WithShutdown(exporter.Shutdown),
-		exporterhelper.WithTimeout(c.TimeoutSettings),
-		exporterhelper.WithQueue(c.QueueSettings),
+		exporterhelper.WithTimeout(c.TimeoutConfig),
+		exporterhelper.WithQueue(c.QueueConfig),
 		exporterhelper.WithRetry(c.BackOffConfig),
 	)
 }

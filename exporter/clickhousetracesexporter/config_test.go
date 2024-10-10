@@ -36,7 +36,7 @@ func Test_loadConfig(t *testing.T) {
 	assert.Equal(t, e1,
 		&Config{
 			Datasource: "tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password",
-			TimeoutSettings: exporterhelper.TimeoutSettings{
+			TimeoutConfig: exporterhelper.TimeoutConfig{
 				Timeout: 5 * time.Second,
 			},
 			BackOffConfig: configretry.BackOffConfig{
@@ -47,7 +47,7 @@ func Test_loadConfig(t *testing.T) {
 				RandomizationFactor: 0.7,
 				Multiplier:          1.3,
 			},
-			QueueSettings: exporterhelper.QueueSettings{
+			QueueConfig: exporterhelper.QueueConfig{
 				Enabled:      true,
 				NumConsumers: 5,
 				QueueSize:    100,

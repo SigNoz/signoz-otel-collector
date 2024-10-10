@@ -107,6 +107,8 @@ func makeTestOttlLogContext(
 		plog.NewLogRecord(),
 		pcommon.NewInstrumentationScope(),
 		pcommon.NewResource(),
+		plog.NewScopeLogs(),
+		plog.NewResourceLogs(),
 	)
 	ctx.GetLogRecord().Body().SetStr(body)
 	ctx.GetLogRecord().Attributes().FromRaw(attributes)

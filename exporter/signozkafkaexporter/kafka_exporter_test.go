@@ -27,56 +27,56 @@ import (
 
 func TestNewExporter_err_version(t *testing.T) {
 	c := Config{ProtocolVersion: "0.0.0", Encoding: defaultEncoding}
-	texp, err := newTracesExporter(c, exportertest.NewNopCreateSettings(), tracesMarshalers())
+	texp, err := newTracesExporter(c, exportertest.NewNopSettings(), tracesMarshalers())
 	assert.Error(t, err)
 	assert.Nil(t, texp)
 }
 
 func TestNewExporter_err_encoding(t *testing.T) {
 	c := Config{Encoding: "foo"}
-	texp, err := newTracesExporter(c, exportertest.NewNopCreateSettings(), tracesMarshalers())
+	texp, err := newTracesExporter(c, exportertest.NewNopSettings(), tracesMarshalers())
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
 	assert.Nil(t, texp)
 }
 
 func TestNewMetricsExporter_err_version(t *testing.T) {
 	c := Config{ProtocolVersion: "0.0.0", Encoding: defaultEncoding}
-	mexp, err := newMetricsExporter(c, exportertest.NewNopCreateSettings(), metricsMarshalers())
+	mexp, err := newMetricsExporter(c, exportertest.NewNopSettings(), metricsMarshalers())
 	assert.Error(t, err)
 	assert.Nil(t, mexp)
 }
 
 func TestNewMetricsExporter_err_encoding(t *testing.T) {
 	c := Config{Encoding: "bar"}
-	mexp, err := newMetricsExporter(c, exportertest.NewNopCreateSettings(), metricsMarshalers())
+	mexp, err := newMetricsExporter(c, exportertest.NewNopSettings(), metricsMarshalers())
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
 	assert.Nil(t, mexp)
 }
 
 func TestNewMetricsExporter_err_traces_encoding(t *testing.T) {
 	c := Config{Encoding: "jaeger_proto"}
-	mexp, err := newMetricsExporter(c, exportertest.NewNopCreateSettings(), metricsMarshalers())
+	mexp, err := newMetricsExporter(c, exportertest.NewNopSettings(), metricsMarshalers())
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
 	assert.Nil(t, mexp)
 }
 
 func TestNewLogsExporter_err_version(t *testing.T) {
 	c := Config{ProtocolVersion: "0.0.0", Encoding: defaultEncoding}
-	mexp, err := newLogsExporter(c, exportertest.NewNopCreateSettings(), logsMarshalers())
+	mexp, err := newLogsExporter(c, exportertest.NewNopSettings(), logsMarshalers())
 	assert.Error(t, err)
 	assert.Nil(t, mexp)
 }
 
 func TestNewLogsExporter_err_encoding(t *testing.T) {
 	c := Config{Encoding: "bar"}
-	mexp, err := newLogsExporter(c, exportertest.NewNopCreateSettings(), logsMarshalers())
+	mexp, err := newLogsExporter(c, exportertest.NewNopSettings(), logsMarshalers())
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
 	assert.Nil(t, mexp)
 }
 
 func TestNewLogsExporter_err_traces_encoding(t *testing.T) {
 	c := Config{Encoding: "jaeger_proto"}
-	mexp, err := newLogsExporter(c, exportertest.NewNopCreateSettings(), logsMarshalers())
+	mexp, err := newLogsExporter(c, exportertest.NewNopSettings(), logsMarshalers())
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
 	assert.Nil(t, mexp)
 }
@@ -99,15 +99,15 @@ func TestNewExporter_err_auth_type(t *testing.T) {
 			Compression: "none",
 		},
 	}
-	texp, err := newTracesExporter(c, exportertest.NewNopCreateSettings(), tracesMarshalers())
+	texp, err := newTracesExporter(c, exportertest.NewNopSettings(), tracesMarshalers())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, texp)
-	mexp, err := newMetricsExporter(c, exportertest.NewNopCreateSettings(), metricsMarshalers())
+	mexp, err := newMetricsExporter(c, exportertest.NewNopSettings(), metricsMarshalers())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, mexp)
-	lexp, err := newLogsExporter(c, exportertest.NewNopCreateSettings(), logsMarshalers())
+	lexp, err := newLogsExporter(c, exportertest.NewNopSettings(), logsMarshalers())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, lexp)
@@ -121,7 +121,7 @@ func TestNewExporter_err_compression(t *testing.T) {
 			Compression: "idk",
 		},
 	}
-	texp, err := newTracesExporter(c, exportertest.NewNopCreateSettings(), tracesMarshalers())
+	texp, err := newTracesExporter(c, exportertest.NewNopSettings(), tracesMarshalers())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "producer.compression should be one of 'none', 'gzip', 'snappy', 'lz4', or 'zstd'. configured value idk")
 	assert.Nil(t, texp)

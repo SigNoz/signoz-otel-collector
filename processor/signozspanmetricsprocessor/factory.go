@@ -56,7 +56,7 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-func createTracesProcessor(ctx context.Context, params processor.CreateSettings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
+func createTracesProcessor(ctx context.Context, params processor.Settings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
 	var instanceID string
 	serviceInstanceId, ok := params.Resource.Attributes().Get(semconv.AttributeServiceInstanceID)
 	if ok {

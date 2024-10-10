@@ -406,9 +406,9 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	config := parseProcessorConfig(t, confYaml)
 	testSink := new(consumertest.LogsSink)
-	proc, err := factory.CreateLogsProcessor(
+	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopCreateSettings(),
+		processortest.NewNopSettings(),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -651,9 +651,9 @@ func validateProcessorBehavior(
 
 	config := parseProcessorConfig(t, confYaml)
 	testSink := new(consumertest.LogsSink)
-	proc, err := factory.CreateLogsProcessor(
+	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopCreateSettings(),
+		processortest.NewNopSettings(),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -683,7 +683,7 @@ func parseProcessorConfig(t *testing.T, confYaml string) component.Config {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(
-		t, component.UnmarshalConfig(cm, cfg),
+		t, cm.Unmarshal(cfg),
 		"couldn't unmarshal parsed yaml into processor config",
 	)
 	return cfg
