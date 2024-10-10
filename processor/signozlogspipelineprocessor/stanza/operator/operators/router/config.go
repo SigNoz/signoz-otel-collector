@@ -62,7 +62,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	routes := make([]*Route, 0, len(c.Routes))
 	for _, routeConfig := range c.Routes {
-		compiled, err := signozstanzahelper.ExprCompileBool(routeConfig.Expression)
+		compiled, hasBodyFieldRef, err := signozstanzahelper.ExprCompileBool(routeConfig.Expression)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile expression '%s': %w", routeConfig.Expression, err)
 		}
@@ -73,9 +73,10 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		}
 
 		route := Route{
-			Attributer: attributer,
-			Expression: compiled,
-			OutputIDs:  routeConfig.OutputIDs,
+			Attributer:          attributer,
+			Expression:          compiled,
+			exprHasBodyFieldRef: hasBodyFieldRef,
+			OutputIDs:           routeConfig.OutputIDs,
 		}
 		routes = append(routes, &route)
 	}

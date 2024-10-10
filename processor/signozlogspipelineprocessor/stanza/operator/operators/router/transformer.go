@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
@@ -24,7 +25,10 @@ type Transformer struct {
 // Route is a route on a router operator
 type Route struct {
 	helper.Attributer
-	Expression      *vm.Program
+
+	Expression          *vm.Program
+	exprHasBodyFieldRef bool
+
 	OutputIDs       []string
 	OutputOperators []operator.Operator
 }
@@ -36,7 +40,10 @@ func (t *Transformer) CanProcess() bool {
 
 // Process will route incoming entries based on matching expressions
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
-	env := signozstanzahelper.GetExprEnv(entry, false)
+	routesHaveBodyFieldRef := slices.ContainsFunc(t.routes, func(r *Route) bool {
+		return r.exprHasBodyFieldRef
+	})
+	env := signozstanzahelper.GetExprEnv(entry, routesHaveBodyFieldRef)
 	defer signozstanzahelper.PutExprEnv(env)
 
 	for _, route := range t.routes {

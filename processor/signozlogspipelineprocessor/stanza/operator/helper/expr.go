@@ -45,7 +45,9 @@ func PutExprEnv(e map[string]any) {
 	envPool.Put(e)
 }
 
-func ExprCompile(input string) (program *vm.Program, hasBodyFieldRef bool, err error) {
+func ExprCompile(input string) (
+	program *vm.Program, hasBodyFieldRef bool, err error,
+) {
 	patcher := &exprPatcher{}
 	program, err = expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(patcher))
 	if err != nil {
@@ -54,8 +56,15 @@ func ExprCompile(input string) (program *vm.Program, hasBodyFieldRef bool, err e
 	return program, patcher.hasBodyFieldRef, err
 }
 
-func ExprCompileBool(input string) (*vm.Program, error) {
-	return expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(&exprPatcher{}), expr.AsBool())
+func ExprCompileBool(input string) (
+	program *vm.Program, hasBodyFieldRef bool, err error,
+) {
+	patcher := &exprPatcher{}
+	program, err = expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(patcher), expr.AsBool())
+	if err != nil {
+		return nil, false, err
+	}
+	return program, patcher.hasBodyFieldRef, err
 }
 
 type exprPatcher struct {

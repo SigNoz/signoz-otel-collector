@@ -65,6 +65,6 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	}
 
 	addOperator.program = compiled
-	addOperator.hasBodyFieldRef = hasBodyFieldRef
+	addOperator.valueExprHasBodyFieldRef = hasBodyFieldRef
 	return addOperator, nil
 }
