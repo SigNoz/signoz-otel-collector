@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -157,15 +158,51 @@ func TestTraceProcessor(t *testing.T) {
     - type: trace_parser
       trace_id:
         parse_from: attributes.traceId
+      span_id:
+        parse_from: attributes.spanId
+      trace_flags:
+        parse_from: attributes.traceFlags
   `
 
 	input := []plog.Logs{makePlog(
-		"test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+		"test log", map[string]any{
+			"traceId":    "e37e734349000e2eda9c07cca0ceb692",
+			"spanId":     "da9c07cca0ceb692",
+			"traceFlags": "02",
+		},
 	)}
 	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
-		t, "test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+		t, "test log", map[string]any{
+			"traceId":    "e37e734349000e2eda9c07cca0ceb692",
+			"spanId":     "da9c07cca0ceb692",
+			"traceFlags": "02",
+		},
 		map[string]any{
-			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+			"trace_id":    "e37e734349000e2eda9c07cca0ceb692",
+			"span_id":     "da9c07cca0ceb692",
+			"trace_flags": "02",
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+
+	// trace id and span id should be padded with 0s to the left
+	// if provided hex strings are not of the expected length
+	// See https://github.com/SigNoz/signoz/issues/3859 for an example
+
+	input = []plog.Logs{makePlog("test log", map[string]any{
+		"traceId": "da9c07cca0ceb692",
+		"spanId":  "ceb692",
+	})}
+
+	expectedOutput = []plog.Logs{makePlogWithTopLevelFields(
+		t, "test log", map[string]any{
+			"traceId": "da9c07cca0ceb692",
+			"spanId":  "ceb692",
+		},
+		map[string]any{
+			"trace_id": "0000000000000000da9c07cca0ceb692",
+			"span_id":  "0000000000ceb692",
 		},
 	)}
 
@@ -676,6 +713,11 @@ func makePlogWithTopLevelFields(t *testing.T, body string, attributes map[string
 		spanIdBytes, err := hex.DecodeString(spanId.(string))
 		require.NoError(t, err)
 		lr.SetSpanID(pcommon.SpanID(spanIdBytes))
+	}
+	if traceFlags, exists := fields["trace_flags"]; exists {
+		flags, err := strconv.ParseUint(traceFlags.(string), 16, 64)
+		require.NoError(t, err)
+		lr.SetFlags(plog.LogRecordFlags(flags))
 	}
 
 	if sevText, exists := fields["severity_text"]; exists {
