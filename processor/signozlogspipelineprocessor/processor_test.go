@@ -454,6 +454,29 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 
 	// Collect test cases for each op that supports reading fields from JSON body
 
+	// Add op should be able to specify expressions referring to body JSON field
+	testAddOpConf := `
+  operators:
+    - type: add
+      field: attributes.request_id
+      value: EXPR(body.request.id)
+  `
+	testCases = append(testCases, testCase{
+		"add/happy_case", testAddOpConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
+	})
+	testCases = append(testCases, testCase{
+		"add/missing_field", testAddOpConf,
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"add/body_not_json", testAddOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	// copy
 	testCopyOpConf := `
   operators:
