@@ -37,7 +37,7 @@ func (c CreateTableOperation) OnCluster(cluster string) Operation {
 }
 
 func (c CreateTableOperation) WithReplication() Operation {
-	c.Engine.WithReplication()
+	c.Engine = c.Engine.WithReplication()
 	return &c
 }
 

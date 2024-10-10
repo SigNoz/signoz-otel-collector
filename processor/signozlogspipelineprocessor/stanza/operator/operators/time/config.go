@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/collector/confmap"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -26,14 +27,14 @@ func NewConfig() *Config {
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
 		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
-		TimeParser:        helper.NewTimeParser(),
+		TimeParser:        signozstanzahelper.NewTimeParser(),
 	}
 }
 
 // Config is the configuration of a time parser operator.
 type Config struct {
-	helper.TransformerConfig `mapstructure:",squash"`
-	helper.TimeParser        `mapstructure:",omitempty,squash"`
+	helper.TransformerConfig      `mapstructure:",squash"`
+	signozstanzahelper.TimeParser `mapstructure:",omitempty,squash"`
 }
 
 func (c *Config) Unmarshal(component *confmap.Conf) error {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -156,15 +158,51 @@ func TestTraceProcessor(t *testing.T) {
     - type: trace_parser
       trace_id:
         parse_from: attributes.traceId
+      span_id:
+        parse_from: attributes.spanId
+      trace_flags:
+        parse_from: attributes.traceFlags
   `
 
 	input := []plog.Logs{makePlog(
-		"test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+		"test log", map[string]any{
+			"traceId":    "e37e734349000e2eda9c07cca0ceb692",
+			"spanId":     "da9c07cca0ceb692",
+			"traceFlags": "02",
+		},
 	)}
 	expectedOutput := []plog.Logs{makePlogWithTopLevelFields(
-		t, "test log", map[string]any{"traceId": "e37e734349000e2eda9c07cca0ceb692"},
+		t, "test log", map[string]any{
+			"traceId":    "e37e734349000e2eda9c07cca0ceb692",
+			"spanId":     "da9c07cca0ceb692",
+			"traceFlags": "02",
+		},
 		map[string]any{
-			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+			"trace_id":    "e37e734349000e2eda9c07cca0ceb692",
+			"span_id":     "da9c07cca0ceb692",
+			"trace_flags": "02",
+		},
+	)}
+
+	validateProcessorBehavior(t, confYaml, input, expectedOutput)
+
+	// trace id and span id should be padded with 0s to the left
+	// if provided hex strings are not of the expected length
+	// See https://github.com/SigNoz/signoz/issues/3859 for an example
+
+	input = []plog.Logs{makePlog("test log", map[string]any{
+		"traceId": "da9c07cca0ceb692",
+		"spanId":  "ceb692",
+	})}
+
+	expectedOutput = []plog.Logs{makePlogWithTopLevelFields(
+		t, "test log", map[string]any{
+			"traceId": "da9c07cca0ceb692",
+			"spanId":  "ceb692",
+		},
+		map[string]any{
+			"trace_id": "0000000000000000da9c07cca0ceb692",
+			"span_id":  "0000000000ceb692",
 		},
 	)}
 
@@ -202,7 +240,6 @@ func TestTimeProcessor(t *testing.T) {
       parse_from: attributes.tsUnixEpoch
       layout_type: epoch
       layout: s
-      overwrite_text: true
   `
 
 	input := []plog.Logs{makePlog(
@@ -353,6 +390,255 @@ func TestSeverityBasedRouteExpressions(t *testing.T) {
 	}
 }
 
+// When used with server based receivers like (http, otlp etc)
+// ConsumeLogs will be called concurrently
+func TestConcurrentConsumeLogs(t *testing.T) {
+	require := require.New(t)
+
+	factory := NewFactory()
+
+	confYaml := `
+  operators:
+    - type: add
+      field: attributes.test
+      value: testValue
+  `
+
+	config := parseProcessorConfig(t, confYaml)
+	testSink := new(consumertest.LogsSink)
+	proc, err := factory.CreateLogsProcessor(
+		context.Background(),
+		processortest.NewNopCreateSettings(),
+		config, testSink,
+	)
+	require.NoError(err)
+
+	err = proc.Start(context.Background(), nil)
+	require.NoError(err)
+
+	var wg sync.WaitGroup
+
+	processSomeLogs := func(count int) {
+		defer wg.Done()
+
+		for i := 0; i < count; i++ {
+			testPlog := makePlog("test log", map[string]any{})
+			consumeErr := proc.ConsumeLogs(context.Background(), testPlog)
+			require.NoError(consumeErr)
+		}
+	}
+
+	for j := 0; j < 10; j++ {
+		wg.Add(1)
+		go processSomeLogs(10)
+	}
+
+	wg.Wait()
+
+	output := testSink.AllLogs()
+	for _, l := range output {
+		require.NoError(plogtest.CompareLogs(l, makePlog("test log", map[string]any{
+			"test": "testValue",
+		})))
+	}
+}
+
+func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
+	type testCase struct {
+		name           string
+		confYaml       string
+		input          plog.Logs
+		expectedOutput plog.Logs
+	}
+	testCases := []testCase{}
+
+	// Collect test cases for each op that supports reading fields from JSON body
+
+	// copy
+	testCopyOpConf := `
+  operators:
+    - type: copy
+      from: body.request.id
+      to: attributes.request_id
+  `
+	testCases = append(testCases, testCase{
+		"copy/happy_case", testCopyOpConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/missing_field", testCopyOpConf,
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/body_not_json", testCopyOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// grok
+	testGrokConf := `
+  operators:
+    - type: grok_parser
+      pattern: 'status: %{INT:status_code:int}'
+      parse_from: body.request.status
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"copy/happy_case", testGrokConf,
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{"status_code": 404}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/missing_field", testGrokConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"copy/body_not_json", testGrokConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// Regex
+	testRegexConf := `
+  operators:
+    - type: regex_parser
+      regex: "^status: (?P<status_code>[0-9]+)$"
+      parse_from: body.request.status
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"regex/happy_case", testRegexConf,
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{}),
+		makePlog(`{"request": {"status": "status: 404"}}`, map[string]any{"status_code": "404"}),
+	})
+	testCases = append(testCases, testCase{
+		"regex/missing_field", testRegexConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"regex/body_not_json", testRegexConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// JSON
+	testJSONConf := `
+  operators:
+    - type: json_parser
+      parse_from: body.request
+      parse_to: attributes
+  `
+	testCases = append(testCases, testCase{
+		"json/happy_case", testJSONConf,
+		makePlog(`{"request": "{\"status\": \"ok\"}"}`, map[string]any{}),
+		makePlog(`{"request": "{\"status\": \"ok\"}"}`, map[string]any{"status": "ok"}),
+	})
+	testCases = append(testCases, testCase{
+		"json/missing_field", testJSONConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"json/body_not_json", testJSONConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// time
+	testTimeParserConf := `
+  operators:
+    - type: time_parser
+      parse_from: body.request.unix_ts
+      layout_type: epoch
+      layout: s
+  `
+	testCases = append(testCases, testCase{
+		"ts/happy_case", testTimeParserConf,
+		makePlog(`{"request": {"unix_ts": 1000}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"unix_ts": 1000}}`, map[string]any{}, map[string]any{
+			"timestamp": time.Unix(1000, 0),
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"ts/missing_field", testTimeParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"ts/body_not_json", testTimeParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// Sev parser
+	testSevParserConf := `
+  operators:
+    - type: severity_parser
+      parse_from: body.request.status
+      mapping:
+        error: 404
+      overwrite_text: true
+  `
+	testCases = append(testCases, testCase{
+		"sev/happy_case", testSevParserConf,
+		makePlog(`{"request": {"status": 404}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"status": 404}}`, map[string]any{}, map[string]any{
+			"severity_text":   "ERROR",
+			"severity_number": 17,
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"sev/missing_field", testSevParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"sev/body_not_json", testSevParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// Trace parser
+	testTraceParserConf := `
+  operators:
+    - type: trace_parser
+      trace_id:
+        parse_from: body.request.traceId
+      span_id:
+        parse_from: body.request.spanId
+  `
+	testCases = append(testCases, testCase{
+		"trace_parser/happy_case", testTraceParserConf,
+		makePlog(`{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692", "spanId": "da9c07cca0ceb692"}}`, map[string]any{}),
+		makePlogWithTopLevelFields(t, `{"request": {"traceId": "e37e734349000e2eda9c07cca0ceb692", "spanId": "da9c07cca0ceb692"}}`, map[string]any{}, map[string]any{
+			"trace_id": "e37e734349000e2eda9c07cca0ceb692",
+			"span_id":  "da9c07cca0ceb692",
+		}),
+	})
+	testCases = append(testCases, testCase{
+		"trace_parser/missing_field", testTraceParserConf,
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"user": {"id": "test"}}`, map[string]any{}),
+	})
+	testCases = append(testCases, testCase{
+		"trace_parser/body_not_json", testTraceParserConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			validateProcessorBehavior(
+				t, tc.confYaml, []plog.Logs{tc.input}, []plog.Logs{tc.expectedOutput},
+			)
+		})
+	}
+}
+
 func validateProcessorBehavior(
 	t *testing.T,
 	confYaml string,
@@ -421,8 +707,17 @@ func makePlogWithTopLevelFields(t *testing.T, body string, attributes map[string
 	if traceId, exists := fields["trace_id"]; exists {
 		traceIdBytes, err := hex.DecodeString(traceId.(string))
 		require.NoError(t, err)
-
 		lr.SetTraceID(pcommon.TraceID(traceIdBytes))
+	}
+	if spanId, exists := fields["span_id"]; exists {
+		spanIdBytes, err := hex.DecodeString(spanId.(string))
+		require.NoError(t, err)
+		lr.SetSpanID(pcommon.SpanID(spanIdBytes))
+	}
+	if traceFlags, exists := fields["trace_flags"]; exists {
+		flags, err := strconv.ParseUint(traceFlags.(string), 16, 64)
+		require.NoError(t, err)
+		lr.SetFlags(plog.LogRecordFlags(flags))
 	}
 
 	if sevText, exists := fields["severity_text"]; exists {

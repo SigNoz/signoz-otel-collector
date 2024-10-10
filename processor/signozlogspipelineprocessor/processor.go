@@ -23,13 +23,8 @@ func newLogsPipelineProcessor(
 	telemetrySettings component.TelemetrySettings,
 ) (*logsPipelineProcessor, error) {
 
-	sink := &stanzaToOtelConsumer{
-		logger: telemetrySettings.Logger,
-	}
-
 	stanzaPipeline, err := pipeline.Config{
-		Operators:     processorConfig.OperatorConfigs(),
-		DefaultOutput: sink,
+		Operators: processorConfig.OperatorConfigs(),
 	}.Build(telemetrySettings)
 	if err != nil {
 		return nil, err
@@ -40,8 +35,6 @@ func newLogsPipelineProcessor(
 
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
-
-		sink: sink,
 	}, nil
 }
 
@@ -53,8 +46,6 @@ type logsPipelineProcessor struct {
 	firstOp         operator.Operator
 
 	shutdownFns []component.ShutdownFunc
-
-	sink *stanzaToOtelConsumer
 }
 
 // Collector starting up
@@ -107,8 +98,12 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 		}
 	}
 
-	// Return processed entries as a single plog.Logs
-	return p.sink.flush(ctx), nil
+	// All stanza ops supported by logs pipelines work synchronously and
+	// they modify the *entry.Entry passed to them in-place.
+	//
+	// So by this point, `entries` contains processed logs
+	plog := convertEntriesToPlogs(entries)
+	return plog, nil
 }
 
 // Helpers below have been brought in as is from stanza adapter for logstransform
