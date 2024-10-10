@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
@@ -83,7 +84,7 @@ func parseBodyJson(entry *entry.Entry) map[string]any {
 
 	if hasBytes {
 		var parsedBody map[string]any
-		err := json.Unmarshal(bodyBytes, &parsedBody)
+		err := jsoniter.ConfigFastest.Unmarshal(bodyBytes, &parsedBody)
 		if err == nil {
 			// Attributes keys starting with InternalTempAttributePrefix
 			// get ignored when entries are converted back to plog.Logs
