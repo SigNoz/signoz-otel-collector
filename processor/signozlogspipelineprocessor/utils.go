@@ -3,7 +3,9 @@ package signozlogspipelineprocessor
 
 import (
 	"fmt"
+	"strings"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -51,7 +53,9 @@ func convertEntriesToPlogs(entries []*entry.Entry) plog.Logs {
 func upsertToMap(obsMap map[string]any, dest pcommon.Map) {
 	dest.EnsureCapacity(len(obsMap))
 	for k, v := range obsMap {
-		upsertToAttributeVal(v, dest.PutEmpty(k))
+		if !strings.HasPrefix(k, signozstanzaentry.InternalTempAttributePrefix) {
+			upsertToAttributeVal(v, dest.PutEmpty(k))
+		}
 	}
 }
 

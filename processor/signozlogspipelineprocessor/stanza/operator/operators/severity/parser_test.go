@@ -5,13 +5,14 @@ package severity
 import (
 	"testing"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/testutil"
 )
 
@@ -204,8 +205,8 @@ func TestSeverityParser(t *testing.T) {
 		},
 	}
 
-	rootField := entry.NewBodyField()
-	someField := entry.NewBodyField("some_field")
+	rootField := signozstanzaentry.Field{entry.NewBodyField()}
+	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,10 +251,10 @@ func runSeverityParseTest(cfg *Config, ent *entry.Entry, buildErr bool, parseErr
 	}
 }
 
-func parseSeverityTestConfig(parseFrom entry.Field, preset string, mapping map[string]any) *Config {
+func parseSeverityTestConfig(parseFrom signozstanzaentry.Field, preset string, mapping map[string]any) *Config {
 	cfg := NewConfigWithID("test_operator_id")
 	cfg.OutputIDs = []string{"output1"}
-	cfg.SeverityConfig = helper.SeverityConfig{
+	cfg.SeverityConfig = signozstanzahelper.SeverityConfig{
 		ParseFrom: &parseFrom,
 		Preset:    preset,
 		Mapping:   mapping,
@@ -261,7 +262,7 @@ func parseSeverityTestConfig(parseFrom entry.Field, preset string, mapping map[s
 	return cfg
 }
 
-func makeTestEntry(t *testing.T, field entry.Field, value any) *entry.Entry {
+func makeTestEntry(t *testing.T, field signozstanzaentry.Field, value any) *entry.Entry {
 	e := entry.New()
 	require.NoError(t, e.Set(field, value))
 	return e
