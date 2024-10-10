@@ -7,6 +7,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/ast"
+	"github.com/expr-lang/expr/vm"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
@@ -35,4 +38,28 @@ func GetExprEnv(e *entry.Entry) map[string]any {
 // PutExprEnv adds a key/value pair that will can be used to evaluate an expression
 func PutExprEnv(e map[string]any) {
 	envPool.Put(e)
+}
+
+func ExprCompile(input string) (*vm.Program, error) {
+	return expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(&exprPatcher{}))
+}
+
+func ExprCompileBool(input string) (*vm.Program, error) {
+	return expr.Compile(input, expr.AllowUndefinedVariables(), expr.Patch(&exprPatcher{}), expr.AsBool())
+}
+
+type exprPatcher struct{}
+
+func (p *exprPatcher) Visit(node *ast.Node) {
+	n, ok := (*node).(*ast.CallNode)
+	if !ok {
+		return
+	}
+	c, ok := (n.Callee).(*ast.IdentifierNode)
+	if !ok {
+		return
+	}
+	if c.Value == "env" {
+		c.Value = "os_env_func"
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
@@ -58,7 +59,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	exprStr := strings.TrimPrefix(strVal, "EXPR(")
 	exprStr = strings.TrimSuffix(exprStr, ")")
 
-	compiled, err := helper.ExprCompile(exprStr)
+	compiled, err := signozstanzahelper.ExprCompile(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression '%s': %w", c.IfExpr, err)
 	}
