@@ -35,7 +35,7 @@ var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
 func createLogsProcessor(
 	ctx context.Context,
-	set processor.CreateSettings,
+	set processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {

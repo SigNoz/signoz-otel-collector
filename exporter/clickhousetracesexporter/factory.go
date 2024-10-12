@@ -32,9 +32,9 @@ const (
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
-		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
+		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig: configretry.NewDefaultBackOffConfig(),
 	}
 }
 
@@ -49,7 +49,7 @@ func NewFactory() exporter.Factory {
 
 func createTracesExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 
@@ -65,7 +65,7 @@ func createTracesExporter(
 		cfg,
 		oce.pushTraceData,
 		exporterhelper.WithShutdown(oce.Shutdown),
-		exporterhelper.WithTimeout(c.TimeoutSettings),
-		exporterhelper.WithQueue(c.QueueSettings),
+		exporterhelper.WithTimeout(c.TimeoutConfig),
+		exporterhelper.WithQueue(c.QueueConfig),
 		exporterhelper.WithRetry(c.BackOffConfig))
 }

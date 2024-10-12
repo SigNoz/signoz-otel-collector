@@ -28,7 +28,7 @@ func createDefaultConfig() component.Config {
 
 func createLogsReceiver(
 	ctx context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {

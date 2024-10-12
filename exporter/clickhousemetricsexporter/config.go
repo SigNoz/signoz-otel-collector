@@ -27,8 +27,8 @@ import (
 
 // Config defines configuration for Remote Write exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
-	configretry.BackOffConfig      `mapstructure:"retry_on_failure"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	// QueueConfig allows users to fine tune the queues
 	// that handle outgoing requests.
 	RemoteWriteQueue RemoteWriteQueue `mapstructure:"remote_write_queue"`
