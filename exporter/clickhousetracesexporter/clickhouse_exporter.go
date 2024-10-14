@@ -43,7 +43,7 @@ const (
 	isRemoteMask    uint32 = 0x00000200
 )
 
-// Crete new exporter.
+// Create new exporter.
 func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	if err := component.ValidateConfig(cfg); err != nil {
