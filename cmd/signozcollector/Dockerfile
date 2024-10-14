@@ -1,18 +1,22 @@
 # use a minimal alpine image
-FROM alpine:3
+
+ARG ALPINE_SHA="pass-a-valid-docker-sha-otherwise-this-will-fail"
+
+FROM alpine:3@sha256:${ALPINE_SHA}
 
 # add ca-certificates in case you need them
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 
 # define arguments and default values
-ARG TARGETOS TARGETARCH
 ARG USER_UID=10001
+ARG OS="linux"
+ARG ARCH
 
 # create a non-root user for running the collector
 USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
-COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
+COPY ./target/${OS}-${ARCH}/signoz-collector /signoz-collector
 
 # copy the config file
 COPY config/default-config.yaml /etc/otel/config.yaml
