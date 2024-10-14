@@ -35,9 +35,9 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
 )
 
@@ -443,7 +443,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			sendDuration := <-chDuration
 			stats.RecordWithTags(ctx,
 				[]tag.Mutator{
-					tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+					tag.Upsert(exporterKey, pipeline.SignalLogs.String()),
 					tag.Upsert(tableKey, sendDuration.Name),
 				},
 				writeLatencyMillis.M(int64(sendDuration.duration.Milliseconds())),
@@ -470,7 +470,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = tagStatement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+				tag.Upsert(exporterKey, pipeline.SignalLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_TAG_ATTRIBUTES),
 			},
 			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),
@@ -787,7 +787,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	}
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxIdleConnections := cfg.QueueSettings.NumConsumers + 1
+	maxIdleConnections := cfg.QueueConfig.NumConsumers + 1
 	if options.MaxIdleConns < maxIdleConnections {
 		options.MaxIdleConns = maxIdleConnections
 		options.MaxOpenConns = maxIdleConnections + 5

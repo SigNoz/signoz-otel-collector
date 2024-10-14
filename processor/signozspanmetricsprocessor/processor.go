@@ -34,6 +34,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pipeline"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 
@@ -370,7 +371,7 @@ func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resource
 }
 
 type getExporters interface {
-	GetExporters() map[component.DataType]map[component.ID]component.Component
+	GetExporters() map[pipeline.Signal]map[component.ID]component.Component
 }
 
 // Start implements the component.Component interface.
@@ -384,10 +385,10 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 
 	exporters := ge.GetExporters()
 
-	availableMetricsExporters := make([]string, 0, len(exporters[component.DataTypeMetrics]))
+	availableMetricsExporters := make([]string, 0, len(exporters[pipeline.SignalMetrics]))
 
 	// The available list of exporters come from any configured metrics pipelines' exporters.
-	for k, exp := range exporters[component.DataTypeMetrics] {
+	for k, exp := range exporters[pipeline.SignalMetrics] {
 		metricsExp, ok := exp.(exporter.Metrics)
 		if !ok {
 			return fmt.Errorf("the exporter %q isn't a metrics exporter", k.String())

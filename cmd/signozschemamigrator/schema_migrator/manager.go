@@ -796,10 +796,10 @@ func (m *MigrationManager) insertMigrationEntry(ctx context.Context, db string, 
 	return m.conn.Exec(ctx, query)
 }
 
-func (m *MigrationManager) updateMigrationEntry(ctx context.Context, db string, migrationID uint64, status string, error string) error {
-	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = '%s', error = '%s', updated_at = '%s' WHERE migration_id = %d", db, m.clusterName, status, error, time.Now().UTC().Format("2006-01-02 15:04:05"), migrationID)
-	m.logger.Info("Updating migration entry", zap.String("query", query))
-	return m.conn.Exec(ctx, query)
+func (m *MigrationManager) updateMigrationEntry(ctx context.Context, db string, migrationID uint64, status string, err string) error {
+	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = $1, error = $2, updated_at = $3 WHERE migration_id = $4", db, m.clusterName)
+	m.logger.Info("Updating migration entry", zap.String("query", query), zap.String("status", status), zap.String("error", err), zap.Uint64("migration_id", migrationID))
+	return m.conn.Exec(ctx, query, status, err, time.Now().UTC().Format("2006-01-02 15:04:05"), migrationID)
 }
 
 func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation, migrationID uint64, database string, skipStatusUpdate bool) error {

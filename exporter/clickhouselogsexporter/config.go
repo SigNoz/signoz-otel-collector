@@ -24,9 +24,9 @@ import (
 
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"`
-	configretry.BackOffConfig      `mapstructure:"retry_on_failure"`
-	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).

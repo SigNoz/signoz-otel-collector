@@ -13,6 +13,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver/internal/metadata"
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
@@ -44,7 +45,7 @@ func createDefaultConfig() component.Config {
 // createLogsReceiver creates a logs receiver based on provided config.
 func createLogsReceiver(
 	_ context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
@@ -72,7 +73,7 @@ var receiverLock sync.Mutex
 var receivers = map[*Config]*httplogreceiver{}
 
 type httplogreceiver struct {
-	settings     receiver.CreateSettings
+	settings     receiver.Settings
 	config       *Config
 	logsConsumer consumer.Logs
 	server       *http.Server
@@ -83,7 +84,7 @@ type httplogreceiver struct {
 
 // New creates the httplogreceiver receiver with the given configuration.
 func newReceiver(
-	settings receiver.CreateSettings,
+	settings receiver.Settings,
 	config Config,
 ) (*httplogreceiver, error) {
 	transport := "http"
@@ -144,7 +145,7 @@ func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error 
 	go func() {
 		defer r.shutdownWG.Done()
 		if errHTTP := r.server.Serve(ln); !errors.Is(errHTTP, http.ErrServerClosed) && errHTTP != nil {
-			r.settings.ReportStatus(component.NewFatalErrorEvent(errHTTP))
+			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(errHTTP))
 		}
 	}()
 	return nil

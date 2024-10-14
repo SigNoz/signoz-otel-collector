@@ -62,7 +62,7 @@ func NewFactory() exporter.Factory {
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
 
-func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
+func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	cfg component.Config) (exporter.Metrics, error) {
 
 	prwCfg, ok := cfg.(*Config)
@@ -86,8 +86,8 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 		set,
 		cfg,
 		prwe.PushMetrics,
-		exporterhelper.WithTimeout(prwCfg.TimeoutSettings),
-		exporterhelper.WithQueue(exporterhelper.QueueSettings{
+		exporterhelper.WithTimeout(prwCfg.TimeoutConfig),
+		exporterhelper.WithQueue(exporterhelper.QueueConfig{
 			Enabled:      prwCfg.RemoteWriteQueue.Enabled,
 			NumConsumers: 1,
 			QueueSize:    prwCfg.RemoteWriteQueue.QueueSize,
@@ -106,16 +106,16 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		Namespace:       "",
-		ExternalLabels:  map[string]string{},
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
+		Namespace:      "",
+		ExternalLabels: map[string]string{},
+		TimeoutConfig:  exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:  configretry.NewDefaultBackOffConfig(),
 		HTTPClientSettings: confighttp.ClientConfig{
 			Endpoint: "http://some.url:9411/api/prom/push",
 			// We almost read 0 bytes, so no need to tune ReadBufferSize.
 			ReadBufferSize:  0,
 			WriteBufferSize: 512 * 1024,
-			Timeout:         exporterhelper.NewDefaultTimeoutSettings().Timeout,
+			Timeout:         exporterhelper.NewDefaultTimeoutConfig().Timeout,
 			Headers:         map[string]configopaque.String{},
 		},
 		// TODO(jbd): Adjust the default queue size.

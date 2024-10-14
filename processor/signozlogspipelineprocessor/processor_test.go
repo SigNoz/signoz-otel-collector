@@ -406,9 +406,9 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	config := parseProcessorConfig(t, confYaml)
 	testSink := new(consumertest.LogsSink)
-	proc, err := factory.CreateLogsProcessor(
+	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopCreateSettings(),
+		processortest.NewNopSettings(),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -453,6 +453,48 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testCases := []testCase{}
 
 	// Collect test cases for each op that supports reading fields from JSON body
+
+	// router op should be able to specify expressions referring to fields inside JSON body
+	testConfWithRouter := `
+  operators:
+    - id: router_signoz
+      type: router
+      routes:
+        - expr: body.request.id == "test"
+          output: test-add
+    - type: add
+      id: test-add
+      field: attributes.test
+      value: test-value
+  `
+	testCases = append(testCases, testCase{
+		"router/happy_case", testConfWithRouter,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"test": "test-value"}),
+	})
+	testCases = append(testCases, testCase{
+		"router/body_not_json", testConfWithRouter,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
+	// Add op should be able to specify expressions referring to body JSON field
+	testAddOpConf := `
+  operators:
+    - type: add
+      field: attributes.request_id
+      value: EXPR(body.request.id)
+  `
+	testCases = append(testCases, testCase{
+		"add/happy_case", testAddOpConf,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
+	})
+	testCases = append(testCases, testCase{
+		"add/body_not_json", testAddOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
 
 	// copy
 	testCopyOpConf := `
@@ -651,9 +693,9 @@ func validateProcessorBehavior(
 
 	config := parseProcessorConfig(t, confYaml)
 	testSink := new(consumertest.LogsSink)
-	proc, err := factory.CreateLogsProcessor(
+	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopCreateSettings(),
+		processortest.NewNopSettings(),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -683,7 +725,7 @@ func parseProcessorConfig(t *testing.T, confYaml string) component.Config {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	require.NoError(
-		t, component.UnmarshalConfig(cm, cfg),
+		t, cm.Unmarshal(cfg),
 		"couldn't unmarshal parsed yaml into processor config",
 	)
 	return cfg
