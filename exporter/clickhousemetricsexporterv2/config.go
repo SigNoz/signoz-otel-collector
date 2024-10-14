@@ -10,9 +10,9 @@ import (
 
 // Config defines configuration for ClickHouse Metrics exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
-	configretry.BackOffConfig      `mapstructure:"retry_on_failure"`
-	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
 
 	DSN string `mapstructure:"dsn"`
 
@@ -32,11 +32,11 @@ func (cfg *Config) Validate() error {
 	if cfg.DSN == "" {
 		return errors.New("dsn must be specified")
 	}
-	if err := cfg.QueueSettings.Validate(); err != nil {
+	if err := cfg.QueueConfig.Validate(); err != nil {
 		return err
 	}
 
-	if err := cfg.TimeoutSettings.Validate(); err != nil {
+	if err := cfg.TimeoutConfig.Validate(); err != nil {
 		return err
 	}
 

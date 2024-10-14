@@ -44,7 +44,7 @@ func NewFactory() exporter.Factory {
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
 
-func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
+func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	cfg component.Config) (exporter.Metrics, error) {
 
 	chCfg, ok := cfg.(*Config)
@@ -77,8 +77,8 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 		set,
 		cfg,
 		chExporter.PushMetrics,
-		exporterhelper.WithTimeout(chCfg.TimeoutSettings),
-		exporterhelper.WithQueue(chCfg.QueueSettings),
+		exporterhelper.WithTimeout(chCfg.TimeoutConfig),
+		exporterhelper.WithQueue(chCfg.QueueConfig),
 		exporterhelper.WithRetry(chCfg.BackOffConfig),
 		exporterhelper.WithStart(chExporter.Start),
 		exporterhelper.WithShutdown(chExporter.Shutdown),
@@ -93,9 +93,9 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
+		TimeoutConfig:   exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
-		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
+		QueueConfig:     exporterhelper.NewDefaultQueueConfig(),
 		DSN:             "tcp://localhost:9000",
 		EnableExpHist:   false,
 		Database:        "signoz_metrics",
