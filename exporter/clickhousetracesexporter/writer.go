@@ -106,6 +106,14 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 	}
 
 	for _, span := range batchSpans {
+		// serialize the span references here
+		var serialized []byte
+		serialized, err = json.Marshal(span.TraceModel.References)
+
+		if err != nil {
+			return err
+		}
+
 		err = statement.Append(
 			time.Unix(0, int64(span.StartTimeUnixNano)),
 			span.TraceId,
@@ -142,6 +150,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.StatusMessage,
 			span.StatusCodeString,
 			span.SpanKind,
+			string(serialized),
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
