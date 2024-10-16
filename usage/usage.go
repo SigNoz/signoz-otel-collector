@@ -76,6 +76,7 @@ func (e *UsageCollector) Start() error {
 
 func (c *UsageCollector) Stop() error {
 	c.ir.Stop()
+	c.reader.ReadAndExport(c)
 	return nil
 }
 
