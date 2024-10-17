@@ -118,6 +118,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
+	e.logger.Error("starting logs shutdown")
 	close(e.closeChan)
 	e.wg.Wait()
 	if e.usageCollector != nil {
@@ -129,6 +130,7 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 			return err
 		}
 	}
+	e.logger.Error("logs shutdown complete")
 	return nil
 }
 

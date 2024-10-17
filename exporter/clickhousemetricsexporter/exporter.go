@@ -150,6 +150,7 @@ func (prwe *PrwExporter) Start(ctx context.Context, host component.Host) (err er
 // Shutdown stops the exporter from accepting incoming calls(and return error), and wait for current export operations
 // to finish before returning
 func (prwe *PrwExporter) Shutdown(context.Context) error {
+	prwe.logger.Error("starting metrics shutdown")
 	// shutdown usage reporting.
 	if prwe.usageCollector != nil {
 		prwe.usageCollector.Stop()
@@ -157,6 +158,8 @@ func (prwe *PrwExporter) Shutdown(context.Context) error {
 
 	close(prwe.closeChan)
 	prwe.wg.Wait()
+
+	prwe.logger.Error("complete metrics shutdown")
 	return nil
 }
 
