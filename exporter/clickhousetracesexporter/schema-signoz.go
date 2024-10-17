@@ -131,6 +131,72 @@ type Span struct {
 	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
 }
 
+type SpanV2 struct {
+	TsBucketStart uint64 `json:"tsBucketStart,omitempty"`
+	FingerPrint   string `json:"fingerprint,omitempty"`
+
+	StartTimeUnixNano uint64 `json:"startTimeUnixNano,omitempty"`
+
+	TraceId      string `json:"traceId,omitempty"`
+	SpanId       string `json:"spanId,omitempty"`
+	TraceState   string `json:"traceState,omitempty"`
+	ParentSpanId string `json:"parentSpanId,omitempty"`
+	Flags        uint32 `json:"flags,omitempty"`
+
+	Name string `json:"name,omitempty"`
+
+	Kind     int8   `json:"kind,omitempty"`
+	SpanKind string `json:"spanKind,omitempty"`
+
+	DurationNano uint64 `json:"durationNano,omitempty"`
+
+	StatusCode       int16  `json:"statusCode,omitempty"`
+	StatusMessage    string `json:"statusMessage,omitempty"`
+	StatusCodeString string `json:"statusCodeString,omitempty"`
+
+	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
+	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
+	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
+
+	ResourcesString map[string]string `json:"resources_string,omitempty"`
+
+	// for events
+	Events       []string `json:"event,omitempty"`
+	ErrorEvent   Event    `json:"-,omitempty"`
+	ErrorID      string   `json:"-,omitempty"`
+	ErrorGroupID string   `json:"-,omitempty"`
+
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// custom columns
+	ResponseStatusCode string `json:"responseStatusCode,omitempty"`
+	ExternalHttpUrl    string `json:"externalHttpUrl,omitempty"`
+	HttpUrl            string `json:"httpUrl,omitempty"`
+	ExternalHttpMethod string `json:"externalHttpMethod,omitempty"`
+	HttpMethod         string `json:"httpMethod,omitempty"`
+	HttpHost           string `json:"httpHost,omitempty"`
+	DBName             string `json:"dbName,omitempty"`
+	DBOperation        string `json:"dbOperation,omitempty"`
+	HasError           bool   `json:"hasError,omitempty"`
+	IsRemote           string `json:"isRemote,omitempty"`
+
+	// attribute columns
+	HttpRoute    string `json:"httpRoute,omitempty"`
+	MsgSystem    string `json:"msgSystem,omitempty"`
+	MsgOperation string `json:"msgOperation,omitempty"`
+	DBSystem     string `json:"dbSystem,omitempty"`
+	RPCSystem    string `json:"rpcSystem,omitempty"`
+	RPCService   string `json:"rpcService,omitempty"`
+	RPCMethod    string `json:"rpcMethod,omitempty"`
+	PeerService  string `json:"peerService,omitempty"`
+
+	// check if this is really required
+	Tenant *string `json:"-"`
+
+	References     string          `json:"references,omitempty"`
+	SpanAttributes []SpanAttribute `json:"spanAttributes,omitempty"`
+}
+
 type SpanAttribute struct {
 	Key         string
 	TagType     string

@@ -406,18 +406,23 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error {
+	// inserts to the singoz_spans table
 	if w.spansTable != "" {
 		if err := w.writeModelBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
 			return err
 		}
 	}
+
+	// inserts to the signoz_index_v2 table
 	if w.indexTable != "" {
 		if err := w.writeIndexBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			return err
 		}
 	}
+
+	// inserts to the signoz_error_index_v2 table
 	if w.errorTable != "" {
 		if err := w.writeErrorBatch(ctx, batch); err != nil {
 			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))

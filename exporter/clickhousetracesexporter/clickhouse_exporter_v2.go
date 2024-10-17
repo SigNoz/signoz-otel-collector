@@ -1,17 +1,3 @@
-// Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package clickhousetracesexporter
 
 import (
@@ -20,158 +6,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/google/uuid"
-	"go.opencensus.io/stats/view"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
 	"go.uber.org/zap"
 )
 
-const (
-	hasIsRemoteMask uint32 = 0x00000100
-	isRemoteMask    uint32 = 0x00000200
-)
-
-// Crete new exporter.
-func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
-
-	if err := component.ValidateConfig(cfg); err != nil {
-		return nil, err
-	}
-
-	configClickHouse := cfg.(*Config)
-
-	id := uuid.New()
-
-	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueConfig.NumConsumers)
-
-	err := f.Initialize(logger)
-	if err != nil {
-		return nil, err
-	}
-	spanWriter, err := f.CreateSpanWriter()
-	if err != nil {
-		return nil, err
-	}
-
-	collector := usage.NewUsageCollector(
-		id,
-		f.db,
-		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
-		"signoz_traces",
-		UsageExporter,
-	)
-	if err != nil {
-		log.Fatalf("Error creating usage collector for traces: %v", err)
-	}
-	collector.Start()
-
-	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
-		return nil, err
-	}
-
-	storage := storage{
-		id:             id,
-		Writer:         spanWriter,
-		usageCollector: collector,
-		config: storageConfig{
-			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
-		},
-		wg:           new(sync.WaitGroup),
-		closeChan:    make(chan struct{}),
-		useNewSchema: cfg.(*Config).UseNewSchema,
-	}
-
-	return &storage, nil
-}
-
-type storage struct {
-	id             uuid.UUID
-	Writer         Writer
-	usageCollector *usage.UsageCollector
-	config         storageConfig
-	wg             *sync.WaitGroup
-	closeChan      chan struct{}
-	useNewSchema   bool
-}
-
-type storageConfig struct {
-	lowCardinalExceptionGrouping bool
-}
-
-func makeJaegerProtoReferences(
-	links ptrace.SpanLinkSlice,
-	parentSpanID pcommon.SpanID,
-	traceID pcommon.TraceID,
-) ([]OtelSpanRef, error) {
-
-	parentSpanIDSet := len([8]byte(parentSpanID)) != 0
-	if !parentSpanIDSet && links.Len() == 0 {
-		return nil, nil
-	}
-
-	refsCount := links.Len()
-	if parentSpanIDSet {
-		refsCount++
-	}
-
-	refs := make([]OtelSpanRef, 0, refsCount)
-
-	// Put parent span ID at the first place because usually backends look for it
-	// as the first CHILD_OF item in the model.SpanRef slice.
-	if parentSpanIDSet {
-
-		refs = append(refs, OtelSpanRef{
-			TraceId: utils.TraceIDToHexOrEmptyString(traceID),
-			SpanId:  utils.SpanIDToHexOrEmptyString(parentSpanID),
-			RefType: "CHILD_OF",
-		})
-	}
-
-	for i := 0; i < links.Len(); i++ {
-		link := links.At(i)
-
-		refs = append(refs, OtelSpanRef{
-			TraceId: utils.TraceIDToHexOrEmptyString(link.TraceID()),
-			SpanId:  utils.SpanIDToHexOrEmptyString(link.SpanID()),
-
-			// Since Jaeger RefType is not captured in internal data,
-			// use SpanRefType_FOLLOWS_FROM by default.
-			// SpanRefType_CHILD_OF supposed to be set only from parentSpanID.
-			RefType: "FOLLOWS_FROM",
-		})
-	}
-
-	return refs, nil
-}
-
-// ServiceNameForResource gets the service name for a specified Resource.
-// TODO: Find a better package for this function.
-func ServiceNameForResource(resource pcommon.Resource) string {
-	// if resource.IsNil() {
-	// 	return "<nil-resource>"
-	// }
-
-	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
-	if !found {
-		return "<nil-service-name>"
-	}
-
-	return service.Str()
-}
-
-func populateOtherDimensions(attributes pcommon.Map, span *Span) {
+func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV2) {
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
@@ -193,7 +41,6 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
-
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
@@ -238,7 +85,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
 }
 
-func populateEvents(events ptrace.SpanEventSlice, span *Span, lowCardinalExceptionGrouping bool) {
+func populateEventsV2(events ptrace.SpanEventSlice, span *SpanV2, lowCardinalExceptionGrouping bool) {
 	for i := 0; i < events.Len(); i++ {
 		event := Event{}
 		event.Name = events.At(i).Name()
@@ -269,12 +116,7 @@ func populateEvents(events ptrace.SpanEventSlice, span *Span, lowCardinalExcepti
 	}
 }
 
-func populateTraceModel(span *Span) {
-	span.TraceModel.Events = span.Events
-	span.TraceModel.HasError = span.HasError
-}
-
-func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *Span {
+func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *SpanV2 {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -354,82 +196,92 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 	})
 
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
+	referencesBytes, _ := json.Marshal(references)
 
 	tenant := usage.GetTenantNameFromResource(resource)
 
-	var span *Span = &Span{
-		TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
-		SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
-		ParentSpanId:      utils.SpanIDToHexOrEmptyString(otelSpan.ParentSpanID()),
-		Name:              otelSpan.Name(),
+	var span *SpanV2 = &SpanV2{
+		TsBucketStart: bucketStart,
+		FingerPrint:   fingerprint,
+
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
-		DurationNano:      durationNano,
-		ServiceName:       ServiceName,
-		Kind:              int8(otelSpan.Kind()),
-		SpanKind:          otelSpan.Kind().String(),
-		StatusCode:        int16(otelSpan.Status().Code()),
-		StringTagMap:      stringTagMap,
-		NumberTagMap:      numberTagMap,
-		BoolTagMap:        boolTagMap,
-		ResourceTagsMap:   resourceAttrs,
-		HasError:          false,
-		StatusMessage:     otelSpan.Status().Message(),
-		StatusCodeString:  otelSpan.Status().Code().String(),
-		TraceModel: TraceModel{
-			TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
-			SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
-			Name:              otelSpan.Name(),
-			DurationNano:      durationNano,
-			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
-			ServiceName:       ServiceName,
-			Kind:              int8(otelSpan.Kind()),
-			SpanKind:          otelSpan.Kind().String(),
-			References:        references,
-			TagMap:            tagMap,
-			StringTagMap:      stringTagMap,
-			NumberTagMap:      numberTagMap,
-			BoolTagMap:        boolTagMap,
-			HasError:          false,
-			StatusMessage:     otelSpan.Status().Message(),
-			StatusCodeString:  otelSpan.Status().Code().String(),
-		},
-		Tenant:   &tenant,
+
+		TraceId:      utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
+		SpanId:       utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
+		TraceState:   otelSpan.TraceState().AsRaw(),
+		ParentSpanId: utils.SpanIDToHexOrEmptyString(otelSpan.ParentSpanID()),
+		Flags:        otelSpan.Flags(),
+
+		Name: otelSpan.Name(),
+
+		Kind:     int8(otelSpan.Kind()),
+		SpanKind: otelSpan.Kind().String(),
+
+		DurationNano: durationNano,
+
+		StatusCode:       int16(otelSpan.Status().Code()),
+		StatusMessage:    otelSpan.Status().Message(),
+		StatusCodeString: otelSpan.Status().Code().String(),
+
+		AttributeString:  stringTagMap,
+		AttributesNumber: numberTagMap,
+		AttributesBool:   boolTagMap,
+
+		ResourcesString: resourceAttrs,
+
+		ServiceName: ServiceName,
+
 		IsRemote: isRemote,
+
+		Tenant: &tenant,
+
+		References: string(referencesBytes),
 	}
+
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
-	populateOtherDimensions(attributes, span)
-	populateEvents(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
-	populateTraceModel(span)
-	spanAttributes = append(spanAttributes, extractSpanAttributesFromSpanIndex(span)...)
+
+	populateCustomAttrsAndAttrs(attributes, span)
+
+	populateEventsV2(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
+	spanAttributes = append(spanAttributes, extractSpanAttributesFromSpanIndexV2(span)...)
 	span.SpanAttributes = spanAttributes
 	return span
 }
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
-func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
-	s.pushTraceDataV2(ctx, td)
 
-	// if the new schema is enabled don't write to the old tables
-	if s.useNewSchema {
-		// TODO when this is actually used update pushTraceDataV2 to write spanAttributes and error spans.
-		return nil
-	}
+func tsBucket(ts int64, bucketSize int64) int64 {
+	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
+}
 
+const (
+	DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS = 1800
+)
+
+func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
+
+	resourcesSeen := map[int64]map[string]string{}
 
 	select {
 	case <-s.closeChan:
 		return errors.New("shutdown has been called")
 	default:
 		rss := td.ResourceSpans()
-		var batchOfSpans []*Span
+		var batchOfSpans []*SpanV2
 		for i := 0; i < rss.Len(); i++ {
 			rs := rss.At(i)
 
 			serviceName := ServiceNameForResource(rs.Resource())
+
+			serializedRes, err := json.Marshal(rs.Resource().Attributes().AsRaw())
+			if err != nil {
+				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
+			}
+			resourceJson := string(serializedRes)
 
 			ilss := rs.ScopeSpans()
 			for j := 0; j < ilss.Len(); j++ {
@@ -439,37 +291,41 @@ func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
-					structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
+
+					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS)
+					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
+						resourcesSeen[int64(lBucketStart)] = map[string]string{}
+					}
+					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
+					if !exists {
+						fp = fingerprint.CalculateFingerprint(rs.Resource().Attributes().AsRaw(), fingerprint.ResourceHierarchy())
+						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
+					}
+
+					structuredSpan := newStructuredSpanV2(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
 					batchOfSpans = append(batchOfSpans, structuredSpan)
+
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpans(ctx, batchOfSpans)
+		err := s.Writer.WriteBatchOfSpansV2(ctx, batchOfSpans)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err
 		}
+
+		// write the resources
+		err = s.Writer.WriteResourcesV2(ctx, resourcesSeen)
+		if err != nil {
+			zap.S().Error("Error in writing resources to clickhouse: ", err)
+			return err
+		}
+
 		return nil
 	}
 }
 
-// Shutdown will shutdown the exporter.
-func (s *storage) Shutdown(_ context.Context) error {
-
-	close(s.closeChan)
-	s.wg.Wait()
-
-	if s.usageCollector != nil {
-		s.usageCollector.Stop()
-	}
-
-	if closer, ok := s.Writer.(io.Closer); ok {
-		return closer.Close()
-	}
-	return nil
-}
-
-func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
+func extractSpanAttributesFromSpanIndexV2(span *SpanV2) []SpanAttribute {
 	spanAttributes := []SpanAttribute{}
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "traceID",
