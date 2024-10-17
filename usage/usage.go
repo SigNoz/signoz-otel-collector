@@ -89,6 +89,7 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 	e.logger.Info("exporting nowwww............")
 	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
+		e.logger.Error(err.Error())
 		return err
 	}
 	time := time.Now()
@@ -96,16 +97,19 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		usage.TimeStamp = time
 		usageBytes, err := json.Marshal(usage)
 		if err != nil {
+			e.logger.Error(err.Error())
 			return err
 		}
 		encryptedData, err := Encrypt([]byte(e.exporterID.String())[:32], usageBytes)
 		if err != nil {
+			e.logger.Error(err.Error())
 			return err
 		}
 
 		// insert everything as a new row
 		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.exporterID.String(), time, string(encryptedData))
 		if err != nil {
+			e.logger.Error(err.Error())
 			return err
 		}
 	}
