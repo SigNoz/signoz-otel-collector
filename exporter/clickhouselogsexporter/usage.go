@@ -48,6 +48,7 @@ var (
 )
 
 func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage.Usage, error) {
+	fmt.Println("exporting logs usage.......")
 	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
 		if !strings.Contains(metric.Descriptor.Name, SigNozLogsCount) && !strings.Contains(metric.Descriptor.Name, SigNozLogsBytes) {
