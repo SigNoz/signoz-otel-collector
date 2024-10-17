@@ -70,6 +70,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		f.db,
 		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
+		logger,
 		UsageExporter,
 	)
 	if err != nil {

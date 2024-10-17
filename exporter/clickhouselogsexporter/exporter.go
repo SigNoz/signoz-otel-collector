@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -72,7 +71,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		return nil, err
 	}
 
-	log.Println("HELLLOOOOOOOO")
+	logger.Info("HELLLOOOOOOOO")
 
 	client, err := newClickhouseClient(logger, cfg)
 	if err != nil {
@@ -89,6 +88,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
 		"signoz_logs",
+		logger,
 		UsageExporter,
 	)
 	if err != nil {

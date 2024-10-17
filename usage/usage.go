@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
+	"go.uber.org/zap"
 )
 
 // Options provides options for LogExporter
@@ -40,6 +40,7 @@ type UsageCollector struct {
 	prevCount            int64
 	prevSize             int64
 	ttl                  int
+	logger               *zap.Logger
 }
 
 var CollectorID uuid.UUID
@@ -50,7 +51,7 @@ func init() {
 
 const cluster = "cluster"
 
-func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric, id uuid.UUID) (map[string]Usage, error)) *UsageCollector {
+func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options, dbName string, logger *zap.Logger, usageParser func(metrics []*metricdata.Metric, id uuid.UUID) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
 		exporterID:           exporterId,
 		reader:               metricexport.NewReader(),
@@ -63,6 +64,7 @@ func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options
 		prevCount:            0,
 		prevSize:             0,
 		ttl:                  3,
+		logger:               logger,
 	}
 }
 
@@ -76,14 +78,15 @@ func (e *UsageCollector) Start() error {
 }
 
 func (c *UsageCollector) Stop() error {
+	c.logger.Info("Stopping the usage collector")
 	c.ir.Stop()
-	log.Println("sending export data")
-	c.reader.ReadAndExport(c)
+	c.ir.Flush()
 	return nil
 }
 
 func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
-	log.Println("exporting nowwww............")
+	fmt.Println("fmt: exporting nowwww............")
+	e.logger.Info("exporting nowwww............")
 	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
 		return err
