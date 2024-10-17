@@ -7,6 +7,9 @@ processors:
 exporters:
   clickhousetraces:
     datasource: tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password
+  clickhousetraces/new_schema:
+    datasource: tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password
+    use_new_schema: true
   clickhousetraces/2:
     datasource: tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password
     timeout: 5s

@@ -1,4 +1,4 @@
-package logsv2
+package fingerprint
 
 import (
 	"testing"
