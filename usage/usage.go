@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -76,10 +77,13 @@ func (e *UsageCollector) Start() error {
 
 func (c *UsageCollector) Stop() error {
 	c.ir.Stop()
+	log.Println("sending export data")
+	c.reader.ReadAndExport(c)
 	return nil
 }
 
 func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
+	log.Println("exporting nowwww............")
 	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
 		return err
