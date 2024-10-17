@@ -11,6 +11,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "ts_bucket_start", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 					{Name: "resource_fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
+					{Name: "id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Codec: "ZSTD(1)"},
 					{Name: "spanID", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "traceState", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -56,11 +57,10 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "references", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
-					// {Name: "idx_service", Expression: "serviceName", Type: "bloom_filter", Granularity: 4},
-					// {Name: "idx_name", Expression: "name", Type: "bloom_filter", Granularity: 4},
-					// {Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
+					{Name: "idx_id", Expression: "id", Type: "minmax", Granularity: 1},
 					{Name: "idx_duration", Expression: "durationNano", Type: "minmax", Granularity: 1},
-					// {Name: "idx_hasError", Expression: "hasError", Type: "set(2)", Granularity: 1},
+					{Name: "idx_name", Expression: "name", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
+					{Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
 					{Name: "idx_httpRoute", Expression: "httpRoute", Type: "bloom_filter", Granularity: 4},
 					{Name: "idx_httpUrl", Expression: "httpUrl", Type: "bloom_filter", Granularity: 4},
 					{Name: "idx_httpHost", Expression: "httpHost", Type: "bloom_filter", Granularity: 4},
@@ -78,8 +78,10 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Engine: MergeTree{
 					PartitionBy: "toDate(timestamp)",
-					OrderBy:     "(ts_bucket_start, resource_fingerprint, hasError, name, timestamp)",
-					TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
+					// not adding name in the order by clause as it's already an column and filtering on that will be supported by skip index
+					// the name can have many values so no point in adding here and messing up the ordering.
+					OrderBy: "(ts_bucket_start, resource_fingerprint, hasError, timestamp, id)",
+					TTL:     "toDateTime(timestamp) + toIntervalSecond(1296000)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
 						{Name: "ttl_only_drop_parts", Value: "1"},
@@ -93,6 +95,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "ts_bucket_start", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 					{Name: "resource_fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
+					{Name: "id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Codec: "ZSTD(1)"},
 					{Name: "spanID", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "traceState", Type: ColumnTypeString, Codec: "ZSTD(1)"},

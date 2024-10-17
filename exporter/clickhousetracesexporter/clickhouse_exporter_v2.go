@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/google/uuid"
+	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
@@ -116,7 +118,7 @@ func populateEventsV2(events ptrace.SpanEventSlice, span *SpanV2, lowCardinalExc
 	}
 }
 
-func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *SpanV2 {
+func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV2, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -200,11 +202,18 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource(resource)
 
+	// generate the id from timestamp
+	id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(otelSpan.StartTimestamp())))
+	if err != nil {
+		return nil, fmt.Errorf("IdGenError:%w", err)
+	}
+
 	var span *SpanV2 = &SpanV2{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
 
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
+		Id:                id.String(),
 
 		TraceId:      utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
 		SpanId:       utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
@@ -247,7 +256,7 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 	populateEventsV2(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
 	spanAttributes = append(spanAttributes, extractSpanAttributesFromSpanIndexV2(span)...)
 	span.SpanAttributes = spanAttributes
-	return span
+	return span, nil
 }
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
@@ -302,7 +311,11 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
-					structuredSpan := newStructuredSpanV2(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
+					structuredSpan, err := newStructuredSpanV2(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
+					if err != nil {
+						zap.S().Error("Error in creating newStructuredSpanV2: ", err)
+						return err
+					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
 				}
