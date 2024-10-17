@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -70,6 +71,8 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+
+	log.Println("HELLLOOOOOOOO")
 
 	client, err := newClickhouseClient(logger, cfg)
 	if err != nil {
