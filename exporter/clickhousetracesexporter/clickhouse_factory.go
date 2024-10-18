@@ -41,6 +41,8 @@ type Factory struct {
 // Writer writes spans to storage.
 type Writer interface {
 	WriteBatchOfSpans(ctx context.Context, span []*Span) error
+	WriteBatchOfSpansV2(ctx context.Context, span []*SpanV2) error
+	WriteResourcesV2(ctx context.Context, resource map[int64]map[string]string) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)
