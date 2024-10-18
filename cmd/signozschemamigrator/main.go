@@ -57,10 +57,12 @@ func main() {
 	var dsn string
 	var replicationEnabled bool
 	var clusterName string
+	var development bool
 
 	cmd.PersistentFlags().StringVar(&dsn, "dsn", "", "Clickhouse DSN")
 	cmd.PersistentFlags().BoolVar(&replicationEnabled, "replication", false, "Enable replication")
 	cmd.PersistentFlags().StringVar(&clusterName, "cluster-name", "cluster", "Cluster name to use while running migrations")
+	cmd.PersistentFlags().BoolVar(&development, "dev", false, "Development mode")
 
 	registerSyncMigrate(cmd)
 	registerAsyncMigrate(cmd)
@@ -84,6 +86,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			dsn := cmd.Flags().Lookup("dsn").Value.String()
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
+			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
 			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
 
@@ -135,6 +138,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConn(conn),
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
+				schema_migrator.WithDevelopment(development),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
@@ -180,6 +184,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			dsn := cmd.Flags().Lookup("dsn").Value.String()
 			replicationEnabled := strings.ToLower(cmd.Flags().Lookup("replication").Value.String()) == "true"
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
+			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
 			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
 
@@ -231,6 +236,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConn(conn),
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
+				schema_migrator.WithDevelopment(development),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
