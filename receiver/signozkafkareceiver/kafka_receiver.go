@@ -5,6 +5,7 @@ package signozkafkareceiver // import "github.com/SigNoz/signoz-otel-collector/r
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -146,7 +147,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		messageMarking:    c.messageMarking,
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, consumerGroup); err != nil {
+		if err := c.consumeLoop(ctx, consumerGroup); !errors.Is(err, context.Canceled) {
 			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
@@ -244,7 +245,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		messageMarking:    c.messageMarking,
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, metricsConsumerGroup); err != nil {
+		if err := c.consumeLoop(ctx, metricsConsumerGroup); !errors.Is(err, context.Canceled) {
 			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
@@ -370,7 +371,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		messageMarking:    c.messageMarking,
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, logsConsumerGroup); err != nil {
+		if err := c.consumeLoop(ctx, logsConsumerGroup); !errors.Is(err, context.Canceled) {
 			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
