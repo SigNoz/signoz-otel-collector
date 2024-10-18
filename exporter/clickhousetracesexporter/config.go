@@ -34,6 +34,7 @@ type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
 	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
+	ClusterName string `mapstructure:"cluster_name" default:"cluster"`
 }
 
 var _ component.Config = (*Config)(nil)
