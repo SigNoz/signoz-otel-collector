@@ -120,7 +120,7 @@ func TestCreateMetricExporter(t *testing.T) {
 			f := NewFactory(WithMetricsMarshalers(tc.marshalers...))
 			exporter, err := f.CreateMetricsExporter(
 				context.Background(),
-				exportertest.NewNopCreateSettings(),
+				exportertest.NewNopSettings(),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -194,7 +194,7 @@ func TestCreateLogExporter(t *testing.T) {
 			f := NewFactory(WithLogsMarshalers(tc.marshalers...))
 			exporter, err := f.CreateLogsExporter(
 				context.Background(),
-				exportertest.NewNopCreateSettings(),
+				exportertest.NewNopSettings(),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -268,7 +268,7 @@ func TestCreateTraceExporter(t *testing.T) {
 			f := NewFactory(WithTracesMarshalers(tc.marshalers...))
 			exporter, err := f.CreateTracesExporter(
 				context.Background(),
-				exportertest.NewNopCreateSettings(),
+				exportertest.NewNopSettings(),
 				tc.conf,
 			)
 			if tc.err != nil {

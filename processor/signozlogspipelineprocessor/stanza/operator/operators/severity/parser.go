@@ -5,6 +5,7 @@ package severity // import "github.com/open-telemetry/opentelemetry-collector-co
 import (
 	"context"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -12,7 +13,7 @@ import (
 // Parser is an operator that parses severity from a field to an entry.
 type Parser struct {
 	helper.TransformerOperator
-	helper.SeverityParser
+	signozstanzahelper.SeverityParser
 }
 
 // Process will parse severity from an entry.

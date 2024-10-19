@@ -15,6 +15,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
@@ -41,7 +42,7 @@ type kafkaTracesConsumer struct {
 	cancelConsumeLoop context.CancelFunc
 	unmarshaler       TracesUnmarshaler
 
-	settings receiver.CreateSettings
+	settings receiver.Settings
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking
@@ -55,7 +56,7 @@ type kafkaMetricsConsumer struct {
 	cancelConsumeLoop context.CancelFunc
 	unmarshaler       MetricsUnmarshaler
 
-	settings receiver.CreateSettings
+	settings receiver.Settings
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking
@@ -69,7 +70,7 @@ type kafkaLogsConsumer struct {
 	cancelConsumeLoop context.CancelFunc
 	unmarshaler       LogsUnmarshaler
 
-	settings receiver.CreateSettings
+	settings receiver.Settings
 
 	autocommitEnabled bool
 	messageMarking    MessageMarking
@@ -79,7 +80,7 @@ var _ receiver.Traces = (*kafkaTracesConsumer)(nil)
 var _ receiver.Metrics = (*kafkaMetricsConsumer)(nil)
 var _ receiver.Logs = (*kafkaLogsConsumer)(nil)
 
-func newTracesReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]TracesUnmarshaler, nextConsumer consumer.Traces) (*kafkaTracesConsumer, error) {
+func newTracesReceiver(config Config, set receiver.Settings, unmarshalers map[string]TracesUnmarshaler, nextConsumer consumer.Traces) (*kafkaTracesConsumer, error) {
 	unmarshaler := unmarshalers[config.Encoding]
 	if unmarshaler == nil {
 		return nil, errUnrecognizedEncoding
@@ -155,8 +156,8 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		},
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, consumerGroup); err != nil {
-			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
+		if err := c.consumeLoop(ctx, consumerGroup); !errors.Is(err, context.Canceled) {
+			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
 	<-consumerGroup.ready
@@ -205,7 +206,7 @@ func (c *kafkaTracesConsumer) Shutdown(context.Context) error {
 	return c.consumerGroup.Close()
 }
 
-func newMetricsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]MetricsUnmarshaler, nextConsumer consumer.Metrics) (*kafkaMetricsConsumer, error) {
+func newMetricsReceiver(config Config, set receiver.Settings, unmarshalers map[string]MetricsUnmarshaler, nextConsumer consumer.Metrics) (*kafkaMetricsConsumer, error) {
 	unmarshaler := unmarshalers[config.Encoding]
 	if unmarshaler == nil {
 		return nil, errUnrecognizedEncoding
@@ -280,8 +281,8 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		},
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, metricsConsumerGroup); err != nil {
-			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
+		if err := c.consumeLoop(ctx, metricsConsumerGroup); !errors.Is(err, context.Canceled) {
+			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
 	<-metricsConsumerGroup.ready
@@ -330,7 +331,7 @@ func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
 	return c.consumerGroup.Close()
 }
 
-func newLogsReceiver(config Config, set receiver.CreateSettings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
+func newLogsReceiver(config Config, set receiver.Settings, unmarshalers map[string]LogsUnmarshaler, nextConsumer consumer.Logs) (*kafkaLogsConsumer, error) {
 	// set sarama library's logger to get detailed logs from the library
 	sarama.Logger = zap.NewStdLog(set.Logger)
 
@@ -433,8 +434,8 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		},
 	}
 	go func() {
-		if err := c.consumeLoop(ctx, logsConsumerGroup); err != nil {
-			c.settings.ReportStatus(component.NewFatalErrorEvent(err))
+		if err := c.consumeLoop(ctx, logsConsumerGroup); !errors.Is(err, context.Canceled) {
+			componentstatus.ReportStatus(host, componentstatus.NewFatalErrorEvent(err))
 		}
 	}()
 	<-logsConsumerGroup.ready

@@ -34,7 +34,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
@@ -300,7 +300,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
+			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
 			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -340,7 +340,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
+			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
 			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -397,7 +397,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			start := time.Now()
 			err = statement.Send()
 			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
+				tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE_V4),
 			)
 			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -450,7 +450,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			start := time.Now()
 			err = statement.Send()
 			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
+				tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
 			)
 			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -539,7 +539,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		start := time.Now()
 		err = statement.Send()
 		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
+			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
 			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
 		)
 		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))

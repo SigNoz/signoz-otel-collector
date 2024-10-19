@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -25,14 +26,14 @@ func NewConfig() *Config {
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
 		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
-		TraceParser:       helper.NewTraceParser(),
+		TraceParser:       signozstanzahelper.NewTraceParser(),
 	}
 }
 
 // Config is the configuration of a trace parser operator.
 type Config struct {
-	helper.TransformerConfig `mapstructure:",squash"`
-	helper.TraceParser       `mapstructure:",omitempty,squash"`
+	helper.TransformerConfig       `mapstructure:",squash"`
+	signozstanzahelper.TraceParser `mapstructure:",omitempty,squash"`
 }
 
 // Build will build a trace parser operator.

@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
@@ -25,14 +26,14 @@ func NewConfig() *Config {
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
 		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
-		SeverityConfig:    helper.NewSeverityConfig(),
+		SeverityConfig:    signozstanzahelper.NewSeverityConfig(),
 	}
 }
 
 // Config is the configuration of a severity parser operator.
 type Config struct {
-	helper.TransformerConfig `mapstructure:",squash"`
-	helper.SeverityConfig    `mapstructure:",omitempty,squash"`
+	helper.TransformerConfig          `mapstructure:",squash"`
+	signozstanzahelper.SeverityConfig `mapstructure:",omitempty,squash"`
 }
 
 // Build will build a severity parser operator.

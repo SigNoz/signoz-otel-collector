@@ -55,7 +55,7 @@ func TestFactoryCreateTracesProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateTracesProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }
@@ -74,7 +74,7 @@ func TestFactoryCreateTracesProcessor(t *testing.T) {
 			},
 		},
 	}
-	tp, err := factory.CreateTracesProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.NotNil(t, tp)
 	assert.NoError(t, err)
 
@@ -104,7 +104,7 @@ func TestFactoryCreateMetricsProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateMetricsProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }
@@ -123,7 +123,7 @@ func TestFactoryCreateMetricsProcessor(t *testing.T) {
 			},
 		},
 	}
-	metricsProcessor, err := factory.CreateMetricsProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.NotNil(t, metricsProcessor)
 	assert.NoError(t, err)
 
@@ -156,7 +156,7 @@ func TestFactoryCreateLogsProcessor(t *testing.T) {
 			},
 		},
 	}
-	lp, err := factory.CreateLogsProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.NotNil(t, lp)
 	assert.NoError(t, err)
 
@@ -185,7 +185,7 @@ func TestFactoryCreateLogsProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateLogsProcessor(context.Background(), processortest.NewNopCreateSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }

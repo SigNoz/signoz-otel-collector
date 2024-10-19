@@ -7,14 +7,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 
 	signozlogspipelinestanzaadapter "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/adapter"
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operators/regex"
 )
 
@@ -23,7 +23,7 @@ func TestLoadConfig(t *testing.T) {
 	require.NoError(t, err)
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
-	assert.NoError(t, component.UnmarshalConfig(cm, cfg))
+	assert.NoError(t, cm.Unmarshal(cfg))
 	assert.Equal(t, &Config{
 		BaseConfig: signozlogspipelinestanzaadapter.BaseConfig{
 			Operators: []signozlogspipelinestanzaoperator.Config{
@@ -31,12 +31,12 @@ func TestLoadConfig(t *testing.T) {
 					Builder: func() *regex.Config {
 						cfg := regex.NewConfig()
 						cfg.Regex = "^(?P<time>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}) (?P<sev>[A-Z]*) (?P<msg>.*)$"
-						sevField := entry.NewAttributeField("sev")
-						sevCfg := helper.NewSeverityConfig()
+						sevField := signozstanzaentry.Field{entry.NewAttributeField("sev")}
+						sevCfg := signozstanzahelper.NewSeverityConfig()
 						sevCfg.ParseFrom = &sevField
 						cfg.SeverityConfig = &sevCfg
-						timeField := entry.NewAttributeField("time")
-						timeCfg := helper.NewTimeParser()
+						timeField := signozstanzaentry.Field{entry.NewAttributeField("time")}
+						timeCfg := signozstanzahelper.NewTimeParser()
 						timeCfg.Layout = "%Y-%m-%d %H:%M:%S"
 						timeCfg.ParseFrom = &timeField
 						cfg.TimeParser = &timeCfg

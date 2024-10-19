@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -40,7 +42,7 @@ func TestBuild(t *testing.T) {
 			"basic",
 			func() (*Config, error) {
 				cfg := NewConfigWithID("test_id")
-				parseFrom, err := entry.NewField("body.app_time")
+				parseFrom, err := signozstanzaentry.NewField("body.app_time")
 				if err != nil {
 					return cfg, err
 				}
@@ -82,7 +84,7 @@ func TestProcess(t *testing.T) {
 			name: "promote",
 			config: func() (*Config, error) {
 				cfg := NewConfigWithID("test_id")
-				parseFrom, err := entry.NewField("body.app_time")
+				parseFrom, err := signozstanzaentry.NewField("body.app_time")
 				if err != nil {
 					return nil, err
 				}
@@ -242,8 +244,8 @@ func TestTimeParser(t *testing.T) {
 		},
 	}
 
-	rootField := entry.NewBodyField()
-	someField := entry.NewBodyField("some_field")
+	rootField := signozstanzaentry.Field{signozstanzaentry.NewBodyField()}
+	someField := signozstanzaentry.Field{signozstanzaentry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -409,8 +411,8 @@ func TestTimeEpochs(t *testing.T) {
 		},
 	}
 
-	rootField := entry.NewBodyField()
-	someField := entry.NewBodyField("some_field")
+	rootField := signozstanzaentry.Field{entry.NewBodyField()}
+	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -471,8 +473,8 @@ func TestTimeErrors(t *testing.T) {
 		},
 	}
 
-	rootField := entry.NewBodyField()
-	someField := entry.NewBodyField("some_field")
+	rootField := signozstanzaentry.Field{entry.NewBodyField()}
+	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -485,7 +487,7 @@ func TestTimeErrors(t *testing.T) {
 	}
 }
 
-func makeTestEntry(t *testing.T, field entry.Field, value any) *entry.Entry {
+func makeTestEntry(t *testing.T, field signozstanzaentry.Field, value any) *entry.Entry {
 	e := entry.New()
 	require.NoError(t, e.Set(field, value))
 	return e
@@ -528,10 +530,10 @@ func runLossyTimeParseTest(_ *testing.T, cfg *Config, ent *entry.Entry, buildErr
 	}
 }
 
-func parseTimeTestConfig(layoutType, layout string, parseFrom entry.Field) *Config {
+func parseTimeTestConfig(layoutType, layout string, parseFrom signozstanzaentry.Field) *Config {
 	cfg := NewConfigWithID("test_operator_id")
 	cfg.OutputIDs = []string{"output1"}
-	cfg.TimeParser = helper.TimeParser{
+	cfg.TimeParser = signozstanzahelper.TimeParser{
 		LayoutType: layoutType,
 		Layout:     layout,
 		ParseFrom:  &parseFrom,

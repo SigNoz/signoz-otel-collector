@@ -27,17 +27,17 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/logsv2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/google/uuid"
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
 )
 
@@ -332,7 +332,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
 					if !exists {
-						fp = logsv2.CalculateFingerprint(res.Attributes().AsRaw(), logsv2.ResourceHierarchy())
+						fp = fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
@@ -443,7 +443,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			sendDuration := <-chDuration
 			stats.RecordWithTags(ctx,
 				[]tag.Mutator{
-					tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+					tag.Upsert(exporterKey, pipeline.SignalLogs.String()),
 					tag.Upsert(tableKey, sendDuration.Name),
 				},
 				writeLatencyMillis.M(int64(sendDuration.duration.Milliseconds())),
@@ -470,7 +470,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		err = tagStatement.Send()
 		stats.RecordWithTags(ctx,
 			[]tag.Mutator{
-				tag.Upsert(exporterKey, component.DataTypeLogs.String()),
+				tag.Upsert(exporterKey, pipeline.SignalLogs.String()),
 				tag.Upsert(tableKey, DISTRIBUTED_TAG_ATTRIBUTES),
 			},
 			writeLatencyMillis.M(int64(time.Since(tagWriteStart).Milliseconds())),
@@ -787,7 +787,7 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	}
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxIdleConnections := cfg.QueueSettings.NumConsumers + 1
+	maxIdleConnections := cfg.QueueConfig.NumConsumers + 1
 	if options.MaxIdleConns < maxIdleConnections {
 		options.MaxIdleConns = maxIdleConnections
 		options.MaxOpenConns = maxIdleConnections + 5

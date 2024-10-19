@@ -29,7 +29,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
 )
 
@@ -154,7 +154,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
+		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
 		tag.Upsert(tableKey, w.indexTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -266,7 +266,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 	err = tagStatement.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
+			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
 			tag.Upsert(tableKey, w.attributeTable),
 		},
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
@@ -280,7 +280,7 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 	err = tagKeyStatement.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
+			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
 			tag.Upsert(tableKey, w.attributeKeyTable),
 		},
 		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
@@ -336,7 +336,7 @@ func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) er
 	err = statement.Send()
 
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
+		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
 		tag.Upsert(tableKey, w.errorTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
@@ -390,7 +390,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 	err = statement.Send()
 	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
+		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
 		tag.Upsert(tableKey, w.spansTable),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
