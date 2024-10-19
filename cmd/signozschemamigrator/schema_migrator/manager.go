@@ -307,7 +307,7 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 	}
 
 	hostAddrs := make(map[string]struct{})
-	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1'] AND cluster = $1"
+	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1', '::1'] AND cluster = $1"
 	rows, err := m.conn.Query(context.Background(), query, m.clusterName)
 	if err != nil {
 		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
