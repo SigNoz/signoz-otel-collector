@@ -172,12 +172,12 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 func (c *kafkaTracesConsumer) errorLoop(ctx context.Context, tracesConsumerGroup *tracesConsumerGroupHandler) {
 	for {
 		select {
-		case p := <-tracesConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-		case p := <-tracesConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-tracesConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.PauseAll()
+		case <-tracesConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.ResumeAll()
 		case <-ctx.Done():
 			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
 			return
@@ -297,12 +297,12 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 func (c *kafkaMetricsConsumer) errorLoop(ctx context.Context, metricsConsumerGroup *metricsConsumerGroupHandler) {
 	for {
 		select {
-		case p := <-metricsConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-		case p := <-metricsConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-metricsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.PauseAll()
+		case <-metricsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.ResumeAll()
 		case <-ctx.Done():
 			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
 			return
@@ -450,12 +450,12 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 func (c *kafkaLogsConsumer) errorLoop(ctx context.Context, logsConsumerGroup *logsConsumerGroupHandler) {
 	for {
 		select {
-		case p := <-logsConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing partition", zap.Int32("partition", p))
-			c.consumerGroup.Pause(map[string][]int32{c.topics[0]: {p}})
-		case p := <-logsConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming partition", zap.Int32("partition", p))
-			c.consumerGroup.Resume(map[string][]int32{c.topics[0]: {p}})
+		case <-logsConsumerGroup.pausePartition:
+			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.PauseAll()
+		case <-logsConsumerGroup.resumePartition:
+			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
+			c.consumerGroup.ResumeAll()
 		case <-ctx.Done():
 			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
 			return
