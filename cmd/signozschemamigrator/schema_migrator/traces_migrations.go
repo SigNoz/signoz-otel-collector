@@ -206,4 +206,54 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "sub_root_operations",
+			},
+		},
+		DownItems: []Operation{
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "sub_root_operations",
+				DestTable: "top_level_operations",
+				Columns: []Column{
+					{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "serviceName", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+				},
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
+						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
+			},
+		},
+	},
+	{
+		MigrationID: 1003,
+		UpItems: []Operation{
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "sub_root_operations",
+				DestTable: "top_level_operations",
+				Columns: []Column{
+					{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "serviceName", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+				},
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "sub_root_operations",
+			},
+		},
+	},
 }
