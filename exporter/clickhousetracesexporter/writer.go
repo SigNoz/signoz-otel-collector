@@ -24,7 +24,6 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -54,6 +53,8 @@ type SpanWriter struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	useNewSchema bool
 }
 
 type WriterOptions struct {
@@ -363,7 +364,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		return err
 	}
 
-	metrics := map[string]usage.Metric{}
+	// metrics := map[string]usage.Metric{}
 	for _, span := range batchSpans {
 		var serialized []byte
 		usageMap := span.TraceModel
@@ -372,7 +373,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		if err != nil {
 			return err
 		}
-		serializedUsage, err := json.Marshal(usageMap)
+		// serializedUsage, err := json.Marshal(usageMap)
 
 		if err != nil {
 			return err
@@ -384,7 +385,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 			return err
 		}
 
-		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
+		// usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
 	}
 	start := time.Now()
 
@@ -397,9 +398,9 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 	if err != nil {
 		return err
 	}
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
-	}
+	// for k, v := range metrics {
+	// 	stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+	// }
 
 	return nil
 }
@@ -423,18 +424,19 @@ func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error
 	}
 
 	// inserts to the signoz_error_index_v2 table
-	if w.errorTable != "" {
-		if err := w.writeErrorBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
-			return err
-		}
-	}
-	if w.attributeTable != "" && w.attributeKeyTable != "" {
-		if err := w.writeTagBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
-			return err
-		}
-	}
+	// if w.errorTable != "" {
+	// 	fmt.Println()
+	// 	if err := w.writeErrorBatch(ctx, batch); err != nil {
+	// 		w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
+	// 		return err
+	// 	}
+	// }
+	// if w.attributeTable != "" && w.attributeKeyTable != "" {
+	// 	if err := w.writeTagBatch(ctx, batch); err != nil {
+	// 		w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
+	// 		return err
+	// 	}
+	// }
 	return nil
 }
 
