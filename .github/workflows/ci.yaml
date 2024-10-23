@@ -1,23 +1,25 @@
 name: ci
 
 on:
-  pull_request:
-    branches:
-      - "*"
+  pull_request_target:
+    types: [labeled]
 
 jobs:
   test:
+    if: github.event.label.name == 'ci'
     uses: signoz/primus.workflows/.github/workflows/go-test.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
       GO_TEST_CONTEXT: ./...
   fmt:
+    if: github.event.label.name == 'ci'
     uses: signoz/primus.workflows/.github/workflows/go-fmt.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
   lint:
+    if: github.event.label.name == 'ci'
     uses: signoz/primus.workflows/.github/workflows/go-lint.yaml@main
     secrets: inherit
     with:
