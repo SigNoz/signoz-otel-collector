@@ -1,23 +1,29 @@
 name: ci
 
 on:
+  pull_request_target:
+    types:
+      - labeled
   pull_request:
     branches:
-      - "*"
+      - main
 
 jobs:
   test:
+    if: contains(github.event.pull_request.labels.*.name, 'runci')
     uses: signoz/primus.workflows/.github/workflows/go-test.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
       GO_TEST_CONTEXT: ./...
   fmt:
+    if: contains(github.event.pull_request.labels.*.name, 'runci')
     uses: signoz/primus.workflows/.github/workflows/go-fmt.yaml@main
     secrets: inherit
     with:
       PRIMUS_REF: main
   lint:
+    if: contains(github.event.pull_request.labels.*.name, 'runci')
     uses: signoz/primus.workflows/.github/workflows/go-lint.yaml@main
     secrets: inherit
     with:
