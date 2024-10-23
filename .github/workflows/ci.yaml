@@ -5,8 +5,8 @@ on:
     types:
       - labeled
   pull_request:
-    types:
-      - labeled
+    branches:
+      - main
 
 jobs:
   test:
