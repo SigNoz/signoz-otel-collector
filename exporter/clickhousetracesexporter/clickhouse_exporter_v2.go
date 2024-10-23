@@ -281,6 +281,11 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 	default:
 		rss := td.ResourceSpans()
 		var batchOfSpans []*SpanV2
+
+		size := (&ptrace.ProtoMarshaler{}).TracesSize(td)
+
+		count := 0
+		metrics := map[string]usage.Metric{}
 		for i := 0; i < rss.Len(); i++ {
 			rs := rss.At(i)
 
@@ -293,6 +298,7 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 			resourceJson := string(serializedRes)
 
 			ilss := rs.ScopeSpans()
+			count += ilss.Len()
 			for j := 0; j < ilss.Len(); j++ {
 				ils := ilss.At(j)
 
@@ -321,7 +327,10 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		err := s.Writer.WriteBatchOfSpansV2(ctx, batchOfSpans)
+		// TODO(nitya): as of now the tenant doesn't matter.
+		usage.AddMetric(metrics, "default", int64(count), int64(size))
+
+		err := s.Writer.WriteBatchOfSpansV2(ctx, batchOfSpans, metrics)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err

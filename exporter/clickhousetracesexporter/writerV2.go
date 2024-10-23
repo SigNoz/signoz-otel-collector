@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
@@ -28,7 +29,6 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
 		return err
 	}
-
 	for _, span := range batchSpans {
 		err = statement.Append(
 			span.TsBucketStart,
@@ -280,7 +280,7 @@ func (w *SpanWriter) writeTagBatchV2(ctx context.Context, batchSpans []*SpanV2) 
 }
 
 // WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2) error {
+func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2, metrics map[string]usage.Metric) error {
 	var wg sync.WaitGroup
 	var err error
 
@@ -292,7 +292,6 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2) e
 			if err != nil {
 				w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			}
-			fmt.Println("ending write index batch")
 		}()
 	}
 
@@ -304,7 +303,6 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2) e
 			if err != nil {
 				w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			}
-			fmt.Println("ending write error batch")
 		}()
 	}
 
@@ -316,10 +314,14 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2) e
 			if err != nil {
 				w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
 			}
-			fmt.Println("ending write tag batch")
 		}()
 	}
 	wg.Wait()
+
+	for k, v := range metrics {
+		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+	}
+
 	return err
 }
 
