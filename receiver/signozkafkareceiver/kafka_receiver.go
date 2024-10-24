@@ -724,7 +724,7 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 				return nil
 			}
 			start := time.Now()
-			c.logger.Info("Kafka message claimed",
+			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
 				zap.String("topic", message.Topic),
