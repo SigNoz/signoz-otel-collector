@@ -203,3 +203,57 @@ func (c CreateMaterializedViewOperation) ToSQL() string {
 	sql.WriteString(c.Query)
 	return sql.String()
 }
+
+// UpdateMaterializedViewOperation is used to represent the UPDATE MATERIALIZED VIEW statement in the SQL.
+type ModifyQueryMaterializedViewOperation struct {
+	cluster  string
+	Database string
+	ViewName string
+	Query    string
+}
+
+// OnCluster is used to specify the cluster on which the operation should be performed.
+// This is useful when the operation is to be performed on a cluster setup.
+func (c ModifyQueryMaterializedViewOperation) OnCluster(cluster string) Operation {
+	c.cluster = cluster
+	return &c
+}
+
+func (c ModifyQueryMaterializedViewOperation) WithReplication() Operation {
+	// no-op
+	return &c
+}
+
+func (c ModifyQueryMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, c.Database, c.ViewName
+}
+
+func (c ModifyQueryMaterializedViewOperation) IsMutation() bool {
+	// Modify materialized view is not a mutation.
+	return false
+}
+
+func (c ModifyQueryMaterializedViewOperation) IsIdempotent() bool {
+	// Modify materialized view is idempotent. It will not change the materialized view if the materialized view already exists.
+	return true
+}
+
+func (c ModifyQueryMaterializedViewOperation) IsLightweight() bool {
+	// Modify materialized view is lightweight.
+	return true
+}
+
+func (c ModifyQueryMaterializedViewOperation) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("ALTER TABLE ")
+	sql.WriteString(c.Database)
+	sql.WriteString(".")
+	sql.WriteString(c.ViewName)
+	if c.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(c.cluster)
+	}
+	sql.WriteString(" MODIFY QUERY ")
+	sql.WriteString(c.Query)
+	return sql.String()
+}
