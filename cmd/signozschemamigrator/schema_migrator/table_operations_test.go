@@ -203,6 +203,30 @@ func TestCreateMaterializedView(t *testing.T) {
 	}
 }
 
+func TestModifyQueryMaterializedView(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "modify-materialized-view",
+			op: ModifyQueryMaterializedViewOperation{
+				Database: "db",
+				ViewName: "view",
+				Query:    "SELECT id, ts, value FROM db.table",
+			},
+			want: "ALTER TABLE db.view MODIFY QUERY SELECT id, ts, value FROM db.table",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
+
 func TestCreateWithCluster(t *testing.T) {
 	testCases := []struct {
 		name string
