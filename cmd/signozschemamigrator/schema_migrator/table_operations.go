@@ -204,7 +204,7 @@ func (c CreateMaterializedViewOperation) ToSQL() string {
 	return sql.String()
 }
 
-// UpdateMaterializedViewOperation is used to represent the UPDATE MATERIALIZED VIEW statement in the SQL.
+// ModifyQueryMaterializedViewOperation is used to represent the ALTER TABLE ... MODIFY QUERY statement in the SQL.
 type ModifyQueryMaterializedViewOperation struct {
 	cluster  string
 	Database string
