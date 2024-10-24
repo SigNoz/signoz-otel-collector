@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"go.opencensus.io/stats"
@@ -41,7 +42,7 @@ type Factory struct {
 // Writer writes spans to storage.
 type Writer interface {
 	WriteBatchOfSpans(ctx context.Context, span []*Span) error
-	WriteBatchOfSpansV2(ctx context.Context, span []*SpanV2) error
+	WriteBatchOfSpansV2(ctx context.Context, span []*SpanV2, metrics map[string]usage.Metric) error
 	WriteResourcesV2(ctx context.Context, resource map[int64]map[string]string) error
 }
 

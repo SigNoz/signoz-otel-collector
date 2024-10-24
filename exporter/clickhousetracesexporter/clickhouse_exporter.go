@@ -409,11 +409,13 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
-	s.pushTraceDataV2(ctx, td)
-
 	// if the new schema is enabled don't write to the old tables
+	err := s.pushTraceDataV2(ctx, td)
+	if err != nil {
+		return err
+	}
+	// if new schema is forced exit here else write to the old tables as well.
 	if s.useNewSchema {
-		// TODO when this is actually used update pushTraceDataV2 to write spanAttributes and error spans.
 		return nil
 	}
 

@@ -74,6 +74,7 @@ type MigrationManager struct {
 	replicationEnabled bool
 	logger             *zap.Logger
 	backoff            *backoff.ExponentialBackOff
+	development        bool
 }
 
 type Option func(*MigrationManager)
@@ -101,6 +102,12 @@ func NewMigrationManager(opts ...Option) (*MigrationManager, error) {
 func WithClusterName(clusterName string) Option {
 	return func(mgr *MigrationManager) {
 		mgr.clusterName = clusterName
+	}
+}
+
+func WithDevelopment(development bool) Option {
+	return func(mgr *MigrationManager) {
+		mgr.development = development
 	}
 }
 
@@ -290,6 +297,9 @@ func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 
 // HostAddrs returns the addresses of the all hosts in the cluster.
 func (m *MigrationManager) HostAddrs() ([]string, error) {
+	if m.development {
+		return nil, nil
+	}
 	m.addrsMux.Lock()
 	defer m.addrsMux.Unlock()
 	if len(m.addrs) != 0 {

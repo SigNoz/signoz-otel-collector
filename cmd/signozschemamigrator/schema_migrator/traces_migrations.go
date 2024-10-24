@@ -58,6 +58,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Indexes: []Index{
 					{Name: "idx_id", Expression: "id", Type: "minmax", Granularity: 1},
+					{Name: "idx_traceID", Expression: "traceID", Type: "tokenbf_v1(60000, 5,0)", Granularity: 1},
+					{Name: "idx_spanID", Expression: "spanID", Type: "tokenbf_v1(30000, 5,0)", Granularity: 1},
 					{Name: "idx_duration", Expression: "durationNano", Type: "minmax", Granularity: 1},
 					{Name: "idx_name", Expression: "name", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					{Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
@@ -75,13 +77,13 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "attributes_number_idx_key", Expression: "mapKeys(attributes_number)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
 					{Name: "attributes_number_idx_val", Expression: "mapValues(attributes_number)", Type: "bloom_filter", Granularity: 1},
 					{Name: "attributes_bool_idx_key", Expression: "mapKeys(attributes_bool)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+					{Name: "resources_string_idx_key", Expression: "mapKeys(resources_string)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
+					{Name: "resources_string_idx_val", Expression: "mapValues(resources_string)", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 				},
 				Engine: MergeTree{
 					PartitionBy: "toDate(timestamp)",
-					// not adding name in the order by clause as it's already an column and filtering on that will be supported by skip index
-					// the name can have many values so no point in adding here and messing up the ordering.
-					OrderBy: "(ts_bucket_start, resource_fingerprint, hasError, timestamp, id)",
-					TTL:     "toDateTime(timestamp) + toIntervalSecond(1296000)",
+					OrderBy:     "(ts_bucket_start, resource_fingerprint, hasError, name, timestamp, id)",
+					TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
 						{Name: "ttl_only_drop_parts", Value: "1"},
@@ -184,6 +186,24 @@ var TracesMigrations = []SchemaMigrationRecord{
 					ShardingKey: "cityHash64(labels, fingerprint)",
 				},
 			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "root_operations",
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v3
+						WHERE parentSpanID = ''`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "sub_root_operations",
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
+			},
 		},
 		DownItems: []Operation{
 			DropTableOperation{
@@ -201,6 +221,24 @@ var TracesMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2_resource",
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "root_operations",
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v2
+						WHERE parentSpanID = ''`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "sub_root_operations",
+				Query: `SELECT DISTINCT
+							name,
+							serviceName
+						FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
+						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
 			},
 		},
 	},
