@@ -151,8 +151,8 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
-			pausePartition:  make(chan int32),
-			resumePartition: make(chan int32),
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
 		},
 	}
 	go func() {
@@ -276,8 +276,8 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
-			pausePartition:  make(chan int32),
-			resumePartition: make(chan int32),
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
 		},
 	}
 	go func() {
@@ -429,8 +429,8 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
-			pausePartition:  make(chan int32),
-			resumePartition: make(chan int32),
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
 		},
 	}
 	go func() {
@@ -487,8 +487,8 @@ func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
 type baseConsumerGroupHandler struct {
 	logger          *zap.Logger
 	retryInterval   time.Duration
-	pausePartition  chan int32
-	resumePartition chan int32
+	pausePartition  chan struct{}
+	resumePartition chan struct{}
 }
 
 // wrap is now a method of BaseConsumerGroupHandler
@@ -504,7 +504,7 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 	defer ticker.Stop()
 
 	b.logger.Info("applying initial backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-	b.pausePartition <- claim.Partition()
+	b.pausePartition <- struct{}{}
 
 	for {
 		select {
@@ -512,15 +512,18 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 			err := consume()
 			if err == nil {
 				b.logger.Info("resuming normal operation", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-				b.resumePartition <- claim.Partition()
+				b.resumePartition <- struct{}{}
 				return nil
 			}
 			if !(err.Error() == errHighMemoryUsage.Error()) {
-				b.resumePartition <- claim.Partition()
+				b.resumePartition <- struct{}{}
 				return err
 			}
 			b.logger.Info("continuing to apply backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
 		case <-ctx.Done():
+			if ctx.Err() != nil {
+				b.logger.Error("session ended before message could be processed", zap.Error(ctx.Err()))
+			}
 			return ctx.Err()
 		}
 	}
@@ -608,7 +611,10 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
+				zap.String("topic", message.Topic),
+				zap.Int32("partition", message.Partition),
+				zap.Int64("offset", message.Offset),
+			)
 			if !c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
@@ -774,10 +780,12 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 				return nil
 			}
 			start := time.Now()
-			c.logger.Debug("Kafka message claimed",
+			c.logger.Info("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
+				zap.String("topic", message.Topic),
+				zap.Int32("partition", message.Partition),
+				zap.Int64("offset", message.Offset))
 			if !c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
