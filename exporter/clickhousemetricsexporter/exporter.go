@@ -166,6 +166,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
+	nameToMeta := make(map[string]base.MetricMeta)
+
 	select {
 	case <-prwe.closeChan:
 		return errors.New("shutdown has been called")
@@ -214,11 +216,11 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					if metricType == pmetric.MetricTypeSum {
 						meta.IsMonotonic = metric.Sum().IsMonotonic()
 					}
-					prwe.metricNameToMeta[metricName] = meta
+					nameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						prwe.metricNameToMeta[metricName+bucketStr] = meta
-						prwe.metricNameToMeta[metricName+countStr] = base.MetricMeta{
+						nameToMeta[metricName+bucketStr] = meta
+						nameToMeta[metricName+countStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -226,7 +228,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							Typ:         pmetric.MetricTypeSum,
 							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
 						}
-						prwe.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
+						nameToMeta[metricName+sumStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -297,6 +299,12 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 				}
 			}
 		}
+
+		prwe.mux.Lock()
+		for k, v := range nameToMeta {
+			prwe.metricNameToMeta[k] = v
+		}
+		prwe.mux.Unlock()
 
 		if exportErrors := prwe.export(ctx, tsMap); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
