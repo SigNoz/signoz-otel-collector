@@ -180,6 +180,50 @@ func TestTracesConsumerGroupHandler(t *testing.T) {
 	wg.Wait()
 }
 
+func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+
+	group := &testConsumerGroup{}
+	c := tracesConsumerGroupHandler{
+		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
+		logger:       zap.NewNop(),
+		ready:        make(chan bool),
+		nextConsumer: consumertest.NewErr(errHighMemoryUsage),
+		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           group,
+			logger:          zap.NewNop(),
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
+		},
+	}
+
+	sessionContext, cancel := context.WithCancel(context.Background())
+	testSession := testConsumerGroupSession{ctx: sessionContext}
+	require.NoError(t, c.Setup(testSession))
+	_, ok := <-c.ready
+	assert.False(t, ok)
+
+	groupClaim := testConsumerGroupClaim{
+		messageChan: make(chan *sarama.ConsumerMessage),
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		require.Error(t, c.ConsumeClaim(testSession, groupClaim))
+		assert.True(t, group.paused)
+		wg.Done()
+	}()
+
+	groupClaim.messageChan <- &sarama.ConsumerMessage{}
+	close(groupClaim.messageChan)
+	cancel()
+	wg.Wait()
+}
+
 func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
 	view.Unregister(MetricViews()...)
 	views := MetricViews()
@@ -437,6 +481,50 @@ func TestMetricsConsumerGroupHandler(t *testing.T) {
 	wg.Wait()
 }
 
+func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+
+	group := &testConsumerGroup{}
+	c := metricsConsumerGroupHandler{
+		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
+		logger:       zap.NewNop(),
+		ready:        make(chan bool),
+		nextConsumer: consumertest.NewErr(errHighMemoryUsage),
+		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           group,
+			logger:          zap.NewNop(),
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
+		},
+	}
+
+	sessionContext, cancel := context.WithCancel(context.Background())
+	testSession := testConsumerGroupSession{ctx: sessionContext}
+	require.NoError(t, c.Setup(testSession))
+	_, ok := <-c.ready
+	assert.False(t, ok)
+
+	groupClaim := testConsumerGroupClaim{
+		messageChan: make(chan *sarama.ConsumerMessage),
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		require.Error(t, c.ConsumeClaim(testSession, groupClaim))
+		assert.True(t, group.paused)
+		wg.Done()
+	}()
+
+	groupClaim.messageChan <- &sarama.ConsumerMessage{}
+	close(groupClaim.messageChan)
+	cancel()
+	wg.Wait()
+}
+
 func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
 	view.Unregister(MetricViews()...)
 	views := MetricViews()
@@ -689,6 +777,50 @@ func TestLogsConsumerGroupHandler(t *testing.T) {
 
 	groupClaim.messageChan <- &sarama.ConsumerMessage{}
 	close(groupClaim.messageChan)
+	wg.Wait()
+}
+
+func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+
+	group := &testConsumerGroup{}
+	c := logsConsumerGroupHandler{
+		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
+		logger:       zap.NewNop(),
+		ready:        make(chan bool),
+		nextConsumer: consumertest.NewErr(errHighMemoryUsage),
+		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           group,
+			logger:          zap.NewNop(),
+			retryInterval:   1 * time.Second,
+			pausePartition:  make(chan struct{}),
+			resumePartition: make(chan struct{}),
+		},
+	}
+
+	sessionContext, cancel := context.WithCancel(context.Background())
+	testSession := testConsumerGroupSession{ctx: sessionContext}
+	require.NoError(t, c.Setup(testSession))
+	_, ok := <-c.ready
+	assert.False(t, ok)
+
+	groupClaim := testConsumerGroupClaim{
+		messageChan: make(chan *sarama.ConsumerMessage),
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		require.Error(t, c.ConsumeClaim(testSession, groupClaim))
+		assert.True(t, group.paused)
+		wg.Done()
+	}()
+
+	groupClaim.messageChan <- &sarama.ConsumerMessage{}
+	close(groupClaim.messageChan)
+	cancel()
 	wg.Wait()
 }
 
@@ -1059,17 +1191,17 @@ func (t *testConsumerGroup) Close() error {
 }
 
 func (t *testConsumerGroup) Pause(_ map[string][]int32) {
-	t.paused = true
+	panic("implement me")
 }
 
 func (t *testConsumerGroup) PauseAll() {
-	panic("implement me")
+	t.paused = true
 }
 
 func (t *testConsumerGroup) Resume(_ map[string][]int32) {
-	t.paused = false
+	panic("implement me")
 }
 
 func (t *testConsumerGroup) ResumeAll() {
-	panic("implement me")
+	t.paused = true
 }

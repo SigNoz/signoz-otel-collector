@@ -149,6 +149,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           c.consumerGroup,
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
@@ -162,27 +163,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 	}()
 	<-consumerGroup.ready
 
-	go func() {
-		c.errorLoop(ctx, consumerGroup)
-	}()
-
 	return nil
-}
-
-func (c *kafkaTracesConsumer) errorLoop(ctx context.Context, tracesConsumerGroup *tracesConsumerGroupHandler) {
-	for {
-		select {
-		case <-tracesConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.PauseAll()
-		case <-tracesConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.ResumeAll()
-		case <-ctx.Done():
-			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
-			return
-		}
-	}
 }
 
 func (c *kafkaTracesConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -274,6 +255,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           c.consumerGroup,
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
@@ -287,27 +269,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 	}()
 	<-metricsConsumerGroup.ready
 
-	go func() {
-		c.errorLoop(ctx, metricsConsumerGroup)
-	}()
-
 	return nil
-}
-
-func (c *kafkaMetricsConsumer) errorLoop(ctx context.Context, metricsConsumerGroup *metricsConsumerGroupHandler) {
-	for {
-		select {
-		case <-metricsConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.PauseAll()
-		case <-metricsConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.ResumeAll()
-		case <-ctx.Done():
-			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
-			return
-		}
-	}
 }
 
 func (c *kafkaMetricsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -427,6 +389,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		autocommitEnabled: c.autocommitEnabled,
 		messageMarking:    c.messageMarking,
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			group:           c.consumerGroup,
 			logger:          c.settings.Logger,
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
@@ -440,27 +403,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 	}()
 	<-logsConsumerGroup.ready
 
-	go func() {
-		c.errorLoop(ctx, logsConsumerGroup)
-	}()
-
 	return nil
-}
-
-func (c *kafkaLogsConsumer) errorLoop(ctx context.Context, logsConsumerGroup *logsConsumerGroupHandler) {
-	for {
-		select {
-		case <-logsConsumerGroup.pausePartition:
-			c.settings.Logger.Info("pausing consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.PauseAll()
-		case <-logsConsumerGroup.resumePartition:
-			c.settings.Logger.Info("resuming consumption", zap.String("topic", c.topics[0]))
-			c.consumerGroup.ResumeAll()
-		case <-ctx.Done():
-			c.settings.Logger.Info("Consumer Error loop stopped", zap.Error(ctx.Err()))
-			return
-		}
-	}
 }
 
 func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
@@ -485,6 +428,7 @@ func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
 }
 
 type baseConsumerGroupHandler struct {
+	group           sarama.ConsumerGroup
 	logger          *zap.Logger
 	retryInterval   time.Duration
 	pausePartition  chan struct{}
@@ -504,7 +448,7 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 	defer ticker.Stop()
 
 	b.logger.Info("applying initial backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-	b.pausePartition <- struct{}{}
+	b.group.PauseAll()
 
 	for {
 		select {
@@ -512,11 +456,11 @@ func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim 
 			err := consume()
 			if err == nil {
 				b.logger.Info("resuming normal operation", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
-				b.resumePartition <- struct{}{}
+				b.group.ResumeAll()
 				return nil
 			}
 			if !(err.Error() == errHighMemoryUsage.Error()) {
-				b.resumePartition <- struct{}{}
+				b.group.ResumeAll()
 				return err
 			}
 			b.logger.Info("continuing to apply backpressure on Kafka due to high memory usage", zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
