@@ -58,8 +58,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Indexes: []Index{
 					{Name: "idx_id", Expression: "id", Type: "minmax", Granularity: 1},
-					{Name: "idx_traceID", Expression: "traceID", Type: "tokenbf_v1(60000, 5,0)", Granularity: 1},
-					{Name: "idx_spanID", Expression: "spanID", Type: "tokenbf_v1(30000, 5,0)", Granularity: 1},
+					{Name: "idx_traceID", Expression: "traceID", Type: "tokenbf_v1(5000, 3,0)", Granularity: 1},
+					{Name: "idx_spanID", Expression: "spanID", Type: "tokenbf_v1(5000, 3,0)", Granularity: 1},
 					{Name: "idx_duration", Expression: "durationNano", Type: "minmax", Granularity: 1},
 					{Name: "idx_name", Expression: "name", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					{Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
@@ -185,6 +185,84 @@ var TracesMigrations = []SchemaMigrationRecord{
 					Table:       "traces_v3_resource",
 					ShardingKey: "cityHash64(labels, fingerprint)",
 				},
+			},
+			CreateTableOperation{
+				Database: "signoz_traces",
+				Table:    "trace_summary",
+				Columns: []Column{
+					{Name: "traceID", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "first_reported",
+						Type: SimpleAggregateFunction{
+							FunctionName: "min",
+							Arguments:    []ColumnType{DateTime64ColumnType{Precision: 9}},
+						},
+						Codec: "ZSTD(1)"},
+					{Name: "last_reported",
+						Type: SimpleAggregateFunction{
+							FunctionName: "max",
+							Arguments:    []ColumnType{DateTime64ColumnType{Precision: 9}},
+						},
+						Codec: "ZSTD(1)"},
+					{Name: "num_spans",
+						Type: SimpleAggregateFunction{
+							FunctionName: "sum",
+							Arguments:    []ColumnType{ColumnTypeUInt64},
+						},
+						Codec: "ZSTD(1)"},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toDate(first_reported)",
+						OrderBy:     "(traceID)",
+						TTL:         "toDateTime(first_reported) + toIntervalSecond(1296000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_traces",
+				Table:    "distributed_trace_summary",
+				Columns: []Column{
+					{Name: "traceID", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "first_reported",
+						Type: SimpleAggregateFunction{
+							FunctionName: "min",
+							Arguments:    []ColumnType{DateTime64ColumnType{Precision: 9}},
+						},
+						Codec: "ZSTD(1)"},
+					{Name: "last_reported",
+						Type: SimpleAggregateFunction{
+							FunctionName: "max",
+							Arguments:    []ColumnType{DateTime64ColumnType{Precision: 9}},
+						},
+						Codec: "ZSTD(1)"},
+					{Name: "num_spans",
+						Type: SimpleAggregateFunction{
+							FunctionName: "sum",
+							Arguments:    []ColumnType{ColumnTypeUInt64},
+						},
+						Codec: "ZSTD(1)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_traces",
+					Table:       "trace_summary",
+					ShardingKey: "cityHash64(traceID)",
+				},
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "trace_summary_mv",
+				DestTable: "trace_summary",
+				Query: `SELECT
+							traceID,
+							minSimpleState(timestamp) AS first_reported,
+							maxSimpleState(timestamp) AS last_reported,
+							sumSimpleState(toUInt64(1)) AS num_spans
+						FROM signoz_traces.signoz_index_v3
+						GROUP BY traceID;`,
 			},
 			ModifyQueryMaterializedViewOperation{
 				Database: "signoz_traces",
