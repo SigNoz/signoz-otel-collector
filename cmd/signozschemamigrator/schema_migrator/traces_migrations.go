@@ -58,8 +58,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Indexes: []Index{
 					{Name: "idx_id", Expression: "id", Type: "minmax", Granularity: 1},
-					{Name: "idx_traceID", Expression: "traceID", Type: "tokenbf_v1(5000, 3,0)", Granularity: 1},
-					{Name: "idx_spanID", Expression: "spanID", Type: "tokenbf_v1(5000, 3,0)", Granularity: 1},
+					{Name: "idx_traceID", Expression: "traceID", Type: "tokenbf_v1(10000, 5,0)", Granularity: 1},
+					{Name: "idx_spanID", Expression: "spanID", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
 					{Name: "idx_duration", Expression: "durationNano", Type: "minmax", Granularity: 1},
 					{Name: "idx_name", Expression: "name", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					{Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
