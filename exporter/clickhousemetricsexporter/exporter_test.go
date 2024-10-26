@@ -354,7 +354,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		return errs
 	}
 
-	errs = append(errs, prwe.export(context.Background(), testmap)...)
+	errs = append(errs, prwe.export(context.Background(), testmap, prwe.metricNameToMeta)...)
 	return errs
 }
 

@@ -166,6 +166,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
+	nameToMeta := make(map[string]base.MetricMeta)
+
 	select {
 	case <-prwe.closeChan:
 		return errors.New("shutdown has been called")
@@ -214,11 +216,11 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					if metricType == pmetric.MetricTypeSum {
 						meta.IsMonotonic = metric.Sum().IsMonotonic()
 					}
-					prwe.metricNameToMeta[metricName] = meta
+					nameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						prwe.metricNameToMeta[metricName+bucketStr] = meta
-						prwe.metricNameToMeta[metricName+countStr] = base.MetricMeta{
+						nameToMeta[metricName+bucketStr] = meta
+						nameToMeta[metricName+countStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -226,7 +228,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							Typ:         pmetric.MetricTypeSum,
 							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
 						}
-						prwe.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
+						nameToMeta[metricName+sumStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -298,7 +300,18 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 			}
 		}
 
-		if exportErrors := prwe.export(ctx, tsMap); len(exportErrors) != 0 {
+		prwe.mux.Lock()
+		for k, v := range nameToMeta {
+			prwe.metricNameToMeta[k] = v
+		}
+		// make a copy of prwe.metricNameToMeta
+		allMetricNameToMeta := make(map[string]base.MetricMeta)
+		for k, v := range prwe.metricNameToMeta {
+			allMetricNameToMeta[k] = v
+		}
+		prwe.mux.Unlock()
+
+		if exportErrors := prwe.export(ctx, tsMap, allMetricNameToMeta); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
 			errs = multierr.Append(errs, multierr.Combine(exportErrors...))
 		}
@@ -338,14 +351,7 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 }
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
-func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
-	prwe.mux.Lock()
-	// make a copy of metricNameToMeta
-	metricNameToMeta := make(map[string]base.MetricMeta)
-	for k, v := range prwe.metricNameToMeta {
-		metricNameToMeta[k] = v
-	}
-	prwe.mux.Unlock()
+func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries, metricNameToMeta map[string]base.MetricMeta) []error {
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests := batchTimeSeries(tsMap, maxBatchByteSize)
