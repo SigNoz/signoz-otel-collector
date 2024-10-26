@@ -54,7 +54,6 @@ type namespaceConfig struct {
 	ErrorTable                 string
 	AttributeTable             string
 	AttributeKeyTable          string
-	Cluster                    string
 	DurationSortTable          string
 	DurationSortMVTable        string
 	DependencyGraphServiceMV   string
