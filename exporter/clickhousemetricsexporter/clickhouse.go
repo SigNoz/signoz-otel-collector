@@ -424,8 +424,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			for fingerprint, labels := range timeSeries {
 				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
-				if ch.cache.Get(key) != nil && ch.cache.Get(key).Value() {
-					continue
+				if item := ch.cache.Get(key); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
 				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
