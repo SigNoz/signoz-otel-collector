@@ -103,12 +103,3 @@ install-ci: install-tools
 
 .PHONY: test-ci
 test-ci: lint
-
-
-.PHONY: migrate-logs
-migrate-logs: 
-	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" up
-
-.PHONY: migrate-logs-down
-migrate-logs-down: 
-	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" down
