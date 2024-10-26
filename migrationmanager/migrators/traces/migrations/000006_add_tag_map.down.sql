@@ -1,1 +1,0 @@
-ALTER TABLE signoz_traces.signoz_index ON CLUSTER {{.SIGNOZ_CLUSTER}} DROP COLUMN IF EXISTS tagMap;

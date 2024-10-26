@@ -1,9 +1,0 @@
-DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_5m ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_5m_mv ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_30m ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.samples_v4_agg_30m_mv ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.distributed_samples_v4_agg_5m ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.distributed_samples_v4_agg_30m ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.time_series_v4_1week ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.distributed_time_series_v4_1week ON CLUSTER {{.SIGNOZ_CLUSTER}};
-DROP TABLE IF EXISTS signoz_metrics.time_series_v4_1week_mv ON CLUSTER {{.SIGNOZ_CLUSTER}};

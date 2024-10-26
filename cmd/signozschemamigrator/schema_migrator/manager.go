@@ -86,7 +86,7 @@ func NewMigrationManager(opts ...Option) (*MigrationManager, error) {
 		// the default backoff is good enough for our use case
 		// no mutation should be running for more than 15 minutes, if it is, we should fail fast
 		backoff:            backoff.NewExponentialBackOff(),
-		clusterName:        "cluster",
+		clusterName:        "cluster", // this will be overridden by the WithClusterName option
 		replicationEnabled: false,
 		conns:              make(map[string]clickhouse.Conn),
 	}

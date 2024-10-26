@@ -88,9 +88,6 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		"signoz_logs",
 		UsageExporter,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating usage collector for logs : %v", err)
-	}
 
 	collector.Start()
 
@@ -778,7 +775,7 @@ const (
 )
 
 // newClickhouseClient create a clickhouse client.
-func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
+func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	// use empty database to create database
 	ctx := context.Background()
 	options, err := clickhouse.ParseDSN(cfg.DSN)
@@ -804,10 +801,10 @@ func newClickhouseClient(logger *zap.Logger, cfg *Config) (clickhouse.Conn, erro
 	return db, nil
 }
 
-func renderInsertLogsSQL(cfg *Config) string {
+func renderInsertLogsSQL(_ *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplate, databaseName, DISTRIBUTED_LOGS_TABLE)
 }
 
-func renderInsertLogsSQLV2(cfg *Config) string {
+func renderInsertLogsSQLV2(_ *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, DISTRIBUTED_LOGS_TABLE_V2)
 }

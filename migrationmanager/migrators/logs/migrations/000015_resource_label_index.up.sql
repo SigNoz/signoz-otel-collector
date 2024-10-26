@@ -1,1 +1,0 @@
-ALTER TABLE signoz_logs.logs_v2_resource ON CLUSTER {{.SIGNOZ_CLUSTER}} ADD INDEX IF NOT EXISTS idx_labels_v1 labels TYPE ngrambf_v1(4, 1024, 3, 0) GRANULARITY 1;

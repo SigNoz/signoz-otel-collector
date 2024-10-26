@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -72,9 +71,6 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		"signoz_traces",
 		UsageExporter,
 	)
-	if err != nil {
-		log.Fatalf("Error creating usage collector for traces: %v", err)
-	}
 	collector.Start()
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
