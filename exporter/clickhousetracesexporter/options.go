@@ -38,7 +38,6 @@ const (
 	DefaultDurationSortTable        string   = "durationSort"
 	DefaultDurationSortMVTable      string   = "durationSortMV"
 	defaultArchiveSpansTable        string   = "signoz_archive_spans"
-	defaultClusterName              string   = "cluster"
 	defaultDependencyGraphTable     string   = "dependency_graph_minutes"
 	defaultDependencyGraphServiceMV string   = "dependency_graph_minutes_service_calls_mv"
 	defaultDependencyGraphDbMV      string   = "dependency_graph_minutes_db_calls_mv"
@@ -128,11 +127,13 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(exporterId uuid.UUID, migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, otherNamespaces ...string) *Options {
 
+	datasource := config.Datasource
 	if datasource == "" {
 		datasource = defaultDatasource
 	}
+	migrations := config.Migrations
 	if migrations == "" {
 		migrations = defaultMigrations
 	}
@@ -153,13 +154,13 @@ func NewOptions(exporterId uuid.UUID, migrations string, datasource string, dock
 			AttributeKeyTable:          defaultAttributeKeyTable,
 			DurationSortTable:          DefaultDurationSortTable,
 			DurationSortMVTable:        DefaultDurationSortMVTable,
-			Cluster:                    defaultClusterName,
+			Cluster:                    config.ClusterName,
 			DependencyGraphTable:       defaultDependencyGraphTable,
 			DependencyGraphServiceMV:   defaultDependencyGraphServiceMV,
 			DependencyGraphDbMV:        defaultDependencyGraphDbMV,
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
-			DockerMultiNodeCluster:     dockerMultiNodeCluster,
-			NumConsumers:               numConsumers,
+			DockerMultiNodeCluster:     config.DockerMultiNodeCluster,
+			NumConsumers:               config.QueueConfig.NumConsumers,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
 			ExporterId:                 exporterId,
