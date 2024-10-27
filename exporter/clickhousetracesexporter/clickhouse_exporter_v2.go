@@ -327,8 +327,10 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
-		// TODO(nitya): as of now the tenant doesn't matter.
-		usage.AddMetric(metrics, "default", int64(count), int64(size))
+		// TODO(nitya): as of now the tenant doesn't matter. Only add if only new schema is used
+		if s.useNewSchema {
+			usage.AddMetric(metrics, "default", int64(count), int64(size))
+		}
 
 		err := s.Writer.WriteBatchOfSpansV2(ctx, batchOfSpans, metrics)
 		if err != nil {
