@@ -16,12 +16,10 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"flag"
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -34,7 +32,6 @@ type Factory struct {
 	Options    *Options
 	db         clickhouse.Conn
 	archive    clickhouse.Conn
-	datasource string
 	makeWriter writerMaker
 }
 
@@ -104,16 +101,6 @@ func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	}
 
 	return cfg.Connector(cfg)
-}
-
-// AddFlags implements plugin.Configurable
-func (f *Factory) AddFlags(flagSet *flag.FlagSet) {
-	f.Options.AddFlags(flagSet)
-}
-
-// InitFromViper implements plugin.Configurable
-func (f *Factory) InitFromViper(v *viper.Viper) {
-	f.Options.InitFromViper(v)
 }
 
 // CreateSpanWriter implements storage.Factory

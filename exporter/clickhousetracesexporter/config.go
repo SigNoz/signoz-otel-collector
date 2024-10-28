@@ -26,15 +26,11 @@ import (
 type Config struct {
 	Options    `mapstructure:",squash"`
 	Datasource string `mapstructure:"datasource"`
-	Migrations string `mapstructure:"migrations"`
-	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
-	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster"`
 	// LowCardinalExceptionGrouping is a flag to enable exception grouping by serviceName + exceptionType. Default is false.
 	LowCardinalExceptionGrouping bool `mapstructure:"low_cardinal_exception_grouping"`
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
 	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
-	ClusterName string `mapstructure:"cluster_name" default:"cluster"`
 }
 
 var _ component.Config = (*Config)(nil)

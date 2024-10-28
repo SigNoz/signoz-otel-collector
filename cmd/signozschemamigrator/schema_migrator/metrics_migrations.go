@@ -362,7 +362,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "last_reported_unix_milli", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
-					Cluster:     "cluster",
 					Database:    "signoz_metrics",
 					Table:       "metadata",
 					ShardingKey: "rand()",

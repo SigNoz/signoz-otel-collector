@@ -158,7 +158,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
+	q := `SELECT count() FROM system.clusters`
 	for {
 
 		err := func() error {

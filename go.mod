@@ -14,7 +14,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/expr-lang/expr v1.16.9
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
 	github.com/google/uuid v1.6.0

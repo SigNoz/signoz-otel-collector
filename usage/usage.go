@@ -47,8 +47,6 @@ func init() {
 	CollectorID = uuid.New()
 }
 
-const cluster = "cluster"
-
 func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options, dbName string, usageParser func(metrics []*metricdata.Metric, id uuid.UUID) (map[string]Usage, error)) *UsageCollector {
 	return &UsageCollector{
 		exporterID:           exporterId,
