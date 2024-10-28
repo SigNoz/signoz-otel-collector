@@ -31,10 +31,8 @@ type Config struct {
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
 	// For http protocol reference: [mailru/go-clickhouse/#dsn](https://github.com/mailru/go-clickhouse/#dsn).
-	DSN string `mapstructure:"dsn"`
-	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
-	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
-	UseNewSchema           bool `mapstructure:"use_new_schema" default:"false"`
+	DSN          string `mapstructure:"dsn"`
+	UseNewSchema bool   `mapstructure:"use_new_schema" default:"false"`
 }
 
 var (

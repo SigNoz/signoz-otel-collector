@@ -304,9 +304,14 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 		for k, v := range nameToMeta {
 			prwe.metricNameToMeta[k] = v
 		}
+		// make a copy of prwe.metricNameToMeta
+		allMetricNameToMeta := make(map[string]base.MetricMeta)
+		for k, v := range prwe.metricNameToMeta {
+			allMetricNameToMeta[k] = v
+		}
 		prwe.mux.Unlock()
 
-		if exportErrors := prwe.export(ctx, tsMap); len(exportErrors) != 0 {
+		if exportErrors := prwe.export(ctx, tsMap, allMetricNameToMeta); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
 			errs = multierr.Append(errs, multierr.Combine(exportErrors...))
 		}
@@ -346,14 +351,7 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 }
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
-func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
-	prwe.mux.Lock()
-	// make a copy of metricNameToMeta
-	metricNameToMeta := make(map[string]base.MetricMeta)
-	for k, v := range prwe.metricNameToMeta {
-		metricNameToMeta[k] = v
-	}
-	prwe.mux.Unlock()
+func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries, metricNameToMeta map[string]base.MetricMeta) []error {
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests := batchTimeSeries(tsMap, maxBatchByteSize)

@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -54,7 +53,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	id := uuid.New()
 
-	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueConfig.NumConsumers)
+	f := ClickHouseNewFactory(id, *configClickHouse)
 
 	err := f.Initialize(logger)
 	if err != nil {
@@ -72,9 +71,6 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		"signoz_traces",
 		UsageExporter,
 	)
-	if err != nil {
-		log.Fatalf("Error creating usage collector for traces: %v", err)
-	}
 	collector.Start()
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {

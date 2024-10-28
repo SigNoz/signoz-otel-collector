@@ -16,13 +16,11 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"flag"
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -35,7 +33,6 @@ type Factory struct {
 	Options    *Options
 	db         clickhouse.Conn
 	archive    clickhouse.Conn
-	datasource string
 	makeWriter writerMaker
 }
 
@@ -55,7 +52,7 @@ var (
 )
 
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(exporterId uuid.UUID, migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int) *Factory {
+func ClickHouseNewFactory(exporterId uuid.UUID, config Config) *Factory {
 	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
 
 	writeLatencyView := &view.View{
@@ -68,7 +65,7 @@ func ClickHouseNewFactory(exporterId uuid.UUID, migrations string, datasource st
 
 	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(exporterId, migrations, datasource, dockerMultiNodeCluster, numConsumers, primaryNamespace, archiveNamespace),
+		Options: NewOptions(exporterId, config, primaryNamespace, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -107,16 +104,6 @@ func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	}
 
 	return cfg.Connector(cfg)
-}
-
-// AddFlags implements plugin.Configurable
-func (f *Factory) AddFlags(flagSet *flag.FlagSet) {
-	f.Options.AddFlags(flagSet)
-}
-
-// InitFromViper implements plugin.Configurable
-func (f *Factory) InitFromViper(v *viper.Viper) {
-	f.Options.InitFromViper(v)
 }
 
 // CreateSpanWriter implements storage.Factory
