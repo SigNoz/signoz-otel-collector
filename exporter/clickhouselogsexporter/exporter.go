@@ -270,7 +270,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 			resourcesMap := attributesToMap(res.Attributes(), true)
 
-			serializedRes, err := json.Marshal(res.Attributes().AsRaw())
+			// we are using resourcesMap.StringData here as we are want everything to be string values.
+			serializedRes, err := json.Marshal(resourcesMap.StringData)
 			if err != nil {
 				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
 			}
