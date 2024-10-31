@@ -2,6 +2,7 @@ package clickhousesystemtablesreceiver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -314,11 +315,9 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 	if strings.HasPrefix(ql.EventType, "Exception") {
 		lr.SetSeverityNumber(plog.SeverityNumberError)
 		lr.SetSeverityText("ERROR")
-
 	} else {
 		lr.SetSeverityNumber(plog.SeverityNumberInfo)
 		lr.SetSeverityText("INFO")
-
 	}
 
 	// Populate log attributes
@@ -327,8 +326,40 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 	for i := 0; i < qlVal.NumField(); i++ {
 		field := qlType.Field(i)
 		if attrName := field.Tag.Get("ch"); attrName != "" {
+			// if attrName is log_comment, and it's json string, we convert it to attributes
+			// with the prefix clickhouse.query_log.log_comment.<key> = value
+			if attrName == "log_comment" && json.Valid([]byte(qlVal.Field(i).String())) {
+				logCommentMap := map[string]any{}
+				err := json.Unmarshal([]byte(qlVal.Field(i).String()), &logCommentMap)
+				if err == nil {
+					for k, v := range logCommentMap {
+						pval := pcommonValue(v)
+						pval.CopyTo(lr.Attributes().PutEmpty(fmt.Sprintf("clickhouse.query_log.log_comment.%s", k)))
+					}
+					continue
+				}
+			}
+
+			// prefix all the attributes with clickhouse.query_log.
+			attrName = fmt.Sprintf("clickhouse.query_log.%s", attrName)
 			fieldVal := qlVal.Field(i).Interface()
 			pval := pcommonValue(fieldVal)
+			// if the pval is a slice, we convert it to a string with the elements separated by commas
+			// else if pval is a map, we add one attribute for each key-value pair with a prefix of the attribute name
+			if pval.Type() == pcommon.ValueTypeSlice {
+				ps := pval.Slice()
+				elems := []string{}
+				for _, pe := range ps.AsRaw() {
+					elems = append(elems, fmt.Sprintf("%v", pe))
+				}
+				pval.FromRaw(strings.Join(elems, ","))
+			} else if pval.Type() == pcommon.ValueTypeMap {
+				pm := pval.Map()
+				pm.Range(func(k string, v pcommon.Value) bool {
+					v.CopyTo(lr.Attributes().PutEmpty(fmt.Sprintf("%s.%s", attrName, k)))
+					return true
+				})
+			}
 			pval.CopyTo(lr.Attributes().PutEmpty(attrName))
 		}
 	}
