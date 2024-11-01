@@ -132,11 +132,11 @@ type Span struct {
 }
 
 type SpanV2 struct {
-	TsBucketStart uint64 `json:"tsBucketStart,omitempty"`
-	FingerPrint   string `json:"fingerprint,omitempty"`
+	TsBucketStart uint64 `json:"-"`
+	FingerPrint   string `json:"-"`
 
 	StartTimeUnixNano uint64 `json:"startTimeUnixNano,omitempty"`
-	Id                string `json:"id,omitempty"`
+	Id                string `json:"-"`
 
 	TraceId      string `json:"traceId,omitempty"`
 	SpanId       string `json:"spanId,omitempty"`
@@ -149,53 +149,53 @@ type SpanV2 struct {
 	Kind     int8   `json:"kind,omitempty"`
 	SpanKind string `json:"spanKind,omitempty"`
 
-	DurationNano uint64 `json:"durationNano,omitempty"`
+	DurationNano uint64 `json:"-"`
 
-	StatusCode       int16  `json:"statusCode,omitempty"`
-	StatusMessage    string `json:"statusMessage,omitempty"`
-	StatusCodeString string `json:"statusCodeString,omitempty"`
+	StatusCode       int16  `json:"-"`
+	StatusMessage    string `json:"-"`
+	StatusCodeString string `json:"-"`
 
 	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
-	ResourcesString map[string]string `json:"resources_string,omitempty"`
+	ResourcesString map[string]string `json:"-"`
 
 	// for events
 	Events       []string `json:"event,omitempty"`
-	ErrorEvent   Event    `json:"-,omitempty"`
-	ErrorID      string   `json:"-,omitempty"`
-	ErrorGroupID string   `json:"-,omitempty"`
+	ErrorEvent   Event    `json:"-"`
+	ErrorID      string   `json:"-"`
+	ErrorGroupID string   `json:"-"`
 
 	ServiceName string `json:"serviceName,omitempty"`
 
 	// custom columns
-	ResponseStatusCode string `json:"responseStatusCode,omitempty"`
-	ExternalHttpUrl    string `json:"externalHttpUrl,omitempty"`
-	HttpUrl            string `json:"httpUrl,omitempty"`
-	ExternalHttpMethod string `json:"externalHttpMethod,omitempty"`
-	HttpMethod         string `json:"httpMethod,omitempty"`
-	HttpHost           string `json:"httpHost,omitempty"`
-	DBName             string `json:"dbName,omitempty"`
-	DBOperation        string `json:"dbOperation,omitempty"`
-	HasError           bool   `json:"hasError,omitempty"`
-	IsRemote           string `json:"isRemote,omitempty"`
+	ResponseStatusCode string `json:"-"`
+	ExternalHttpUrl    string `json:"-"`
+	HttpUrl            string `json:"-"`
+	ExternalHttpMethod string `json:"-"`
+	HttpMethod         string `json:"-"`
+	HttpHost           string `json:"-"`
+	DBName             string `json:"-"`
+	DBOperation        string `json:"-"`
+	HasError           bool   `json:"-"`
+	IsRemote           string `json:"-"`
 
 	// attribute columns
-	HttpRoute    string `json:"httpRoute,omitempty"`
-	MsgSystem    string `json:"msgSystem,omitempty"`
-	MsgOperation string `json:"msgOperation,omitempty"`
-	DBSystem     string `json:"dbSystem,omitempty"`
-	RPCSystem    string `json:"rpcSystem,omitempty"`
-	RPCService   string `json:"rpcService,omitempty"`
-	RPCMethod    string `json:"rpcMethod,omitempty"`
-	PeerService  string `json:"peerService,omitempty"`
+	HttpRoute    string `json:"-"`
+	MsgSystem    string `json:"-"`
+	MsgOperation string `json:"-"`
+	DBSystem     string `json:"-"`
+	RPCSystem    string `json:"-"`
+	RPCService   string `json:"-"`
+	RPCMethod    string `json:"-"`
+	PeerService  string `json:"-"`
 
 	// check if this is really required
 	Tenant *string `json:"-"`
 
 	References     string          `json:"references,omitempty"`
-	SpanAttributes []SpanAttribute `json:"spanAttributes,omitempty"`
+	SpanAttributes []SpanAttribute `json:"-"`
 }
 
 type SpanAttribute struct {

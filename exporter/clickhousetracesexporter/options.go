@@ -64,6 +64,7 @@ type namespaceConfig struct {
 	Encoding                   Encoding
 	Connector                  Connector
 	ExporterId                 uuid.UUID
+	UseNewSchema               bool
 }
 
 // Connecto defines how to connect to the database
@@ -105,7 +106,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, useNewSchema bool, otherNamespaces ...string) *Options {
 
 	datasource := config.Datasource
 	if datasource == "" {
@@ -135,6 +136,7 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, ot
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
 			ExporterId:                 exporterId,
+			UseNewSchema:               useNewSchema,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -150,6 +152,7 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, ot
 				Encoding:        defaultEncoding,
 				Connector:       defaultConnector,
 				ExporterId:      exporterId,
+				UseNewSchema:    useNewSchema,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}

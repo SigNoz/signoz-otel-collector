@@ -318,8 +318,11 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2, m
 	}
 	wg.Wait()
 
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+	if w.useNewSchema {
+		for k, v := range metrics {
+			fmt.Println("newx")
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		}
 	}
 
 	return err

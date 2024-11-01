@@ -65,7 +65,7 @@ func ClickHouseNewFactory(exporterId uuid.UUID, config Config) *Factory {
 
 	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(exporterId, config, primaryNamespace, archiveNamespace),
+		Options: NewOptions(exporterId, config, primaryNamespace, config.UseNewSchema, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -120,6 +120,7 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+		useNewSchema:      cfg.UseNewSchema,
 	})
 }
 
@@ -140,6 +141,7 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+		useNewSchema:      cfg.UseNewSchema,
 	})
 }
 

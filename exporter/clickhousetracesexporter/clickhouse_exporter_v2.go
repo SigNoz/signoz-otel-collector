@@ -282,9 +282,8 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 		rss := td.ResourceSpans()
 		var batchOfSpans []*SpanV2
 
-		size := (&ptrace.ProtoMarshaler{}).TracesSize(td)
-
 		count := 0
+		size := 0
 		metrics := map[string]usage.Metric{}
 		for i := 0; i < rss.Len(); i++ {
 			rs := rss.At(i)
@@ -298,7 +297,6 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 			resourceJson := string(serializedRes)
 
 			ilss := rs.ScopeSpans()
-			count += ilss.Len()
 			for j := 0; j < ilss.Len(); j++ {
 				ils := ilss.At(j)
 
@@ -324,10 +322,13 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
+					serializedStructuredSpan, _ := json.Marshal(structuredSpan)
+					size += len(serializedStructuredSpan)
+					count += 1
 				}
 			}
 		}
-		// TODO(nitya): as of now the tenant doesn't matter. Only add if only new schema is used
+
 		if s.useNewSchema {
 			usage.AddMetric(metrics, "default", int64(count), int64(size))
 		}

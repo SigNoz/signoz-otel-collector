@@ -24,6 +24,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -68,6 +69,8 @@ type WriterOptions struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	useNewSchema bool
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -86,6 +89,7 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
+		useNewSchema:      options.useNewSchema,
 	}
 
 	return writer
@@ -364,7 +368,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		return err
 	}
 
-	// metrics := map[string]usage.Metric{}
+	metrics := map[string]usage.Metric{}
 	for _, span := range batchSpans {
 		var serialized []byte
 		usageMap := span.TraceModel
@@ -373,7 +377,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		if err != nil {
 			return err
 		}
-		// serializedUsage, err := json.Marshal(usageMap)
+		serializedUsage, err := json.Marshal(usageMap)
 
 		if err != nil {
 			return err
@@ -385,8 +389,11 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 			return err
 		}
 
-		// usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
+		if !w.useNewSchema {
+			usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
+		}
 	}
+
 	start := time.Now()
 
 	err = statement.Send()
@@ -398,9 +405,12 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 	if err != nil {
 		return err
 	}
-	// for k, v := range metrics {
-	// 	stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
-	// }
+
+	if !w.useNewSchema {
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		}
+	}
 
 	return nil
 }
