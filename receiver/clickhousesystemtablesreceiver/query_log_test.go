@@ -126,23 +126,14 @@ func TestQueryLogToLogRecord(t *testing.T) {
 			// Check attributes
 			attrs := lr.Attributes()
 
-			attrs.Range(func(k string, v pcommon.Value) bool {
-				expectedValue, ok := tc.expectedAttributes[k]
-				if !ok {
-					// nothing to check
-					return true
-				}
-				if !compareAttributeValue(v, expectedValue) {
-					t.Errorf("Attribute %s mismatch. Got %v, expected %v", k, v.AsRaw(), expectedValue)
-				}
-				return true
-			})
-
-			// Check for missing attributes
 			for key := range tc.expectedAttributes {
-				_, ok := attrs.Get(key)
+				expectedValue := tc.expectedAttributes[key]
+				attrVal, ok := attrs.Get(key)
 				if !ok {
 					t.Errorf("Expected attribute key not found: %s", key)
+				}
+				if !compareAttributeValue(attrVal, expectedValue) {
+					t.Errorf("Attribute %s mismatch. Got %v, expected %v", key, attrVal.AsRaw(), expectedValue)
 				}
 			}
 		})
