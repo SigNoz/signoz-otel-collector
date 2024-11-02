@@ -725,11 +725,13 @@ func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch
 	batch := &writeBatch{metaSeen: make(map[string]struct{})}
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
-		resAttrs := rm.Resource().Attributes()
+		resAttrs := pcommon.NewMap()
+		rm.Resource().Attributes().CopyTo(resAttrs)
 		resAttrs.PutStr("__resource.schema_url__", rm.SchemaUrl())
 		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
 			sm := rm.ScopeMetrics().At(j)
-			scopeAttrs := sm.Scope().Attributes()
+			scopeAttrs := pcommon.NewMap()
+			sm.Scope().Attributes().CopyTo(scopeAttrs)
 			scopeAttrs.PutStr("__scope.name__", sm.Scope().Name())
 			scopeAttrs.PutStr("__scope.version__", sm.Scope().Version())
 			scopeAttrs.PutStr("__scope.schema_url__", sm.SchemaUrl())
@@ -776,8 +778,10 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		for _, ts := range timeSeries {
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
-			if c.cache.Get(cacheKey) != nil && c.cache.Get(cacheKey).Value() {
-				continue
+			if item := c.cache.Get(cacheKey); item != nil {
+				if value := item.Value(); value {
+					continue
+				}
 			}
 			err = statement.Append(
 				ts.env,
