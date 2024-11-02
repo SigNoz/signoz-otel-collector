@@ -63,7 +63,7 @@ func (processor *memoryLimiterProcessor) checkMemory() error {
 	ms := processor.readMemStats()
 
 	if processor.usageChecker.aboveLimit(ms) {
-		processor.set.Logger.Error("Currently used memory is higher then limit memory.", memstatToZapField(ms), zap.Uint32("limit_mib", processor.cfg.MemoryLimitMiB))
+		processor.set.Logger.Error("Currently used memory is higher then limit memory.", memstatToZapField(ms), zap.Uint32("limit_mem_mib", processor.cfg.MemoryLimitMiB))
 		return ErrDataRefused
 	}
 
