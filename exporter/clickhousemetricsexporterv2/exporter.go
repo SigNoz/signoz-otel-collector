@@ -402,7 +402,8 @@ func (c *clickhouseMetricsExporter) processHistogram(batch *writeBatch, metric p
 	addBucketSample := func(batch *writeBatch, dp pmetric.HistogramDataPoint, suffix string) {
 		var cumulativeCount uint64
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
-		pointAttrs := dp.Attributes()
+		pointAttrs := pcommon.NewMap()
+		dp.Attributes().CopyTo(pointAttrs)
 
 		for i := 0; i < dp.ExplicitBounds().Len() && i < dp.BucketCounts().Len(); i++ {
 			bound := dp.ExplicitBounds().At(i)
@@ -535,7 +536,8 @@ func (c *clickhouseMetricsExporter) processSummary(batch *writeBatch, metric pme
 
 	addQuantileSample := func(batch *writeBatch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
-		pointAttrs := dp.Attributes()
+		pointAttrs := pcommon.NewMap()
+		dp.Attributes().CopyTo(pointAttrs)
 		for i := 0; i < dp.QuantileValues().Len(); i++ {
 			quantile := dp.QuantileValues().At(i)
 			quantileStr := strconv.FormatFloat(quantile.Quantile(), 'f', -1, 64)
