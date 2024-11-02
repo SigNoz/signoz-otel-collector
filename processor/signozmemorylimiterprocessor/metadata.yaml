@@ -1,0 +1,15 @@
+type: signozmemorylimiter
+
+status:
+  class: processor
+  stability:
+    beta: [traces, metrics, logs]
+
+tests:
+  config:
+    limit_mib: 400
+  skip_lifecycle: false
+  skip_shutdown: false
+  expect_consumer_error: false
+  goleak:
+    skip: false
