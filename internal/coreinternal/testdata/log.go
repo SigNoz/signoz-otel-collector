@@ -55,6 +55,18 @@ func GenerateLogsTwoLogRecordsSameResource() plog.Logs {
 	return ld
 }
 
+func GenerateLogsTwoLogRecordsSameResourceOneDifferent() plog.Logs {
+	ld := GenerateLogsOneEmptyLogRecord()
+	logs := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords()
+	fillLogOne(logs.At(0))
+	fillLogTwo(logs.AppendEmpty())
+	rs1 := ld.ResourceLogs().AppendEmpty()
+	initResource2(rs1.Resource())
+	rs1ils0 := rs1.ScopeLogs().AppendEmpty()
+	fillLogThree(rs1ils0.LogRecords().AppendEmpty())
+	return ld
+}
+
 func fillLogOne(log plog.LogRecord) {
 	log.SetTimestamp(TestLogTimestamp)
 	log.SetDroppedAttributesCount(1)

@@ -1,0 +1,14 @@
+type: signozdeduplicationid
+
+status:
+  class: processor
+  stability:
+    beta: [traces, metrics, logs]
+
+tests:
+  config:
+  skip_lifecycle: false
+  skip_shutdown: false
+  expect_consumer_error: false
+  goleak:
+    skip: false
