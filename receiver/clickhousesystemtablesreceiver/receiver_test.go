@@ -124,7 +124,7 @@ func TestReceiver(t *testing.T) {
 
 	require.Equal(lr.Body().Str(), testQuery)
 	require.Equal(lr.Timestamp().AsTime().Unix(), testQlEventTime.Unix())
-	et, exists := lr.Attributes().Get("event_time")
+	et, exists := lr.Attributes().Get("clickhouse.query_log.event_time")
 	require.True(exists)
 	require.Equal(et.Str(), testQlEventTime.Format(time.RFC3339))
 
