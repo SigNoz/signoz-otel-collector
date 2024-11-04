@@ -290,15 +290,20 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 
 			serviceName := ServiceNameForResource(rs.Resource())
 
-			serializedRes, err := json.Marshal(rs.Resource().Attributes().AsRaw())
+			// convert this to a string
+			stringMap := make(map[string]string, len(rs.Resource().Attributes().AsRaw()))
+			rs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
+				stringMap[k] = v.AsString()
+				return true
+			})
+			serializedRes, err := json.Marshal(stringMap)
 			if err != nil {
 				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
 			}
 			resourceJson := string(serializedRes)
 
-			ilss := rs.ScopeSpans()
-			for j := 0; j < ilss.Len(); j++ {
-				ils := ilss.At(j)
+			for j := 0; j < rs.ScopeSpans().Len(); j++ {
+				ils := rs.ScopeSpans().At(j)
 
 				spans := ils.Spans()
 
