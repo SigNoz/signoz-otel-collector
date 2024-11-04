@@ -54,6 +54,16 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "rpcMethod", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "peerService", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 
+					// alias for attribute cols
+					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "httpRoute"},
+					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "msgSystem"},
+					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "msgOperation"},
+					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "dbSystem"},
+					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcSystem"},
+					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcService"},
+					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcMethod"},
+					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "peerService"},
+
 					{Name: "references", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
@@ -139,6 +149,16 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "rpcService", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "rpcMethod", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "peerService", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+
+					// alias for attribute cols
+					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "httpRoute"},
+					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "msgSystem"},
+					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "msgOperation"},
+					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "dbSystem"},
+					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcSystem"},
+					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcService"},
+					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "rpcMethod"},
+					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "peerService"},
 
 					{Name: "references", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 				},

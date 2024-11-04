@@ -231,6 +231,7 @@ func (a AggregateFunction) String() string {
 // Name (mandatory) is the name of the column.
 // Type (mandatory) is the type of the column.
 // Codec is the codec of the column.
+// Alias is the name of the column we want to reference in the schema definition.
 // Default is the default value/expression of the column. It is
 // user responsibility to ensure that the default value is valid
 // for the column type. The migrator will not validate the default
@@ -242,6 +243,7 @@ type Column struct {
 	Name     string
 	Type     ColumnType
 	Codec    string
+	Alias    string
 	Default  string
 	TTL      string
 	Settings ColumnSettings
@@ -253,6 +255,10 @@ func (c Column) ToSQL() string {
 	sql.WriteString(c.Name)
 	sql.WriteString(" ")
 	sql.WriteString(c.Type.String())
+	if c.Alias != "" {
+		sql.WriteString(" ALIAS ")
+		sql.WriteString(c.Alias)
+	}
 	if c.Default != "" {
 		sql.WriteString(" DEFAULT ")
 		sql.WriteString(c.Default)

@@ -303,6 +303,19 @@ func TestAlterTableAddColumn(t *testing.T) {
 			}.OnCluster("cluster"),
 			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col AggregateFunction(Sum, Int32)",
 		},
+		{
+			name: "col-with-alias",
+			op: AlterTableAddColumn{
+				Database: "db",
+				Table:    "table",
+				Column: Column{
+					Name:  "col",
+					Type:  ColumnTypeString,
+					Alias: "maincol",
+				},
+			}.OnCluster("cluster"),
+			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String ALIAS maincol",
+		},
 	}
 
 	for _, tc := range testCases {
