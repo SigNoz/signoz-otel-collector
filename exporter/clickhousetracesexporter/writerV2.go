@@ -180,7 +180,7 @@ func (w *SpanWriter) writeTagBatchV2(ctx context.Context, batchSpans []*SpanV2) 
 		for _, spanAttribute := range span.SpanAttributes {
 
 			// form a map key of span attribute key, tagType, dataType, isColumn and value
-			mapOfSpanAttributeValueKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + strconv.FormatBool(spanAttribute.IsColumn) + spanAttribute.StringValue + strconv.FormatFloat(spanAttribute.NumberValue, 'f', -1, 64)
+			mapOfSpanAttributeValueKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + spanAttribute.StringValue + strconv.FormatFloat(spanAttribute.NumberValue, 'f', -1, 64)
 
 			// check if mapOfSpanAttributeValueKey already exists in map
 			_, ok := mapOfSpanAttributeValues[mapOfSpanAttributeValueKey]
@@ -320,7 +320,6 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2, m
 
 	if w.useNewSchema {
 		for k, v := range metrics {
-			fmt.Println("newx")
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
 		}
 	}
