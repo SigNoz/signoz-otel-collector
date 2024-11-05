@@ -9,7 +9,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/collectorsimulator/inmemoryexporter"
 	"github.com/SigNoz/signoz-otel-collector/pkg/collectorsimulator/inmemoryreceiver"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
@@ -19,8 +18,6 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/service"
-
-	"go.signoz.io/signoz/pkg/query-service/model"
 )
 
 // Puts together a collector service with inmemory receiver and exporter
@@ -48,15 +45,15 @@ func NewCollectorSimulator(
 	ctx context.Context,
 	processorFactories map[component.Type]processor.Factory,
 	configGenerator ConfigGenerator,
-) (simulator *CollectorSimulator, cleanupFn func(), apiErr *model.ApiError) {
+) (simulator *CollectorSimulator, cleanupFn func(), err error) {
 	// Put together collector component factories for use in the simulation
 	receiverFactories, err := receiver.MakeFactoryMap(inmemoryreceiver.NewFactory())
 	if err != nil {
-		return nil, nil, model.InternalError(errors.Wrap(err, "could not create receiver factories."))
+		return nil, nil, fmt.Errorf("could not create receiver factories: %w", err)
 	}
 	exporterFactories, err := exporter.MakeFactoryMap(inmemoryexporter.NewFactory())
 	if err != nil {
-		return nil, nil, model.InternalError(errors.Wrap(err, "could not create processor factories."))
+		return nil, nil, fmt.Errorf("could not create processor factories: %w", err)
 	}
 	factories := otelcol.Factories{
 		Receivers:  receiverFactories,
@@ -70,9 +67,7 @@ func NewCollectorSimulator(
 
 	logsOutputFile, err := os.CreateTemp("", "collector-simulator-logs-*")
 	if err != nil {
-		return nil, nil, model.InternalError(errors.Wrap(
-			err, "could not create tmp file for capturing collector logs",
-		))
+		return nil, nil, fmt.Errorf("could not create tmp file for capturing collector logs: %w", err)
 	}
 	collectorLogsOutputFilePath := logsOutputFile.Name()
 	cleanupFn = func() {
@@ -80,7 +75,7 @@ func NewCollectorSimulator(
 	}
 	err = logsOutputFile.Close()
 	if err != nil {
-		return nil, cleanupFn, model.InternalError(errors.Wrap(err, "could not close tmp collector log file"))
+		return nil, cleanupFn, fmt.Errorf("could not close tmp collector log file: %w", err)
 	}
 
 	collectorConfYaml, err := generateSimulationConfig(
@@ -90,16 +85,14 @@ func NewCollectorSimulator(
 		collectorLogsOutputFilePath,
 	)
 	if err != nil {
-		return nil, cleanupFn, model.BadRequest(errors.Wrap(err, "could not generate collector config"))
+		return nil, cleanupFn, InvalidConfigError(fmt.Errorf("could not generate collector config: %w", err))
 	}
 
 	// Read collector config using the same file provider we use in the actual collector.
 	// This ensures env variable substitution if any is taken into account.
 	simulationConfigFile, err := os.CreateTemp("", "collector-simulator-config-*")
 	if err != nil {
-		return nil, nil, model.InternalError(errors.Wrap(
-			err, "could not create tmp file for capturing collector logs",
-		))
+		return nil, nil, fmt.Errorf("could not create tmp file for capturing collector logs: %w", err)
 	}
 	simulationConfigPath := simulationConfigFile.Name()
 	cleanupFn = func() {
@@ -110,11 +103,11 @@ func NewCollectorSimulator(
 	_, err = simulationConfigFile.Write(collectorConfYaml)
 
 	if err != nil {
-		return nil, cleanupFn, model.InternalError(errors.Wrap(err, "could not write simulation config to tmp file"))
+		return nil, cleanupFn, fmt.Errorf("could not write simulation config to tmp file: %w", err)
 	}
 	err = simulationConfigFile.Close()
 	if err != nil {
-		return nil, cleanupFn, model.InternalError(errors.Wrap(err, "could not close tmp simulation config file"))
+		return nil, cleanupFn, fmt.Errorf("could not close tmp simulation config file: %w", err)
 	}
 
 	fp := fileprovider.NewFactory()
@@ -126,16 +119,16 @@ func NewCollectorSimulator(
 		},
 	})
 	if err != nil {
-		return nil, cleanupFn, model.BadRequest(errors.Wrap(err, "could not create config provider."))
+		return nil, cleanupFn, InvalidConfigError(fmt.Errorf("could not create config provider: %w", err))
 	}
 
 	collectorCfg, err := confProvider.Get(ctx, factories)
 	if err != nil {
-		return nil, cleanupFn, model.BadRequest(errors.Wrap(err, "failed to parse collector config"))
+		return nil, cleanupFn, InvalidConfigError(fmt.Errorf("failed to parse collector config: %w", err))
 	}
 
 	if err = collectorCfg.Validate(); err != nil {
-		return nil, cleanupFn, model.BadRequest(errors.Wrap(err, "invalid collector config"))
+		return nil, cleanupFn, InvalidConfigError(fmt.Errorf("invalid collector config: %w", err))
 	}
 
 	// Build and start collector service.
@@ -161,7 +154,7 @@ func NewCollectorSimulator(
 
 	collectorSvc, err := service.New(ctx, svcSettings, collectorCfg.Service)
 	if err != nil {
-		return nil, cleanupFn, model.InternalError(errors.Wrap(err, "could not instantiate collector service"))
+		return nil, cleanupFn, fmt.Errorf("could not instantiate collector service: %w", err)
 	}
 
 	return &CollectorSimulator{
@@ -174,7 +167,7 @@ func NewCollectorSimulator(
 }
 
 func (l *CollectorSimulator) Start(ctx context.Context) (
-	func(), *model.ApiError,
+	func(), error,
 ) {
 	// Calling collectorSvc.Start below will in turn call Start on
 	// inmemory receiver and exporter instances created by collectorSvc
@@ -188,7 +181,7 @@ func (l *CollectorSimulator) Start(ctx context.Context) (
 
 	err := l.collectorSvc.Start(ctx)
 	if err != nil {
-		return cleanupFn, model.InternalError(errors.Wrap(err, "could not start collector service for simulation"))
+		return cleanupFn, fmt.Errorf("could not start collector service for simulation: %w", err)
 	}
 
 	return cleanupFn, nil
@@ -203,7 +196,7 @@ func (l *CollectorSimulator) GetExporter() *inmemoryexporter.InMemoryExporter {
 }
 
 func (l *CollectorSimulator) Shutdown(ctx context.Context) (
-	simulationErrs []string, apiErr *model.ApiError,
+	simulationErrs []string, err error,
 ) {
 	shutdownErr := l.collectorSvc.Shutdown(ctx)
 
@@ -216,9 +209,9 @@ func (l *CollectorSimulator) Shutdown(ctx context.Context) (
 
 	collectorWarnAndErrorLogs, err := os.ReadFile(l.collectorLogsOutputFilePath)
 	if err != nil {
-		return nil, model.InternalError(fmt.Errorf(
+		return nil, fmt.Errorf(
 			"could not read collector logs from tmp file: %w", err,
-		))
+		)
 	}
 	if len(collectorWarnAndErrorLogs) > 0 {
 		errorLines := strings.Split(string(collectorWarnAndErrorLogs), "\n")
@@ -226,9 +219,9 @@ func (l *CollectorSimulator) Shutdown(ctx context.Context) (
 	}
 
 	if shutdownErr != nil {
-		return simulationErrs, model.InternalError(errors.Wrap(
-			shutdownErr, "could not shutdown the collector service",
-		))
+		return simulationErrs, fmt.Errorf(
+			"could not shutdown the collector service: %w", shutdownErr,
+		)
 	}
 	return simulationErrs, nil
 }

@@ -79,14 +79,14 @@ func TestLogsProcessingSimulation(t *testing.T) {
 	configGenerator := makeTestConfigGenerator(
 		[]ProcessorConfig{testProcessor1, testProcessor2},
 	)
-	outputLogs, collectorErrs, apiErr := SimulateLogsProcessing(
+	outputLogs, collectorErrs, err := SimulateLogsProcessing(
 		context.Background(),
 		processorFactories,
 		configGenerator,
 		inputLogs,
 		300*time.Millisecond,
 	)
-	require.Nil(apiErr, apiErr.ToError().Error())
+	require.Nil(err)
 	require.Equal(len(collectorErrs), 0)
 
 	for _, l := range outputLogs {

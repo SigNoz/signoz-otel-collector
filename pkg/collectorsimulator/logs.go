@@ -6,11 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/processor"
-	"go.signoz.io/signoz/pkg/query-service/model"
 )
 
 // Simulate processing of logs through the otel collector.
@@ -22,33 +20,33 @@ func SimulateLogsProcessing(
 	logs []plog.Logs,
 	timeout time.Duration,
 ) (
-	outputLogs []plog.Logs, collectorErrs []string, apiErr *model.ApiError,
+	outputLogs []plog.Logs, collectorErrs []string, err error,
 ) {
 	// Construct and start a simulator (wraps a collector service)
-	simulator, simulatorInitCleanup, apiErr := NewCollectorSimulator(
+	simulator, simulatorInitCleanup, err := NewCollectorSimulator(
 		ctx, processorFactories, configGenerator,
 	)
 	if simulatorInitCleanup != nil {
 		defer simulatorInitCleanup()
 	}
-	if apiErr != nil {
-		return nil, nil, model.WrapApiError(apiErr, "could not create logs processing simulator")
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not create logs processing simulator: %w", err)
 	}
 
-	simulatorCleanup, apiErr := simulator.Start(ctx)
+	simulatorCleanup, err := simulator.Start(ctx)
 	// We can not rely on collector service to shutdown successfully and cleanup refs to inmemory components.
 	if simulatorCleanup != nil {
 		defer simulatorCleanup()
 	}
-	if apiErr != nil {
-		return nil, nil, apiErr
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Do the simulation
 	for _, plog := range logs {
-		apiErr = SendLogsToSimulator(ctx, simulator, plog)
-		if apiErr != nil {
-			return nil, nil, model.WrapApiError(apiErr, "could not consume logs for simulation")
+		err = SendLogsToSimulator(ctx, simulator, plog)
+		if err != nil {
+			return nil, nil, fmt.Errorf("could not consume logs for simulation: %w", err)
 		}
 	}
 
@@ -56,17 +54,13 @@ func SimulateLogsProcessing(
 		simulator, len(logs), timeout,
 	)
 	if apiErr != nil {
-		return nil, nil, model.InternalError(model.WrapApiError(apiErr,
-			"could not get processed logs from simulator",
-		))
+		return nil, nil, fmt.Errorf("could not get processed logs from simulator: %w", err)
 	}
 
 	// Shut down the simulator
 	simulationErrs, apiErr := simulator.Shutdown(ctx)
 	if apiErr != nil {
-		return nil, simulationErrs, model.WrapApiError(apiErr,
-			"could not shutdown logs processing simulator",
-		)
+		return nil, simulationErrs, fmt.Errorf("could not shutdown logs processing simulator: %w", err)
 	}
 
 	for _, log := range simulationErrs {
@@ -84,15 +78,14 @@ func SendLogsToSimulator(
 	ctx context.Context,
 	simulator *CollectorSimulator,
 	plog plog.Logs,
-) *model.ApiError {
+) error {
 	receiver := simulator.GetReceiver()
 	if receiver == nil {
-		return model.InternalError(fmt.Errorf("could not find in memory receiver for simulator"))
+		return fmt.Errorf("could not find in memory receiver for simulator")
 	}
 	if err := receiver.ConsumeLogs(ctx, plog); err != nil {
-		return model.InternalError(errors.Wrap(err,
-			"inmemory receiver could not consume logs for simulation",
-		))
+		return fmt.Errorf("inmemory receiver could not consume logs for simulation: %w", err)
+
 	}
 	return nil
 }
@@ -102,11 +95,11 @@ func GetProcessedLogsFromSimulator(
 	minLogCount int,
 	timeout time.Duration,
 ) (
-	[]plog.Logs, *model.ApiError,
+	[]plog.Logs, error,
 ) {
 	exporter := simulator.GetExporter()
 	if exporter == nil {
-		return nil, model.InternalError(fmt.Errorf("could not find in memory exporter for simulator"))
+		return nil, fmt.Errorf("could not find in memory exporter for simulator")
 	}
 
 	// Must do a time based wait to ensure all logs come through.
