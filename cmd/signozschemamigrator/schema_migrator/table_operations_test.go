@@ -28,6 +28,26 @@ func TestCreateTable(t *testing.T) {
 			want: "CREATE TABLE IF NOT EXISTS db.table (id Int16) ENGINE = MergeTree",
 		},
 		{
+			name: "create-table-without-any-engine-params-with-alias",
+			op: CreateTableOperation{
+				Database: "db",
+				Table:    "table",
+				Columns: []Column{
+					{
+						Name: "id",
+						Type: ColumnTypeInt16,
+					},
+					{
+						Name:  "id_alias",
+						Type:  ColumnTypeInt16,
+						Alias: "id",
+					},
+				},
+				Engine: MergeTree{},
+			},
+			want: "CREATE TABLE IF NOT EXISTS db.table (id Int16, id_alias Int16 ALIAS id) ENGINE = MergeTree",
+		},
+		{
 			name: "create-table-with-replacing-merge-tree-engine-params",
 			op: CreateTableOperation{
 				Database: "db",
