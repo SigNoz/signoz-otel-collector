@@ -54,6 +54,10 @@ type SpanWriter struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	indexTableV3    string
+	resourceTableV3 string
+	useNewSchema    bool
 }
 
 type WriterOptions struct {
@@ -67,6 +71,10 @@ type WriterOptions struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	indexTableV3    string
+	resourceTableV3 string
+	useNewSchema    bool
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -85,6 +93,10 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
+
+		indexTableV3:    options.indexTableV3,
+		resourceTableV3: options.resourceTableV3,
+		useNewSchema:    options.useNewSchema,
 	}
 
 	return writer
