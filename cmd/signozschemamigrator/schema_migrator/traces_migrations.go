@@ -12,7 +12,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "ts_bucket_start", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 					{Name: "resource_fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
-					{Name: "id", Type: FixedStringColumnType{Length: 27}, Codec: "ZSTD"},
 					{Name: "trace_id", Type: FixedStringColumnType{Length: 32}, Codec: "ZSTD(1)"},
 					{Name: "span_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "trace_state", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -60,6 +59,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 
 					// ----- ALIAS for backward compatibility ------------
+					// ---------------------------------------------------
+
 					// ALIAS columns to maintain compatibility with signoz_index_v2
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Alias: "trace_id"},
 					{Name: "spanID", Type: ColumnTypeString, Alias: "span_id"},
@@ -97,7 +98,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "peerService", Type: LowCardinalityColumnType{ColumnTypeString}, Alias: "attribute_string_peer$$service"},
 				},
 				Indexes: []Index{
-					{Name: "idx_id", Expression: "id", Type: "minmax", Granularity: 1},
 					{Name: "idx_trace_id", Expression: "trace_id", Type: "tokenbf_v1(10000, 5,0)", Granularity: 1},
 					{Name: "idx_spanID", Expression: "span_id", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
 					{Name: "idx_duration", Expression: "duration_nano", Type: "minmax", Granularity: 1},
@@ -122,7 +122,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Engine: MergeTree{
 					PartitionBy: "toDate(timestamp)",
-					OrderBy:     "(ts_bucket_start, resource_fingerprint, has_error, name, timestamp, id)",
+					OrderBy:     "(ts_bucket_start, resource_fingerprint, has_error, name, timestamp)",
 					TTL:         "toDateTime(timestamp) + toIntervalSecond(1296000)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
@@ -137,7 +137,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "ts_bucket_start", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 					{Name: "resource_fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "timestamp", Type: DateTime64ColumnType{Precision: 9}, Codec: "DoubleDelta, LZ4"},
-					{Name: "id", Type: FixedStringColumnType{Length: 27}, Codec: "ZSTD"},
 					{Name: "trace_id", Type: FixedStringColumnType{Length: 32}, Codec: "ZSTD(1)"},
 					{Name: "span_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "trace_state", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -185,6 +184,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 
 					// ----- ALIAS for backward compatibility ------------
+					// ---------------------------------------------------
+
 					// ALIAS columns to maintain compatibility with signoz_index_v2
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Alias: "trace_id"},
 					{Name: "spanID", Type: ColumnTypeString, Alias: "span_id"},
@@ -407,7 +408,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 							name,
 							serviceName
 						FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
-						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanId = B.spanID)`,
+						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
 			},
 		},
 	},

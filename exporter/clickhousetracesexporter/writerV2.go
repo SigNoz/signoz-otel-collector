@@ -34,7 +34,6 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 			span.TsBucketStart,
 			span.FingerPrint,
 			time.Unix(0, int64(span.StartTimeUnixNano)),
-			span.Id,
 			span.TraceId,
 			span.SpanId,
 			span.TraceState,

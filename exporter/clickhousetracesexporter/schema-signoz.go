@@ -136,7 +136,6 @@ type SpanV2 struct {
 	FingerPrint   string `json:"-"`
 
 	StartTimeUnixNano uint64 `json:"startTimeUnixNano,omitempty"`
-	Id                string `json:"-"`
 
 	TraceId      string `json:"traceId,omitempty"`
 	SpanId       string `json:"spanId,omitempty"`
