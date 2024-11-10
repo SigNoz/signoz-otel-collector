@@ -9,13 +9,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/google/uuid"
-	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
@@ -198,18 +196,11 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource(resource)
 
-	// generate the id from timestamp
-	id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(otelSpan.StartTimestamp())))
-	if err != nil {
-		return nil, fmt.Errorf("IdGenError:%w", err)
-	}
-
 	var span *SpanV3 = &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
 
 		StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
-		Id:                id.String(),
 
 		TraceId:      utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
 		SpanId:       utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
