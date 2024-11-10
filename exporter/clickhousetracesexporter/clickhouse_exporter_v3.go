@@ -20,7 +20,6 @@ import (
 )
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
-
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
@@ -45,23 +44,13 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
-		} else if k == "http.route" {
-			span.HttpRoute = v.Str()
 		} else if k == "http.host" || k == "server.address" ||
 			k == "client.address" || k == "http.request.header.host" {
 			span.HttpHost = v.Str()
-		} else if k == "messaging.system" {
-			span.MsgSystem = v.Str()
-		} else if k == "messaging.operation" {
-			span.MsgOperation = v.Str()
-		} else if k == "db.system" {
-			span.DBSystem = v.Str()
 		} else if k == "db.name" || k == "db.namespace" {
 			span.DBName = v.Str()
 		} else if k == "db.operation" || k == "db.operation.name" {
 			span.DBOperation = v.Str()
-		} else if k == "peer.service" {
-			span.PeerService = v.Str()
 		} else if k == "rpc.grpc.status_code" {
 			// Handle both string/int status code in GRPC spans.
 			statusString, err := strconv.Atoi(v.Str())
@@ -70,12 +59,6 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 				statusInt = int64(statusString)
 			}
 			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if k == "rpc.method" {
-			span.RPCMethod = v.Str()
-		} else if k == "rpc.service" {
-			span.RPCService = v.Str()
-		} else if k == "rpc.system" {
-			span.RPCSystem = v.Str()
 		} else if k == "rpc.jsonrpc.error_code" {
 			span.ResponseStatusCode = v.Str()
 		}

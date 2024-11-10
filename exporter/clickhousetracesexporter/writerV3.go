@@ -24,7 +24,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			_ = statement.Abort()
 		}
 	}()
-	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
+	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
 		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
 		return err
@@ -51,8 +51,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesBool,
 			span.ResourcesString,
 			span.Events,
-
-			span.ServiceName,
+			span.References,
 
 			// composite attributes
 			span.ResponseStatusCode,
@@ -65,18 +64,6 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.DBOperation,
 			span.HasError,
 			span.IsRemote,
-
-			// single attributes
-			span.HttpRoute,
-			span.MsgSystem,
-			span.MsgOperation,
-			span.DBSystem,
-			span.RPCSystem,
-			span.RPCService,
-			span.RPCMethod,
-			span.PeerService,
-
-			span.References,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
@@ -372,3 +359,71 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return nil
 }
+
+const (
+	insertTraceSQLTemplateV2 = `INSERT INTO %s.%s (
+							ts_bucket_start,
+							resource_fingerprint,
+							timestamp,
+							trace_id,
+							span_id,
+							trace_state,
+							parent_span_id,
+							flags,
+							name,
+							kind,
+							kind_string,
+							duration_nano,
+							status_code,
+							status_message,
+							status_code_string,
+							attributes_string,
+							attributes_number,
+							attributes_bool,
+							resources_string,
+							events,
+							links,
+							response_status_code,
+							external_http_url,
+							http_url,
+							external_http_method,
+							http_method,
+							http_host,
+							db_name,
+							db_operation,
+							has_error,
+							is_remote
+							) VALUES (
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?,
+								?
+								)`
+)
