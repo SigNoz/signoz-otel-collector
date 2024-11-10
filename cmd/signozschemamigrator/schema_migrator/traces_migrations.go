@@ -46,17 +46,17 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "is_remote", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 
 					// simple resource attribute
-					{Name: "resource_string_service$$name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "resource_string_service$$name", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "resources_string['service.name']", Codec: "ZSTD(1)"},
 
 					// simple attributes
-					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['http.route']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['messaging.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['messaging.operation']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['db.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.service']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.method']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['peer.service']", Codec: "ZSTD(1)"},
 
 					// ----- ALIAS for backward compatibility ------------
 					// ---------------------------------------------------
@@ -171,17 +171,17 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "is_remote", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 
 					// simple resource attribute
-					{Name: "resource_string_service$$name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "resource_string_service$$name", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "resources_string['service.name']", Codec: "ZSTD(1)"},
 
 					// simple attributes
-					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attribute_string_http$$route", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['http.route']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_messaging$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['messaging.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_messaging$$operation", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['messaging.operation']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_db$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['db.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$system", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.system']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.service']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_rpc$$method", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['rpc.method']", Codec: "ZSTD(1)"},
+					{Name: "attribute_string_peer$$service", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "attributes_string['peer.service']", Codec: "ZSTD(1)"},
 
 					// ----- ALIAS for backward compatibility ------------
 					// ---------------------------------------------------

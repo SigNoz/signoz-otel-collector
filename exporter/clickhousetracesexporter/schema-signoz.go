@@ -166,7 +166,7 @@ type SpanV2 struct {
 	ErrorID      string   `json:"-"`
 	ErrorGroupID string   `json:"-"`
 
-	ServiceName string `json:"serviceName,omitempty"`
+	ServiceName string `json:"serviceName,omitempty"` // used only in error table
 
 	// custom columns
 	ResponseStatusCode string `json:"-"`
@@ -179,16 +179,6 @@ type SpanV2 struct {
 	DBOperation        string `json:"-"`
 	HasError           bool   `json:"-"`
 	IsRemote           string `json:"-"`
-
-	// attribute columns
-	HttpRoute    string `json:"-"`
-	MsgSystem    string `json:"-"`
-	MsgOperation string `json:"-"`
-	DBSystem     string `json:"-"`
-	RPCSystem    string `json:"-"`
-	RPCService   string `json:"-"`
-	RPCMethod    string `json:"-"`
-	PeerService  string `json:"-"`
 
 	// check if this is really required
 	Tenant *string `json:"-"`
