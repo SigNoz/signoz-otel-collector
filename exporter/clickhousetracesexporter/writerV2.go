@@ -52,8 +52,7 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 			span.AttributesBool,
 			span.ResourcesString,
 			span.Events,
-
-			span.ServiceName,
+			span.References,
 
 			// composite attributes
 			span.ResponseStatusCode,
@@ -67,6 +66,9 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 			span.HasError,
 			span.IsRemote,
 
+			// resource attribute
+			span.ServiceName,
+
 			// single attributes
 			span.HttpRoute,
 			span.MsgSystem,
@@ -76,8 +78,6 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 			span.RPCService,
 			span.RPCMethod,
 			span.PeerService,
-
-			span.References,
 		)
 		if err != nil {
 			w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
