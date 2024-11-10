@@ -1,5 +1,7 @@
 package schemamigrator
 
+// var TracesMigrations = []SchemaMigrationRecord{}
+
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
 	{
@@ -19,7 +21,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "flags", Type: ColumnTypeUInt32, Codec: "T64, ZSTD(1)"},
 					{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "kind", Type: ColumnTypeInt8, Codec: "T64, ZSTD(1)"},
-					{Name: "span_kind", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "kind_string", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "duration_nano", Type: ColumnTypeUInt64, Codec: "T64, ZSTD(1)"},
 					{Name: "status_code", Type: ColumnTypeInt16, Codec: "T64, ZSTD(1)"},
 					{Name: "status_message", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -65,7 +67,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Alias: "trace_id"},
 					{Name: "spanID", Type: ColumnTypeString, Alias: "span_id"},
 					{Name: "parentSpanID", Type: ColumnTypeString, Alias: "parent_span_id"},
-					{Name: "spanKind", Type: ColumnTypeString, Alias: "span_kind"},
+					{Name: "spanKind", Type: ColumnTypeString, Alias: "kind_string"},
 					{Name: "durationNano", Type: ColumnTypeUInt64, Alias: "duration_nano"},
 					{Name: "statusCode", Type: ColumnTypeInt16, Alias: "status_code"},
 					{Name: "statusMessage", Type: ColumnTypeString, Alias: "status_message"},
@@ -99,19 +101,19 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Indexes: []Index{
 					{Name: "idx_trace_id", Expression: "trace_id", Type: "tokenbf_v1(10000, 5,0)", Granularity: 1},
-					{Name: "idx_spanID", Expression: "span_id", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
+					{Name: "idx_span_id", Expression: "span_id", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
 					{Name: "idx_duration", Expression: "duration_nano", Type: "minmax", Granularity: 1},
 					{Name: "idx_name", Expression: "name", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					{Name: "idx_kind", Expression: "kind", Type: "minmax", Granularity: 4},
-					{Name: "idx_httpRoute", Expression: "attribute_string_http$$route", Type: "bloom_filter", Granularity: 4},
-					{Name: "idx_httpUrl", Expression: "http_url", Type: "bloom_filter", Granularity: 4},
-					{Name: "idx_httpHost", Expression: "http_host", Type: "bloom_filter", Granularity: 4},
-					{Name: "idx_httpMethod", Expression: "http_method", Type: "bloom_filter", Granularity: 4},
+					{Name: "idx_http_route", Expression: "attribute_string_http$$route", Type: "bloom_filter", Granularity: 4},
+					{Name: "idx_http_url", Expression: "http_url", Type: "bloom_filter", Granularity: 4},
+					{Name: "idx_http_host", Expression: "http_host", Type: "bloom_filter", Granularity: 4},
+					{Name: "idx_http_method", Expression: "http_method", Type: "bloom_filter", Granularity: 4},
 					{Name: "idx_timestamp", Expression: "timestamp", Type: "minmax", Granularity: 1},
-					{Name: "idx_rpcMethod", Expression: "attribute_string_rpc$$method", Type: "bloom_filter", Granularity: 4},
-					{Name: "idx_responseStatusCode", Expression: "response_status_code", Type: "set(0)", Granularity: 1},
-					{Name: "idx_statusCodeString", Expression: "status_code_string", Type: "set(3)", Granularity: 4},
-					{Name: "idx_spanKind", Expression: "span_kind", Type: "set(5)", Granularity: 4},
+					{Name: "idx_rpc_method", Expression: "attribute_string_rpc$$method", Type: "bloom_filter", Granularity: 4},
+					{Name: "idx_response_statusCode", Expression: "response_status_code", Type: "set(0)", Granularity: 1},
+					{Name: "idx_status_code_string", Expression: "status_code_string", Type: "set(3)", Granularity: 4},
+					{Name: "idx_kind_string", Expression: "kind_string", Type: "set(5)", Granularity: 4},
 					{Name: "attributes_string_idx_key", Expression: "mapKeys(attributes_string)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
 					{Name: "attributes_string_idx_val", Expression: "mapValues(attributes_string)", Type: "ngrambf_v1(4, 5000, 2, 0)", Granularity: 1},
 					{Name: "attributes_number_idx_key", Expression: "mapKeys(attributes_number)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
@@ -144,7 +146,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "flags", Type: ColumnTypeUInt32, Codec: "T64, ZSTD(1)"},
 					{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "kind", Type: ColumnTypeInt8, Codec: "T64, ZSTD(1)"},
-					{Name: "span_kind", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "kind_string", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "duration_nano", Type: ColumnTypeUInt64, Codec: "T64, ZSTD(1)"},
 					{Name: "status_code", Type: ColumnTypeInt16, Codec: "T64, ZSTD(1)"},
 					{Name: "status_message", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -190,7 +192,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "traceID", Type: FixedStringColumnType{Length: 32}, Alias: "trace_id"},
 					{Name: "spanID", Type: ColumnTypeString, Alias: "span_id"},
 					{Name: "parentSpanID", Type: ColumnTypeString, Alias: "parent_span_id"},
-					{Name: "spanKind", Type: ColumnTypeString, Alias: "span_kind"},
+					{Name: "spanKind", Type: ColumnTypeString, Alias: "kind_string"},
 					{Name: "durationNano", Type: ColumnTypeUInt64, Alias: "duration_nano"},
 					{Name: "statusCode", Type: ColumnTypeInt16, Alias: "status_code"},
 					{Name: "statusMessage", Type: ColumnTypeString, Alias: "status_message"},

@@ -359,7 +359,7 @@ const (
 							flags,
 							name,
 							kind,
-							span_kind,
+							kind_string,
 							duration_nano,
 							status_code,
 							status_message,
