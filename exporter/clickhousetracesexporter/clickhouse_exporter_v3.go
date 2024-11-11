@@ -13,6 +13,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -128,6 +129,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 			TagType:  "tag",
 			IsColumn: false,
 		}
+		addSpanAttribute := true
+
 		if v.Type() == pcommon.ValueTypeDouble {
 			numberTagMap[k] = v.Double()
 			spanAttribute.NumberValue = v.Double()
@@ -139,12 +142,31 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
 			spanAttribute.DataType = "bool"
+		} else if v.Type() == pcommon.ValueTypeMap {
+			// flatten map
+			result := map[string]string{}
+			flatten.FlattenJSON(v.Map().AsRaw(), "", result)
+			for tempKey, tempVal := range result {
+				stringTagMap[tempKey] = tempVal
+				spanAttributes = append(spanAttributes, SpanAttribute{
+					Key:         tempKey,
+					TagType:     "tag",
+					IsColumn:    false,
+					StringValue: tempVal,
+					DataType:    "string",
+				})
+			}
+			addSpanAttribute = false
 		} else {
 			stringTagMap[k] = v.AsString()
 			spanAttribute.StringValue = v.AsString()
 			spanAttribute.DataType = "string"
 		}
-		spanAttributes = append(spanAttributes, spanAttribute)
+
+		// add to span attribute
+		if addSpanAttribute {
+			spanAttributes = append(spanAttributes, spanAttribute)
+		}
 		return true
 
 	})
