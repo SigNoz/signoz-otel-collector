@@ -75,20 +75,20 @@ func Test_attributesData_add(t *testing.T) {
 			},
 			result: attributesData{
 				StringMap: map[string]string{
-					"nested_key": "nested_value",
+					"map.nested_key": "nested_value",
 				},
 				NumberMap: map[string]float64{
-					"double":        10.0,
-					"integer":       10.0,
-					"nested_double": 20.5,
+					"double":            10.0,
+					"integer":           10.0,
+					"map.nested_double": 20.5,
 				},
 				BoolMap: map[string]bool{
-					"bool":        true,
-					"nested_bool": false,
+					"bool":            true,
+					"map.nested_bool": false,
 				},
 				SpanAttributes: []SpanAttribute{
 					{
-						Key:         "nested_key",
+						Key:         "map.nested_key",
 						TagType:     "tag",
 						IsColumn:    false,
 						StringValue: "nested_value",
@@ -109,7 +109,7 @@ func Test_attributesData_add(t *testing.T) {
 						DataType:    "float64",
 					},
 					{
-						Key:         "nested_double",
+						Key:         "map.nested_double",
 						TagType:     "tag",
 						IsColumn:    false,
 						NumberValue: 20.5,
@@ -122,7 +122,7 @@ func Test_attributesData_add(t *testing.T) {
 						DataType: "bool",
 					},
 					{
-						Key:      "nested_bool",
+						Key:      "map.nested_bool",
 						TagType:  "tag",
 						IsColumn: false,
 						DataType: "bool",
@@ -329,6 +329,10 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				resource: func() pcommon.Resource {
 					resource := pcommon.NewResource()
 					resource.Attributes().PutStr("service.name", "test_service")
+					resource.Attributes().PutInt("num", 10)
+					v := resource.Attributes().PutEmptyMap("mymap")
+					v.PutStr("map_key", "map_val")
+					v.PutDouble("map_double", 20.5)
 					return resource
 				}(),
 				config: storageConfig{},
@@ -354,7 +358,10 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				AttributesNumber: map[string]float64{},
 				AttributesBool:   map[string]bool{},
 				ResourcesString: map[string]string{
-					"service.name": "test_service",
+					"mymap.map_double": "20.5",
+					"mymap.map_key":    "map_val",
+					"service.name":     "test_service",
+					"num":              "10",
 				},
 
 				HttpUrl:            "http://test.com",

@@ -12,6 +12,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.uber.org/zap"
 )
 
@@ -110,10 +111,10 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 				span.TraceId,
 				span.SpanId,
 				span.ServiceName,
-				errorEvent.Event.AttributeMap["exception.type"],
-				errorEvent.Event.AttributeMap["exception.message"],
-				errorEvent.Event.AttributeMap["exception.stacktrace"],
-				stringToBool(errorEvent.Event.AttributeMap["exception.escaped"]),
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionType],
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionMessage],
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionStacktrace],
+				stringToBool(errorEvent.Event.AttributeMap[semconv.AttributeExceptionEscaped]),
 				span.ResourcesString,
 			)
 			if err != nil {
@@ -270,7 +271,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, metrics map[string]usage.Metric) error {
 	var wg sync.WaitGroup
-	var chErr = make(chan error, 3)
+	var chErr = make(chan error, 2)
 
 	wg.Add(1)
 	go func() {
@@ -298,7 +299,8 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 		err := w.writeTagBatchV3(ctx, batch)
 		if err != nil {
 			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
-			chErr <- err
+			// Not returning the error as we don't to block the exporter
+			// chErr <- err
 		}
 	}()
 
@@ -311,7 +313,7 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 	}
 
 	close(chErr)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		if r := <-chErr; r != nil {
 			return fmt.Errorf("TracesWriteBatchOfSpansV3:%w", r)
 		}

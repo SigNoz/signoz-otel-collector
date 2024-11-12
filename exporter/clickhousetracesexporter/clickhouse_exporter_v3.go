@@ -128,7 +128,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 		spanAttribute.DataType = "bool"
 	} else if value.Type() == pcommon.ValueTypeMap {
 		// flatten map
-		result := flatten.FlattenJSON(value.Map().AsRaw(), "")
+		result := flatten.FlattenJSON(value.Map().AsRaw(), key)
 		for tempKey, tempVal := range result {
 			tSpanAttribute := SpanAttribute{
 				Key:      tempKey,
@@ -187,25 +187,29 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	})
 
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		spanAttribute := SpanAttribute{
-			Key:      k,
-			TagType:  "resource",
-			IsColumn: false,
-		}
-		resourceAttrs[k] = v.AsString()
-		if v.Type() == pcommon.ValueTypeDouble {
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeInt {
-			spanAttribute.NumberValue = float64(v.Int())
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeBool {
-			spanAttribute.DataType = "bool"
+		if v.Type() == pcommon.ValueTypeMap {
+			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
+			for tempKey, tempVal := range result {
+				strVal := fmt.Sprintf("%v", tempVal)
+				resourceAttrs[tempKey] = strVal
+				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+					Key:         tempKey,
+					TagType:     "tag",
+					IsColumn:    false,
+					StringValue: strVal,
+					DataType:    "string",
+				})
+			}
 		} else {
-			spanAttribute.StringValue = v.AsString()
-			spanAttribute.DataType = "string"
+			resourceAttrs[k] = v.AsString()
+			attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+				Key:         k,
+				TagType:     "resource",
+				IsColumn:    false,
+				StringValue: v.AsString(),
+				DataType:    "string",
+			})
 		}
-		attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 		return true
 
 	})
