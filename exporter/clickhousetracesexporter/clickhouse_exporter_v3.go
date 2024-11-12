@@ -194,7 +194,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 				resourceAttrs[tempKey] = strVal
 				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
 					Key:         tempKey,
-					TagType:     "tag",
+					TagType:     "resource",
 					IsColumn:    false,
 					StringValue: strVal,
 					DataType:    "string",
