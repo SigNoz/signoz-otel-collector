@@ -171,7 +171,12 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		}
 	}
 
-	attrMap := attributesData{}
+	attrMap := attributesData{
+		StringMap:      make(map[string]string),
+		NumberMap:      make(map[string]float64),
+		BoolMap:        make(map[string]bool),
+		SpanAttributes: []SpanAttribute{},
+	}
 
 	resourceAttrs := map[string]string{}
 
