@@ -131,6 +131,12 @@ type Span struct {
 	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
 }
 
+type ErrorEvent struct {
+	Event        Event  `json:"errorEvent,omitempty"`
+	ErrorID      string `json:"errorID,omitempty"`
+	ErrorGroupID string `json:"errorGroupID,omitempty"`
+}
+
 type SpanV3 struct {
 	TsBucketStart uint64 `json:"-"`
 	FingerPrint   string `json:"-"`
@@ -161,10 +167,8 @@ type SpanV3 struct {
 	ResourcesString map[string]string `json:"-"`
 
 	// for events
-	Events       []string `json:"event,omitempty"`
-	ErrorEvent   Event    `json:"-"`
-	ErrorID      string   `json:"-"`
-	ErrorGroupID string   `json:"-"`
+	Events      []string     `json:"event,omitempty"`
+	ErrorEvents []ErrorEvent `json:"-"`
 
 	ServiceName string `json:"serviceName,omitempty"` // for error table
 

@@ -80,23 +80,24 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 			event.AttributeMap[k] = v.AsString()
 			return true
 		})
+		errorEvent := ErrorEvent{}
 		if event.Name == "exception" {
 			event.IsError = true
-			span.ErrorEvent = event
+			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
 			uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
-			span.ErrorID = uuid
+			errorEvent.ErrorID = uuid
 			var hash [16]byte
 			if lowCardinalExceptionGrouping {
-				hash = md5.Sum([]byte(span.ServiceName + span.ErrorEvent.AttributeMap["exception.type"]))
+				hash = md5.Sum([]byte(span.ServiceName + errorEvent.Event.AttributeMap["exception.type"]))
 			} else {
-				hash = md5.Sum([]byte(span.ServiceName + span.ErrorEvent.AttributeMap["exception.type"] + span.ErrorEvent.AttributeMap["exception.message"]))
-
+				hash = md5.Sum([]byte(span.ServiceName + errorEvent.Event.AttributeMap["exception.type"] + errorEvent.Event.AttributeMap["exception.message"]))
 			}
-			span.ErrorGroupID = fmt.Sprintf("%x", hash)
+			errorEvent.ErrorGroupID = fmt.Sprintf("%x", hash)
 		}
 		stringEvent, _ := json.Marshal(event)
 		span.Events = append(span.Events, string(stringEvent))
+		span.ErrorEvents = append(span.ErrorEvents, errorEvent)
 	}
 }
 

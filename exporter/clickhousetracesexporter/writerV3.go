@@ -99,25 +99,27 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}
 
 	for _, span := range batchSpans {
-		if span.ErrorEvent.Name == "" {
-			continue
-		}
-		err = statement.Append(
-			time.Unix(0, int64(span.ErrorEvent.TimeUnixNano)),
-			span.ErrorID,
-			span.ErrorGroupID,
-			span.TraceId,
-			span.SpanId,
-			span.ServiceName,
-			span.ErrorEvent.AttributeMap["exception.type"],
-			span.ErrorEvent.AttributeMap["exception.message"],
-			span.ErrorEvent.AttributeMap["exception.stacktrace"],
-			stringToBool(span.ErrorEvent.AttributeMap["exception.escaped"]),
-			span.ResourcesString,
-		)
-		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
-			return err
+		for _, errorEvent := range span.ErrorEvents {
+			if errorEvent.Event.Name == "" {
+				continue
+			}
+			err = statement.Append(
+				time.Unix(0, int64(errorEvent.Event.TimeUnixNano)),
+				errorEvent.ErrorID,
+				errorEvent.ErrorGroupID,
+				span.TraceId,
+				span.SpanId,
+				span.ServiceName,
+				errorEvent.Event.AttributeMap["exception.type"],
+				errorEvent.Event.AttributeMap["exception.message"],
+				errorEvent.Event.AttributeMap["exception.stacktrace"],
+				stringToBool(errorEvent.Event.AttributeMap["exception.escaped"]),
+				span.ResourcesString,
+			)
+			if err != nil {
+				w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
+				return err
+			}
 		}
 	}
 
