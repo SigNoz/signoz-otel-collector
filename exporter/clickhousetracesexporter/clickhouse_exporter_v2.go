@@ -13,6 +13,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -80,24 +81,83 @@ func populateEventsV2(events ptrace.SpanEventSlice, span *SpanV2, lowCardinalExc
 			event.AttributeMap[k] = v.AsString()
 			return true
 		})
+		errorEvent := ErrorEvent{}
 		if event.Name == "exception" {
 			event.IsError = true
-			span.ErrorEvent = event
+			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
 			uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
-			span.ErrorID = uuid
+			errorEvent.ErrorID = uuid
 			var hash [16]byte
 			if lowCardinalExceptionGrouping {
-				hash = md5.Sum([]byte(span.ServiceName + span.ErrorEvent.AttributeMap["exception.type"]))
+				hash = md5.Sum([]byte(span.ServiceName + errorEvent.Event.AttributeMap["exception.type"]))
 			} else {
-				hash = md5.Sum([]byte(span.ServiceName + span.ErrorEvent.AttributeMap["exception.type"] + span.ErrorEvent.AttributeMap["exception.message"]))
-
+				hash = md5.Sum([]byte(span.ServiceName + errorEvent.Event.AttributeMap["exception.type"] + errorEvent.Event.AttributeMap["exception.message"]))
 			}
-			span.ErrorGroupID = fmt.Sprintf("%x", hash)
+			errorEvent.ErrorGroupID = fmt.Sprintf("%x", hash)
 		}
 		stringEvent, _ := json.Marshal(event)
 		span.Events = append(span.Events, string(stringEvent))
+		span.ErrorEvents = append(span.ErrorEvents, errorEvent)
 	}
+}
+
+type attributesData struct {
+	StringMap      map[string]string
+	NumberMap      map[string]float64
+	BoolMap        map[string]bool
+	SpanAttributes []SpanAttribute
+}
+
+func (attrMap *attributesData) add(key string, value pcommon.Value) {
+	spanAttribute := SpanAttribute{
+		Key:      key,
+		TagType:  "tag",
+		IsColumn: false,
+	}
+
+	if value.Type() == pcommon.ValueTypeDouble {
+		attrMap.NumberMap[key] = value.Double()
+		spanAttribute.NumberValue = value.Double()
+		spanAttribute.DataType = "float64"
+	} else if value.Type() == pcommon.ValueTypeInt {
+		attrMap.NumberMap[key] = float64(value.Int())
+		spanAttribute.NumberValue = float64(value.Int())
+		spanAttribute.DataType = "float64"
+	} else if value.Type() == pcommon.ValueTypeBool {
+		attrMap.BoolMap[key] = value.Bool()
+		spanAttribute.DataType = "bool"
+	} else if value.Type() == pcommon.ValueTypeMap {
+		// flatten map
+		result := flatten.FlattenJSON(value.Map().AsRaw(), "")
+		for tempKey, tempVal := range result {
+			tSpanAttribute := SpanAttribute{
+				Key:      tempKey,
+				TagType:  "tag",
+				IsColumn: false,
+			}
+			switch tempVal := tempVal.(type) {
+			case string:
+				attrMap.StringMap[tempKey] = tempVal
+				tSpanAttribute.StringValue = tempVal
+				tSpanAttribute.DataType = "string"
+			case float64:
+				attrMap.NumberMap[tempKey] = tempVal
+				tSpanAttribute.NumberValue = tempVal
+				tSpanAttribute.DataType = "float64"
+			case bool:
+				attrMap.BoolMap[tempKey] = tempVal
+				tSpanAttribute.DataType = "bool"
+			}
+			attrMap.SpanAttributes = append(attrMap.SpanAttributes, tSpanAttribute)
+		}
+		return
+	} else {
+		attrMap.StringMap[key] = value.AsString()
+		spanAttribute.StringValue = value.AsString()
+		spanAttribute.DataType = "string"
+	}
+	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
 func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV2, error) {
@@ -112,46 +172,22 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 		}
 	}
 
-	attributes := otelSpan.Attributes()
-	resourceAttributes := resource.Attributes()
-	tagMap := map[string]string{}
-	stringTagMap := map[string]string{}
-	numberTagMap := map[string]float64{}
-	boolTagMap := map[string]bool{}
-	spanAttributes := []SpanAttribute{}
+	attrMap := attributesData{
+		StringMap:      make(map[string]string),
+		NumberMap:      make(map[string]float64),
+		BoolMap:        make(map[string]bool),
+		SpanAttributes: []SpanAttribute{},
+	}
 
 	resourceAttrs := map[string]string{}
 
-	attributes.Range(func(k string, v pcommon.Value) bool {
-		tagMap[k] = v.AsString()
-		spanAttribute := SpanAttribute{
-			Key:      k,
-			TagType:  "tag",
-			IsColumn: false,
-		}
-		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeInt {
-			numberTagMap[k] = float64(v.Int())
-			spanAttribute.NumberValue = float64(v.Int())
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeBool {
-			boolTagMap[k] = v.Bool()
-			spanAttribute.DataType = "bool"
-		} else {
-			stringTagMap[k] = v.AsString()
-			spanAttribute.StringValue = v.AsString()
-			spanAttribute.DataType = "string"
-		}
-		spanAttributes = append(spanAttributes, spanAttribute)
+	otelSpan.Attributes().Range(func(k string, v pcommon.Value) bool {
+		attrMap.add(k, v)
 		return true
 
 	})
 
-	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		tagMap[k] = v.AsString()
+	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
 		spanAttribute := SpanAttribute{
 			Key:      k,
 			TagType:  "resource",
@@ -170,7 +206,7 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 			spanAttribute.StringValue = v.AsString()
 			spanAttribute.DataType = "string"
 		}
-		spanAttributes = append(spanAttributes, spanAttribute)
+		attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 		return true
 
 	})
@@ -203,9 +239,9 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 		StatusMessage:    otelSpan.Status().Message(),
 		StatusCodeString: otelSpan.Status().Code().String(),
 
-		AttributeString:  stringTagMap,
-		AttributesNumber: numberTagMap,
-		AttributesBool:   boolTagMap,
+		AttributeString:  attrMap.StringMap,
+		AttributesNumber: attrMap.NumberMap,
+		AttributesBool:   attrMap.BoolMap,
 
 		ResourcesString: resourceAttrs,
 
@@ -216,14 +252,14 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 		Tenant: &tenant,
 
 		References:     string(referencesBytes),
-		SpanAttributes: spanAttributes,
+		SpanAttributes: attrMap.SpanAttributes,
 	}
 
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
 
-	populateCustomAttrsAndAttrs(attributes, span)
+	populateCustomAttrsAndAttrs(otelSpan.Attributes(), span)
 	populateEventsV2(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
 	return span, nil
 }
