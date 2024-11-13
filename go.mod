@@ -233,6 +233,7 @@ require (
 	go.opentelemetry.io/collector/receiver v0.111.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.111.0
 	go.opentelemetry.io/collector/semconv v0.111.0
+	go.opentelemetry.io/collector/service v0.111.0
 	go.opentelemetry.io/otel/trace v1.30.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
@@ -392,7 +393,7 @@ require (
 	github.com/gocql/gocql v1.7.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
-	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
@@ -579,7 +580,6 @@ require (
 	go.opentelemetry.io/collector/pdata/testdata v0.111.0 // indirect
 	go.opentelemetry.io/collector/processor/processorprofiles v0.111.0 // indirect
 	go.opentelemetry.io/collector/receiver/receiverprofiles v0.111.0 // indirect
-	go.opentelemetry.io/collector/service v0.111.0 // indirect
 	go.opentelemetry.io/contrib/config v0.10.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.29.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.6.0 // indirect
