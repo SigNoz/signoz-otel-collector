@@ -195,7 +195,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 
 			ch.timeSeriesRW.Lock()
 			if ch.prevShardCount != shardCount {
-				ch.l.Info("Shard count changed from %d to %d. Resetting time series map.", zap.Uint64("prev", ch.prevShardCount), zap.Uint64("current", shardCount))
+				ch.l.Info("Shard count changed. Resetting time series map.", zap.Uint64("prev", ch.prevShardCount), zap.Uint64("current", shardCount))
 				ch.timeSeries = make(map[uint64]struct{})
 			}
 			ch.prevShardCount = shardCount
@@ -273,7 +273,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		fingerprintToName[f][envLabel] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
-		ch.l.Debug("got %d fingerprints, but only %d of them were unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
+		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
 
 	// find new time series
