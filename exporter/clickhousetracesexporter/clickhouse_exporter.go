@@ -98,6 +98,7 @@ type storage struct {
 	config         storageConfig
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
+	useNewSchema   bool
 }
 
 type storageConfig struct {

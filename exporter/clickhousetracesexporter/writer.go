@@ -58,6 +58,10 @@ type SpanWriter struct {
 	encoding          Encoding
 	exporterId        uuid.UUID
 	durationHistogram metricapi.Float64Histogram
+
+	indexTableV3    string
+	resourceTableV3 string
+	useNewSchema    bool
 }
 
 type WriterOptions struct {
@@ -72,6 +76,10 @@ type WriterOptions struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	indexTableV3    string
+	resourceTableV3 string
+	useNewSchema    bool
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -102,6 +110,8 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
 		durationHistogram: durationHistogram,
+		indexTableV3:      options.indexTableV3,
+		useNewSchema:      options.useNewSchema,
 	}
 
 	return writer
