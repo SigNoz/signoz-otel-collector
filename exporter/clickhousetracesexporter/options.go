@@ -39,6 +39,8 @@ const (
 	defaultDependencyGraphDbMV      string   = "dependency_graph_minutes_db_calls_mv"
 	DependencyGraphMessagingMV      string   = "dependency_graph_minutes_messaging_calls_mv"
 	defaultEncoding                 Encoding = EncodingJSON
+	defaultIndexTableV3             string   = "distributed_signoz_index_v3"
+	defaultResourceTableV3          string   = "distributed_traces_v3_resource"
 )
 
 // NamespaceConfig is Clickhouse's internal configuration data
@@ -65,6 +67,8 @@ type namespaceConfig struct {
 	Connector                  Connector
 	ExporterId                 uuid.UUID
 	UseNewSchema               bool
+	IndexTableV3               string
+	ResourceTableV3            string
 }
 
 // Connecto defines how to connect to the database
@@ -137,6 +141,8 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, us
 			Connector:                  defaultConnector,
 			ExporterId:                 exporterId,
 			UseNewSchema:               useNewSchema,
+			IndexTableV3:               defaultIndexTableV3,
+			ResourceTableV3:            defaultResourceTableV3,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -153,6 +159,8 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, us
 				Connector:       defaultConnector,
 				ExporterId:      exporterId,
 				UseNewSchema:    useNewSchema,
+				IndexTableV3:    defaultIndexTableV3,
+				ResourceTableV3: defaultResourceTableV3,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}

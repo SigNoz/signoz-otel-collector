@@ -120,7 +120,10 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
-		useNewSchema:      cfg.UseNewSchema,
+
+		useNewSchema:    cfg.UseNewSchema,
+		indexTableV3:    cfg.IndexTableV3,
+		resourceTableV3: cfg.ResourceTableV3,
 	})
 }
 
@@ -141,7 +144,10 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
-		useNewSchema:      cfg.UseNewSchema,
+
+		useNewSchema:    cfg.UseNewSchema,
+		indexTableV3:    cfg.IndexTableV3,
+		resourceTableV3: cfg.ResourceTableV3,
 	})
 }
 
