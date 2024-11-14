@@ -20,8 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV2) {
-
+func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
@@ -70,7 +69,7 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV2) {
 
 }
 
-func populateEventsV2(events ptrace.SpanEventSlice, span *SpanV2, lowCardinalExceptionGrouping bool) {
+func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExceptionGrouping bool) {
 	for i := 0; i < events.Len(); i++ {
 		event := Event{}
 		event.Name = events.At(i).Name()
@@ -129,7 +128,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 		spanAttribute.DataType = "bool"
 	} else if value.Type() == pcommon.ValueTypeMap {
 		// flatten map
-		result := flatten.FlattenJSON(value.Map().AsRaw(), "")
+		result := flatten.FlattenJSON(value.Map().AsRaw(), key)
 		for tempKey, tempVal := range result {
 			tSpanAttribute := SpanAttribute{
 				Key:      tempKey,
@@ -160,7 +159,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV2, error) {
+func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -188,25 +187,29 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 	})
 
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		spanAttribute := SpanAttribute{
-			Key:      k,
-			TagType:  "resource",
-			IsColumn: false,
-		}
-		resourceAttrs[k] = v.AsString()
-		if v.Type() == pcommon.ValueTypeDouble {
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeInt {
-			spanAttribute.NumberValue = float64(v.Int())
-			spanAttribute.DataType = "float64"
-		} else if v.Type() == pcommon.ValueTypeBool {
-			spanAttribute.DataType = "bool"
+		if v.Type() == pcommon.ValueTypeMap {
+			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
+			for tempKey, tempVal := range result {
+				strVal := fmt.Sprintf("%v", tempVal)
+				resourceAttrs[tempKey] = strVal
+				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+					Key:         tempKey,
+					TagType:     "resource",
+					IsColumn:    false,
+					StringValue: strVal,
+					DataType:    "string",
+				})
+			}
 		} else {
-			spanAttribute.StringValue = v.AsString()
-			spanAttribute.DataType = "string"
+			resourceAttrs[k] = v.AsString()
+			attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+				Key:         k,
+				TagType:     "resource",
+				IsColumn:    false,
+				StringValue: v.AsString(),
+				DataType:    "string",
+			})
 		}
-		attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 		return true
 
 	})
@@ -216,7 +219,7 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource(resource)
 
-	var span *SpanV2 = &SpanV2{
+	var span *SpanV3 = &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
 
@@ -260,7 +263,7 @@ func newStructuredSpanV2(bucketStart uint64, fingerprint string, otelSpan ptrace
 	}
 
 	populateCustomAttrsAndAttrs(otelSpan.Attributes(), span)
-	populateEventsV2(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
+	populateEventsV3(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
 	return span, nil
 }
 
@@ -271,10 +274,10 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 const (
-	DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS = 1800
+	DISTRIBUTED_TRACES_RESOURCE_V3_SECONDS = 1800
 )
 
-func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
+func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -285,7 +288,7 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 		return errors.New("shutdown has been called")
 	default:
 		rss := td.ResourceSpans()
-		var batchOfSpans []*SpanV2
+		var batchOfSpans []*SpanV3
 
 		count := 0
 		size := 0
@@ -315,7 +318,7 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
 
-					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS)
+					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), DISTRIBUTED_TRACES_RESOURCE_V3_SECONDS)
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
 						resourcesSeen[int64(lBucketStart)] = map[string]string{}
 					}
@@ -325,9 +328,9 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
-					structuredSpan, err := newStructuredSpanV2(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
+					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
 					if err != nil {
-						zap.S().Error("Error in creating newStructuredSpanV2: ", err)
+						zap.S().Error("Error in creating newStructuredSpanV3: ", err)
 						return err
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
@@ -343,14 +346,14 @@ func (s *storage) pushTraceDataV2(ctx context.Context, td ptrace.Traces) error {
 			usage.AddMetric(metrics, "default", int64(count), int64(size))
 		}
 
-		err := s.Writer.WriteBatchOfSpansV2(ctx, batchOfSpans, metrics)
+		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics)
 		if err != nil {
 			zap.S().Error("Error in writing spans to clickhouse: ", err)
 			return err
 		}
 
 		// write the resources
-		err = s.Writer.WriteResourcesV2(ctx, resourcesSeen)
+		err = s.Writer.WriteResourcesV3(ctx, resourcesSeen)
 		if err != nil {
 			zap.S().Error("Error in writing resources to clickhouse: ", err)
 			return err

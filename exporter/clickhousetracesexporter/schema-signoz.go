@@ -136,7 +136,8 @@ type ErrorEvent struct {
 	ErrorID      string `json:"errorID,omitempty"`
 	ErrorGroupID string `json:"errorGroupID,omitempty"`
 }
-type SpanV2 struct {
+
+type SpanV3 struct {
 	TsBucketStart uint64 `json:"-"`
 	FingerPrint   string `json:"-"`
 
@@ -169,7 +170,7 @@ type SpanV2 struct {
 	Events      []string     `json:"event,omitempty"`
 	ErrorEvents []ErrorEvent `json:"-"`
 
-	ServiceName string `json:"serviceName,omitempty"` // used only in error table
+	ServiceName string `json:"serviceName,omitempty"` // for error table
 
 	// custom columns
 	ResponseStatusCode string `json:"-"`

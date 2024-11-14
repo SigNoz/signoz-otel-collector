@@ -1,7 +1,5 @@
 package schemamigrator
 
-// var TracesMigrations = []SchemaMigrationRecord{}
-
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
 	{

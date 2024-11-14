@@ -12,10 +12,11 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.uber.org/zap"
 )
 
-func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2) error {
+func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var statement driver.Batch
 	var err error
 
@@ -24,7 +25,7 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 			_ = statement.Abort()
 		}
 	}()
-	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, "distributed_signoz_index_v3"), driver.WithReleaseConnection())
+	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
 		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
 		return err
@@ -77,13 +78,13 @@ func (w *SpanWriter) writeIndexBatchV2(ctx context.Context, batchSpans []*SpanV2
 
 	ctx, _ = tag.New(ctx,
 		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.indexTable),
+		tag.Upsert(tableKey, w.indexTableV3),
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
-func (w *SpanWriter) writeErrorBatchV2(ctx context.Context, batchSpans []*SpanV2) error {
+func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var statement driver.Batch
 	var err error
 
@@ -110,10 +111,10 @@ func (w *SpanWriter) writeErrorBatchV2(ctx context.Context, batchSpans []*SpanV2
 				span.TraceId,
 				span.SpanId,
 				span.ServiceName,
-				errorEvent.Event.AttributeMap["exception.type"],
-				errorEvent.Event.AttributeMap["exception.message"],
-				errorEvent.Event.AttributeMap["exception.stacktrace"],
-				stringToBool(errorEvent.Event.AttributeMap["exception.escaped"]),
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionType],
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionMessage],
+				errorEvent.Event.AttributeMap[semconv.AttributeExceptionStacktrace],
+				stringToBool(errorEvent.Event.AttributeMap[semconv.AttributeExceptionEscaped]),
 				span.ResourcesString,
 			)
 			if err != nil {
@@ -135,7 +136,7 @@ func (w *SpanWriter) writeErrorBatchV2(ctx context.Context, batchSpans []*SpanV2
 	return err
 }
 
-func (w *SpanWriter) writeTagBatchV2(ctx context.Context, batchSpans []*SpanV2) error {
+func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var tagKeyStatement driver.Batch
 	var tagStatement driver.Batch
 	var err error
@@ -268,42 +269,41 @@ func (w *SpanWriter) writeTagBatchV2(ctx context.Context, batchSpans []*SpanV2) 
 }
 
 // WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2, metrics map[string]usage.Metric) error {
+func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, metrics map[string]usage.Metric) error {
 	var wg sync.WaitGroup
-	var err error
+	var chErr = make(chan error, 2)
 
-	if w.indexTable != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err = w.writeIndexBatchV2(ctx, batch)
-			if err != nil {
-				w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
-			}
-		}()
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := w.writeIndexBatchV3(ctx, batch)
+		if err != nil {
+			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
+			chErr <- err
+		}
+	}()
 
-	if w.errorTable != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err = w.writeErrorBatchV2(ctx, batch)
-			if err != nil {
-				w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
-			}
-		}()
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := w.writeErrorBatchV3(ctx, batch)
+		if err != nil {
+			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
+			chErr <- err
+		}
+	}()
 
-	if w.attributeTable != "" && w.attributeKeyTable != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err = w.writeTagBatchV2(ctx, batch)
-			if err != nil {
-				w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
-			}
-		}()
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := w.writeTagBatchV3(ctx, batch)
+		if err != nil {
+			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
+			// Not returning the error as we don't to block the exporter
+			// chErr <- err
+		}
+	}()
+
 	wg.Wait()
 
 	if w.useNewSchema {
@@ -312,21 +312,28 @@ func (w *SpanWriter) WriteBatchOfSpansV2(ctx context.Context, batch []*SpanV2, m
 		}
 	}
 
-	return err
+	close(chErr)
+	for i := 0; i < 2; i++ {
+		if r := <-chErr; r != nil {
+			return fmt.Errorf("TracesWriteBatchOfSpansV3:%w", r)
+		}
+	}
+
+	return nil
 }
 
-func (w *SpanWriter) WriteResourcesV2(ctx context.Context, resourcesSeen map[int64]map[string]string) error {
-	var insertResourcesStmtV2 driver.Batch
+func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int64]map[string]string) error {
+	var insertResourcesStmtV3 driver.Batch
 
 	defer func() {
-		if insertResourcesStmtV2 != nil {
-			_ = insertResourcesStmtV2.Abort()
+		if insertResourcesStmtV3 != nil {
+			_ = insertResourcesStmtV3.Abort()
 		}
 	}()
 
-	insertResourcesStmtV2, err := w.db.PrepareBatch(
+	insertResourcesStmtV3, err := w.db.PrepareBatch(
 		ctx,
-		fmt.Sprintf("INSERT into %s.%s", w.traceDatabase, "distributed_traces_v3_resource"),
+		fmt.Sprintf("INSERT into %s.%s", w.traceDatabase, w.resourceTableV3),
 		driver.WithReleaseConnection(),
 	)
 	if err != nil {
@@ -335,17 +342,25 @@ func (w *SpanWriter) WriteResourcesV2(ctx context.Context, resourcesSeen map[int
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
-			insertResourcesStmtV2.Append(
+			insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,
 			)
 		}
 	}
-	err = insertResourcesStmtV2.Send()
+	start := time.Now()
+
+	err = insertResourcesStmtV3.Send()
 	if err != nil {
 		return fmt.Errorf("couldn't send resource fingerprints :%w", err)
 	}
+
+	ctx, _ = tag.New(ctx,
+		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
+		tag.Upsert(tableKey, w.resourceTableV3),
+	)
+	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return nil
 }
 
