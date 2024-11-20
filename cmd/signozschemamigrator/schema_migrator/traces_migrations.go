@@ -362,13 +362,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
 						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.parent_span_id = B.span_id)`,
 			},
-			DropProjectionOperation{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v2",
-				Projection: Projection{
-					Name: "timestampSort",
-				},
-			},
 		},
 		DownItems: []Operation{
 			DropTableOperation{
@@ -416,14 +409,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 							serviceName
 						FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
 						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
-			},
-			CreateProjectionOperation{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v2",
-				Projection: Projection{
-					Name:  "timestampSort",
-					Query: "SELECT * ORDER BY timestamp",
-				},
 			},
 		},
 	},
