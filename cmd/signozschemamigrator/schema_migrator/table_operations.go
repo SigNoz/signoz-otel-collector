@@ -94,6 +94,7 @@ type DropTableOperation struct {
 	cluster  string
 	Database string
 	Table    string
+	Settings TableSettings
 }
 
 func (d DropTableOperation) OnCluster(cluster string) Operation {
@@ -131,6 +132,10 @@ func (d DropTableOperation) ToSQL() string {
 	if d.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
 		sql.WriteString(d.cluster)
+	}
+	if len(d.Settings) > 0 {
+		sql.WriteString(" SETTINGS ")
+		sql.WriteString(d.Settings.ToSQL())
 	}
 	return sql.String()
 }
