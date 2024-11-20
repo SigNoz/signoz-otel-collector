@@ -164,7 +164,7 @@ type SpanV3 struct {
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
-	ResourcesString map[string]string `json:"-"`
+	ResourcesString map[string]string `json:"resources_string,omitempty"`
 
 	// for events
 	Events      []string     `json:"event,omitempty"`
