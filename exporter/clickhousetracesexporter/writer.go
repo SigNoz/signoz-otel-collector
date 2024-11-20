@@ -30,6 +30,9 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -54,6 +57,7 @@ type SpanWriter struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+	durationHistogram metricapi.Float64Histogram
 
 	indexTableV3    string
 	resourceTableV3 string
@@ -62,6 +66,7 @@ type SpanWriter struct {
 
 type WriterOptions struct {
 	logger            *zap.Logger
+	meter             metricapi.Meter
 	db                clickhouse.Conn
 	traceDatabase     string
 	spansTable        string
@@ -82,6 +87,17 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
+
+	durationHistogram, err := options.meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil
+	}
+
 	writer := &SpanWriter{
 		logger:            options.logger,
 		db:                options.db,
@@ -93,10 +109,9 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
-
-		indexTableV3:    options.indexTableV3,
-		resourceTableV3: options.resourceTableV3,
-		useNewSchema:    options.useNewSchema,
+		durationHistogram: durationHistogram,
+		indexTableV3:      options.indexTableV3,
+		useNewSchema:      options.useNewSchema,
 	}
 
 	return writer
@@ -165,11 +180,14 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 
 	err = statement.Send()
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.indexTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.indexTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
@@ -276,12 +294,13 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 
 	tagStart := time.Now()
 	err = tagStatement.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-			tag.Upsert(tableKey, w.attributeTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(tagStart).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.attributeTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
 	if err != nil {
 		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err))
@@ -290,12 +309,13 @@ func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) erro
 
 	tagKeyStart := time.Now()
 	err = tagKeyStatement.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-			tag.Upsert(tableKey, w.attributeKeyTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(tagKeyStart).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.attributeKeyTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
 	if err != nil {
 		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err))
@@ -347,11 +367,14 @@ func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) er
 
 	err = statement.Send()
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.errorTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.errorTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
@@ -401,11 +424,14 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 	start := time.Now()
 
 	err = statement.Send()
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.spansTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.spansTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	if err != nil {
 		return err
 	}

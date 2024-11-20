@@ -4,82 +4,73 @@
 package signozkafkareceiver // import "github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 
 import (
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	"go.opentelemetry.io/otel/metric"
 )
 
-var (
-	tagInstanceName, _ = tag.NewKey("name")
+type KafkaReceiverMetrics struct {
+	messagesCount    metric.Int64Counter
+	messageOffset    metric.Int64Gauge
+	messageOffsetLag metric.Int64Gauge
 
-	statMessageCount     = stats.Int64("kafka_receiver_messages", "Number of received messages", stats.UnitDimensionless)
-	statMessageOffset    = stats.Int64("kafka_receiver_current_offset", "Current message offset", stats.UnitDimensionless)
-	statMessageOffsetLag = stats.Int64("kafka_receiver_offset_lag", "Current offset lag", stats.UnitDimensionless)
+	partitionStart metric.Int64Counter
+	partitionClose metric.Int64Counter
 
-	statPartitionStart = stats.Int64("kafka_receiver_partition_start", "Number of started partitions", stats.UnitDimensionless)
-	statPartitionClose = stats.Int64("kafka_receiver_partition_close", "Number of finished partitions", stats.UnitDimensionless)
+	processingTime metric.Float64Histogram
+}
 
-	processingTime = stats.Int64("kafka_receiver_processing_time_milliseconds", "Time taken to process a kafka message in ms", stats.UnitMilliseconds)
-)
-
-// MetricViews return metric views for Kafka receiver.
-func MetricViews() []*view.View {
-	tagKeys := []tag.Key{tagInstanceName}
-
-	countMessages := &view.View{
-		Name:        statMessageCount.Name(),
-		Measure:     statMessageCount,
-		Description: statMessageCount.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.Sum(),
+func NewKafkaReceiverMetrics(meter metric.Meter) (*KafkaReceiverMetrics, error) {
+	messagesCount, err := meter.Int64Counter(
+		"kafka_receiver_messages",
+		metric.WithDescription("Number of received messages"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	messageOffset, err := meter.Int64Gauge(
+		"kafka_receiver_current_offset",
+		metric.WithDescription("Current message offset"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	messageOffsetLag, err := meter.Int64Gauge(
+		"kafka_receiver_offset_lag",
+		metric.WithDescription("Current offset lag"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	partitionStart, err := meter.Int64Counter(
+		"kafka_receiver_partition_start",
+		metric.WithDescription("Number of started partitions"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	partitionClose, err := meter.Int64Counter(
+		"kafka_receiver_partition_close",
+		metric.WithDescription("Number of finished partitions"),
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	lastValueOffset := &view.View{
-		Name:        statMessageOffset.Name(),
-		Measure:     statMessageOffset,
-		Description: statMessageOffset.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.LastValue(),
+	processingTime, err := meter.Float64Histogram(
+		"kafka_receiver_processing_time_milliseconds",
+		metric.WithDescription("Time taken to process a kafka message in ms"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	lastValueOffsetLag := &view.View{
-		Name:        statMessageOffsetLag.Name(),
-		Measure:     statMessageOffsetLag,
-		Description: statMessageOffsetLag.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.LastValue(),
-	}
-
-	countPartitionStart := &view.View{
-		Name:        statPartitionStart.Name(),
-		Measure:     statPartitionStart,
-		Description: statPartitionStart.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.Sum(),
-	}
-
-	countPartitionClose := &view.View{
-		Name:        statPartitionClose.Name(),
-		Measure:     statPartitionClose,
-		Description: statPartitionClose.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.Sum(),
-	}
-
-	processingTimeView := &view.View{
-		Name:        processingTime.Name(),
-		Measure:     processingTime,
-		Description: processingTime.Description(),
-		TagKeys:     tagKeys,
-		Aggregation: view.Distribution(100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1750, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000),
-	}
-
-	return []*view.View{
-		countMessages,
-		lastValueOffset,
-		lastValueOffsetLag,
-		countPartitionStart,
-		countPartitionClose,
-		processingTimeView,
-	}
+	return &KafkaReceiverMetrics{
+		messagesCount:    messagesCount,
+		messageOffset:    messageOffset,
+		messageOffsetLag: messageOffsetLag,
+		partitionStart:   partitionStart,
+		partitionClose:   partitionClose,
+		processingTime:   processingTime,
+	}, nil
 }

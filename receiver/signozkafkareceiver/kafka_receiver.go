@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
@@ -139,6 +139,11 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 	if err != nil {
 		return err
 	}
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	if err != nil {
+		return err
+	}
+
 	consumerGroup := &tracesConsumerGroupHandler{
 		id:                c.settings.ID,
 		logger:            c.settings.Logger,
@@ -154,6 +159,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 	go func() {
@@ -245,6 +251,12 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 	if err != nil {
 		return err
 	}
+
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	if err != nil {
+		return err
+	}
+
 	metricsConsumerGroup := &metricsConsumerGroupHandler{
 		id:                c.settings.ID,
 		logger:            c.settings.Logger,
@@ -260,6 +272,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 	go func() {
@@ -379,6 +392,11 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		return err
 	}
 
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	if err != nil {
+		return err
+	}
+
 	logsConsumerGroup := &logsConsumerGroupHandler{
 		id:                c.settings.ID,
 		logger:            c.settings.Logger,
@@ -394,6 +412,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 	go func() {
@@ -433,6 +452,8 @@ type baseConsumerGroupHandler struct {
 	retryInterval   time.Duration
 	pausePartition  chan struct{}
 	resumePartition chan struct{}
+
+	metrics *KafkaReceiverMetrics
 }
 
 // wrap is now a method of BaseConsumerGroupHandler
@@ -529,14 +550,20 @@ func (c *tracesConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) 
 	c.readyCloser.Do(func() {
 		close(c.ready)
 	})
-	statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.Name())}
-	_ = stats.RecordWithTags(session.Context(), statsTags, statPartitionStart.M(1))
+	c.metrics.partitionStart.Add(
+		session.Context(),
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
 func (c *tracesConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
-	statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.Name())}
-	_ = stats.RecordWithTags(session.Context(), statsTags, statPartitionClose.M(1))
+	c.metrics.partitionClose.Add(
+		session.Context(),
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
@@ -564,11 +591,21 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			ctx := c.obsrecv.StartTracesOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(ctx, statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
+			c.metrics.messagesCount.Add(
+				session.Context(),
+				1,
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffset.Record(
+				session.Context(),
+				int64(message.Offset),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffsetLag.Record(
+				session.Context(),
+				int64(claim.HighWaterMarkOffset()-message.Offset-1),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
 
 			traces, err := c.unmarshaler.Unmarshal(message.Value)
 			if err != nil {
@@ -597,7 +634,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			c.metrics.processingTime.Record(session.Context(), float64(time.Since(start).Milliseconds()))
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
@@ -615,14 +652,20 @@ func (c *metricsConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession)
 	c.readyCloser.Do(func() {
 		close(c.ready)
 	})
-	statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.Name())}
-	_ = stats.RecordWithTags(session.Context(), statsTags, statPartitionStart.M(1))
+	c.metrics.partitionStart.Add(
+		session.Context(),
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
 func (c *metricsConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
-	statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.Name())}
-	_ = stats.RecordWithTags(session.Context(), statsTags, statPartitionClose.M(1))
+	c.metrics.partitionClose.Add(
+		session.Context(),
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
@@ -647,11 +690,21 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			}
 
 			ctx := c.obsrecv.StartMetricsOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(ctx, statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
+			c.metrics.messagesCount.Add(
+				session.Context(),
+				1,
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffset.Record(
+				session.Context(),
+				int64(message.Offset),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffsetLag.Record(
+				session.Context(),
+				int64(claim.HighWaterMarkOffset()-message.Offset-1),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
 
 			metrics, err := c.unmarshaler.Unmarshal(message.Value)
 			if err != nil {
@@ -678,7 +731,11 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			c.metrics.processingTime.Record(
+				session.Context(),
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
@@ -696,18 +753,20 @@ func (c *logsConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession) er
 	c.readyCloser.Do(func() {
 		close(c.ready)
 	})
-	_ = stats.RecordWithTags(
+	c.metrics.partitionStart.Add(
 		session.Context(),
-		[]tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())},
-		statPartitionStart.M(1))
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
 func (c *logsConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
-	_ = stats.RecordWithTags(
+	c.metrics.partitionClose.Add(
 		session.Context(),
-		[]tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())},
-		statPartitionClose.M(1))
+		1,
+		metric.WithAttributes(attribute.String("name", c.id.String())),
+	)
 	return nil
 }
 
@@ -735,13 +794,21 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 
 			ctx := c.obsrecv.StartLogsOp(session.Context())
-			statsTags := []tag.Mutator{tag.Upsert(tagInstanceName, c.id.String())}
-			_ = stats.RecordWithTags(
-				ctx,
-				statsTags,
-				statMessageCount.M(1),
-				statMessageOffset.M(message.Offset),
-				statMessageOffsetLag.M(claim.HighWaterMarkOffset()-message.Offset-1))
+			c.metrics.messagesCount.Add(
+				session.Context(),
+				1,
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffset.Record(
+				session.Context(),
+				int64(message.Offset),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
+			c.metrics.messageOffsetLag.Record(
+				session.Context(),
+				int64(claim.HighWaterMarkOffset()-message.Offset-1),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
 
 			logs, err := c.unmarshaler.Unmarshal(message.Value)
 			if err != nil {
@@ -768,7 +835,11 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
-			err = stats.RecordWithTags(ctx, statsTags, processingTime.M(time.Since(start).Milliseconds()))
+			c.metrics.processingTime.Record(
+				session.Context(),
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(attribute.String("name", c.id.String())),
+			)
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
