@@ -418,14 +418,14 @@ var TracesMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_traces",
 				Table:    "durationSortMV",
-				// this is added so that we can avoid the following error
-				//1. Size (453.51 GB) is greater than max_[table/partition]_size_to_drop (50.00 GB)
-				// https://stackoverflow.com/questions/78162269/cannot-drop-large-materialized-view-in-clickhouse
-				Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
 			},
 			DropTableOperation{
 				Database: "signoz_traces",
 				Table:    "distributed_durationSort",
+				// this is added so that we can avoid the following error
+				//1. Size (453.51 GB) is greater than max_[table/partition]_size_to_drop (50.00 GB)
+				// https://stackoverflow.com/questions/78162269/cannot-drop-large-materialized-view-in-clickhouse
+				Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
 			},
 			DropTableOperation{
 				Database: "signoz_traces",

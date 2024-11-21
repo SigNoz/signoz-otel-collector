@@ -86,7 +86,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		},
 		wg:           new(sync.WaitGroup),
 		closeChan:    make(chan struct{}),
-		useNewSchema: cfg.(*Config).UseNewSchema,
+		useNewSchema: configClickHouse.UseNewSchema,
 	}
 
 	return &storage, nil
