@@ -292,9 +292,9 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
-						PartitionBy: "toDate(start)",
+						PartitionBy: "toDate(end)",
 						OrderBy:     "(trace_id)",
-						TTL:         "toDateTime(start) + toIntervalSecond(1296000)",
+						TTL:         "toDateTime(end) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -422,15 +422,14 @@ var TracesMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_traces",
 				Table:    "distributed_durationSort",
-				// this is added so that we can avoid the following error
-				//1. Size (453.51 GB) is greater than max_[table/partition]_size_to_drop (50.00 GB)
-				// https://stackoverflow.com/questions/78162269/cannot-drop-large-materialized-view-in-clickhouse
-				Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
 			},
 			DropTableOperation{
 				Database: "signoz_traces",
 				Table:    "durationSort",
-				// add settings for deleting large tables
+				// this is added so that we can avoid the following error
+				//1. Size (453.51 GB) is greater than max_[table/partition]_size_to_drop (50.00 GB)
+				// https://stackoverflow.com/questions/78162269/cannot-drop-large-materialized-view-in-clickhouse
+				Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
 			},
 		},
 		DownItems: []Operation{},
