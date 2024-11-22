@@ -31,6 +31,7 @@ type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
 	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
+	UseNewSchema                 bool `mapstructure:"use_new_schema" default:"false"`
 }
 
 var _ component.Config = (*Config)(nil)

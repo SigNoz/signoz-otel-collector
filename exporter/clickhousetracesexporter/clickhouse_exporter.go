@@ -84,8 +84,9 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		config: storageConfig{
 			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
 		},
-		wg:        new(sync.WaitGroup),
-		closeChan: make(chan struct{}),
+		wg:           new(sync.WaitGroup),
+		closeChan:    make(chan struct{}),
+		useNewSchema: configClickHouse.UseNewSchema,
 	}
 
 	return &storage, nil
@@ -188,6 +189,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
+
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
@@ -403,6 +405,16 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+	// if the new schema is enabled don't write to the old tables
+	err := s.pushTraceDataV3(ctx, td)
+	if err != nil {
+		return err
+	}
+	// if new schema is forced exit here else write to the old tables as well.
+	if s.useNewSchema {
+		return nil
+	}
+
 	s.wg.Add(1)
 	defer s.wg.Done()
 
