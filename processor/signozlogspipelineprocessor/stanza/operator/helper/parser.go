@@ -12,13 +12,12 @@ import (
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/errors"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // NewParserConfig creates a new parser config with default values
 func NewParserConfig(operatorID, operatorType string) ParserConfig {
 	return ParserConfig{
-		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
+		TransformerConfig: NewTransformerConfig(operatorID, operatorType),
 		ParseFrom:         signozstanzaentry.NewBodyField(),
 		ParseTo:           signozstanzaentry.RootableField{Field: signozstanzaentry.Field{entry.NewAttributeField()}},
 	}
@@ -26,14 +25,14 @@ func NewParserConfig(operatorID, operatorType string) ParserConfig {
 
 // ParserConfig provides the basic implementation of a parser config.
 type ParserConfig struct {
-	helper.TransformerConfig `mapstructure:",squash"`
-	ParseFrom                signozstanzaentry.Field         `mapstructure:"parse_from"`
-	ParseTo                  signozstanzaentry.RootableField `mapstructure:"parse_to"`
-	BodyField                *signozstanzaentry.Field        `mapstructure:"body"`
-	TimeParser               *TimeParser                     `mapstructure:"timestamp,omitempty"`
-	SeverityConfig           *SeverityConfig                 `mapstructure:"severity,omitempty"`
-	TraceParser              *TraceParser                    `mapstructure:"trace,omitempty"`
-	ScopeNameParser          *ScopeNameParser                `mapstructure:"scope_name,omitempty"`
+	TransformerConfig `mapstructure:",squash"`
+	ParseFrom         signozstanzaentry.Field         `mapstructure:"parse_from"`
+	ParseTo           signozstanzaentry.RootableField `mapstructure:"parse_to"`
+	BodyField         *signozstanzaentry.Field        `mapstructure:"body"`
+	TimeParser        *TimeParser                     `mapstructure:"timestamp,omitempty"`
+	SeverityConfig    *SeverityConfig                 `mapstructure:"severity,omitempty"`
+	TraceParser       *TraceParser                    `mapstructure:"trace,omitempty"`
+	ScopeNameParser   *ScopeNameParser                `mapstructure:"scope_name,omitempty"`
 }
 
 // Build will build a parser operator.
@@ -85,7 +84,7 @@ func (c ParserConfig) Build(set component.TelemetrySettings) (ParserOperator, er
 
 // ParserOperator provides a basic implementation of a parser operator.
 type ParserOperator struct {
-	helper.TransformerOperator
+	TransformerOperator
 	ParseFrom       signozstanzaentry.Field
 	ParseTo         signozstanzaentry.Field
 	BodyField       *signozstanzaentry.Field

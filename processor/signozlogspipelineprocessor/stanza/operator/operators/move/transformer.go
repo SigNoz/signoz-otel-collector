@@ -6,13 +6,13 @@ import (
 	"context"
 	"fmt"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Transformer is an operator that moves a field's value to a new field
 type Transformer struct {
-	helper.TransformerOperator
+	signozstanzahelper.TransformerOperator
 	From entry.Field
 	To   entry.Field
 }
