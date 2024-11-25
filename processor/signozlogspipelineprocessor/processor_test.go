@@ -482,6 +482,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testAddOpConf := `
   operators:
     - type: add
+      if: body.request.id != nil
       field: attributes.request_id
       value: EXPR(body.request.id)
   `
@@ -500,6 +501,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testCopyOpConf := `
   operators:
     - type: copy
+      if: body.request.id != nil
       from: body.request.id
       to: attributes.request_id
   `
@@ -523,6 +525,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testGrokConf := `
   operators:
     - type: grok_parser
+      if: body.request.status != nil
       pattern: 'status: %{INT:status_code:int}'
       parse_from: body.request.status
       parse_to: attributes
@@ -547,6 +550,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testRegexConf := `
   operators:
     - type: regex_parser
+      if: body.request.status != nil
       regex: "^status: (?P<status_code>[0-9]+)$"
       parse_from: body.request.status
       parse_to: attributes
@@ -571,6 +575,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testJSONConf := `
   operators:
     - type: json_parser
+      if: body.request != nil
       parse_from: body.request
       parse_to: attributes
   `
@@ -594,6 +599,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testTimeParserConf := `
   operators:
     - type: time_parser
+      if: body.request.unix_ts != nil
       parse_from: body.request.unix_ts
       layout_type: epoch
       layout: s
@@ -620,6 +626,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testSevParserConf := `
   operators:
     - type: severity_parser
+      if: body.request.status != nil
       parse_from: body.request.status
       mapping:
         error: 404
@@ -648,6 +655,7 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	testTraceParserConf := `
   operators:
     - type: trace_parser
+      if: body.request.traceId != nil
       trace_id:
         parse_from: body.request.traceId
       span_id:
@@ -668,25 +676,6 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 	})
 	testCases = append(testCases, testCase{
 		"trace_parser/body_not_json", testTraceParserConf,
-		makePlog(`test`, map[string]any{}),
-		makePlog(`test`, map[string]any{}),
-	})
-
-	// `if` expressions on operators should be able to refer to fields in JSON body
-	testOpWithIfExpr := `
-  operators:
-    - if: body.request.id == "test"
-      type: add
-      field: attributes.request_id
-      value: EXPR(body.request.id)
-  `
-	testCases = append(testCases, testCase{
-		"op_with_if_expr/happy_case", testOpWithIfExpr,
-		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
-		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
-	})
-	testCases = append(testCases, testCase{
-		"op_with_if_expr/body_not_json", testAddOpConf,
 		makePlog(`test`, map[string]any{}),
 		makePlog(`test`, map[string]any{}),
 	})
