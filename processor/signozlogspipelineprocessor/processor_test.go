@@ -672,6 +672,25 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`test`, map[string]any{}),
 	})
 
+	// `if` expressions on operators should be able to refer to fields in JSON body
+	testOpWithIfExpr := `
+  operators:
+    - if: body.request.id == "test"
+      type: add
+      field: attributes.request_id
+      value: EXPR(body.request.id)
+  `
+	testCases = append(testCases, testCase{
+		"op_with_if_expr/happy_case", testOpWithIfExpr,
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
+		makePlog(`{"request": {"id": "test"}}`, map[string]any{"request_id": "test"}),
+	})
+	testCases = append(testCases, testCase{
+		"op_with_if_expr/body_not_json", testAddOpConf,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			validateProcessorBehavior(
