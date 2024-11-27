@@ -199,11 +199,15 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		usageMap.TagMap = map[string]string{}
 		serialized, err = json.Marshal(span.TraceModel)
 		if err != nil {
+			w.logger.Error("could not marshal trace model: ", zap.Error(err))
+			w.logger.Error("trace model: ", zap.Any("trace model", span.TraceModel))
 			return err
 		}
 		serializedUsage, err := json.Marshal(usageMap)
 
 		if err != nil {
+			w.logger.Error("could not marshal usage map: ", zap.Error(err))
+			w.logger.Error("usage map: ", zap.Any("usage", usageMap))
 			return err
 		}
 
@@ -227,6 +231,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	if err != nil {
+		w.logger.Error("Could not send batch to model table: ", zap.Error(err))
 		return err
 	}
 
