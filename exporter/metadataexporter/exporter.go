@@ -29,6 +29,8 @@ type metadataExporter struct {
 	conn             driver.Conn
 	fingerprintCache *ttlcache.Cache[string, bool]
 	countCache       *ttlcache.Cache[string, uint64]
+
+	uvt *UniqueValueTracker
 }
 
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
@@ -51,7 +53,9 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	)
 	go countCache.Start()
 
-	return &metadataExporter{cfg: cfg, set: set, conn: conn, fingerprintCache: fingerprintCache, countCache: countCache}, nil
+	uvt := NewUniqueValueTracker(int(cfg.MaxDistinctValues*2), 45*time.Minute)
+
+	return &metadataExporter{cfg: cfg, set: set, conn: conn, fingerprintCache: fingerprintCache, countCache: countCache, uvt: uvt}, nil
 }
 
 func (e *metadataExporter) Start(ctx context.Context, host component.Host) error {
@@ -102,7 +106,7 @@ func (e *metadataExporter) shouldSkipAttribute(ctx context.Context, key string, 
 func makeFingerprintCacheKey(a, b uint64, datasource string) string {
 	// Pre-allocate a builder with an estimated capacity
 	var builder strings.Builder
-	builder.Grow(40) // Max length: 20 digits for each uint64 + 1 for the colon
+	builder.Grow(64) // Max length: 20 digits for each uint64 + 1 for the colon + ~10 for the datasource + buffer
 
 	// Convert and write the first uint64
 	builder.WriteString(strconv.FormatUint(a, 10))
@@ -124,11 +128,57 @@ func makeFingerprintCacheKey(a, b uint64, datasource string) string {
 
 func makeCountCacheKey(key string, datasource string) string {
 	var builder strings.Builder
-	builder.Grow(128)
+	builder.Grow(256)
 	builder.WriteString(key)
 	builder.WriteByte(':')
 	builder.WriteString(datasource)
 	return builder.String()
+}
+
+func makeUVTKey(key string, datasource string) string {
+	var builder strings.Builder
+	builder.Grow(256)
+	builder.WriteString(key)
+	builder.WriteByte(':')
+	builder.WriteString(datasource)
+	return builder.String()
+}
+
+func (e *metadataExporter) addToUVT(_ context.Context, key string, value string, datasource string) {
+	e.set.Logger.Debug("adding to UVT", zap.String("key", key), zap.String("value", value), zap.String("datasource", datasource))
+	key = makeUVTKey(key, datasource)
+	e.uvt.AddValue(key, value)
+}
+
+func (e *metadataExporter) addAttrsToUVT(ctx context.Context, attrs map[string]any, datasource string) {
+	for k, v := range attrs {
+		e.addToUVT(ctx, k, fmt.Sprintf("%v", v), datasource)
+	}
+}
+
+func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key string, datasource string) bool {
+	e.set.Logger.Debug("checking if attribute should be skipped in UVT", zap.String("key", key), zap.String("datasource", datasource))
+	cnt := e.uvt.GetUniqueValueCount(makeUVTKey(key, datasource))
+	e.set.Logger.Debug("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Uint64("value", uint64(cnt)))
+	return uint64(cnt) > e.cfg.MaxDistinctValues
+}
+
+func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
+	e.addAttrsToUVT(ctx, attrs, datasource)
+	for k := range attrs {
+		if e.shouldSkipAttributeUVT(ctx, k, datasource) {
+			e.set.Logger.Debug("skipping attribute as distinct values exceed limit",
+				zap.String("key", k), zap.String("datasource", datasource), zap.String("type", "uvt"))
+			delete(attrs, k)
+		} else {
+			if e.shouldSkipAttribute(ctx, k, datasource) {
+				e.set.Logger.Debug("skipping attribute as distinct values exceed limit",
+					zap.String("key", k), zap.String("datasource", datasource), zap.String("type", "database"))
+				delete(attrs, k)
+			}
+		}
+	}
+	return attrs
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
@@ -159,14 +209,12 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 				span := ss.Spans().At(k)
 				spanAttrs := make(map[string]any)
 				span.Attributes().Range(func(k string, v pcommon.Value) bool {
-					if e.shouldSkipAttribute(ctx, k, pipeline.SignalTraces.String()) {
-						return true
-					}
 					spanAttrs[k] = v.AsRaw()
 					return true
 				})
 				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
-				spanFingerprint := fingerprint.FingerprintHash(flattenedSpanAttrs)
+				filteredSpanAttrs := e.filterAttrs(ctx, flattenedSpanAttrs, pipeline.SignalTraces.String())
+				spanFingerprint := fingerprint.FingerprintHash(filteredSpanAttrs)
 				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
 				roundedUnixMilli := unixMilli / 3600000 * 3600000
 				cacheKey := makeFingerprintCacheKey(spanFingerprint, uint64(roundedUnixMilli), pipeline.SignalTraces.String())
@@ -181,7 +229,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					resourceFingerprint,
 					spanFingerprint,
 					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-					flatten.FlattenJSONToStringMap(flattenedSpanAttrs),
+					flatten.FlattenJSONToStringMap(filteredSpanAttrs),
 				)
 				if err != nil {
 					return err
@@ -247,14 +295,12 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 				for _, pAttr := range pAttrs {
 					metricAttrs := make(map[string]any)
 					pAttr.Range(func(k string, v pcommon.Value) bool {
-						if e.shouldSkipAttribute(ctx, k, pipeline.SignalMetrics.String()) {
-							return true
-						}
 						metricAttrs[k] = v.AsRaw()
 						return true
 					})
 					flattenedMetricAttrs := flatten.FlattenJSON(metricAttrs, "")
-					metricFingerprint := fingerprint.FingerprintHash(flattenedMetricAttrs)
+					filteredMetricAttrs := e.filterAttrs(ctx, flattenedMetricAttrs, pipeline.SignalMetrics.String())
+					metricFingerprint := fingerprint.FingerprintHash(filteredMetricAttrs)
 					unixMilli := time.Now().UnixMilli()
 					roundedUnixMilli := unixMilli / 3600000 * 3600000
 					cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), metricFingerprint, pipeline.SignalMetrics.String())
@@ -269,7 +315,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 						resourceFingerprint,
 						metricFingerprint,
 						flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-						flatten.FlattenJSONToStringMap(flattenedMetricAttrs),
+						flatten.FlattenJSONToStringMap(filteredMetricAttrs),
 					)
 					if err != nil {
 						return err
@@ -310,14 +356,12 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 				logRecord := sl.LogRecords().At(k)
 				logRecordAttrs := make(map[string]any)
 				logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
-					if e.shouldSkipAttribute(ctx, k, pipeline.SignalLogs.String()) {
-						return true
-					}
 					logRecordAttrs[k] = v.AsRaw()
 					return true
 				})
 				flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
-				logRecordFingerprint := fingerprint.FingerprintHash(flattenedLogRecordAttrs)
+				filteredLogRecordAttrs := e.filterAttrs(ctx, flattenedLogRecordAttrs, pipeline.SignalLogs.String())
+				logRecordFingerprint := fingerprint.FingerprintHash(filteredLogRecordAttrs)
 				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
 				roundedUnixMilli := unixMilli / 3600000 * 3600000
 				cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), logRecordFingerprint, pipeline.SignalLogs.String())
@@ -332,7 +376,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 					resourceFingerprint,
 					logRecordFingerprint,
 					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-					flatten.FlattenJSONToStringMap(flattenedLogRecordAttrs),
+					flatten.FlattenJSONToStringMap(filteredLogRecordAttrs),
 				)
 				if err != nil {
 					return err
