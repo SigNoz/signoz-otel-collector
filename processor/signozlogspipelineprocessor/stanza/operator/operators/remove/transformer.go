@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Transformer is an operator that deletes a field
 type Transformer struct {
-	helper.TransformerOperator
+	signozstanzahelper.TransformerOperator
 	Field rootableField
 }
 

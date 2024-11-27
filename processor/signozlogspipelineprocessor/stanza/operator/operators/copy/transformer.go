@@ -7,13 +7,13 @@ import (
 	"fmt"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Transformer copies a value from one field and creates a new field with that value
 type Transformer struct {
-	helper.TransformerOperator
+	signozstanzahelper.TransformerOperator
 	From signozstanzaentry.Field
 	To   entry.Field
 }

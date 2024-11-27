@@ -5,13 +5,13 @@ package noop
 import (
 	"context"
 
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Transformer is an operator that performs no operations on an entry.
 type Transformer struct {
-	helper.TransformerOperator
+	signozstanzahelper.TransformerOperator
 }
 
 // Process will forward the entry to the next output without any alterations.
