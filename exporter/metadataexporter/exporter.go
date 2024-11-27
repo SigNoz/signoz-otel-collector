@@ -155,36 +155,39 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		scopeSpans := rs.ScopeSpans()
 		for j := 0; j < scopeSpans.Len(); j++ {
 			ss := scopeSpans.At(j)
-			spanAttrs := make(map[string]any)
-			ss.Spans().At(i).Attributes().Range(func(k string, v pcommon.Value) bool {
-				if e.shouldSkipAttribute(ctx, k, pipeline.SignalTraces.String()) {
+			for k := 0; k < ss.Spans().Len(); k++ {
+				span := ss.Spans().At(k)
+				spanAttrs := make(map[string]any)
+				span.Attributes().Range(func(k string, v pcommon.Value) bool {
+					if e.shouldSkipAttribute(ctx, k, pipeline.SignalTraces.String()) {
+						return true
+					}
+					spanAttrs[k] = v.AsRaw()
 					return true
+				})
+				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
+				spanFingerprint := fingerprint.FingerprintHash(flattenedSpanAttrs)
+				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
+				roundedUnixMilli := unixMilli / 3600000 * 3600000
+				cacheKey := makeFingerprintCacheKey(spanFingerprint, uint64(roundedUnixMilli), pipeline.SignalTraces.String())
+				if item := e.fingerprintCache.Get(cacheKey); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
 				}
-				spanAttrs[k] = v.AsRaw()
-				return true
-			})
-			flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
-			spanFingerprint := fingerprint.FingerprintHash(flattenedSpanAttrs)
-			unixMilli := ss.Spans().At(i).StartTimestamp().AsTime().UnixMilli()
-			roundedUnixMilli := unixMilli / 3600000 * 3600000
-			cacheKey := makeFingerprintCacheKey(spanFingerprint, uint64(roundedUnixMilli), pipeline.SignalTraces.String())
-			if item := e.fingerprintCache.Get(cacheKey); item != nil {
-				if value := item.Value(); value {
-					continue
+				err = stmt.Append(
+					roundedUnixMilli,
+					pipeline.SignalTraces,
+					resourceFingerprint,
+					spanFingerprint,
+					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
+					flatten.FlattenJSONToStringMap(flattenedSpanAttrs),
+				)
+				if err != nil {
+					return err
 				}
+				e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
 			}
-			err = stmt.Append(
-				roundedUnixMilli,
-				pipeline.SignalTraces,
-				resourceFingerprint,
-				spanFingerprint,
-				flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-				flatten.FlattenJSONToStringMap(flattenedSpanAttrs),
-			)
-			if err != nil {
-				return err
-			}
-			e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
 		}
 	}
 
@@ -303,36 +306,39 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		scopeLogs := rl.ScopeLogs()
 		for j := 0; j < scopeLogs.Len(); j++ {
 			sl := scopeLogs.At(j)
-			logRecordAttrs := make(map[string]any)
-			sl.LogRecords().At(i).Attributes().Range(func(k string, v pcommon.Value) bool {
-				if e.shouldSkipAttribute(ctx, k, pipeline.SignalLogs.String()) {
+			for k := 0; k < sl.LogRecords().Len(); k++ {
+				logRecord := sl.LogRecords().At(k)
+				logRecordAttrs := make(map[string]any)
+				logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
+					if e.shouldSkipAttribute(ctx, k, pipeline.SignalLogs.String()) {
+						return true
+					}
+					logRecordAttrs[k] = v.AsRaw()
 					return true
+				})
+				flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
+				logRecordFingerprint := fingerprint.FingerprintHash(flattenedLogRecordAttrs)
+				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
+				roundedUnixMilli := unixMilli / 3600000 * 3600000
+				cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), logRecordFingerprint, pipeline.SignalLogs.String())
+				if item := e.fingerprintCache.Get(cacheKey); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
 				}
-				logRecordAttrs[k] = v.AsRaw()
-				return true
-			})
-			flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
-			logRecordFingerprint := fingerprint.FingerprintHash(flattenedLogRecordAttrs)
-			unixMilli := sl.LogRecords().At(i).Timestamp().AsTime().UnixMilli()
-			roundedUnixMilli := unixMilli / 3600000 * 3600000
-			cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), logRecordFingerprint, pipeline.SignalLogs.String())
-			if item := e.fingerprintCache.Get(cacheKey); item != nil {
-				if value := item.Value(); value {
-					continue
+				err = stmt.Append(
+					roundedUnixMilli,
+					pipeline.SignalLogs,
+					resourceFingerprint,
+					logRecordFingerprint,
+					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
+					flatten.FlattenJSONToStringMap(flattenedLogRecordAttrs),
+				)
+				if err != nil {
+					return err
 				}
+				e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
 			}
-			err = stmt.Append(
-				roundedUnixMilli,
-				pipeline.SignalLogs,
-				resourceFingerprint,
-				logRecordFingerprint,
-				flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-				flatten.FlattenJSONToStringMap(flattenedLogRecordAttrs),
-			)
-			if err != nil {
-				return err
-			}
-			e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
 		}
 	}
 
