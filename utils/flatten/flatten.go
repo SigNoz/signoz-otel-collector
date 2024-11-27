@@ -40,3 +40,11 @@ func FlattenJSON(data map[string]interface{}, prefix string) map[string]interfac
 	}
 	return result
 }
+
+func FlattenJSONToStringMap(data map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+	for key, value := range data {
+		result[key] = fmt.Sprintf("%v", value)
+	}
+	return result
+}
