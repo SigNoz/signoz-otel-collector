@@ -307,6 +307,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.DataType = "float64"
 			} else {
 				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				return true
 			}
 		} else if v.Type() == pcommon.ValueTypeInt {
 			if !math.IsNaN(float64(v.Int())) {
@@ -315,6 +316,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.DataType = "float64"
 			} else {
 				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				return true
 			}
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
@@ -344,6 +346,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.DataType = "float64"
 			} else {
 				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				return true
 			}
 
 		} else if v.Type() == pcommon.ValueTypeInt {
@@ -353,6 +356,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.DataType = "float64"
 			} else {
 				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				return true
 			}
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
