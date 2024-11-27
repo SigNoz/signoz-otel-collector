@@ -24,7 +24,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
 						PartitionBy: "toDate(rounded_unix_milli / 1000)",
-						OrderBy:     "(data_source, resource_fingerprint, fingerprint)",
+						OrderBy:     "(data_source, rounded_unix_milli, resource_fingerprint, fingerprint)",
 						TTL:         "toDateTime(rounded_unix_milli) + INTERVAL 1296000 SECOND + INTERVAL 1800 SECOND DELETE",
 						Settings: TableSettings{
 							{Name: "ttl_only_drop_parts", Value: "1"},
