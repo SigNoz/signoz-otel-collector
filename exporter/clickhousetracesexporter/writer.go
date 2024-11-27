@@ -201,7 +201,8 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		if err != nil {
 			w.logger.Error("could not marshal trace model: ", zap.Error(err))
 			w.logger.Error("trace model: ", zap.Any("trace model", span.TraceModel))
-			return err
+			continue
+			// return err
 		}
 		serializedUsage, err := json.Marshal(usageMap)
 
