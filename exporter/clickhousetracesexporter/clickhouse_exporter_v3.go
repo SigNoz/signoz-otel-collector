@@ -147,9 +147,15 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 				tSpanAttribute.StringValue = tempVal
 				tSpanAttribute.DataType = "string"
 			case float64:
-				attrMap.NumberMap[tempKey] = tempVal
-				tSpanAttribute.NumberValue = tempVal
-				tSpanAttribute.DataType = "float64"
+				// skip NaN values
+				if !math.IsNaN(tempVal) {
+					attrMap.NumberMap[tempKey] = tempVal
+					tSpanAttribute.NumberValue = tempVal
+					tSpanAttribute.DataType = "float64"
+				} else {
+					zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", tempKey), zap.Float64("value", tempVal))
+					continue
+				}
 			case bool:
 				attrMap.BoolMap[tempKey] = tempVal
 				tSpanAttribute.DataType = "bool"
