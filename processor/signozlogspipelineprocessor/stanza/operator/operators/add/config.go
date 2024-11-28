@@ -12,7 +12,6 @@ import (
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 const operatorType = "add"
@@ -29,15 +28,15 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new add operator config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
+		TransformerConfig: signozstanzahelper.NewTransformerConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of an add operator
 type Config struct {
-	helper.TransformerConfig `mapstructure:",squash"`
-	Field                    entry.Field `mapstructure:"field"`
-	Value                    any         `mapstructure:"value,omitempty"`
+	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
+	Field                                entry.Field `mapstructure:"field"`
+	Value                                any         `mapstructure:"value,omitempty"`
 }
 
 // Build will build an add operator from the supplied configuration
