@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -116,9 +117,14 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	}
 
 	if value.Type() == pcommon.ValueTypeDouble {
-		attrMap.NumberMap[key] = value.Double()
-		spanAttribute.NumberValue = value.Double()
-		spanAttribute.DataType = "float64"
+		if !math.IsNaN(value.Double()) {
+			attrMap.NumberMap[key] = value.Double()
+			spanAttribute.NumberValue = value.Double()
+			spanAttribute.DataType = "float64"
+		} else {
+			zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", key), zap.Float64("value", value.Double()))
+			return
+		}
 	} else if value.Type() == pcommon.ValueTypeInt {
 		attrMap.NumberMap[key] = float64(value.Int())
 		spanAttribute.NumberValue = float64(value.Int())
@@ -335,7 +341,11 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
-					serializedStructuredSpan, _ := json.Marshal(structuredSpan)
+					serializedStructuredSpan, err := json.Marshal(structuredSpan)
+					if err != nil {
+						zap.S().Error("Error in marshalling structuredSpan: ", err)
+						return err
+					}
 					size += len(serializedStructuredSpan)
 					count += 1
 				}

@@ -306,18 +306,13 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.NumberValue = v.Double()
 				spanAttribute.DataType = "float64"
 			} else {
-				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", k), zap.Float64("value", v.Double()))
 				return true
 			}
 		} else if v.Type() == pcommon.ValueTypeInt {
-			if !math.IsNaN(float64(v.Int())) {
-				numberTagMap[k] = float64(v.Int())
-				spanAttribute.NumberValue = float64(v.Int())
-				spanAttribute.DataType = "float64"
-			} else {
-				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
-				return true
-			}
+			numberTagMap[k] = float64(v.Int())
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
 			spanAttribute.DataType = "bool"
@@ -345,19 +340,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 				spanAttribute.NumberValue = v.Double()
 				spanAttribute.DataType = "float64"
 			} else {
-				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
+				zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", k), zap.Float64("value", v.Double()))
 				return true
 			}
 
 		} else if v.Type() == pcommon.ValueTypeInt {
-			if !math.IsNaN(float64(v.Int())) {
-				numberTagMap[k] = float64(v.Int())
-				spanAttribute.NumberValue = float64(v.Int())
-				spanAttribute.DataType = "float64"
-			} else {
-				zap.S().Error("NaN value in tag map: ", zap.String("key", k), zap.Float64("value", v.Double()))
-				return true
-			}
+			numberTagMap[k] = float64(v.Int())
+			spanAttribute.NumberValue = float64(v.Int())
+			spanAttribute.DataType = "float64"
 		} else if v.Type() == pcommon.ValueTypeBool {
 			boolTagMap[k] = v.Bool()
 			spanAttribute.DataType = "bool"
