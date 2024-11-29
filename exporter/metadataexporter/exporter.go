@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
@@ -22,6 +23,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	sixHoursInMs = 3600000 * 6
+)
+
 type metadataExporter struct {
 	cfg Config
 	set exporter.Settings
@@ -33,6 +38,13 @@ type metadataExporter struct {
 	tracesTracker  *ValueTracker
 	metricsTracker *ValueTracker
 	logsTracker    *ValueTracker
+
+	logTagValueCountFromDB         map[string]uint64
+	logTagValueCountFromDBLock     sync.RWMutex
+	tracesTagValueCountFromDB      map[string]uint64
+	tracesTagValueCountFromDBLock  sync.RWMutex
+	metricsTagValueCountFromDB     map[string]uint64
+	metricsTagValueCountFromDBLock sync.RWMutex
 }
 
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
@@ -60,18 +72,26 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	logsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
 
 	return &metadataExporter{
-		cfg:              cfg,
-		set:              set,
-		conn:             conn,
-		fingerprintCache: fingerprintCache,
-		countCache:       countCache,
-		tracesTracker:    tracesTracker,
-		metricsTracker:   metricsTracker,
-		logsTracker:      logsTracker,
+		cfg:                            cfg,
+		set:                            set,
+		conn:                           conn,
+		fingerprintCache:               fingerprintCache,
+		countCache:                     countCache,
+		tracesTracker:                  tracesTracker,
+		metricsTracker:                 metricsTracker,
+		logsTracker:                    logsTracker,
+		logTagValueCountFromDB:         make(map[string]uint64),
+		logTagValueCountFromDBLock:     sync.RWMutex{},
+		tracesTagValueCountFromDB:      make(map[string]uint64),
+		tracesTagValueCountFromDBLock:  sync.RWMutex{},
+		metricsTagValueCountFromDB:     make(map[string]uint64),
+		metricsTagValueCountFromDBLock: sync.RWMutex{},
 	}, nil
 }
 
 func (e *metadataExporter) Start(ctx context.Context, host component.Host) error {
+	go e.periodicallyUpdateLogTagValueCountFromDB(ctx)
+	go e.periodicallyUpdateTracesTagValueCountFromDB(ctx)
 	return nil
 }
 
@@ -80,6 +100,108 @@ func (e *metadataExporter) Shutdown(ctx context.Context) error {
 	e.metricsTracker.Close()
 	e.logsTracker.Close()
 	return nil
+}
+
+func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB(ctx context.Context) {
+	// Call the function immediately
+	e.updateLogTagValueCountFromDB(ctx)
+
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			e.updateLogTagValueCountFromDB(ctx)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
+	query := `
+	select
+		tagKey,
+		countDistinct(stringTagValue) as stringTagValueCount,
+		countDistinct(int64TagValue) as int64TagValueCount,
+		countDistinct(float64TagValue) as float64TagValueCount
+	FROM signoz_logs.distributed_tag_attributes
+	group by tagKey
+	order by tagKey`
+
+	rows, err := e.conn.Query(ctx, query)
+	if err != nil {
+		e.set.Logger.Error("failed to query log tag value count from DB", zap.Error(err))
+		return
+	}
+	defer rows.Close()
+
+	e.logTagValueCountFromDBLock.Lock()
+	defer e.logTagValueCountFromDBLock.Unlock()
+
+	for rows.Next() {
+		var tagKey string
+		var stringTagValueCount uint64
+		var int64TagValueCount uint64
+		var float64TagValueCount uint64
+		if err := rows.Scan(&tagKey, &stringTagValueCount, &int64TagValueCount, &float64TagValueCount); err != nil {
+			e.set.Logger.Error("failed to scan log tag value count from DB", zap.Error(err))
+			continue
+		}
+		e.logTagValueCountFromDB[tagKey] = stringTagValueCount + int64TagValueCount + float64TagValueCount
+	}
+	e.set.Logger.Info("updated log tag value count from DB", zap.Any("counts", e.logTagValueCountFromDB))
+}
+
+func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB(ctx context.Context) {
+	// Call the function immediately
+	e.updateTracesTagValueCountFromDB(ctx)
+
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			e.updateTracesTagValueCountFromDB(ctx)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) {
+	query := `
+	select
+		tagKey,
+		countDistinct(stringTagValue) as stringTagValueCount,
+		countDistinct(float64TagValue) as float64TagValueCount
+	FROM signoz_traces.distributed_span_attributes
+	group by tagKey
+	order by tagKey`
+
+	rows, err := e.conn.Query(ctx, query)
+	if err != nil {
+		e.set.Logger.Error("failed to query traces tag value count from DB", zap.Error(err))
+		return
+	}
+	defer rows.Close()
+
+	e.tracesTagValueCountFromDBLock.Lock()
+	defer e.tracesTagValueCountFromDBLock.Unlock()
+
+	for rows.Next() {
+		var tagKey string
+		var stringTagValueCount uint64
+		var float64TagValueCount uint64
+		if err := rows.Scan(&tagKey, &stringTagValueCount, &float64TagValueCount); err != nil {
+			e.set.Logger.Error("failed to scan traces tag value count from DB", zap.Error(err))
+			continue
+		}
+		e.tracesTagValueCountFromDB[tagKey] = stringTagValueCount + float64TagValueCount
+	}
+	e.set.Logger.Info("updated traces tag value count from DB", zap.Any("counts", e.tracesTagValueCountFromDB))
 }
 
 func makeFingerprintCacheKey(a, b uint64, datasource string) string {
@@ -168,11 +290,16 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
+	e.tracesTagValueCountFromDBLock.RLock()
+	defer e.tracesTagValueCountFromDBLock.RUnlock()
 
 	stmt, err := e.conn.PrepareBatch(ctx, "INSERT INTO signoz_metadata.distributed_attributes_metadata", driver.WithReleaseConnection())
 	if err != nil {
 		return err
 	}
+
+	totalSpans := 0
+	writtenSpans := 0
 
 	resourceSpans := td.ResourceSpans()
 	for i := 0; i < resourceSpans.Len(); i++ {
@@ -189,17 +316,26 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		for j := 0; j < scopeSpans.Len(); j++ {
 			ss := scopeSpans.At(j)
 			for k := 0; k < ss.Spans().Len(); k++ {
+				totalSpans++
 				span := ss.Spans().At(k)
 				spanAttrs := make(map[string]any)
+				skippedFromDB := []string{}
 				span.Attributes().Range(func(k string, v pcommon.Value) bool {
+					if e.tracesTagValueCountFromDB[k] > e.cfg.MaxDistinctValues {
+						skippedFromDB = append(skippedFromDB, k)
+						return true
+					}
 					spanAttrs[k] = v.AsRaw()
 					return true
 				})
+				if len(skippedFromDB) > 0 {
+					e.set.Logger.Info("skipped attributes from DB", zap.String("datasource", pipeline.SignalTraces.String()), zap.Strings("keys", skippedFromDB))
+				}
 				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
 				filteredSpanAttrs := e.filterAttrs(ctx, flattenedSpanAttrs, pipeline.SignalTraces.String())
 				spanFingerprint := fingerprint.FingerprintHash(filteredSpanAttrs)
 				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
-				roundedUnixMilli := unixMilli / 3600000 * 3600000
+				roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 				cacheKey := makeFingerprintCacheKey(spanFingerprint, uint64(roundedUnixMilli), pipeline.SignalTraces.String())
 				if item := e.fingerprintCache.Get(cacheKey); item != nil {
 					if value := item.Value(); value {
@@ -214,6 +350,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
 					flatten.FlattenJSONToStringMap(filteredSpanAttrs),
 				)
+				writtenSpans++
 				if err != nil {
 					return err
 				}
@@ -221,6 +358,8 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 			}
 		}
 	}
+
+	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("written_spans", writtenSpans))
 
 	return stmt.Send()
 }
@@ -282,7 +421,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 					filteredMetricAttrs := e.filterAttrs(ctx, flattenedMetricAttrs, pipeline.SignalMetrics.String())
 					metricFingerprint := fingerprint.FingerprintHash(filteredMetricAttrs)
 					unixMilli := time.Now().UnixMilli()
-					roundedUnixMilli := unixMilli / 3600000 * 3600000
+					roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 					cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), metricFingerprint, pipeline.SignalMetrics.String())
 					if item := e.fingerprintCache.Get(cacheKey); item != nil {
 						if value := item.Value(); value {
@@ -310,10 +449,16 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 }
 
 func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
+	e.logTagValueCountFromDBLock.RLock()
+	defer e.logTagValueCountFromDBLock.RUnlock()
+
 	stmt, err := e.conn.PrepareBatch(ctx, "INSERT INTO signoz_metadata.distributed_attributes_metadata", driver.WithReleaseConnection())
 	if err != nil {
 		return err
 	}
+
+	totalLogRecords := 0
+	writtenLogRecords := 0
 
 	resourceLogs := ld.ResourceLogs()
 	for i := 0; i < resourceLogs.Len(); i++ {
@@ -330,17 +475,26 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		for j := 0; j < scopeLogs.Len(); j++ {
 			sl := scopeLogs.At(j)
 			for k := 0; k < sl.LogRecords().Len(); k++ {
+				totalLogRecords++
 				logRecord := sl.LogRecords().At(k)
 				logRecordAttrs := make(map[string]any)
+				skippedFromDB := []string{}
 				logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
+					if e.logTagValueCountFromDB[k] > e.cfg.MaxDistinctValues {
+						skippedFromDB = append(skippedFromDB, k)
+						return true
+					}
 					logRecordAttrs[k] = v.AsRaw()
 					return true
 				})
+				if len(skippedFromDB) > 0 {
+					e.set.Logger.Info("skipped attributes from DB", zap.String("datasource", pipeline.SignalLogs.String()), zap.Strings("keys", skippedFromDB))
+				}
 				flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
 				filteredLogRecordAttrs := e.filterAttrs(ctx, flattenedLogRecordAttrs, pipeline.SignalLogs.String())
 				logRecordFingerprint := fingerprint.FingerprintHash(filteredLogRecordAttrs)
 				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
-				roundedUnixMilli := unixMilli / 3600000 * 3600000
+				roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 				cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), logRecordFingerprint, pipeline.SignalLogs.String())
 				if item := e.fingerprintCache.Get(cacheKey); item != nil {
 					if value := item.Value(); value {
@@ -359,9 +513,12 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 					return err
 				}
 				e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
+				writtenLogRecords++
 			}
 		}
 	}
+
+	e.set.Logger.Info("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("written_log_records", writtenLogRecords))
 
 	return stmt.Send()
 }
