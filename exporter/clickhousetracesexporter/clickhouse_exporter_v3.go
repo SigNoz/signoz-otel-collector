@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -117,7 +116,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	}
 
 	if value.Type() == pcommon.ValueTypeDouble {
-		if !math.IsNaN(value.Double()) {
+		if utils.IsValidFloat(value.Double()) {
 			attrMap.NumberMap[key] = value.Double()
 			spanAttribute.NumberValue = value.Double()
 			spanAttribute.DataType = "float64"
@@ -147,8 +146,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 				tSpanAttribute.StringValue = tempVal
 				tSpanAttribute.DataType = "string"
 			case float64:
-				// skip NaN values
-				if !math.IsNaN(tempVal) {
+				if utils.IsValidFloat(tempVal) {
 					attrMap.NumberMap[tempKey] = tempVal
 					tSpanAttribute.NumberValue = tempVal
 					tSpanAttribute.DataType = "float64"

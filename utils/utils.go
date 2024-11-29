@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/hex"
+	"math"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
@@ -18,4 +19,9 @@ func SpanIDToHexOrEmptyString(spanID pcommon.SpanID) string {
 		return hex.EncodeToString(spanID[:])
 	}
 	return ""
+}
+
+func IsValidFloat(value float64) bool {
+	// Check for NaN, +/-Inf
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }

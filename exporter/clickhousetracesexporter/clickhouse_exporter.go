@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -301,7 +300,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			IsColumn: false,
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
-			if !math.IsNaN(v.Double()) {
+			if utils.IsValidFloat(v.Double()) {
 				numberTagMap[k] = v.Double()
 				spanAttribute.NumberValue = v.Double()
 				spanAttribute.DataType = "float64"
@@ -335,7 +334,7 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
-			if !math.IsNaN(v.Double()) {
+			if utils.IsValidFloat(v.Double()) {
 				numberTagMap[k] = v.Double()
 				spanAttribute.NumberValue = v.Double()
 				spanAttribute.DataType = "float64"

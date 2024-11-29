@@ -268,7 +268,8 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 		defer wg.Done()
 		err := w.writeIndexBatchV3(ctx, batch)
 		if err != nil {
-			return fmt.Errorf("could not write a batch of spans to index table: %w", err)
+			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
+			chErr <- err
 		}
 	}()
 
