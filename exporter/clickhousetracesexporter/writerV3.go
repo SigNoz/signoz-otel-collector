@@ -27,8 +27,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
 	for _, span := range batchSpans {
 		err = statement.Append(
@@ -67,8 +66,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.IsRemote,
 		)
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 	}
 
@@ -95,8 +93,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.errorTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for error table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for error table: %w", err)
 	}
 
 	for _, span := range batchSpans {
@@ -118,8 +115,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 				span.ResourcesString,
 			)
 			if err != nil {
-				w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
-				return err
+				return fmt.Errorf("could not append span to batch: %w", err)
 			}
 		}
 	}
@@ -151,13 +147,11 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	}()
 	tagStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for span attributes table due to error: %w", err)
 	}
 	tagKeyStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
 	}
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
 	mapOfSpanAttributeKeys := make(map[string]struct{})
@@ -192,8 +186,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 					spanAttribute.IsColumn,
 				)
 				if err != nil {
-					w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Any("span", span))
-					return err
+					return fmt.Errorf("could not append span to tagKey Statement to batch due to error: %w", err)
 				}
 			}
 			// add mapOfSpanAttributeKey to map
@@ -231,8 +224,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 				)
 			}
 			if err != nil {
-				w.logger.Error("Could not append span to tag Statement batch due to error: ", zap.Error(err), zap.Any("span", span))
-				return err
+				return fmt.Errorf("could not append span to tag Statement batch due to error: %w", err)
 			}
 		}
 	}
@@ -247,8 +239,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
 	)
 	if err != nil {
-		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not write to span attributes table due to error: %w", err)
 	}
 
 	tagKeyStart := time.Now()
@@ -261,8 +252,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
 	)
 	if err != nil {
-		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not write to span attributes key table due to error: %w", err)
 	}
 
 	return err
@@ -278,8 +268,7 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 		defer wg.Done()
 		err := w.writeIndexBatchV3(ctx, batch)
 		if err != nil {
-			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
-			chErr <- err
+			return fmt.Errorf("could not write a batch of spans to index table: %w", err)
 		}
 	}()
 

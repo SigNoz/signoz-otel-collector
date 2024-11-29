@@ -112,8 +112,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
 
 	for _, span := range batchSpans {
@@ -155,8 +154,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.SpanKind,
 		)
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 	}
 
@@ -188,8 +186,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.spansTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for model table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for model table: %w", err)
 	}
 
 	metrics := map[string]usage.Metric{}
@@ -199,20 +196,17 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		usageMap.TagMap = map[string]string{}
 		serialized, err = json.Marshal(span.TraceModel)
 		if err != nil {
-			w.logger.Error("could not marshal trace model: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not marshal trace model: %w", err)
 		}
 
 		serializedUsage, err := json.Marshal(usageMap)
 		if err != nil {
-			w.logger.Error("could not marshal usage map: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not marshal usage map: %w", err)
 		}
 
 		err = statement.Append(time.Unix(0, int64(span.StartTimeUnixNano)), span.TraceId, string(serialized))
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 
 		if !w.useNewSchema {
@@ -229,8 +223,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 	)
 	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	if err != nil {
-		w.logger.Error("Could not send batch to model table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not send batch to model table: %w", err)
 	}
 
 	if !w.useNewSchema {
@@ -247,16 +240,14 @@ func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error
 	// inserts to the singoz_spans table
 	if w.spansTable != "" {
 		if err := w.writeModelBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not write a batch of spans to model table: %w", err)
 		}
 	}
 
 	// inserts to the signoz_index_v2 table
 	if w.indexTable != "" {
 		if err := w.writeIndexBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not write a batch of spans to index table: %w", err)
 		}
 	}
 

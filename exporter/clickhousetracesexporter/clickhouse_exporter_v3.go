@@ -122,7 +122,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 			spanAttribute.NumberValue = value.Double()
 			spanAttribute.DataType = "float64"
 		} else {
-			zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", key), zap.Float64("value", value.Double()))
+			zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", key))
 			return
 		}
 	} else if value.Type() == pcommon.ValueTypeInt {
@@ -153,7 +153,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 					tSpanAttribute.NumberValue = tempVal
 					tSpanAttribute.DataType = "float64"
 				} else {
-					zap.S().Warn("NaN value in tag map skipping: ", zap.String("key", tempKey), zap.Float64("value", tempVal))
+					zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", tempKey))
 					continue
 				}
 			case bool:
@@ -342,15 +342,13 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 
 					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
 					if err != nil {
-						zap.S().Error("Error in creating newStructuredSpanV3: ", err)
-						return err
+						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
 					serializedStructuredSpan, err := json.Marshal(structuredSpan)
 					if err != nil {
-						zap.S().Error("Error in marshalling structuredSpan: ", err)
-						return err
+						return fmt.Errorf("failed to marshal structured span: %w", err)
 					}
 					size += len(serializedStructuredSpan)
 					count += 1
@@ -364,15 +362,13 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 
 		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics)
 		if err != nil {
-			zap.S().Error("Error in writing spans to clickhouse: ", err)
-			return err
+			return fmt.Errorf("error in writing spans to clickhouse: %w", err)
 		}
 
 		// write the resources
 		err = s.Writer.WriteResourcesV3(ctx, resourcesSeen)
 		if err != nil {
-			zap.S().Error("Error in writing resources to clickhouse: ", err)
-			return err
+			return fmt.Errorf("error in writing resources to clickhouse: %w", err)
 		}
 
 		return nil
