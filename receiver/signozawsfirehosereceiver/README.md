@@ -12,7 +12,7 @@ Example:
 
 ```yaml
 receivers:
-  awsfirehose:
+  signozawsfirehose:
     endpoint: 0.0.0.0:4433
     record_type: cwmetrics
     access_key: "some_access_key"

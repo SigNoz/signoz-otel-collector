@@ -1,12 +1,9 @@
-type: awsfirehose
+type: signozawsfirehosereceiver
 
 status:
   class: receiver
   stability:
     alpha: [metrics, logs]
-  distributions: [contrib]
-  codeowners:
-    active: [Aneurysm9]
 
 tests:
   config:
