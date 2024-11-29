@@ -8,9 +8,9 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 const operatorType = "remove"
@@ -27,13 +27,13 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new remove operator config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		TransformerConfig: helper.NewTransformerConfig(operatorID, operatorType),
+		TransformerConfig: signozstanzahelper.NewTransformerConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of a remove operator
 type Config struct {
-	helper.TransformerConfig `mapstructure:",squash"`
+	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
 
 	Field rootableField `mapstructure:"field"`
 }
