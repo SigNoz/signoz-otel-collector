@@ -13,4 +13,4 @@
 
 //go:generate mdatagen metadata.yaml
 
-package signozawsfirehosereceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsfirehosereceiver"
+package signozawsfirehosereceiver // import "github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver"
