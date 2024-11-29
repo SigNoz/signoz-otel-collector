@@ -172,6 +172,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
 	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector"
@@ -300,6 +301,7 @@ func Components() (otelcol.Factories, error) {
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
 		signozkafkareceiver.NewFactory(),
+		signozawsfirehosereceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
