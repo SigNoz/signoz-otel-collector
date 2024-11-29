@@ -30,7 +30,9 @@ type metadataExporter struct {
 	fingerprintCache *ttlcache.Cache[string, bool]
 	countCache       *ttlcache.Cache[string, uint64]
 
-	uvt *UniqueValueTracker
+	tracesTracker  *ValueTracker
+	metricsTracker *ValueTracker
+	logsTracker    *ValueTracker
 }
 
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
@@ -53,9 +55,20 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	)
 	go countCache.Start()
 
-	uvt := NewUniqueValueTracker(int(cfg.MaxDistinctValues*2), 45*time.Minute)
+	tracesTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
+	metricsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
+	logsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
 
-	return &metadataExporter{cfg: cfg, set: set, conn: conn, fingerprintCache: fingerprintCache, countCache: countCache, uvt: uvt}, nil
+	return &metadataExporter{
+		cfg:              cfg,
+		set:              set,
+		conn:             conn,
+		fingerprintCache: fingerprintCache,
+		countCache:       countCache,
+		tracesTracker:    tracesTracker,
+		metricsTracker:   metricsTracker,
+		logsTracker:      logsTracker,
+	}, nil
 }
 
 func (e *metadataExporter) Start(ctx context.Context, host component.Host) error {
@@ -63,44 +76,10 @@ func (e *metadataExporter) Start(ctx context.Context, host component.Host) error
 }
 
 func (e *metadataExporter) Shutdown(ctx context.Context) error {
+	e.tracesTracker.Close()
+	e.metricsTracker.Close()
+	e.logsTracker.Close()
 	return nil
-}
-
-// shouldSkipAttribute checks if the distinct values for the attribute exceed the limit
-// and if so, skips the attribute
-func (e *metadataExporter) shouldSkipAttribute(ctx context.Context, key string, datasource string) bool {
-	cacheKey := makeCountCacheKey(key, datasource)
-	if item := e.countCache.Get(cacheKey); item != nil {
-		var value uint64
-		if value = item.Value(); value > e.cfg.MaxDistinctValues {
-			e.set.Logger.Debug("skipping attribute as distinct values exceed limit",
-				zap.String("key", key), zap.String("datasource", datasource), zap.Uint64("value", value))
-			return true
-		} else {
-			e.set.Logger.Debug("distinct values count is within limit",
-				zap.String("key", key), zap.String("datasource", datasource), zap.Uint64("value", value))
-			return false
-		}
-	}
-
-	sql := fmt.Sprintf(`
-	SELECT countDistinct(attributes['%s'])
-	FROM signoz_metadata.distributed_attributes_metadata
-	WHERE data_source = '%s' AND mapContains(attributes, '%s') AND attributes['%s'] IS NOT NULL
-	AND rounded_unix_milli > toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
-	`, key, datasource, key, key)
-
-	e.set.Logger.Debug("fetching distinct values count",
-		zap.String("key", key), zap.String("datasource", datasource))
-
-	var cnt uint64
-	if err := e.conn.QueryRow(ctx, sql).Scan(&cnt); err == nil {
-		e.countCache.Set(cacheKey, cnt, ttlcache.DefaultTTL)
-		e.set.Logger.Debug("fetched distinct values count",
-			zap.String("key", key), zap.String("datasource", datasource), zap.Uint64("value", cnt))
-		return cnt > e.cfg.MaxDistinctValues
-	}
-	return false
 }
 
 func makeFingerprintCacheKey(a, b uint64, datasource string) string {
@@ -126,15 +105,6 @@ func makeFingerprintCacheKey(a, b uint64, datasource string) string {
 	return builder.String()
 }
 
-func makeCountCacheKey(key string, datasource string) string {
-	var builder strings.Builder
-	builder.Grow(256)
-	builder.WriteString(key)
-	builder.WriteByte(':')
-	builder.WriteString(datasource)
-	return builder.String()
-}
-
 func makeUVTKey(key string, datasource string) string {
 	var builder strings.Builder
 	builder.Grow(256)
@@ -145,40 +115,48 @@ func makeUVTKey(key string, datasource string) string {
 }
 
 func (e *metadataExporter) addToUVT(_ context.Context, key string, value string, datasource string) {
-	e.set.Logger.Debug("adding to UVT", zap.String("key", key), zap.String("value", value), zap.String("datasource", datasource))
-	key = makeUVTKey(key, datasource)
-	e.uvt.AddValue(key, value)
-}
-
-func (e *metadataExporter) addAttrsToUVT(ctx context.Context, attrs map[string]any, datasource string) {
-	for k, v := range attrs {
-		e.addToUVT(ctx, k, fmt.Sprintf("%v", v), datasource)
+	switch datasource {
+	case pipeline.SignalTraces.String():
+		e.tracesTracker.AddValue(key, value)
+	case pipeline.SignalMetrics.String():
+		e.metricsTracker.AddValue(key, value)
+	case pipeline.SignalLogs.String():
+		e.logsTracker.AddValue(key, value)
 	}
 }
 
 func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key string, datasource string) bool {
-	e.set.Logger.Debug("checking if attribute should be skipped in UVT", zap.String("key", key), zap.String("datasource", datasource))
-	cnt := e.uvt.GetUniqueValueCount(makeUVTKey(key, datasource))
-	e.set.Logger.Debug("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Uint64("value", uint64(cnt)))
-	return uint64(cnt) > e.cfg.MaxDistinctValues
+	e.set.Logger.Info("checking if attribute should be skipped in UVT", zap.String("key", key), zap.String("datasource", datasource))
+	var cnt int
+	switch datasource {
+	case pipeline.SignalTraces.String():
+		cnt = e.tracesTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+	case pipeline.SignalMetrics.String():
+		cnt = e.metricsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+	case pipeline.SignalLogs.String():
+		cnt = e.logsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+	}
+	e.set.Logger.Info("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Int("value", cnt))
+	return cnt > int(e.cfg.MaxDistinctValues)
 }
 
 func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
-	e.addAttrsToUVT(ctx, attrs, datasource)
-	for k := range attrs {
-		if e.shouldSkipAttributeUVT(ctx, k, datasource) {
-			e.set.Logger.Debug("skipping attribute as distinct values exceed limit",
-				zap.String("key", k), zap.String("datasource", datasource), zap.String("type", "uvt"))
-			delete(attrs, k)
+	filteredAttrs := make(map[string]any)
+	skippedAttrs := []string{}
+	for k, v := range attrs {
+		uvtKey := makeUVTKey(k, datasource)
+		// Add to UVT first
+		e.addToUVT(ctx, uvtKey, fmt.Sprintf("%v", v), datasource)
+
+		// Check local UVT count
+		if !e.shouldSkipAttributeUVT(ctx, k, datasource) {
+			filteredAttrs[k] = v
 		} else {
-			if e.shouldSkipAttribute(ctx, k, datasource) {
-				e.set.Logger.Debug("skipping attribute as distinct values exceed limit",
-					zap.String("key", k), zap.String("datasource", datasource), zap.String("type", "database"))
-				delete(attrs, k)
-			}
+			skippedAttrs = append(skippedAttrs, k)
 		}
 	}
-	return attrs
+	e.set.Logger.Info("filtered attributes", zap.String("datasource", datasource), zap.Int("count", len(skippedAttrs)), zap.Strings("attributes", skippedAttrs))
+	return filteredAttrs
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
@@ -187,9 +165,6 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	if err != nil {
 		return err
 	}
-	defer func() {
-		stmt.Abort()
-	}()
 
 	resourceSpans := td.ResourceSpans()
 	for i := 0; i < resourceSpans.Len(); i++ {
@@ -247,9 +222,6 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	if err != nil {
 		return err
 	}
-	defer func() {
-		stmt.Abort()
-	}()
 
 	resourceMetrics := md.ResourceMetrics()
 	for i := 0; i < resourceMetrics.Len(); i++ {
@@ -334,9 +306,6 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		stmt.Abort()
-	}()
 
 	resourceLogs := ld.ResourceLogs()
 	for i := 0; i < resourceLogs.Len(); i++ {
