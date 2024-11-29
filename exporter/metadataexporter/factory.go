@@ -58,6 +58,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
 
@@ -79,6 +80,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
 
@@ -100,5 +102,6 @@ func (f *metadataExporterFactory) createLogsExporter(
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }

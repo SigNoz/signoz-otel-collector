@@ -41,10 +41,16 @@ type metadataExporter struct {
 
 	logTagValueCountFromDB         map[string]uint64
 	logTagValueCountFromDBLock     sync.RWMutex
+	logTagValueCountCtx            context.Context
+	logTagValueCountCtxCancel      context.CancelFunc
 	tracesTagValueCountFromDB      map[string]uint64
 	tracesTagValueCountFromDBLock  sync.RWMutex
+	tracesTagValueCountCtx         context.Context
+	tracesTagValueCountCtxCancel   context.CancelFunc
 	metricsTagValueCountFromDB     map[string]uint64
 	metricsTagValueCountFromDBLock sync.RWMutex
+	metricsTagValueCountCtx        context.Context
+	metricsTagValueCountCtxCancel  context.CancelFunc
 }
 
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
@@ -71,6 +77,10 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	metricsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
 	logsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
 
+	logTagValueCountCtx, logTagValueCountCtxCancel := context.WithCancel(context.Background())
+	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
+	metricsTagValueCountCtx, metricsTagValueCountCtxCancel := context.WithCancel(context.Background())
+
 	return &metadataExporter{
 		cfg:                            cfg,
 		set:                            set,
@@ -82,29 +92,41 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		logsTracker:                    logsTracker,
 		logTagValueCountFromDB:         make(map[string]uint64),
 		logTagValueCountFromDBLock:     sync.RWMutex{},
+		logTagValueCountCtx:            logTagValueCountCtx,
+		logTagValueCountCtxCancel:      logTagValueCountCtxCancel,
 		tracesTagValueCountFromDB:      make(map[string]uint64),
 		tracesTagValueCountFromDBLock:  sync.RWMutex{},
+		tracesTagValueCountCtx:         tracesTagValueCountCtx,
+		tracesTagValueCountCtxCancel:   tracesTagValueCountCtxCancel,
 		metricsTagValueCountFromDB:     make(map[string]uint64),
 		metricsTagValueCountFromDBLock: sync.RWMutex{},
+		metricsTagValueCountCtx:        metricsTagValueCountCtx,
+		metricsTagValueCountCtxCancel:  metricsTagValueCountCtxCancel,
 	}, nil
 }
 
 func (e *metadataExporter) Start(ctx context.Context, host component.Host) error {
-	go e.periodicallyUpdateLogTagValueCountFromDB(ctx)
-	go e.periodicallyUpdateTracesTagValueCountFromDB(ctx)
+	e.set.Logger.Info("starting metadata exporter")
+	go e.periodicallyUpdateLogTagValueCountFromDB()
+	go e.periodicallyUpdateTracesTagValueCountFromDB()
 	return nil
 }
 
 func (e *metadataExporter) Shutdown(ctx context.Context) error {
+	e.set.Logger.Info("shutting down metadata exporter")
 	e.tracesTracker.Close()
 	e.metricsTracker.Close()
 	e.logsTracker.Close()
+	e.logTagValueCountCtxCancel()
+	e.tracesTagValueCountCtxCancel()
+	e.metricsTagValueCountCtxCancel()
 	return nil
 }
 
-func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB(ctx context.Context) {
+func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB() {
+	e.set.Logger.Info("starting to periodically update log tag value count from DB")
 	// Call the function immediately
-	e.updateLogTagValueCountFromDB(ctx)
+	e.updateLogTagValueCountFromDB(e.logTagValueCountCtx)
 
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
@@ -112,14 +134,13 @@ func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB(ctx context.
 	for {
 		select {
 		case <-ticker.C:
-			e.updateLogTagValueCountFromDB(ctx)
-		case <-ctx.Done():
-			return
+			e.updateLogTagValueCountFromDB(e.logTagValueCountCtx)
 		}
 	}
 }
 
 func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
+	e.set.Logger.Info("updating log tag value count from DB")
 	query := `
 	select
 		tagKey,
@@ -140,6 +161,8 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 	e.logTagValueCountFromDBLock.Lock()
 	defer e.logTagValueCountFromDBLock.Unlock()
 
+	e.set.Logger.Info("reading log tag value count from DB", zap.Any("query", query))
+
 	for rows.Next() {
 		var tagKey string
 		var stringTagValueCount uint64
@@ -154,9 +177,10 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 	e.set.Logger.Info("updated log tag value count from DB", zap.Any("counts", e.logTagValueCountFromDB))
 }
 
-func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB(ctx context.Context) {
+func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB() {
+	e.set.Logger.Info("starting to periodically update traces tag value count from DB")
 	// Call the function immediately
-	e.updateTracesTagValueCountFromDB(ctx)
+	e.updateTracesTagValueCountFromDB(e.tracesTagValueCountCtx)
 
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
@@ -164,14 +188,13 @@ func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB(ctx conte
 	for {
 		select {
 		case <-ticker.C:
-			e.updateTracesTagValueCountFromDB(ctx)
-		case <-ctx.Done():
-			return
+			e.updateTracesTagValueCountFromDB(e.tracesTagValueCountCtx)
 		}
 	}
 }
 
 func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) {
+	e.set.Logger.Info("updating traces tag value count from DB")
 	query := `
 	select
 		tagKey,
@@ -190,6 +213,8 @@ func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) 
 
 	e.tracesTagValueCountFromDBLock.Lock()
 	defer e.tracesTagValueCountFromDBLock.Unlock()
+
+	e.set.Logger.Info("reading traces tag value count from DB", zap.Any("query", query))
 
 	for rows.Next() {
 		var tagKey string
