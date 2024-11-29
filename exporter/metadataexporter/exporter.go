@@ -126,7 +126,6 @@ func (e *metadataExporter) addToUVT(_ context.Context, key string, value string,
 }
 
 func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key string, datasource string) bool {
-	e.set.Logger.Info("checking if attribute should be skipped in UVT", zap.String("key", key), zap.String("datasource", datasource))
 	var cnt int
 	switch datasource {
 	case pipeline.SignalTraces.String():
@@ -136,13 +135,16 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key string,
 	case pipeline.SignalLogs.String():
 		cnt = e.logsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
 	}
-	e.set.Logger.Info("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Int("value", cnt))
+	if cnt > 100 {
+		e.set.Logger.Info("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Int("value", cnt))
+	}
 	return cnt > int(e.cfg.MaxDistinctValues)
 }
 
 func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
 	filteredAttrs := make(map[string]any)
 	skippedAttrs := []string{}
+	nonSkipAttrs := []string{}
 	for k, v := range attrs {
 		uvtKey := makeUVTKey(k, datasource)
 		// Add to UVT first
@@ -151,11 +153,17 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 		// Check local UVT count
 		if !e.shouldSkipAttributeUVT(ctx, k, datasource) {
 			filteredAttrs[k] = v
+			nonSkipAttrs = append(nonSkipAttrs, k)
 		} else {
 			skippedAttrs = append(skippedAttrs, k)
 		}
 	}
-	e.set.Logger.Info("filtered attributes", zap.String("datasource", datasource), zap.Int("count", len(skippedAttrs)), zap.Strings("attributes", skippedAttrs))
+	e.set.Logger.Info("filtered attributes",
+		zap.String("datasource", datasource),
+		zap.Int("count", len(skippedAttrs)),
+		zap.Strings("skipped_attributes", skippedAttrs),
+		zap.Strings("non_skipped_attributes", nonSkipAttrs),
+	)
 	return filteredAttrs
 }
 
