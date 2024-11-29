@@ -6,6 +6,7 @@ package signozawsfirehosereceiver // import "github.com/SigNoz/signoz-otel-colle
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -13,7 +14,6 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/common/testutil"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/cwlog"
@@ -78,7 +78,7 @@ func defaultLogsUnmarshalers(logger *zap.Logger) map[string]unmarshaler.LogsUnma
 func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: testutil.EndpointForPort(defaultPort),
+			Endpoint: fmt.Sprintf("localhost:%d", defaultPort),
 		},
 	}
 }
