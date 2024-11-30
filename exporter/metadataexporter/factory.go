@@ -29,11 +29,33 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig:     exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig:     configretry.NewDefaultBackOffConfig(),
-		QueueConfig:       exporterhelper.NewDefaultQueueConfig(),
-		DSN:               "tcp://localhost:9000",
-		MaxDistinctValues: 2000,
+		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+		DSN:           "tcp://localhost:9000",
+		MaxDistinctValues: MaxDistinctValuesConfig{
+			Traces: TracesMaxDistinctValuesConfig{
+				MaxKeys:                  4096,
+				MaxStringLength:          64,
+				MaxStringDistinctValues:  2048,
+				MaxInt64DistinctValues:   128,
+				MaxFloat64DistinctValues: 128,
+			},
+			Logs: LogsMaxDistinctValuesConfig{
+				MaxKeys:                  4096,
+				MaxStringLength:          64,
+				MaxStringDistinctValues:  2048,
+				MaxInt64DistinctValues:   128,
+				MaxFloat64DistinctValues: 128,
+			},
+			Metrics: MetricsMaxDistinctValuesConfig{
+				MaxKeys:                  4096,
+				MaxStringLength:          64,
+				MaxStringDistinctValues:  2048,
+				MaxInt64DistinctValues:   128,
+				MaxFloat64DistinctValues: 128,
+			},
+		},
 	}
 }
 

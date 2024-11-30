@@ -12,7 +12,11 @@ type ValueTracker struct {
 	maxValuesPerKey int
 }
 
-func NewValueTracker(maxKeys int, maxValuesPerKey int, ttl time.Duration) *ValueTracker {
+func NewValueTracker(
+	maxKeys int,
+	maxValuesPerKey int,
+	ttl time.Duration,
+) *ValueTracker {
 	cache := ttlcache.New[string, *lru.Cache[string, struct{}]](
 		ttlcache.WithTTL[string, *lru.Cache[string, struct{}]](ttl),
 		ttlcache.WithCapacity[string, *lru.Cache[string, struct{}]](uint64(maxKeys)),

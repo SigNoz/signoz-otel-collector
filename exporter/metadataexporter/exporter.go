@@ -27,6 +27,13 @@ const (
 	sixHoursInMs = 3600000 * 6
 )
 
+type tagValueCountFromDB struct {
+	tagDataType          string
+	stringTagValueCount  uint64
+	int64TagValueCount   uint64
+	float64TagValueCount uint64
+}
+
 type metadataExporter struct {
 	cfg Config
 	set exporter.Settings
@@ -39,18 +46,22 @@ type metadataExporter struct {
 	metricsTracker *ValueTracker
 	logsTracker    *ValueTracker
 
-	logTagValueCountFromDB         map[string]uint64
+	logTagValueCountFromDB         map[string]tagValueCountFromDB
 	logTagValueCountFromDBLock     sync.RWMutex
 	logTagValueCountCtx            context.Context
 	logTagValueCountCtxCancel      context.CancelFunc
-	tracesTagValueCountFromDB      map[string]uint64
+	tracesTagValueCountFromDB      map[string]tagValueCountFromDB
 	tracesTagValueCountFromDBLock  sync.RWMutex
 	tracesTagValueCountCtx         context.Context
 	tracesTagValueCountCtxCancel   context.CancelFunc
-	metricsTagValueCountFromDB     map[string]uint64
+	metricsTagValueCountFromDB     map[string]tagValueCountFromDB
 	metricsTagValueCountFromDBLock sync.RWMutex
 	metricsTagValueCountCtx        context.Context
 	metricsTagValueCountCtxCancel  context.CancelFunc
+
+	alwaysIncludeTracesAttributes  map[string]struct{}
+	alwaysIncludeLogsAttributes    map[string]struct{}
+	alwaysIncludeMetricsAttributes map[string]struct{}
 }
 
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
@@ -73,14 +84,39 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	)
 	go countCache.Start()
 
-	tracesTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
-	metricsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
-	logsTracker := NewValueTracker(int(cfg.MaxDistinctValues*2), int(cfg.MaxDistinctValues*2), 45*time.Minute)
+	tracesTracker := NewValueTracker(
+		int(cfg.MaxDistinctValues.Traces.MaxKeys),
+		int(cfg.MaxDistinctValues.Traces.MaxStringDistinctValues*2),
+		45*time.Minute,
+	)
+	metricsTracker := NewValueTracker(
+		int(cfg.MaxDistinctValues.Metrics.MaxKeys),
+		int(cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues*2),
+		45*time.Minute,
+	)
+	logsTracker := NewValueTracker(
+		int(cfg.MaxDistinctValues.Logs.MaxKeys),
+		int(cfg.MaxDistinctValues.Logs.MaxStringDistinctValues*2),
+		45*time.Minute,
+	)
 
 	logTagValueCountCtx, logTagValueCountCtxCancel := context.WithCancel(context.Background())
 	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
 	metricsTagValueCountCtx, metricsTagValueCountCtxCancel := context.WithCancel(context.Background())
 
+	alwaysIncludeTracesAttributes := make(map[string]struct{})
+	alwaysIncludeLogsAttributes := make(map[string]struct{})
+	alwaysIncludeMetricsAttributes := make(map[string]struct{})
+
+	for _, attr := range cfg.AlwaysIncludeAttributes.Traces {
+		alwaysIncludeTracesAttributes[attr] = struct{}{}
+	}
+	for _, attr := range cfg.AlwaysIncludeAttributes.Logs {
+		alwaysIncludeLogsAttributes[attr] = struct{}{}
+	}
+	for _, attr := range cfg.AlwaysIncludeAttributes.Metrics {
+		alwaysIncludeMetricsAttributes[attr] = struct{}{}
+	}
 	return &metadataExporter{
 		cfg:                            cfg,
 		set:                            set,
@@ -90,18 +126,21 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		tracesTracker:                  tracesTracker,
 		metricsTracker:                 metricsTracker,
 		logsTracker:                    logsTracker,
-		logTagValueCountFromDB:         make(map[string]uint64),
+		logTagValueCountFromDB:         make(map[string]tagValueCountFromDB),
 		logTagValueCountFromDBLock:     sync.RWMutex{},
 		logTagValueCountCtx:            logTagValueCountCtx,
 		logTagValueCountCtxCancel:      logTagValueCountCtxCancel,
-		tracesTagValueCountFromDB:      make(map[string]uint64),
+		tracesTagValueCountFromDB:      make(map[string]tagValueCountFromDB),
 		tracesTagValueCountFromDBLock:  sync.RWMutex{},
 		tracesTagValueCountCtx:         tracesTagValueCountCtx,
 		tracesTagValueCountCtxCancel:   tracesTagValueCountCtxCancel,
-		metricsTagValueCountFromDB:     make(map[string]uint64),
+		metricsTagValueCountFromDB:     make(map[string]tagValueCountFromDB),
 		metricsTagValueCountFromDBLock: sync.RWMutex{},
 		metricsTagValueCountCtx:        metricsTagValueCountCtx,
 		metricsTagValueCountCtxCancel:  metricsTagValueCountCtxCancel,
+		alwaysIncludeTracesAttributes:  alwaysIncludeTracesAttributes,
+		alwaysIncludeLogsAttributes:    alwaysIncludeLogsAttributes,
+		alwaysIncludeMetricsAttributes: alwaysIncludeMetricsAttributes,
 	}, nil
 }
 
@@ -141,17 +180,25 @@ func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB() {
 
 func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 	e.set.Logger.Info("updating log tag value count from DB")
+	existingKeys := []string{}
+	for k := range e.logTagValueCountFromDB {
+		existingKeys = append(existingKeys, k)
+	}
+
 	query := `
 	select
 		tagKey,
+		tagDataType,
 		countDistinct(stringTagValue) as stringTagValueCount,
 		countDistinct(int64TagValue) as int64TagValueCount,
 		countDistinct(float64TagValue) as float64TagValueCount
 	FROM signoz_logs.distributed_tag_attributes
-	group by tagKey
-	order by tagKey`
+	WHERE tagKey NOT IN ($1)
+	group by tagKey, tagDataType
+	order by int64TagValueCount desc, float64TagValueCount desc, stringTagValueCount desc, tagKey
+	limit 1 by tagKey, tagDataType`
 
-	rows, err := e.conn.Query(ctx, query)
+	rows, err := e.conn.Query(ctx, query, existingKeys)
 	if err != nil {
 		e.set.Logger.Error("failed to query log tag value count from DB", zap.Error(err))
 		return
@@ -165,14 +212,27 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 
 	for rows.Next() {
 		var tagKey string
+		var tagDataType string
 		var stringTagValueCount uint64
 		var int64TagValueCount uint64
 		var float64TagValueCount uint64
-		if err := rows.Scan(&tagKey, &stringTagValueCount, &int64TagValueCount, &float64TagValueCount); err != nil {
+		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &int64TagValueCount, &float64TagValueCount); err != nil {
 			e.set.Logger.Error("failed to scan log tag value count from DB", zap.Error(err))
 			continue
 		}
-		e.logTagValueCountFromDB[tagKey] = stringTagValueCount + int64TagValueCount + float64TagValueCount
+		e.set.Logger.Info("read log tag value count from DB",
+			zap.String("tagKey", tagKey),
+			zap.String("tagDataType", tagDataType),
+			zap.Uint64("stringTagValueCount", stringTagValueCount),
+			zap.Uint64("int64TagValueCount", int64TagValueCount),
+			zap.Uint64("float64TagValueCount", float64TagValueCount),
+		)
+		e.logTagValueCountFromDB[tagKey] = tagValueCountFromDB{
+			tagDataType:          tagDataType,
+			stringTagValueCount:  stringTagValueCount,
+			int64TagValueCount:   int64TagValueCount,
+			float64TagValueCount: float64TagValueCount,
+		}
 	}
 	e.set.Logger.Info("updated log tag value count from DB", zap.Any("counts", e.logTagValueCountFromDB))
 }
@@ -195,16 +255,25 @@ func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB() {
 
 func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) {
 	e.set.Logger.Info("updating traces tag value count from DB")
+
+	existingKeys := []string{}
+	for k := range e.tracesTagValueCountFromDB {
+		existingKeys = append(existingKeys, k)
+	}
+
 	query := `
 	select
 		tagKey,
+		dataType,
 		countDistinct(stringTagValue) as stringTagValueCount,
 		countDistinct(float64TagValue) as float64TagValueCount
 	FROM signoz_traces.distributed_span_attributes
-	group by tagKey
-	order by tagKey`
+	WHERE tagKey NOT IN ($1)
+	group by tagKey, dataType
+	order by float64TagValueCount desc, stringTagValueCount desc, tagKey
+	limit 1 by tagKey, dataType`
 
-	rows, err := e.conn.Query(ctx, query)
+	rows, err := e.conn.Query(ctx, query, existingKeys)
 	if err != nil {
 		e.set.Logger.Error("failed to query traces tag value count from DB", zap.Error(err))
 		return
@@ -218,13 +287,26 @@ func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) 
 
 	for rows.Next() {
 		var tagKey string
+		var tagDataType string
 		var stringTagValueCount uint64
 		var float64TagValueCount uint64
-		if err := rows.Scan(&tagKey, &stringTagValueCount, &float64TagValueCount); err != nil {
+		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &float64TagValueCount); err != nil {
 			e.set.Logger.Error("failed to scan traces tag value count from DB", zap.Error(err))
 			continue
 		}
-		e.tracesTagValueCountFromDB[tagKey] = stringTagValueCount + float64TagValueCount
+		e.set.Logger.Info("read traces tag value count from DB",
+			zap.String("tagKey", tagKey),
+			zap.String("tagDataType", tagDataType),
+			zap.Uint64("stringTagValueCount", stringTagValueCount),
+			zap.Uint64("float64TagValueCount", float64TagValueCount),
+		)
+
+		e.tracesTagValueCountFromDB[tagKey] = tagValueCountFromDB{
+			tagDataType:          tagDataType,
+			stringTagValueCount:  stringTagValueCount,
+			int64TagValueCount:   0,
+			float64TagValueCount: float64TagValueCount,
+		}
 	}
 	e.set.Logger.Info("updated traces tag value count from DB", zap.Any("counts", e.tracesTagValueCountFromDB))
 }
@@ -274,18 +356,63 @@ func (e *metadataExporter) addToUVT(_ context.Context, key string, value string,
 
 func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key string, datasource string) bool {
 	var cnt int
+	typ := e.getType(key, datasource)
 	switch datasource {
 	case pipeline.SignalTraces.String():
+		if _, ok := e.alwaysIncludeTracesAttributes[key]; ok {
+			return false
+		}
 		cnt = e.tracesTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+		switch typ {
+		case "string":
+			if e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues) {
+				return true
+			}
+		case "float64":
+			if e.cfg.MaxDistinctValues.Traces.MaxFloat64DistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxFloat64DistinctValues) {
+				return true
+			}
+		case "int64":
+			if e.cfg.MaxDistinctValues.Traces.MaxInt64DistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxInt64DistinctValues) {
+				return true
+			}
+		}
 	case pipeline.SignalMetrics.String():
+		if _, ok := e.alwaysIncludeMetricsAttributes[key]; ok {
+			return false
+		}
 		cnt = e.metricsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+		switch typ {
+		case "string":
+			if e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues) {
+				return true
+			}
+		case "float64":
+			if e.cfg.MaxDistinctValues.Metrics.MaxFloat64DistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxFloat64DistinctValues) {
+				return true
+			}
+		}
 	case pipeline.SignalLogs.String():
+		if _, ok := e.alwaysIncludeLogsAttributes[key]; ok {
+			return false
+		}
 		cnt = e.logsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+		switch typ {
+		case "string":
+			if e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues) {
+				return true
+			}
+		case "int64":
+			if e.cfg.MaxDistinctValues.Logs.MaxInt64DistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxInt64DistinctValues) {
+				return true
+			}
+		case "float64":
+			if e.cfg.MaxDistinctValues.Logs.MaxFloat64DistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxFloat64DistinctValues) {
+				return true
+			}
+		}
 	}
-	if cnt > 100 {
-		e.set.Logger.Info("unique value count", zap.String("key", key), zap.String("datasource", datasource), zap.Int("value", cnt))
-	}
-	return cnt > int(e.cfg.MaxDistinctValues)
+	return false
 }
 
 func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
@@ -294,8 +421,13 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 	nonSkipAttrs := []string{}
 	for k, v := range attrs {
 		uvtKey := makeUVTKey(k, datasource)
+		vStr := fmt.Sprintf("%v", v)
+		if len(vStr) > int(e.cfg.MaxDistinctValues.Traces.MaxStringLength) {
+			skippedAttrs = append(skippedAttrs, k)
+			continue
+		}
 		// Add to UVT first
-		e.addToUVT(ctx, uvtKey, fmt.Sprintf("%v", v), datasource)
+		e.addToUVT(ctx, uvtKey, vStr, datasource)
 
 		// Check local UVT count
 		if !e.shouldSkipAttributeUVT(ctx, k, datasource) {
@@ -312,6 +444,56 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 		zap.Strings("non_skipped_attributes", nonSkipAttrs),
 	)
 	return filteredAttrs
+}
+
+func (e *metadataExporter) getType(key string, datasource string) string {
+	switch datasource {
+	case pipeline.SignalTraces.String():
+		return e.tracesTagValueCountFromDB[key].tagDataType
+	case pipeline.SignalLogs.String():
+		return e.logTagValueCountFromDB[key].tagDataType
+	case pipeline.SignalMetrics.String():
+		return e.metricsTagValueCountFromDB[key].tagDataType
+	}
+	return "string"
+}
+
+func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key string, datasource string) bool {
+	switch datasource {
+	case pipeline.SignalTraces.String():
+		if _, ok := e.alwaysIncludeTracesAttributes[key]; ok {
+			return false
+		}
+		switch e.tracesTagValueCountFromDB[key].tagDataType {
+		case "string":
+			return e.tracesTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues
+		case "float64":
+			return e.tracesTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Traces.MaxFloat64DistinctValues
+		}
+	case pipeline.SignalLogs.String():
+		if _, ok := e.alwaysIncludeLogsAttributes[key]; ok {
+			return false
+		}
+		switch e.logTagValueCountFromDB[key].tagDataType {
+		case "string":
+			return e.logTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues
+		case "int64":
+			return e.logTagValueCountFromDB[key].int64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxInt64DistinctValues
+		case "float64":
+			return e.logTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxFloat64DistinctValues
+		}
+	case pipeline.SignalMetrics.String():
+		if _, ok := e.alwaysIncludeMetricsAttributes[key]; ok {
+			return false
+		}
+		switch e.metricsTagValueCountFromDB[key].tagDataType {
+		case "string":
+			return e.metricsTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues
+		case "float64":
+			return e.metricsTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Metrics.MaxFloat64DistinctValues
+		}
+	}
+	return false
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
@@ -346,7 +528,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 				spanAttrs := make(map[string]any)
 				skippedFromDB := []string{}
 				span.Attributes().Range(func(k string, v pcommon.Value) bool {
-					if e.tracesTagValueCountFromDB[k] > e.cfg.MaxDistinctValues {
+					if e.shouldSkipAttributeFromDB(ctx, k, pipeline.SignalTraces.String()) {
 						skippedFromDB = append(skippedFromDB, k)
 						return true
 					}
@@ -505,7 +687,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 				logRecordAttrs := make(map[string]any)
 				skippedFromDB := []string{}
 				logRecord.Attributes().Range(func(k string, v pcommon.Value) bool {
-					if e.logTagValueCountFromDB[k] > e.cfg.MaxDistinctValues {
+					if e.shouldSkipAttributeFromDB(ctx, k, pipeline.SignalLogs.String()) {
 						skippedFromDB = append(skippedFromDB, k)
 						return true
 					}
