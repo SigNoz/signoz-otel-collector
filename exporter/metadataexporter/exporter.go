@@ -422,7 +422,7 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 	for k, v := range attrs {
 		uvtKey := makeUVTKey(k, datasource)
 		vStr := fmt.Sprintf("%v", v)
-		if len(vStr) > int(e.cfg.MaxDistinctValues.Traces.MaxStringLength) {
+		if len(vStr) > int(e.cfg.MaxDistinctValues.Traces.MaxStringLength) || len(vStr) == 0 {
 			skippedAttrs = append(skippedAttrs, k)
 			continue
 		}
