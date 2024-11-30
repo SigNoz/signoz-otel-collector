@@ -666,6 +666,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 
 	totalLogRecords := 0
 	writtenLogRecords := 0
+	writtenLogRecordsFingerprints := []uint64{}
 
 	resourceLogs := ld.ResourceLogs()
 	for i := 0; i < resourceLogs.Len(); i++ {
@@ -721,11 +722,16 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 				}
 				e.fingerprintCache.Set(cacheKey, true, ttlcache.DefaultTTL)
 				writtenLogRecords++
+				writtenLogRecordsFingerprints = append(writtenLogRecordsFingerprints, logRecordFingerprint)
 			}
 		}
 	}
 
-	e.set.Logger.Info("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("written_log_records", writtenLogRecords))
+	e.set.Logger.Info("pushed logs attributes",
+		zap.Int("total_log_records", totalLogRecords),
+		zap.Int("written_log_records", writtenLogRecords),
+		zap.Uint64s("written_log_records_fingerprints", writtenLogRecordsFingerprints),
+	)
 
 	return stmt.Send()
 }
