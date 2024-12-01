@@ -28,10 +28,9 @@ const (
 )
 
 type tagValueCountFromDB struct {
-	tagDataType          string
-	stringTagValueCount  uint64
-	int64TagValueCount   uint64
-	float64TagValueCount uint64
+	tagDataType         string
+	stringTagValueCount uint64
+	numberValueCount    uint64
 }
 
 type metadataExporter struct {
@@ -200,16 +199,14 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 
 	query := `
 	select
-		tagKey,
-		tagDataType,
-		countDistinct(stringTagValue) as stringTagValueCount,
-		countDistinct(int64TagValue) as int64TagValueCount,
-		countDistinct(float64TagValue) as float64TagValueCount
-	FROM signoz_logs.distributed_tag_attributes
-	WHERE tagKey NOT IN ($1)
-	group by tagKey, tagDataType
-	order by int64TagValueCount desc, float64TagValueCount desc, stringTagValueCount desc, tagKey
-	limit 1 by tagKey, tagDataType`
+		tag_key,
+		tag_data_type,
+		countDistinct(string_value) as string_value_count,
+		countDistinct(number_value) as number_value_count
+	FROM signoz_logs.distributed_tag_attributes_v2
+	group by tag_key, tag_data_type
+	order by number_value_count desc, string_value_count desc, tag_key
+	limit 1 by tag_key, tag_data_type`
 
 	rows, err := e.conn.Query(ctx, query, existingKeys)
 	if err != nil {
@@ -227,9 +224,8 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 		var tagKey string
 		var tagDataType string
 		var stringTagValueCount uint64
-		var int64TagValueCount uint64
-		var float64TagValueCount uint64
-		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &int64TagValueCount, &float64TagValueCount); err != nil {
+		var numberValueCount uint64
+		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &numberValueCount); err != nil {
 			e.set.Logger.Error("failed to scan log tag value count from DB", zap.Error(err))
 			continue
 		}
@@ -237,14 +233,12 @@ func (e *metadataExporter) updateLogTagValueCountFromDB(ctx context.Context) {
 			zap.String("tagKey", tagKey),
 			zap.String("tagDataType", tagDataType),
 			zap.Uint64("stringTagValueCount", stringTagValueCount),
-			zap.Uint64("int64TagValueCount", int64TagValueCount),
-			zap.Uint64("float64TagValueCount", float64TagValueCount),
+			zap.Uint64("numberValueCount", numberValueCount),
 		)
 		e.logTagValueCountFromDB[tagKey] = tagValueCountFromDB{
-			tagDataType:          tagDataType,
-			stringTagValueCount:  stringTagValueCount,
-			int64TagValueCount:   int64TagValueCount,
-			float64TagValueCount: float64TagValueCount,
+			tagDataType:         tagDataType,
+			stringTagValueCount: stringTagValueCount,
+			numberValueCount:    numberValueCount,
 		}
 	}
 	e.set.Logger.Info("updated log tag value count from DB", zap.Any("counts", e.logTagValueCountFromDB))
@@ -276,15 +270,14 @@ func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) 
 
 	query := `
 	select
-		tagKey,
-		dataType,
-		countDistinct(stringTagValue) as stringTagValueCount,
-		countDistinct(float64TagValue) as float64TagValueCount
-	FROM signoz_traces.distributed_span_attributes
-	WHERE tagKey NOT IN ($1)
-	group by tagKey, dataType
-	order by float64TagValueCount desc, stringTagValueCount desc, tagKey
-	limit 1 by tagKey, dataType`
+		tag_key,
+		tag_data_type,
+		countDistinct(string_value) as string_value_count,
+		countDistinct(number_value) as number_value_count
+	FROM signoz_traces.distributed_tag_attributes_v2
+	group by tag_key, tag_data_type
+	order by number_value_count desc, string_value_count desc, tag_key
+	limit 1 by tag_key, tag_data_type`
 
 	rows, err := e.conn.Query(ctx, query, existingKeys)
 	if err != nil {
@@ -302,8 +295,8 @@ func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) 
 		var tagKey string
 		var tagDataType string
 		var stringTagValueCount uint64
-		var float64TagValueCount uint64
-		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &float64TagValueCount); err != nil {
+		var numberValueCount uint64
+		if err := rows.Scan(&tagKey, &tagDataType, &stringTagValueCount, &numberValueCount); err != nil {
 			e.set.Logger.Error("failed to scan traces tag value count from DB", zap.Error(err))
 			continue
 		}
@@ -311,14 +304,13 @@ func (e *metadataExporter) updateTracesTagValueCountFromDB(ctx context.Context) 
 			zap.String("tagKey", tagKey),
 			zap.String("tagDataType", tagDataType),
 			zap.Uint64("stringTagValueCount", stringTagValueCount),
-			zap.Uint64("float64TagValueCount", float64TagValueCount),
+			zap.Uint64("numberValueCount", numberValueCount),
 		)
 
 		e.tracesTagValueCountFromDB[tagKey] = tagValueCountFromDB{
-			tagDataType:          tagDataType,
-			stringTagValueCount:  stringTagValueCount,
-			int64TagValueCount:   0,
-			float64TagValueCount: float64TagValueCount,
+			tagDataType:         tagDataType,
+			stringTagValueCount: stringTagValueCount,
+			numberValueCount:    numberValueCount,
 		}
 	}
 	e.set.Logger.Info("updated traces tag value count from DB", zap.Any("counts", e.tracesTagValueCountFromDB))
@@ -506,7 +498,7 @@ func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key stri
 		case "string":
 			return e.metricsTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues
 		case "float64":
-			return e.metricsTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Metrics.MaxFloat64DistinctValues
+			return e.metricsTagValueCountFromDB[key].numberValueCount > e.cfg.MaxDistinctValues.Metrics.MaxFloat64DistinctValues
 		}
 	}
 	return false

@@ -16,6 +16,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
@@ -32,9 +33,11 @@ const (
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		MaxDistinctValues: 25000,
+		FetchKeysInterval: 10 * time.Minute,
+		TimeoutConfig:     exporterhelper.NewDefaultTimeoutConfig(),
+		QueueConfig:       exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig:     configretry.NewDefaultBackOffConfig(),
 	}
 }
 

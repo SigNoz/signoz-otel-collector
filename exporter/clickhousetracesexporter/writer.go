@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -41,6 +42,14 @@ const (
 	EncodingProto Encoding = "protobuf"
 )
 
+type shouldSkipKey struct {
+	TagKey      string `ch:"tag_key"`
+	TagType     string `ch:"tag_type"`
+	TagDataType string `ch:"tag_data_type"`
+	StringCount uint64 `ch:"string_count"`
+	NumberCount uint64 `ch:"number_count"`
+}
+
 // SpanWriter for writing spans to ClickHouse
 type SpanWriter struct {
 	logger            *zap.Logger
@@ -50,6 +59,7 @@ type SpanWriter struct {
 	errorTable        string
 	spansTable        string
 	attributeTable    string
+	attributeTableV2  string
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
@@ -57,6 +67,11 @@ type SpanWriter struct {
 	indexTableV3    string
 	resourceTableV3 string
 	useNewSchema    bool
+
+	shouldSkipKey             map[string]shouldSkipKey
+	maxDistinctValues         int
+	fetchShouldSkipKeysTicker *time.Ticker
+	fetchKeysMutex            sync.RWMutex
 }
 
 type WriterOptions struct {
@@ -67,13 +82,16 @@ type WriterOptions struct {
 	indexTable        string
 	errorTable        string
 	attributeTable    string
+	attributeTableV2  string
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
 
-	indexTableV3    string
-	resourceTableV3 string
-	useNewSchema    bool
+	indexTableV3      string
+	resourceTableV3   string
+	useNewSchema      bool
+	maxDistinctValues int
+	fetchKeysInterval time.Duration
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -89,16 +107,53 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		errorTable:        options.errorTable,
 		spansTable:        options.spansTable,
 		attributeTable:    options.attributeTable,
+		attributeTableV2:  options.attributeTableV2,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
 
-		indexTableV3:    options.indexTableV3,
-		resourceTableV3: options.resourceTableV3,
-		useNewSchema:    options.useNewSchema,
+		indexTableV3:              options.indexTableV3,
+		resourceTableV3:           options.resourceTableV3,
+		useNewSchema:              options.useNewSchema,
+		shouldSkipKey:             make(map[string]shouldSkipKey),
+		maxDistinctValues:         options.maxDistinctValues,
+		fetchShouldSkipKeysTicker: time.NewTicker(options.fetchKeysInterval),
+		fetchKeysMutex:            sync.RWMutex{},
 	}
 
+	go writer.fetchShouldSkipKeys()
 	return writer
+}
+
+func (e *SpanWriter) fetchShouldSkipKeys() {
+	for range e.fetchShouldSkipKeysTicker.C {
+		query := fmt.Sprintf(`
+			SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
+			FROM %s.%s 
+			GROUP BY tag_key, tag_type, tag_data_type
+			HAVING string_count > %d OR number_count > %d`, e.traceDatabase, e.attributeTableV2, e.maxDistinctValues, e.maxDistinctValues)
+
+		e.logger.Info("fetching should skip keys", zap.String("query", query))
+
+		keys := []shouldSkipKey{}
+
+		err := e.db.Select(context.Background(), &keys, query)
+		if err != nil {
+			e.logger.Error("error while fetching should skip keys", zap.Error(err))
+		}
+
+		e.fetchKeysMutex.Lock()
+		e.shouldSkipKey = make(map[string]shouldSkipKey)
+		for _, key := range keys {
+			mapKey := makeKey(key.TagKey, key.TagType, key.TagDataType)
+			e.shouldSkipKey[mapKey] = key
+		}
+		e.fetchKeysMutex.Unlock()
+	}
+}
+
+func makeKey(tagKey, tagType, tagDataType string) string {
+	return fmt.Sprintf("%s:%s:%s", tagKey, tagType, tagDataType)
 }
 
 func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) error {

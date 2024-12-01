@@ -16,6 +16,7 @@ package clickhouselogsexporter
 
 import (
 	"errors"
+	"time"
 
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -33,6 +34,9 @@ type Config struct {
 	// For http protocol reference: [mailru/go-clickhouse/#dsn](https://github.com/mailru/go-clickhouse/#dsn).
 	DSN          string `mapstructure:"dsn"`
 	UseNewSchema bool   `mapstructure:"use_new_schema" default:"false"`
+
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
 }
 
 var (

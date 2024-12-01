@@ -16,6 +16,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
@@ -30,6 +31,7 @@ const (
 	defaultErrorTable               string   = "distributed_signoz_error_index_v2"
 	defaultSpansTable               string   = "distributed_signoz_spans"
 	defaultAttributeTable           string   = "distributed_span_attributes"
+	defaultAttributeTableV2         string   = "distributed_tag_attributes_v2"
 	defaultAttributeKeyTable        string   = "distributed_span_attributes_keys"
 	DefaultDurationSortTable        string   = "durationSort"
 	DefaultDurationSortMVTable      string   = "durationSortMV"
@@ -55,6 +57,7 @@ type namespaceConfig struct {
 	SpansTable                 string
 	ErrorTable                 string
 	AttributeTable             string
+	AttributeTableV2           string
 	AttributeKeyTable          string
 	DurationSortTable          string
 	DurationSortMVTable        string
@@ -67,6 +70,8 @@ type namespaceConfig struct {
 	Connector                  Connector
 	ExporterId                 uuid.UUID
 	UseNewSchema               bool
+	MaxDistinctValues          int
+	FetchKeysInterval          time.Duration
 	IndexTableV3               string
 	ResourceTableV3            string
 }
@@ -129,6 +134,7 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, us
 			ErrorTable:                 defaultErrorTable,
 			SpansTable:                 defaultSpansTable,
 			AttributeTable:             defaultAttributeTable,
+			AttributeTableV2:           defaultAttributeTableV2,
 			AttributeKeyTable:          defaultAttributeKeyTable,
 			DurationSortTable:          DefaultDurationSortTable,
 			DurationSortMVTable:        DefaultDurationSortMVTable,
@@ -143,6 +149,8 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, us
 			UseNewSchema:               useNewSchema,
 			IndexTableV3:               defaultIndexTableV3,
 			ResourceTableV3:            defaultResourceTableV3,
+			MaxDistinctValues:          config.MaxDistinctValues,
+			FetchKeysInterval:          config.FetchKeysInterval,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -150,17 +158,20 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, us
 	for _, namespace := range otherNamespaces {
 		if namespace == archiveNamespace {
 			options.others[namespace] = &namespaceConfig{
-				namespace:       namespace,
-				Datasource:      datasource,
-				OperationsTable: "",
-				IndexTable:      "",
-				SpansTable:      defaultArchiveSpansTable,
-				Encoding:        defaultEncoding,
-				Connector:       defaultConnector,
-				ExporterId:      exporterId,
-				UseNewSchema:    useNewSchema,
-				IndexTableV3:    defaultIndexTableV3,
-				ResourceTableV3: defaultResourceTableV3,
+				namespace:         namespace,
+				Datasource:        datasource,
+				OperationsTable:   "",
+				IndexTable:        "",
+				SpansTable:        defaultArchiveSpansTable,
+				Encoding:          defaultEncoding,
+				Connector:         defaultConnector,
+				ExporterId:        exporterId,
+				UseNewSchema:      useNewSchema,
+				IndexTableV3:      defaultIndexTableV3,
+				ResourceTableV3:   defaultResourceTableV3,
+				AttributeTableV2:  defaultAttributeTableV2,
+				MaxDistinctValues: config.MaxDistinctValues,
+				FetchKeysInterval: config.FetchKeysInterval,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}
