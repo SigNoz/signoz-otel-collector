@@ -64,6 +64,19 @@ type metadataExporter struct {
 	alwaysIncludeMetricsAttributes map[string]struct{}
 }
 
+func flattenJSONToStringMap(data map[string]any) map[string]string {
+	result := make(map[string]string)
+	for key, value := range data {
+		switch v := value.(type) {
+		case string:
+			result[key] = v
+		default:
+			result[key] = fmt.Sprintf("%v", v)
+		}
+	}
+	return result
+}
+
 func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
@@ -468,7 +481,8 @@ func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key stri
 		case "string":
 			return e.tracesTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues
 		case "float64":
-			return e.tracesTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Traces.MaxFloat64DistinctValues
+			return true
+			// return e.tracesTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Traces.MaxFloat64DistinctValues
 		}
 	case pipeline.SignalLogs.String():
 		if _, ok := e.alwaysIncludeLogsAttributes[key]; ok {
@@ -478,9 +492,11 @@ func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key stri
 		case "string":
 			return e.logTagValueCountFromDB[key].stringTagValueCount > e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues
 		case "int64":
-			return e.logTagValueCountFromDB[key].int64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxInt64DistinctValues
+			// return e.logTagValueCountFromDB[key].int64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxInt64DistinctValues
+			return true
 		case "float64":
-			return e.logTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxFloat64DistinctValues
+			// return e.logTagValueCountFromDB[key].float64TagValueCount > e.cfg.MaxDistinctValues.Logs.MaxFloat64DistinctValues
+			return true
 		}
 	case pipeline.SignalMetrics.String():
 		if _, ok := e.alwaysIncludeMetricsAttributes[key]; ok {
@@ -554,8 +570,8 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					pipeline.SignalTraces,
 					resourceFingerprint,
 					spanFingerprint,
-					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-					flatten.FlattenJSONToStringMap(filteredSpanAttrs),
+					flattenJSONToStringMap(flattenedResourceAttrs),
+					flattenJSONToStringMap(filteredSpanAttrs),
 				)
 				writtenSpans++
 				if err != nil {
@@ -625,8 +641,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 						return true
 					})
 					flattenedMetricAttrs := flatten.FlattenJSON(metricAttrs, "")
-					filteredMetricAttrs := e.filterAttrs(ctx, flattenedMetricAttrs, pipeline.SignalMetrics.String())
-					metricFingerprint := fingerprint.FingerprintHash(filteredMetricAttrs)
+					metricFingerprint := fingerprint.FingerprintHash(flattenedMetricAttrs)
 					unixMilli := time.Now().UnixMilli()
 					roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 					cacheKey := makeFingerprintCacheKey(uint64(roundedUnixMilli), metricFingerprint, pipeline.SignalMetrics.String())
@@ -640,8 +655,8 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 						pipeline.SignalMetrics,
 						resourceFingerprint,
 						metricFingerprint,
-						flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-						flatten.FlattenJSONToStringMap(filteredMetricAttrs),
+						flattenJSONToStringMap(flattenedResourceAttrs),
+						flattenJSONToStringMap(flattenedMetricAttrs),
 					)
 					if err != nil {
 						return err
@@ -714,8 +729,8 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 					pipeline.SignalLogs,
 					resourceFingerprint,
 					logRecordFingerprint,
-					flatten.FlattenJSONToStringMap(flattenedResourceAttrs),
-					flatten.FlattenJSONToStringMap(filteredLogRecordAttrs),
+					flattenJSONToStringMap(flattenedResourceAttrs),
+					flattenJSONToStringMap(filteredLogRecordAttrs),
 				)
 				if err != nil {
 					return err
