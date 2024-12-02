@@ -78,7 +78,7 @@ func defaultLogsUnmarshalers(logger *zap.Logger) map[string]unmarshaler.LogsUnma
 func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: fmt.Sprintf("localhost:%d", defaultPort),
+			Endpoint: fmt.Sprintf("0.0.0.0:%d", defaultPort),
 		},
 	}
 }

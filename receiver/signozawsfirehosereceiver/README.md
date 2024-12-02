@@ -28,7 +28,7 @@ using a Load Balancer.
 ### endpoint:
 The address:port to bind the listener to.
 
-default: `localhost:4433`
+default: `0.0.0.0:4433`
 
 You can temporarily disable the `component.UseLocalHostAsDefaultHost` feature gate to change this to `0.0.0.0:4433`. This feature gate will be removed in a future release.
 

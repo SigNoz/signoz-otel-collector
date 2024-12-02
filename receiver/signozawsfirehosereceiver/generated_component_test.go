@@ -16,7 +16,7 @@ import (
 )
 
 func TestComponentFactoryType(t *testing.T) {
-	require.Equal(t, "awsfirehose", NewFactory().Type().String())
+	require.Equal(t, "signozawsfirehose", NewFactory().Type().String())
 }
 
 func TestComponentConfigStruct(t *testing.T) {
