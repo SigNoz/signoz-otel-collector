@@ -300,9 +300,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			IsColumn: false,
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -329,9 +334,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
+
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
