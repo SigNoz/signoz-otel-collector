@@ -86,15 +86,11 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		return nil, err
 	}
 	fingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithTTL[string, bool](300*time.Minute),
 		ttlcache.WithDisableTouchOnHit[string, bool](),
+		ttlcache.WithCapacity[string, bool](10000000),
 	)
 	go fingerprintCache.Start()
-	countCache := ttlcache.New[string, uint64](
-		ttlcache.WithTTL[string, uint64](15*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, uint64](),
-	)
-	go countCache.Start()
 
 	tracesTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Traces.MaxKeys),
@@ -134,7 +130,6 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		set:                            set,
 		conn:                           conn,
 		fingerprintCache:               fingerprintCache,
-		countCache:                     countCache,
 		tracesTracker:                  tracesTracker,
 		metricsTracker:                 metricsTracker,
 		logsTracker:                    logsTracker,
@@ -179,7 +174,7 @@ func (e *metadataExporter) periodicallyUpdateLogTagValueCountFromDB() {
 	// Call the function immediately
 	e.updateLogTagValueCountFromDB(e.logTagValueCountCtx)
 
-	ticker := time.NewTicker(15 * time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -249,7 +244,7 @@ func (e *metadataExporter) periodicallyUpdateTracesTagValueCountFromDB() {
 	// Call the function immediately
 	e.updateTracesTagValueCountFromDB(e.tracesTagValueCountCtx)
 
-	ticker := time.NewTicker(15 * time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {

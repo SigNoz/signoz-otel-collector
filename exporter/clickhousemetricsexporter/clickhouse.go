@@ -119,7 +119,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	}
 
 	cache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithTTL[string, bool](60*time.Minute),
 		ttlcache.WithDisableTouchOnHit[string, bool](),
 	)
 	go cache.Start()

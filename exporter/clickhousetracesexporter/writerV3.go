@@ -4,17 +4,27 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.uber.org/zap"
 )
+
+func makeKeyForRFCache(bucketTs int64, fingerprint string) string {
+	var v strings.Builder
+	v.WriteString(strconv.Itoa(int(bucketTs)))
+	v.WriteString(":")
+	v.WriteString(fingerprint)
+	return v.String()
+}
 
 func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var statement driver.Batch
@@ -207,15 +217,18 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			// check if mapOfSpanAttributeKey already exists in map
 			_, ok = mapOfSpanAttributeKeys[mapOfSpanAttributeKey]
 			if !ok {
-				err = tagKeyStatement.Append(
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.IsColumn,
-				)
-				if err != nil {
-					w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Any("span", span))
-					return err
+				if w.keysCache.Get(mapOfSpanAttributeKey) == nil {
+					err = tagKeyStatement.Append(
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						spanAttribute.IsColumn,
+					)
+					if err != nil {
+						w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Any("span", span))
+						return err
+					}
+					w.keysCache.Set(mapOfSpanAttributeKey, struct{}{}, ttlcache.DefaultTTL)
 				}
 			}
 			// add mapOfSpanAttributeKey to map
@@ -223,15 +236,15 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			key := makeKey(spanAttribute.Key, spanAttribute.TagType, spanAttribute.DataType)
 
 			if spanAttribute.DataType == "string" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.StringValue,
-					nil,
-					spanAttribute.IsColumn,
-				)
+				// err = tagStatement.Append(
+				// 	time.Unix(0, int64(span.StartTimeUnixNano)),
+				// 	spanAttribute.Key,
+				// 	spanAttribute.TagType,
+				// 	spanAttribute.DataType,
+				// 	spanAttribute.StringValue,
+				// 	nil,
+				// 	spanAttribute.IsColumn,
+				// )
 				_, ok = fetchKeys[key]
 				if !ok {
 					err = tagStatementV2.Append(
@@ -244,15 +257,15 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 					)
 				}
 			} else if spanAttribute.DataType == "float64" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					spanAttribute.NumberValue,
-					spanAttribute.IsColumn,
-				)
+				// err = tagStatement.Append(
+				// 	time.Unix(0, int64(span.StartTimeUnixNano)),
+				// 	spanAttribute.Key,
+				// 	spanAttribute.TagType,
+				// 	spanAttribute.DataType,
+				// 	nil,
+				// 	spanAttribute.NumberValue,
+				// 	spanAttribute.IsColumn,
+				// )
 				_, ok = fetchKeys[key]
 				if !ok {
 					err = tagStatementV2.Append(
@@ -265,15 +278,15 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 					)
 				}
 			} else if spanAttribute.DataType == "bool" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					nil,
-					spanAttribute.IsColumn,
-				)
+				// err = tagStatement.Append(
+				// 	time.Unix(0, int64(span.StartTimeUnixNano)),
+				// 	spanAttribute.Key,
+				// 	spanAttribute.TagType,
+				// 	spanAttribute.DataType,
+				// 	nil,
+				// 	nil,
+				// 	spanAttribute.IsColumn,
+				// )
 				_, ok = fetchKeys[key]
 				if !ok {
 					err = tagStatementV2.Append(
@@ -294,7 +307,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	}
 
 	tagStart := time.Now()
-	err1 := tagStatement.Send()
+	// err1 := tagStatement.Send()
 	err2 := tagStatementV2.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
@@ -303,9 +316,9 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		},
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
 	)
-	if err1 != nil || err2 != nil {
-		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err1), zap.Error(err2))
-		return fmt.Errorf("Could not write to span attributes table due to error: %w", err1)
+	if err2 != nil {
+		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err2))
+		return fmt.Errorf("Could not write to span attributes table due to error: %w", err2)
 	}
 
 	tagKeyStart := time.Now()
@@ -399,11 +412,16 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
+			key := makeKeyForRFCache(bucketTs, fingerprint)
+			if w.rfCache.Get(key) != nil {
+				continue
+			}
 			insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,
 			)
+			w.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 		}
 	}
 	start := time.Now()

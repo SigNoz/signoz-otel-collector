@@ -52,4 +52,26 @@ var LogsMigrations = []SchemaMigrationRecord{
 		},
 		DownItems: []Operation{},
 	},
+	{
+		MigrationID: 1001,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "attribute_keys_bool_final_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "attribute_keys_float64_final_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "attribute_keys_string_final_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "resource_keys_string_final_mv",
+			},
+		},
+		DownItems: []Operation{},
+	},
 }

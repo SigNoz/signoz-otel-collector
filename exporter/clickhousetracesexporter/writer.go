@@ -26,6 +26,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -68,6 +69,9 @@ type SpanWriter struct {
 	resourceTableV3 string
 	useNewSchema    bool
 
+	keysCache *ttlcache.Cache[string, struct{}]
+	rfCache   *ttlcache.Cache[string, struct{}]
+
 	shouldSkipKey             map[string]shouldSkipKey
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
@@ -99,6 +103,15 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
+
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](15 * time.Minute),
+	)
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](30*time.Minute),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+	)
+
 	writer := &SpanWriter{
 		logger:            options.logger,
 		db:                options.db,
@@ -119,6 +132,8 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		maxDistinctValues:         options.maxDistinctValues,
 		fetchShouldSkipKeysTicker: time.NewTicker(options.fetchKeysInterval),
 		fetchKeysMutex:            sync.RWMutex{},
+		keysCache:                 keysCache,
+		rfCache:                   rfCache,
 	}
 
 	go writer.fetchShouldSkipKeys()
