@@ -9,6 +9,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
@@ -179,14 +181,19 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			// check if mapOfSpanAttributeKey already exists in map
 			_, ok = mapOfSpanAttributeKeys[mapOfSpanAttributeKey]
 			if !ok {
-				err = tagKeyStatement.Append(
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.IsColumn,
-				)
-				if err != nil {
-					return fmt.Errorf("could not append span to tagKey Statement to batch due to error: %w", err)
+				if w.keysCache.Get(mapOfSpanAttributeKey) == nil {
+					err = tagKeyStatement.Append(
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						spanAttribute.IsColumn,
+					)
+					if err != nil {
+						return fmt.Errorf("could not append span to tagKey Statement to batch due to error: %w", err)
+					}
+					w.keysCache.Set(mapOfSpanAttributeKey, struct{}{}, ttlcache.DefaultTTL)
+				} else {
+					w.logger.Debug("attribute key already present in cache, skipping", zap.String("key", mapOfSpanAttributeKey))
 				}
 			}
 			// add mapOfSpanAttributeKey to map
@@ -332,11 +339,17 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
+			key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
+			if w.rfCache.Get(key) != nil {
+				w.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
+				continue
+			}
 			insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,
 			)
+			w.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 		}
 	}
 	start := time.Now()

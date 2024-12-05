@@ -25,11 +25,16 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
+)
+
+const (
+	DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS = 1800
 )
 
 type Encoding string
@@ -57,6 +62,9 @@ type SpanWriter struct {
 	indexTableV3    string
 	resourceTableV3 string
 	useNewSchema    bool
+
+	keysCache *ttlcache.Cache[string, struct{}]
+	rfCache   *ttlcache.Cache[string, struct{}]
 }
 
 type WriterOptions struct {
@@ -81,6 +89,24 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
+
+	// keys cache is used to avoid duplicate inserts for the same attribute key.
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+	)
+	go keysCache.Start()
+
+	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
+	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
+	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go rfCache.Start()
+
 	writer := &SpanWriter{
 		logger:            options.logger,
 		db:                options.db,
@@ -96,6 +122,8 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		indexTableV3:    options.indexTableV3,
 		resourceTableV3: options.resourceTableV3,
 		useNewSchema:    options.useNewSchema,
+		keysCache:       keysCache,
+		rfCache:         rfCache,
 	}
 
 	return writer
