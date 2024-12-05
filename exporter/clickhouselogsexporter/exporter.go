@@ -31,6 +31,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/segmentio/ksuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -46,6 +47,8 @@ const (
 	DISTRIBUTED_TAG_ATTRIBUTES           = "distributed_tag_attributes"
 	DISTRIBUTED_LOGS_TABLE_V2            = "distributed_logs_v2"
 	DISTRIBUTED_LOGS_RESOURCE_V2         = "distributed_logs_v2_resource"
+	DISTRIBUTED_LOGS_ATTRIBUTE_KEYS      = "distributed_logs_attribute_keys"
+	DISTRIBUTED_LOGS_RESOURCE_KEYS       = "distributed_logs_resource_keys"
 	DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS = 1800
 )
 
@@ -64,6 +67,8 @@ type clickhouseLogsExporter struct {
 	closeChan chan struct{}
 
 	useNewSchema bool
+
+	keysCache *ttlcache.Cache[string, struct{}]
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -96,6 +101,12 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		return nil, err
 	}
 
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+	)
+	go keysCache.Start()
+
 	return &clickhouseLogsExporter{
 		id:              id,
 		db:              client,
@@ -107,6 +118,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		wg:              new(sync.WaitGroup),
 		closeChan:       make(chan struct{}),
 		useNewSchema:    cfg.UseNewSchema,
+		keysCache:       keysCache,
 	}, nil
 }
 
@@ -218,6 +230,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	var insertResourcesStmtV2 driver.Batch
 	var statement driver.Batch
 	var tagStatement driver.Batch
+	var attributeKeysStmt driver.Batch
+	var resourceKeysStmt driver.Batch
 	var err error
 
 	defer func() {
@@ -233,6 +247,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		if insertResourcesStmtV2 != nil {
 			_ = insertResourcesStmtV2.Abort()
 		}
+		if attributeKeysStmt != nil {
+			_ = attributeKeysStmt.Abort()
+		}
+		if resourceKeysStmt != nil {
+			_ = resourceKeysStmt.Abort()
+		}
 	}()
 
 	select {
@@ -240,9 +260,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		return errors.New("shutdown has been called")
 	default:
 		start := time.Now()
-		chLen := 2
+		chLen := 4
 		if !e.useNewSchema {
-			chLen = 3
+			chLen = 5
 			statement, err = e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
 			if err != nil {
 				return fmt.Errorf("PrepareBatch:%w", err)
@@ -252,6 +272,16 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		tagStatement, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_TAG_ATTRIBUTES), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareTagBatch:%w", err)
+		}
+
+		attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_LOGS_ATTRIBUTE_KEYS), driver.WithReleaseConnection())
+		if err != nil {
+			return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
+		}
+
+		resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, DISTRIBUTED_LOGS_RESOURCE_KEYS), driver.WithReleaseConnection())
+		if err != nil {
+			return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
 		}
 
 		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
@@ -277,7 +307,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			}
 			resourceJson := string(serializedRes)
 
-			err = addAttrsToTagStatement(tagStatement, "resource", resources, e.useNewSchema)
+			err = e.addAttrsToTagStatement(tagStatement, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, resources, e.useNewSchema)
 			if err != nil {
 				return err
 			}
@@ -293,7 +323,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				scopeAttributes := attributesToSlice(scope.Attributes(), true)
 				scopeMap := attributesToMap(scope.Attributes(), true)
 
-				err := addAttrsToTagStatement(tagStatement, "scope", scopeAttributes, e.useNewSchema)
+				err := e.addAttrsToTagStatement(tagStatement, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, scopeAttributes, e.useNewSchema)
 				if err != nil {
 					return err
 				}
@@ -337,7 +367,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					attributes := attributesToSlice(r.Attributes(), false)
 					attrsMap := attributesToMap(r.Attributes(), false)
 
-					err = addAttrsToTagStatement(tagStatement, "tag", attributes, e.useNewSchema)
+					err = e.addAttrsToTagStatement(tagStatement, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attributes, e.useNewSchema)
 					if err != nil {
 						return err
 					}
@@ -433,6 +463,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		}
 		go send(insertLogsStmtV2, DISTRIBUTED_LOGS_TABLE_V2, chDuration, chErr, &wg)
 		go send(insertResourcesStmtV2, DISTRIBUTED_LOGS_RESOURCE_V2, chDuration, chErr, &wg)
+		go send(attributeKeysStmt, DISTRIBUTED_LOGS_ATTRIBUTE_KEYS, chDuration, chErr, &wg)
+		go send(resourceKeysStmt, DISTRIBUTED_LOGS_RESOURCE_KEYS, chDuration, chErr, &wg)
 		wg.Wait()
 		close(chErr)
 
@@ -519,7 +551,47 @@ func getStringifiedBody(body pcommon.Value) string {
 	return strBody
 }
 
-func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attributesToSliceResponse, useNewSchema bool) error {
+func makeCacheKeyForAttributeKeys(tagKey string, tagType utils.TagType, tagDataType utils.TagDataType) string {
+	return fmt.Sprintf("%s:%s:%s", tagKey, tagType, tagDataType)
+}
+
+func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
+	attributeKeysStmt driver.Batch,
+	resourceKeysStmt driver.Batch,
+	key string,
+	tagType utils.TagType,
+	datatype utils.TagDataType,
+) {
+	cacheKey := makeCacheKeyForAttributeKeys(key, tagType, datatype)
+	// skip if the key is already present
+	if item := e.keysCache.Get(cacheKey); item != nil {
+		e.logger.Debug("key already present in cache, skipping", zap.String("key", key))
+		return
+	}
+
+	switch tagType {
+	case utils.TagTypeResource:
+		resourceKeysStmt.Append(
+			key,
+			datatype,
+		)
+	case utils.TagTypeAttribute:
+		attributeKeysStmt.Append(
+			key,
+			datatype,
+		)
+	}
+	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
+}
+
+func (e *clickhouseLogsExporter) addAttrsToTagStatement(
+	statement driver.Batch,
+	attributeKeysStmt driver.Batch,
+	resourceKeysStmt driver.Batch,
+	tagType utils.TagType,
+	attrs attributesToSliceResponse,
+	useNewSchema bool,
+) error {
 	for i, v := range attrs.StringKeys {
 		err := statement.Append(
 			time.Now(),
@@ -533,6 +605,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		if err != nil {
 			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeString)
 	}
 
 	intTypeName := "int64"
@@ -552,6 +625,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		if err != nil {
 			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeNumber)
 	}
 	for i, v := range attrs.FloatKeys {
 		err := statement.Append(
@@ -566,6 +640,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		if err != nil {
 			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeNumber)
 	}
 	for _, v := range attrs.BoolKeys {
 		err := statement.Append(
@@ -580,6 +655,7 @@ func addAttrsToTagStatement(statement driver.Batch, tagType string, attrs attrib
 		if err != nil {
 			return fmt.Errorf("could not append bool attribute to batch, err: %s", err)
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeBool)
 	}
 	return nil
 }
