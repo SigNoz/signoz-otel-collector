@@ -178,7 +178,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 
 		shouldSkipKeys := make(map[string]shouldSkipKey)
 		for _, key := range keys {
-			mapKey := makeCacheKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+			mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
 			e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
 			shouldSkipKeys[mapKey] = key
 		}
@@ -288,14 +288,6 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 func tsBucket(ts int64, bucketSize int64) int64 {
 	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
-}
-
-func makeKeyForRFCache(bucketTs int64, fingerprint string) string {
-	var v strings.Builder
-	v.WriteString(strconv.Itoa(int(bucketTs)))
-	v.WriteString(":")
-	v.WriteString(fingerprint)
-	return v.String()
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
@@ -532,7 +524,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		for bucketTs, resources := range resourcesSeen {
 			for resourceLabels, fingerprint := range resources {
 				// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-				key := makeKeyForRFCache(bucketTs, fingerprint)
+				key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
 				if e.rfCache.Get(key) != nil {
 					e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
 					continue
@@ -645,16 +637,6 @@ func getStringifiedBody(body pcommon.Value) string {
 	return strBody
 }
 
-func makeCacheKeyForAttributeKeys(tagKey string, tagType utils.TagType, tagDataType utils.TagDataType) string {
-	var key strings.Builder
-	key.WriteString(tagKey)
-	key.WriteString(":")
-	key.WriteString(string(tagType))
-	key.WriteString(":")
-	key.WriteString(string(tagDataType))
-	return key.String()
-}
-
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	attributeKeysStmt driver.Batch,
 	resourceKeysStmt driver.Batch,
@@ -662,7 +644,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	tagType utils.TagType,
 	datatype utils.TagDataType,
 ) {
-	cacheKey := makeCacheKeyForAttributeKeys(key, tagType, datatype)
+	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
 	// skip if the key is already present
 	if item := e.keysCache.Get(cacheKey); item != nil {
 		e.logger.Debug("key already present in cache, skipping", zap.String("key", key))
@@ -696,7 +678,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for i, v := range attrs.StringKeys {
-		key := makeCacheKeyForAttributeKeys(v, tagType, utils.TagDataTypeString)
+		key := utils.MakeKeyForAttributeKeys(v, tagType, utils.TagDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -732,7 +714,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		intTypeName = "float64"
 	}
 	for i, v := range attrs.IntKeys {
-		key := makeCacheKeyForAttributeKeys(v, tagType, utils.TagDataTypeNumber)
+		key := utils.MakeKeyForAttributeKeys(v, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -764,7 +746,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		}
 	}
 	for i, v := range attrs.FloatKeys {
-		key := makeCacheKeyForAttributeKeys(v, tagType, utils.TagDataTypeNumber)
+		key := utils.MakeKeyForAttributeKeys(v, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -795,7 +777,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		}
 	}
 	for _, v := range attrs.BoolKeys {
-		key := makeCacheKeyForAttributeKeys(v, tagType, utils.TagDataTypeBool)
+		key := utils.MakeKeyForAttributeKeys(v, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
