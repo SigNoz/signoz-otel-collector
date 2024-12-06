@@ -17,6 +17,7 @@ package clickhouselogsexporter
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -68,6 +69,10 @@ func createDefaultConfig() component.Config {
 		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
 		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
 		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 10 * time.Minute,
+			MaxDistinctValues: 25000,
+		},
 	}
 }
 
@@ -89,6 +94,7 @@ func createLogsExporter(
 		set,
 		cfg,
 		exporter.pushLogsData,
+		exporterhelper.WithStart(exporter.Start),
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
 		exporterhelper.WithQueue(c.QueueConfig),
