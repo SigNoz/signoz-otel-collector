@@ -3,6 +3,8 @@ package utils
 import (
 	"encoding/hex"
 	"math"
+	"strconv"
+	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
@@ -48,4 +50,12 @@ const (
 
 func (t TagDataType) String() string {
 	return string(t)
+}
+
+func MakeKeyForRFCache(bucketTs int64, fingerprint string) string {
+	var v strings.Builder
+	v.WriteString(strconv.Itoa(int(bucketTs)))
+	v.WriteString(":")
+	v.WriteString(fingerprint)
+	return v.String()
 }
