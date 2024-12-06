@@ -69,6 +69,7 @@ type clickhouseLogsExporter struct {
 	useNewSchema bool
 
 	keysCache *ttlcache.Cache[string, struct{}]
+	rfCache   *ttlcache.Cache[string, struct{}]
 }
 
 func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
@@ -101,11 +102,22 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		return nil, err
 	}
 
+	// keys cache is used to avoid duplicate inserts for the same attribute key.
 	keysCache := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
 	)
 	go keysCache.Start()
+
+	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
+	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
+	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go rfCache.Start()
 
 	return &clickhouseLogsExporter{
 		id:              id,
@@ -119,6 +131,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		closeChan:       make(chan struct{}),
 		useNewSchema:    cfg.UseNewSchema,
 		keysCache:       keysCache,
+		rfCache:         rfCache,
 	}, nil
 }
 
@@ -221,6 +234,14 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 
 func tsBucket(ts int64, bucketSize int64) int64 {
 	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
+}
+
+func makeKeyForRFCache(bucketTs int64, fingerprint string) string {
+	var v strings.Builder
+	v.WriteString(strconv.Itoa(int(bucketTs)))
+	v.WriteString(":")
+	v.WriteString(fingerprint)
+	return v.String()
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
@@ -445,11 +466,18 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		for bucketTs, resources := range resourcesSeen {
 			for resourceLabels, fingerprint := range resources {
+				// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+				key := makeKeyForRFCache(bucketTs, fingerprint)
+				if e.rfCache.Get(key) != nil {
+					e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
+					continue
+				}
 				insertResourcesStmtV2.Append(
 					resourceLabels,
 					fingerprint,
 					bucketTs,
 				)
+				e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 			}
 		}
 
