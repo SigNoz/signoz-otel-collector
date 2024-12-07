@@ -117,13 +117,16 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
 
-		useNewSchema:    cfg.UseNewSchema,
-		indexTableV3:    cfg.IndexTableV3,
-		resourceTableV3: cfg.ResourceTableV3,
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 
@@ -141,13 +144,16 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
 
-		useNewSchema:    cfg.UseNewSchema,
-		indexTableV3:    cfg.IndexTableV3,
-		resourceTableV3: cfg.ResourceTableV3,
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 
