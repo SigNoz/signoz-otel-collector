@@ -52,5 +52,9 @@ func Test_loadConfig(t *testing.T) {
 				NumConsumers: 5,
 				QueueSize:    100,
 			},
+			AttributesLimits: AttributesLimits{
+				FetchKeysInterval: 10 * time.Minute,
+				MaxDistinctValues: 25000,
+			},
 		})
 }
