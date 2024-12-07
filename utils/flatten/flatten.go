@@ -27,12 +27,19 @@ func FlattenJSON(data map[string]interface{}, prefix string) map[string]interfac
 					result[k] = v
 				}
 			}
-		case int, int32, int64:
+		case int, int8, int16, int32, int64:
 			v := reflect.ValueOf(value)
 			result[fullKey] = float64(v.Int())
+		case uint, uint16, uint32, uint64:
+			v := reflect.ValueOf(value)
+			result[fullKey] = float64(v.Uint())
 		case float32:
 			result[fullKey] = float64(value)
+		case byte:
+			result[fullKey] = string(value)
 		case float64, bool:
+			result[fullKey] = value
+		case string:
 			result[fullKey] = value
 		default:
 			result[fullKey] = fmt.Sprintf("%v", value)
