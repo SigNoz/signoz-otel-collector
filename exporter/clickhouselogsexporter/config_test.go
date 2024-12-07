@@ -63,6 +63,10 @@ func TestLoadConfig(t *testing.T) {
 			NumConsumers: 10,
 			QueueSize:    100,
 		},
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 10 * time.Minute,
+			MaxDistinctValues: 25000,
+		},
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true
