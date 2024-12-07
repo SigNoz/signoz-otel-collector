@@ -70,12 +70,12 @@ func MakeKeyForRFCache(bucketTs int64, fingerprint string) string {
 	return v.String()
 }
 
-func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagDataType) string {
-	var key strings.Builder
-	key.WriteString(tagKey)
-	key.WriteString(":")
-	key.WriteString(string(tagType))
-	key.WriteString(":")
-	key.WriteString(string(tagDataType))
-	return key.String()
-}
+// func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagDataType) string {
+// 	var key strings.Builder
+// 	key.WriteString(tagKey)
+// 	key.WriteString(":")
+// 	key.WriteString(string(tagType))
+// 	key.WriteString(":")
+// 	key.WriteString(string(tagDataType))
+// 	return key.String()
+// }
