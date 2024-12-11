@@ -45,8 +45,9 @@ type metadataExporter struct {
 	conn             driver.Conn
 	fingerprintCache *ttlcache.Cache[string, bool]
 
-	tracesTracker *ValueTracker
-	logsTracker   *ValueTracker
+	tracesTracker  *ValueTracker
+	metricsTracker *ValueTracker
+	logsTracker    *ValueTracker
 
 	logTagValueCountFromDB    atomic.Pointer[map[string]tagValueCountFromDB]
 	logTagValueCountCtx       context.Context
@@ -56,8 +57,13 @@ type metadataExporter struct {
 	tracesTagValueCountCtx       context.Context
 	tracesTagValueCountCtxCancel context.CancelFunc
 
-	alwaysIncludeTracesAttributes map[string]struct{}
-	alwaysIncludeLogsAttributes   map[string]struct{}
+	metricsTagValueCountFromDB    atomic.Pointer[map[string]tagValueCountFromDB]
+	metricsTagValueCountCtx       context.Context
+	metricsTagValueCountCtxCancel context.CancelFunc
+
+	alwaysIncludeTracesAttributes  map[string]struct{}
+	alwaysIncludeLogsAttributes    map[string]struct{}
+	alwaysIncludeMetricsAttributes map[string]struct{}
 }
 
 func flattenJSONToStringMap(data map[string]any) map[string]string {
@@ -90,7 +96,11 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		int(cfg.MaxDistinctValues.Traces.MaxStringDistinctValues),
 		valuTrackerKeysTTL, // if a key is not seen in 45 mins, it is removed from the tracker
 	)
-
+	metricsTracker := NewValueTracker(
+		int(cfg.MaxDistinctValues.Metrics.MaxKeys),
+		int(cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues*2),
+		45*time.Minute,
+	)
 	logsTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Logs.MaxKeys),
 		int(cfg.MaxDistinctValues.Logs.MaxStringDistinctValues),
@@ -99,6 +109,7 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 
 	logTagValueCountCtx, logTagValueCountCtxCancel := context.WithCancel(context.Background())
 	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
+	metricsTagValueCountCtx, metricsTagValueCountCtxCancel := context.WithCancel(context.Background())
 
 	alwaysIncludeTraces := make(map[string]struct{}, len(cfg.AlwaysIncludeAttributes.Traces))
 	for _, attr := range cfg.AlwaysIncludeAttributes.Traces {
@@ -110,6 +121,11 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		alwaysIncludeLogs[attr] = struct{}{}
 	}
 
+	alwaysIncludeMetrics := make(map[string]struct{}, len(cfg.AlwaysIncludeAttributes.Metrics))
+	for _, attr := range cfg.AlwaysIncludeAttributes.Metrics {
+		alwaysIncludeMetrics[attr] = struct{}{}
+	}
+
 	// Initialize atomic pointers to empty maps.
 	initMap := func() *map[string]tagValueCountFromDB {
 		m := make(map[string]tagValueCountFromDB)
@@ -117,22 +133,27 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	}
 
 	e := &metadataExporter{
-		cfg:                           cfg,
-		set:                           set,
-		conn:                          conn,
-		fingerprintCache:              fingerprintCache,
-		tracesTracker:                 tracesTracker,
-		logsTracker:                   logsTracker,
-		logTagValueCountCtx:           logTagValueCountCtx,
-		logTagValueCountCtxCancel:     logTagValueCountCtxCancel,
-		tracesTagValueCountCtx:        tracesTagValueCountCtx,
-		tracesTagValueCountCtxCancel:  tracesTagValueCountCtxCancel,
-		alwaysIncludeTracesAttributes: alwaysIncludeTraces,
-		alwaysIncludeLogsAttributes:   alwaysIncludeLogs,
+		cfg:                            cfg,
+		set:                            set,
+		conn:                           conn,
+		fingerprintCache:               fingerprintCache,
+		tracesTracker:                  tracesTracker,
+		metricsTracker:                 metricsTracker,
+		logsTracker:                    logsTracker,
+		logTagValueCountCtx:            logTagValueCountCtx,
+		logTagValueCountCtxCancel:      logTagValueCountCtxCancel,
+		tracesTagValueCountCtx:         tracesTagValueCountCtx,
+		tracesTagValueCountCtxCancel:   tracesTagValueCountCtxCancel,
+		metricsTagValueCountCtx:        metricsTagValueCountCtx,
+		metricsTagValueCountCtxCancel:  metricsTagValueCountCtxCancel,
+		alwaysIncludeTracesAttributes:  alwaysIncludeTraces,
+		alwaysIncludeLogsAttributes:    alwaysIncludeLogs,
+		alwaysIncludeMetricsAttributes: alwaysIncludeMetrics,
 	}
 
 	e.logTagValueCountFromDB.Store(initMap())
 	e.tracesTagValueCountFromDB.Store(initMap())
+	e.metricsTagValueCountFromDB.Store(initMap())
 
 	return e, nil
 }
@@ -178,9 +199,11 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 func (e *metadataExporter) Shutdown(_ context.Context) error {
 	e.set.Logger.Info("shutting down metadata exporter")
 	e.tracesTracker.Close()
+	e.metricsTracker.Close()
 	e.logsTracker.Close()
 	e.logTagValueCountCtxCancel()
 	e.tracesTagValueCountCtxCancel()
+	e.metricsTagValueCountCtxCancel()
 	return nil
 }
 
@@ -260,6 +283,8 @@ func (e *metadataExporter) getType(key, datasource string) string {
 		m = e.tracesTagValueCountFromDB.Load()
 	case pipeline.SignalLogs.String():
 		m = e.logTagValueCountFromDB.Load()
+	case pipeline.SignalMetrics.String():
+		m = e.metricsTagValueCountFromDB.Load()
 	default:
 		return "string"
 	}
@@ -285,6 +310,10 @@ func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key, dat
 		m = e.logTagValueCountFromDB.Load()
 		alwaysInclude = e.alwaysIncludeLogsAttributes
 		cfgMax = e.cfg.MaxDistinctValues.Logs
+	case pipeline.SignalMetrics.String():
+		m = e.metricsTagValueCountFromDB.Load()
+		alwaysInclude = e.alwaysIncludeMetricsAttributes
+		cfgMax = e.cfg.MaxDistinctValues.Metrics
 	default:
 		return false
 	}
@@ -319,6 +348,8 @@ func (e *metadataExporter) addToUVT(_ context.Context, key, value, datasource st
 	switch datasource {
 	case pipeline.SignalTraces.String():
 		e.tracesTracker.AddValue(key, value)
+	case pipeline.SignalMetrics.String():
+		e.metricsTracker.AddValue(key, value)
 	case pipeline.SignalLogs.String():
 		e.logsTracker.AddValue(key, value)
 	}
@@ -335,6 +366,18 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 		}
 		cnt = e.tracesTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
 		if typ == "string" && e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues) {
+			return true
+		}
+		if typ == "float64" || typ == "int64" {
+			return true
+		}
+
+	case pipeline.SignalMetrics.String():
+		if _, ok := e.alwaysIncludeMetricsAttributes[key]; ok {
+			return false
+		}
+		cnt = e.metricsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
+		if typ == "string" && e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues) {
 			return true
 		}
 		if typ == "float64" || typ == "int64" {
@@ -489,7 +532,78 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 }
 
 func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
-	return nil
+	stmt, err := e.conn.PrepareBatch(ctx, "INSERT INTO signoz_metadata.distributed_attributes_metadata", driver.WithReleaseConnection())
+	if err != nil {
+		return err
+	}
+
+	rms := md.ResourceMetrics()
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+		resourceAttrs := make(map[string]any, rm.Resource().Attributes().Len())
+		rm.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
+			resourceAttrs[k] = v.AsRaw()
+			return true
+		})
+		flattenedResourceAttrs := flatten.FlattenJSON(resourceAttrs, "")
+		resourceFingerprint := fingerprint.FingerprintHash(flattenedResourceAttrs)
+
+		scopeMetrics := rm.ScopeMetrics()
+		for j := 0; j < scopeMetrics.Len(); j++ {
+			metrics := scopeMetrics.At(j).Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				metric := metrics.At(k)
+				var pAttrs []pcommon.Map
+				switch metric.Type() {
+				case pmetric.MetricTypeGauge:
+					dps := metric.Gauge().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						pAttrs = append(pAttrs, dps.At(l).Attributes())
+					}
+				case pmetric.MetricTypeSum:
+					dps := metric.Sum().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						pAttrs = append(pAttrs, dps.At(l).Attributes())
+					}
+				case pmetric.MetricTypeHistogram:
+					dps := metric.Histogram().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						pAttrs = append(pAttrs, dps.At(l).Attributes())
+					}
+				case pmetric.MetricTypeExponentialHistogram:
+					dps := metric.ExponentialHistogram().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						pAttrs = append(pAttrs, dps.At(l).Attributes())
+					}
+				case pmetric.MetricTypeSummary:
+					dps := metric.Summary().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						pAttrs = append(pAttrs, dps.At(l).Attributes())
+					}
+				}
+
+				for _, pAttr := range pAttrs {
+					metricAttrs := make(map[string]any, pAttr.Len())
+					pAttr.Range(func(k string, v pcommon.Value) bool {
+						metricAttrs[k] = v.AsRaw()
+						return true
+					})
+
+					flattenedMetricAttrs := flatten.FlattenJSON(metricAttrs, "")
+					metricFingerprint := fingerprint.FingerprintHash(flattenedMetricAttrs)
+					unixMilli := time.Now().UnixMilli()
+					roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+
+					_, err := e.writeToStmt(ctx, stmt, pipeline.SignalMetrics, resourceFingerprint, metricFingerprint, flattenedResourceAttrs, flattenedMetricAttrs, roundedUnixMilli)
+					if err != nil {
+						e.set.Logger.Error("failed to write to stmt", zap.Error(err))
+					}
+				}
+			}
+		}
+	}
+
+	return stmt.Send()
 }
 
 func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
