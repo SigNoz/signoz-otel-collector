@@ -52,16 +52,6 @@ func (t TagDataType) String() string {
 	return string(t)
 }
 
-func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagDataType) string {
-	var key strings.Builder
-	key.WriteString(tagKey)
-	key.WriteString(":")
-	key.WriteString(string(tagType))
-	key.WriteString(":")
-	key.WriteString(string(tagDataType))
-	return key.String()
-}
-
 func MakeKeyForRFCache(bucketTs int64, fingerprint string) string {
 	var v strings.Builder
 	v.WriteString(strconv.Itoa(int(bucketTs)))
