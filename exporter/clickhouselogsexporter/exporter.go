@@ -693,7 +693,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append string attribute to batch, err: %w", err)
 		}
 		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeString)
 		err = tagStatementV2.Append(
@@ -705,7 +705,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("could not append string attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append string attribute to batch, err: %w", err)
 		}
 	}
 
@@ -730,7 +730,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			attrs.IntValues[i],
 		)
 		if err != nil {
-			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append number attribute to batch, err: %w", err)
 		}
 		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeNumber)
 		err = tagStatementV2.Append(
@@ -742,7 +742,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			attrs.IntValues[i],
 		)
 		if err != nil {
-			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append number attribute to batch, err: %w", err)
 		}
 	}
 	for i, v := range attrs.FloatKeys {
@@ -761,7 +761,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			attrs.FloatValues[i],
 		)
 		if err != nil {
-			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append number attribute to batch, err: %w", err)
 		}
 		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeNumber)
 		err = tagStatementV2.Append(
@@ -773,7 +773,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			attrs.FloatValues[i],
 		)
 		if err != nil {
-			return fmt.Errorf("could not append number attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append number attribute to batch, err: %w", err)
 		}
 	}
 	for _, v := range attrs.BoolKeys {
@@ -792,7 +792,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("could not append bool attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append bool attribute to batch, err: %w", err)
 		}
 		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, v, tagType, utils.TagDataTypeBool)
 		err = tagStatementV2.Append(
@@ -804,7 +804,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			nil,
 		)
 		if err != nil {
-			return fmt.Errorf("could not append bool attribute to batch, err: %s", err)
+			return fmt.Errorf("could not append bool attribute to batch, err: %w", err)
 		}
 	}
 	return nil
