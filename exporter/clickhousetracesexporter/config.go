@@ -16,11 +16,17 @@ package clickhousetracesexporter
 
 import (
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
+
+type AttributesLimits struct {
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
+}
 
 // Config defines configuration for tracing exporter.
 type Config struct {
@@ -32,6 +38,8 @@ type Config struct {
 	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
 	UseNewSchema                 bool `mapstructure:"use_new_schema" default:"false"`
+
+	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
 }
 
 var _ component.Config = (*Config)(nil)
