@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
-	"github.com/cenkalti/backoff/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -28,21 +27,29 @@ func TestLoadConfig(t *testing.T) {
 		{
 			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
 			expected: &Config{
-				TimeoutConfig: exporterhelper.TimeoutConfig{
-					Timeout: 10 * time.Second,
-				},
-				BackOffConfig: configretry.BackOffConfig{
-					Enabled:             true,
-					InitialInterval:     10 * time.Second,
-					MaxInterval:         1 * time.Minute,
-					MaxElapsedTime:      10 * time.Minute,
-					RandomizationFactor: backoff.DefaultRandomizationFactor,
-					Multiplier:          backoff.DefaultMultiplier,
-				},
-				QueueConfig: exporterhelper.QueueConfig{
-					Enabled:      true,
-					NumConsumers: 2,
-					QueueSize:    10,
+				TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+				BackOffConfig: configretry.NewDefaultBackOffConfig(),
+				QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+				DSN:           "tcp://localhost:9000",
+				MaxDistinctValues: MaxDistinctValuesConfig{
+					Traces: LimitsConfig{
+						MaxKeys:                 100,
+						MaxStringLength:         128,
+						MaxStringDistinctValues: 420,
+						FetchInterval:           5 * time.Minute,
+					},
+					Logs: LimitsConfig{
+						MaxKeys:                 100,
+						MaxStringLength:         64,
+						MaxStringDistinctValues: 512,
+						FetchInterval:           10 * time.Minute,
+					},
+					Metrics: LimitsConfig{
+						MaxKeys:                 100,
+						MaxStringLength:         16,
+						MaxStringDistinctValues: 1024,
+						FetchInterval:           5 * time.Minute,
+					},
 				},
 			},
 		},

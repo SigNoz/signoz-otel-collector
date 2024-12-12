@@ -1,0 +1,17 @@
+metadataexporter:
+  max_distinct_values:
+    traces:
+      max_keys: 100
+      max_string_length: 128
+      max_string_distinct_values: 420
+      fetch_interval: 5m
+    metrics:
+      max_keys: 100
+      max_string_length: 16
+      max_string_distinct_values: 1024
+      fetch_interval: 5m
+    logs:
+      max_keys: 100
+      max_string_length: 64
+      max_string_distinct_values: 512
+      fetch_interval: 10m
