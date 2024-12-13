@@ -23,7 +23,13 @@ import (
 	"go.uber.org/zap"
 )
 
-const sixHoursInMs = int64((6 * time.Hour) / time.Millisecond)
+const (
+	sixHours                       = 6 * time.Hour                      // window size for attributes aggregation
+	sixHoursInMs                   = int64(sixHours / time.Millisecond) // window size in ms
+	maxValuesInCache               = 3_000_000                          // max number of values for fingerprint cache
+	valuTrackerKeysTTL             = 45 * time.Minute                   // ttl for keys in value tracker
+	fetchKeysDistinctCountInterval = 15 * time.Minute
+)
 
 type tagValueCountFromDB struct {
 	tagDataType         string
@@ -66,16 +72,16 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	}
 
 	fingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](300*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](), // don't update the ttl when the item is accessed
-		ttlcache.WithCapacity[string, bool](3_000_000), // max 3M items in the cache
+		ttlcache.WithTTL[string, bool](sixHours),
+		ttlcache.WithDisableTouchOnHit[string, bool](),        // don't update the ttl when the item is accessed
+		ttlcache.WithCapacity[string, bool](maxValuesInCache), // max 3M items in the cache
 	)
 	go fingerprintCache.Start()
 
 	tracesTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Traces.MaxKeys),
 		int(cfg.MaxDistinctValues.Traces.MaxStringDistinctValues),
-		45*time.Minute, // if a key is not seen in 45 mins, it is removed from the tracker
+		valuTrackerKeysTTL, // if a key is not seen in 45 mins, it is removed from the tracker
 	)
 
 	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
@@ -122,7 +128,7 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 						 LIMIT 1 BY tag_key, tag_data_type`,
 			storeFunc:  e.storeTracesTagValues,
 			signalName: pipeline.SignalTraces.String(),
-			interval:   15 * time.Minute,
+			interval:   fetchKeysDistinctCountInterval,
 		},
 	)
 
@@ -324,14 +330,14 @@ func makeFingerprintCacheKey(a, b uint64, datasource string) string {
 	return builder.String()
 }
 
-func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds pipeline.Signal, resourceFingerprint, fprint uint64, rAttrs, filtered map[string]any, roundedUnixMilli int64) (bool, error) {
-	cacheKey := makeFingerprintCacheKey(fprint, uint64(roundedUnixMilli), ds.String())
+func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds pipeline.Signal, resourceFingerprint, fprint uint64, rAttrs, filtered map[string]any, roundedSixHrsUnixMilli int64) (bool, error) {
+	cacheKey := makeFingerprintCacheKey(fprint, uint64(roundedSixHrsUnixMilli), ds.String())
 	if item := e.fingerprintCache.Get(cacheKey); item != nil && item.Value() {
 		return true, nil
 	}
 
 	if err := stmt.Append(
-		roundedUnixMilli,
+		roundedSixHrsUnixMilli,
 		ds,
 		resourceFingerprint,
 		fprint,
@@ -395,9 +401,9 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 				spanFingerprint := fingerprint.FingerprintHash(filteredSpanAttrs)
 
 				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
-				roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 
-				skipped, err := e.writeToStmt(ctx, stmt, pipeline.SignalTraces, resourceFingerprint, spanFingerprint, flattenedResourceAttrs, filteredSpanAttrs, roundedUnixMilli)
+				skipped, err := e.writeToStmt(ctx, stmt, pipeline.SignalTraces, resourceFingerprint, spanFingerprint, flattenedResourceAttrs, filteredSpanAttrs, roundedSixHrsUnixMilli)
 				if err != nil {
 					e.set.Logger.Error("failed to write to stmt", zap.Error(err))
 				}
@@ -408,7 +414,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		}
 	}
 
-	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skippedSpans))
+	e.set.Logger.Debug("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skippedSpans))
 
 	if err := stmt.Send(); err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err))
