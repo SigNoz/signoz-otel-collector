@@ -67,15 +67,15 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 
 	fingerprintCache := ttlcache.New[string, bool](
 		ttlcache.WithTTL[string, bool](300*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-		ttlcache.WithCapacity[string, bool](3_000_000),
+		ttlcache.WithDisableTouchOnHit[string, bool](), // don't update the ttl when the item is accessed
+		ttlcache.WithCapacity[string, bool](3_000_000), // max 3M items in the cache
 	)
 	go fingerprintCache.Start()
 
 	tracesTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Traces.MaxKeys),
-		int(cfg.MaxDistinctValues.Traces.MaxStringDistinctValues*2),
-		45*time.Minute,
+		int(cfg.MaxDistinctValues.Traces.MaxStringDistinctValues),
+		45*time.Minute, // if a key is not seen in 45 mins, it is removed from the tracker
 	)
 
 	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
@@ -122,7 +122,7 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 						 LIMIT 1 BY tag_key, tag_data_type`,
 			storeFunc:  e.storeTracesTagValues,
 			signalName: pipeline.SignalTraces.String(),
-			interval:   5 * time.Minute,
+			interval:   15 * time.Minute,
 		},
 	)
 
@@ -359,6 +359,9 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		rs := rss.At(i)
 		resourceAttrs := make(map[string]any, rs.Resource().Attributes().Len())
 		rs.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
+			if e.shouldSkipAttributeFromDB(ctx, k, pipeline.SignalTraces.String()) {
+				return true
+			}
 			resourceAttrs[k] = v.AsRaw()
 			return true
 		})
