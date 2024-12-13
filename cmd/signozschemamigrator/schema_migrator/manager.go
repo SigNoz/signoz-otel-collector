@@ -24,11 +24,12 @@ var (
 	ErrFailedToRunSquashedMigrations    = errors.New("failed to run squashed migrations")
 	ErrFailedToCreateSchemaMigrationsV2 = errors.New("failed to create schema_migrations_v2 table")
 	ErrDistributionQueueError           = errors.New("distribution_queue has entries with error_count != 0 or is_blocked = 1")
-	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs"}
+	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs", "signoz_metadata"}
 	legacyMigrationsTable               = "schema_migrations"
 	signozLogsDB                        = "signoz_logs"
 	signozMetricsDB                     = "signoz_metrics"
 	signozTracesDB                      = "signoz_traces"
+	signozMetadataDB                    = "signoz_metadata"
 	inProgressStatus                    = "in-progress"
 	finishedStatus                      = "finished"
 	failedStatus                        = "failed"
@@ -180,6 +181,15 @@ func (m *MigrationManager) Bootstrap() error {
 			}
 		}
 	}
+
+	for _, migration := range V2MigrationTablesMetadata {
+		for _, item := range migration.UpItems {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozMetadataDB, true); err != nil {
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
+			}
+		}
+	}
+
 	m.logger.Info("Created schema migrations tables")
 	return nil
 }
@@ -620,6 +630,19 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		for _, item := range migration.UpItems {
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range MetadataMigrations {
+		if !m.shouldRunMigration(signozMetadataDB, migration.MigrationID, upVersions) {
+			continue
+		}
+		for _, item := range migration.UpItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetadataDB, false); err != nil {
 					return err
 				}
 			}
