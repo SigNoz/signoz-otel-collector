@@ -29,6 +29,7 @@ const (
 	maxValuesInCache               = 3_000_000                          // max number of values for fingerprint cache
 	valuTrackerKeysTTL             = 45 * time.Minute                   // ttl for keys in value tracker
 	fetchKeysDistinctCountInterval = 15 * time.Minute
+	insertStmtQuery                = "INSERT INTO signoz_metadata.distributed_attributes_metadata"
 )
 
 type tagValueCountFromDB struct {
@@ -92,8 +93,8 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 
 	logsTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Logs.MaxKeys),
-		int(cfg.MaxDistinctValues.Logs.MaxStringDistinctValues*2),
-		45*time.Minute,
+		int(cfg.MaxDistinctValues.Logs.MaxStringDistinctValues),
+		valuTrackerKeysTTL,
 	)
 
 	logTagValueCountCtx, logTagValueCountCtxCancel := context.WithCancel(context.Background())
@@ -151,7 +152,7 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 						 LIMIT 1 BY tag_key, tag_data_type`,
 			storeFunc:  e.storeLogTagValues,
 			signalName: pipeline.SignalLogs.String(),
-			interval:   5 * time.Minute,
+			interval:   fetchKeysDistinctCountInterval,
 		},
 	)
 
@@ -417,7 +418,7 @@ func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds 
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
-	stmt, err := e.conn.PrepareBatch(ctx, "INSERT INTO signoz_metadata.distributed_attributes_metadata", driver.WithReleaseConnection())
+	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return err
 	}
@@ -492,7 +493,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 }
 
 func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
-	stmt, err := e.conn.PrepareBatch(ctx, "INSERT INTO signoz_metadata.distributed_attributes_metadata", driver.WithReleaseConnection())
+	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return err
 	}
@@ -538,9 +539,9 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 				logRecordFingerprint := fingerprint.FingerprintHash(filteredLogRecordAttrs)
 
 				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
-				roundedUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 
-				skipped, err := e.writeToStmt(ctx, stmt, pipeline.SignalLogs, resourceFingerprint, logRecordFingerprint, flattenedResourceAttrs, filteredLogRecordAttrs, roundedUnixMilli)
+				skipped, err := e.writeToStmt(ctx, stmt, pipeline.SignalLogs, resourceFingerprint, logRecordFingerprint, flattenedResourceAttrs, filteredLogRecordAttrs, roundedSixHrsUnixMilli)
 				if err != nil {
 					e.set.Logger.Error("failed to write to stmt", zap.Error(err))
 				}
@@ -551,7 +552,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		}
 	}
 
-	e.set.Logger.Info("pushed logs attributes",
+	e.set.Logger.Debug("pushed logs attributes",
 		zap.Int("total_log_records", totalLogRecords),
 		zap.Int("skipped_log_records", skippedLogRecords),
 	)
