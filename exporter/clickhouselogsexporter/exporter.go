@@ -155,35 +155,43 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeysTicker = time.NewTicker(e.fetchKeysInterval)
-	go e.fetchShouldSkipKeys()
+	go func() {
+		e.doFetchShouldSkipKeys() // Immediate first fetch
+		e.fetchShouldSkipKeys()   // Start ticker routine
+	}()
 	return nil
+}
+
+func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
+	query := fmt.Sprintf(`
+		SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
+		FROM %s.%s
+		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
+		GROUP BY tag_key, tag_type, tag_data_type
+		HAVING string_count > %d OR number_count > %d
+		SETTINGS max_threads = 2`, databaseName, DISTRIBUTED_TAG_ATTRIBUTES_V2, e.maxDistinctValues, e.maxDistinctValues)
+
+	e.logger.Info("fetching should skip keys", zap.String("query", query))
+
+	keys := []shouldSkipKey{}
+
+	err := e.db.Select(context.Background(), &keys, query)
+	if err != nil {
+		e.logger.Error("error while fetching should skip keys", zap.Error(err))
+	}
+
+	shouldSkipKeys := make(map[string]shouldSkipKey)
+	for _, key := range keys {
+		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+		e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
+		shouldSkipKeys[mapKey] = key
+	}
+	e.shouldSkipKeyValue.Store(shouldSkipKeys)
 }
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	for range e.fetchShouldSkipKeysTicker.C {
-		query := fmt.Sprintf(`
-			SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
-			FROM %s.%s
-			GROUP BY tag_key, tag_type, tag_data_type
-			HAVING string_count > %d OR number_count > %d
-			SETTINGS max_threads = 2`, databaseName, DISTRIBUTED_TAG_ATTRIBUTES_V2, e.maxDistinctValues, e.maxDistinctValues)
-
-		e.logger.Info("fetching should skip keys", zap.String("query", query))
-
-		keys := []shouldSkipKey{}
-
-		err := e.db.Select(context.Background(), &keys, query)
-		if err != nil {
-			e.logger.Error("error while fetching should skip keys", zap.Error(err))
-		}
-
-		shouldSkipKeys := make(map[string]shouldSkipKey)
-		for _, key := range keys {
-			mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
-			e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
-			shouldSkipKeys[mapKey] = key
-		}
-		e.shouldSkipKeyValue.Store(shouldSkipKeys)
+		e.doFetchShouldSkipKeys()
 	}
 }
 
