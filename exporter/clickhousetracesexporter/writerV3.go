@@ -2,7 +2,6 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -137,7 +136,6 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 
 func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var tagKeyStatement driver.Batch
-	var tagStatement driver.Batch
 	var tagStatementV2 driver.Batch
 	var err error
 	var shouldSkipKeys map[string]shouldSkipKey
@@ -150,17 +148,10 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		if tagKeyStatement != nil {
 			_ = tagKeyStatement.Abort()
 		}
-		if tagStatement != nil {
-			_ = tagStatement.Abort()
-		}
 		if tagStatementV2 != nil {
 			_ = tagStatementV2.Abort()
 		}
 	}()
-	tagStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable), driver.WithReleaseConnection())
-	if err != nil {
-		return fmt.Errorf("could not prepare batch for span attributes table due to error: %w", err)
-	}
 	tagKeyStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
@@ -216,15 +207,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
 
 			if spanAttribute.DataType == "string" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.StringValue,
-					nil,
-					spanAttribute.IsColumn,
-				)
 
 				if _, ok := shouldSkipKeys[v2Key]; !ok {
 					err = tagStatementV2.Append(
@@ -238,15 +220,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 				}
 
 			} else if spanAttribute.DataType == "float64" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					spanAttribute.NumberValue,
-					spanAttribute.IsColumn,
-				)
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
 					err = tagStatementV2.Append(
 						unixMilli,
@@ -258,15 +231,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 					)
 				}
 			} else if spanAttribute.DataType == "bool" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					nil,
-					spanAttribute.IsColumn,
-				)
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
 					err = tagStatementV2.Append(
 						unixMilli,
@@ -285,8 +249,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	}
 
 	tagStart := time.Now()
-	err1 := tagStatement.Send()
-	err2 := tagStatementV2.Send()
+	err = tagStatementV2.Send()
 	stats.RecordWithTags(ctx,
 		[]tag.Mutator{
 			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
@@ -294,8 +257,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		},
 		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
 	)
-	if err1 != nil || err2 != nil {
-		return fmt.Errorf("could not write to span attributes table due to error: %w", errors.Join(err1, err2))
+	if err != nil {
+		return fmt.Errorf("could not write to span attributes table due to error: %w", err)
 	}
 
 	tagKeyStart := time.Now()
