@@ -165,7 +165,8 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 			SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
 			FROM %s.%s
 			GROUP BY tag_key, tag_type, tag_data_type
-			HAVING string_count > %d OR number_count > %d`, databaseName, DISTRIBUTED_TAG_ATTRIBUTES_V2, e.maxDistinctValues, e.maxDistinctValues)
+			HAVING string_count > %d OR number_count > %d
+			SETTINGS max_threads = 2`, databaseName, DISTRIBUTED_TAG_ATTRIBUTES_V2, e.maxDistinctValues, e.maxDistinctValues)
 
 		e.logger.Info("fetching should skip keys", zap.String("query", query))
 
