@@ -2255,8 +2255,6 @@ github.com/secure-systems-lab/go-securesystemslib v0.7.0 h1:OwvJ5jQf9LnIAS83waAj
 github.com/secure-systems-lab/go-securesystemslib v0.7.0/go.mod h1:/2gYnlnHVQ6xeGtfIqFy7Do03K4cdCY0A/GlJLDKLHI=
 github.com/segmentio/asm v1.2.0 h1:9BQrFxC+YOHJlTlHGkTrFWf59nbL3XnCoFLTwDCI7ys=
 github.com/segmentio/asm v1.2.0/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr5aAcs=
-github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c=
-github.com/segmentio/ksuid v1.0.4/go.mod h1:/XUiZBD3kVx5SmUOl55voK5yeAbBNNIed+2O73XgrPE=
 github.com/sergi/go-diff v1.3.1 h1:xkr+Oxo4BOQKmkn/B9eMK0g5Kg/983T9DqqPHwYqD+8=
 github.com/sergi/go-diff v1.3.1/go.mod h1:aMJSSKb2lpPvRNec0+w3fl7LP9IOFzdc9Pa4NFbPK1I=
 github.com/shirou/gopsutil/v3 v3.24.5 h1:i0t8kL+kQTvpAYToeuiVk3TgDeKOFioZO3Ztz/iZ9pI=
@@ -2275,6 +2273,8 @@ github.com/signalfx/sapm-proto v0.14.0 h1:KWh3I5E4EkelB19aP1/54Ik8khSioC/RVRW/ri
 github.com/signalfx/sapm-proto v0.14.0/go.mod h1:Km6PskZh966cqNoUn3AmRyGRix5VfwnxVBvn2vjRC9U=
 github.com/signoz/grok v1.0.3 h1:JHPUTwOKf4YbrCwFYVxcaYAkk1PfjCpIG/6RX+juDOQ=
 github.com/signoz/grok v1.0.3/go.mod h1:ax1aAchzC6/QMXMcyzHQGZWaW1l195+uMYIkCWPCNIo=
+github.com/signoz/ksuid v1.0.4 h1:IYvJ6f1l+k7uIBhBvQ6ylKDIri/xPV4veNyynYFBvBE=
+github.com/signoz/ksuid v1.0.4/go.mod h1:RrW3wTiinIfVDx+Sg2QMa0iwQbDaZ1NLJ47u41DrJLs=
 github.com/sijms/go-ora/v2 v2.8.19 h1:7LoKZatDYGi18mkpQTR/gQvG9yOdtc7hPAex96Bqisc=
 github.com/sijms/go-ora/v2 v2.8.19/go.mod h1:EHxlY6x7y9HAsdfumurRfTd+v8NrEOTR3Xl4FWlH6xk=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
