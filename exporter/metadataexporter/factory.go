@@ -36,19 +36,19 @@ func createDefaultConfig() component.Config {
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
 				MaxStringDistinctValues: 2048,
-				FetchInterval:           5 * time.Minute,
+				FetchInterval:           15 * time.Minute,
 			},
 			Logs: LimitsConfig{
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
 				MaxStringDistinctValues: 2048,
-				FetchInterval:           5 * time.Minute,
+				FetchInterval:           15 * time.Minute,
 			},
 			Metrics: LimitsConfig{
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
 				MaxStringDistinctValues: 2048,
-				FetchInterval:           5 * time.Minute,
+				FetchInterval:           15 * time.Minute,
 			},
 		},
 	}
