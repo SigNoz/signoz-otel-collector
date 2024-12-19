@@ -587,4 +587,257 @@ var TracesMigrations = []SchemaMigrationRecord{
 		},
 		DownItems: []Operation{},
 	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			// Local Tables
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "resource_string_service$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(resources_string, 'service.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_http$$route_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'http.route') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_messaging$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'messaging.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_messaging$$operation_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'messaging.operation') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_db$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'db.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$service_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.service') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$method_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.method') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_peer$$service_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'peer.service') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+
+			// Distributed Tables
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "resource_string_service$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(resources_string, 'service.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_http$$route_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'http.route') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_messaging$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'messaging.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_messaging$$operation_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'messaging.operation') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_db$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'db.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$system_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.system') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$service_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.service') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_rpc$$method_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'rpc.method') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_peer$$service_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'peer.service') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "resource_string_service$$name_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_http$$route_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_messaging$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_messaging$$operation_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_db$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$service_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$method_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_peer$$service_exists",
+				},
+			},
+		},
+	},
 }
