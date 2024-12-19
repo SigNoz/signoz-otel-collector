@@ -590,7 +590,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1005,
 		UpItems: []Operation{
-			// Local Tables
+			// Local Table
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
@@ -682,7 +682,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 			},
 
-			// Distributed Tables
+			// Distributed Table
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "distributed_signoz_index_v3",
@@ -775,6 +775,72 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 		DownItems: []Operation{
+			// Distributed table
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "resource_string_service$$name_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_http$$route_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_messaging$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_messaging$$operation_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_db$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$system_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$service_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_rpc$$method_exists",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "attribute_string_peer$$service_exists",
+				},
+			},
+
+			// Local table
 			AlterTableDropColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
