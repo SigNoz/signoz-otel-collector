@@ -11,12 +11,11 @@ import (
 	"github.com/expr-lang/expr/vm"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 )
 
 // Transformer is an operator that adds a string value or an expression value
 type Transformer struct {
-	helper.TransformerOperator
+	signozstanzahelper.TransformerOperator
 
 	Field                    entry.Field
 	Value                    any

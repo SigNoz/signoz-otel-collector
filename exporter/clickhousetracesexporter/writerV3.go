@@ -9,6 +9,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
@@ -29,8 +31,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
 	for _, span := range batchSpans {
 		err = statement.Append(
@@ -69,8 +70,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.IsRemote,
 		)
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 	}
 
@@ -100,8 +100,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.errorTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for error table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for error table: %w", err)
 	}
 
 	for _, span := range batchSpans {
@@ -123,8 +122,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 				span.ResourcesString,
 			)
 			if err != nil {
-				w.logger.Error("Could not append span to batch: ", zap.Any("span", span), zap.Error(err))
-				return err
+				return fmt.Errorf("could not append span to batch: %w", err)
 			}
 		}
 	}
@@ -146,26 +144,29 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 
 func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) error {
 	var tagKeyStatement driver.Batch
-	var tagStatement driver.Batch
+	var tagStatementV2 driver.Batch
 	var err error
+	var shouldSkipKeys map[string]shouldSkipKey
+
+	if keys := w.shouldSkipKeyValue.Load(); keys != nil {
+		shouldSkipKeys = keys.(map[string]shouldSkipKey)
+	}
 
 	defer func() {
 		if tagKeyStatement != nil {
 			_ = tagKeyStatement.Abort()
 		}
-		if tagStatement != nil {
-			_ = tagStatement.Abort()
+		if tagStatementV2 != nil {
+			_ = tagStatementV2.Abort()
 		}
 	}()
-	tagStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable), driver.WithReleaseConnection())
-	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err))
-		return err
-	}
 	tagKeyStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
+	}
+	tagStatementV2, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTableV2), driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("could not prepare batch for span attributes table v2 due to error: %w", err)
 	}
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
 	mapOfSpanAttributeKeys := make(map[string]struct{})
@@ -193,60 +194,70 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			// check if mapOfSpanAttributeKey already exists in map
 			_, ok = mapOfSpanAttributeKeys[mapOfSpanAttributeKey]
 			if !ok {
-				err = tagKeyStatement.Append(
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.IsColumn,
-				)
-				if err != nil {
-					w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Any("span", span))
-					return err
+				if w.keysCache.Get(mapOfSpanAttributeKey) == nil {
+					err = tagKeyStatement.Append(
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						spanAttribute.IsColumn,
+					)
+					if err != nil {
+						return fmt.Errorf("could not append span to tagKey Statement to batch due to error: %w", err)
+					}
+					w.keysCache.Set(mapOfSpanAttributeKey, struct{}{}, ttlcache.DefaultTTL)
+				} else {
+					w.logger.Debug("attribute key already present in cache, skipping", zap.String("key", mapOfSpanAttributeKey))
 				}
 			}
 			// add mapOfSpanAttributeKey to map
 			mapOfSpanAttributeKeys[mapOfSpanAttributeKey] = struct{}{}
+			v2Key := utils.MakeKeyForAttributeKeys(spanAttribute.Key, utils.TagType(spanAttribute.TagType), utils.TagDataType(spanAttribute.DataType))
+			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
 
 			if spanAttribute.DataType == "string" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.StringValue,
-					nil,
-					spanAttribute.IsColumn,
-				)
+
+				if _, ok := shouldSkipKeys[v2Key]; !ok {
+					err = tagStatementV2.Append(
+						unixMilli,
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						spanAttribute.StringValue,
+						nil,
+					)
+				}
+
 			} else if spanAttribute.DataType == "float64" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					spanAttribute.NumberValue,
-					spanAttribute.IsColumn,
-				)
+				if _, ok = shouldSkipKeys[v2Key]; !ok {
+					err = tagStatementV2.Append(
+						unixMilli,
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						nil,
+						spanAttribute.NumberValue,
+					)
+				}
 			} else if spanAttribute.DataType == "bool" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					nil,
-					spanAttribute.IsColumn,
-				)
+				if _, ok = shouldSkipKeys[v2Key]; !ok {
+					err = tagStatementV2.Append(
+						unixMilli,
+						spanAttribute.Key,
+						spanAttribute.TagType,
+						spanAttribute.DataType,
+						nil,
+						nil,
+					)
+				}
 			}
 			if err != nil {
-				w.logger.Error("Could not append span to tag Statement batch due to error: ", zap.Error(err), zap.Any("span", span))
-				return err
+				return fmt.Errorf("could not append span to tag Statement batch due to error: %w", err)
 			}
 		}
 	}
 
 	tagStart := time.Now()
-	err = tagStatement.Send()
+	err = tagStatementV2.Send()
 	w.durationHistogram.Record(
 		ctx,
 		float64(time.Since(tagStart).Milliseconds()),
@@ -256,8 +267,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		),
 	)
 	if err != nil {
-		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not write to span attributes table due to error: %w", err)
 	}
 
 	tagKeyStart := time.Now()
@@ -271,8 +281,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		),
 	)
 	if err != nil {
-		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not write to span attributes key table due to error: %w", err)
 	}
 
 	return err
@@ -352,11 +361,17 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
+			key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
+			if w.rfCache.Get(key) != nil {
+				w.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
+				continue
+			}
 			insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,
 			)
+			w.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 		}
 	}
 	start := time.Now()

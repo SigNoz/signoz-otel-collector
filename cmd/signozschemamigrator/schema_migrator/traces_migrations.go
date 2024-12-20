@@ -1,9 +1,7 @@
 package schemamigrator
 
-var TracesMigrations = []SchemaMigrationRecord{}
-
 // move them to TracesMigrations once it's ready to deploy
-var TracesMigrationsStaging = []SchemaMigrationRecord{
+var TracesMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
 		UpItems: []Operation{
@@ -294,9 +292,9 @@ var TracesMigrationsStaging = []SchemaMigrationRecord{
 				},
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
-						PartitionBy: "toDate(start)",
+						PartitionBy: "toDate(end)",
 						OrderBy:     "(trace_id)",
-						TTL:         "toDateTime(start) + toIntervalSecond(1296000)",
+						TTL:         "toDateTime(end) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -413,5 +411,180 @@ var TracesMigrationsStaging = []SchemaMigrationRecord{
 						WHERE (A.serviceName != B.serviceName) AND (A.parentSpanID = B.spanID)`,
 			},
 		},
+	},
+	{
+		MigrationID: 1001,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "durationSortMV",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "distributed_durationSort",
+			},
+			// DropTableOperation{
+			// 	Database: "signoz_traces",
+			// 	Table:    "durationSort",
+			// 	// this is added so that we can avoid the following error
+			// 	//1. Size (453.51 GB) is greater than max_[table/partition]_size_to_drop (50.00 GB)
+			// 	// https://stackoverflow.com/questions/78162269/cannot-drop-large-materialized-view-in-clickhouse
+			// 	Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
+			// },
+		},
+		DownItems: []Operation{},
+	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "dependency_graph_minutes_db_calls_mv_v2",
+				Query: `SELECT
+							resource_string_service$$name AS src,
+							attribute_string_db$$system AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(duration_nano)) AS duration_quantiles_state,
+							countIf(status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(timestamp) AS timestamp,
+							resources_string['deployment.environment'] AS deployment_environment,
+							resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3
+						WHERE (dest != '') AND (kind != 2)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "dependency_graph_minutes_messaging_calls_mv_v2",
+				Query: `SELECT
+							resource_string_service$$name  AS src,
+							attribute_string_messaging$$system AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(duration_nano)) AS duration_quantiles_state,
+							countIf(status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(timestamp) AS timestamp,
+							resources_string['deployment.environment'] AS deployment_environment,
+							resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3
+						WHERE (dest != '') AND (kind != 2)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "dependency_graph_minutes_service_calls_mv_v2",
+				Query: `SELECT
+							A.resource_string_service$$name AS src,
+							B.resource_string_service$$name AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(B.duration_nano)) AS duration_quantiles_state,
+							countIf(B.status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(B.timestamp) AS timestamp,
+							B.resources_string['deployment.environment'] AS deployment_environment,
+							B.resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							B.resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.span_id = B.parent_span_id)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+		},
+		DownItems: []Operation{
+			// no point of down here as we don't want to go back
+		},
+	},
+	{
+		MigrationID: 1003,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_db_calls_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_messaging_calls_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_service_calls_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "distributed_dependency_graph_minutes",
+			},
+			// remove dependency_graph_minutes later
+		},
+		DownItems: []Operation{
+			// no point of down here as we don't use these
+		},
+	},
+	{
+		MigrationID: 1004,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_traces",
+				Table:    "tag_attributes_v2",
+				Columns: []Column{
+					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
+					{Name: "tag_key", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "tag_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "tag_data_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "string_value", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}, Codec: "ZSTD(1)"},
+				},
+				Indexes: []Index{
+					{Name: "string_value_index", Expression: "string_value", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
+					{Name: "number_value_index", Expression: "number_value", Type: "minmax", Granularity: 1},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toDate(unix_milli / 1000)",
+						OrderBy:     "(tag_key, tag_type, tag_data_type, string_value, number_value)",
+						TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(1296000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+							{Name: "allow_nullable_key", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_traces",
+				Table:    "distributed_tag_attributes_v2",
+				Columns: []Column{
+					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
+					{Name: "tag_key", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "tag_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "tag_data_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "string_value", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}, Codec: "ZSTD(1)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_traces",
+					Table:       "tag_attributes_v2",
+					ShardingKey: "cityHash64(rand())",
+				},
+			},
+		},
+		DownItems: []Operation{},
 	},
 }

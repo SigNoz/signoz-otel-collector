@@ -116,9 +116,14 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	}
 
 	if value.Type() == pcommon.ValueTypeDouble {
-		attrMap.NumberMap[key] = value.Double()
-		spanAttribute.NumberValue = value.Double()
-		spanAttribute.DataType = "float64"
+		if utils.IsValidFloat(value.Double()) {
+			attrMap.NumberMap[key] = value.Double()
+			spanAttribute.NumberValue = value.Double()
+			spanAttribute.DataType = "float64"
+		} else {
+			zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", key))
+			return
+		}
 	} else if value.Type() == pcommon.ValueTypeInt {
 		attrMap.NumberMap[key] = float64(value.Int())
 		spanAttribute.NumberValue = float64(value.Int())
@@ -141,9 +146,14 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 				tSpanAttribute.StringValue = tempVal
 				tSpanAttribute.DataType = "string"
 			case float64:
-				attrMap.NumberMap[tempKey] = tempVal
-				tSpanAttribute.NumberValue = tempVal
-				tSpanAttribute.DataType = "float64"
+				if utils.IsValidFloat(tempVal) {
+					attrMap.NumberMap[tempKey] = tempVal
+					tSpanAttribute.NumberValue = tempVal
+					tSpanAttribute.DataType = "float64"
+				} else {
+					zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", tempKey))
+					continue
+				}
 			case bool:
 				attrMap.BoolMap[tempKey] = tempVal
 				tSpanAttribute.DataType = "bool"
@@ -330,12 +340,14 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 
 					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
 					if err != nil {
-						zap.S().Error("Error in creating newStructuredSpanV3: ", err)
-						return err
+						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
-					serializedStructuredSpan, _ := json.Marshal(structuredSpan)
+					serializedStructuredSpan, err := json.Marshal(structuredSpan)
+					if err != nil {
+						return fmt.Errorf("failed to marshal structured span: %w", err)
+					}
 					size += len(serializedStructuredSpan)
 					count += 1
 				}
@@ -348,15 +360,13 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 
 		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics)
 		if err != nil {
-			zap.S().Error("Error in writing spans to clickhouse: ", err)
-			return err
+			return fmt.Errorf("error in writing spans to clickhouse: %w", err)
 		}
 
 		// write the resources
 		err = s.Writer.WriteResourcesV3(ctx, resourcesSeen)
 		if err != nil {
-			zap.S().Error("Error in writing resources to clickhouse: ", err)
-			return err
+			return fmt.Errorf("error in writing resources to clickhouse: %w", err)
 		}
 
 		return nil

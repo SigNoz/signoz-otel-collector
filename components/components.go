@@ -163,6 +163,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
@@ -172,6 +173,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
 	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector"
@@ -300,6 +302,7 @@ func Components() (otelcol.Factories, error) {
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
 		signozkafkareceiver.NewFactory(),
+		signozawsfirehosereceiver.NewFactory(),
 	}
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
@@ -323,6 +326,7 @@ func Components() (otelcol.Factories, error) {
 		googlecloudpubsubexporter.NewFactory(),
 		kafkaexporter.NewFactory(),
 		loadbalancingexporter.NewFactory(),
+		metadataexporter.NewFactory(),
 		opencensusexporter.NewFactory(),
 		prometheusexporter.NewFactory(),
 		prometheusremotewriteexporter.NewFactory(),

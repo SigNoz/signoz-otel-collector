@@ -50,7 +50,7 @@ func ClickHouseNewFactory(exporterId uuid.UUID, config Config, settings exporter
 
 	return &Factory{
 		meter:   settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"),
-		Options: NewOptions(exporterId, config, primaryNamespace, archiveNamespace),
+		Options: NewOptions(exporterId, config, primaryNamespace, config.UseNewSchema, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -103,9 +103,16 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 
@@ -123,9 +130,16 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 

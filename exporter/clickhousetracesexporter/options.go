@@ -16,6 +16,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
@@ -30,6 +31,7 @@ const (
 	defaultErrorTable               string   = "distributed_signoz_error_index_v2"
 	defaultSpansTable               string   = "distributed_signoz_spans"
 	defaultAttributeTable           string   = "distributed_span_attributes"
+	defaultAttributeTableV2         string   = "distributed_tag_attributes_v2"
 	defaultAttributeKeyTable        string   = "distributed_span_attributes_keys"
 	DefaultDurationSortTable        string   = "durationSort"
 	DefaultDurationSortMVTable      string   = "durationSortMV"
@@ -39,6 +41,8 @@ const (
 	defaultDependencyGraphDbMV      string   = "dependency_graph_minutes_db_calls_mv"
 	DependencyGraphMessagingMV      string   = "dependency_graph_minutes_messaging_calls_mv"
 	defaultEncoding                 Encoding = EncodingJSON
+	defaultIndexTableV3             string   = "distributed_signoz_index_v3"
+	defaultResourceTableV3          string   = "distributed_traces_v3_resource"
 )
 
 // NamespaceConfig is Clickhouse's internal configuration data
@@ -53,6 +57,7 @@ type namespaceConfig struct {
 	SpansTable                 string
 	ErrorTable                 string
 	AttributeTable             string
+	AttributeTableV2           string
 	AttributeKeyTable          string
 	DurationSortTable          string
 	DurationSortMVTable        string
@@ -64,6 +69,11 @@ type namespaceConfig struct {
 	Encoding                   Encoding
 	Connector                  Connector
 	ExporterId                 uuid.UUID
+	UseNewSchema               bool
+	IndexTableV3               string
+	ResourceTableV3            string
+	MaxDistinctValues          int
+	FetchKeysInterval          time.Duration
 }
 
 // Connecto defines how to connect to the database
@@ -105,7 +115,7 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, useNewSchema bool, otherNamespaces ...string) *Options {
 
 	datasource := config.Datasource
 	if datasource == "" {
@@ -124,6 +134,7 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, ot
 			ErrorTable:                 defaultErrorTable,
 			SpansTable:                 defaultSpansTable,
 			AttributeTable:             defaultAttributeTable,
+			AttributeTableV2:           defaultAttributeTableV2,
 			AttributeKeyTable:          defaultAttributeKeyTable,
 			DurationSortTable:          DefaultDurationSortTable,
 			DurationSortMVTable:        DefaultDurationSortMVTable,
@@ -135,6 +146,11 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, ot
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
 			ExporterId:                 exporterId,
+			UseNewSchema:               useNewSchema,
+			IndexTableV3:               defaultIndexTableV3,
+			ResourceTableV3:            defaultResourceTableV3,
+			MaxDistinctValues:          config.AttributesLimits.MaxDistinctValues,
+			FetchKeysInterval:          config.AttributesLimits.FetchKeysInterval,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -142,14 +158,20 @@ func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, ot
 	for _, namespace := range otherNamespaces {
 		if namespace == archiveNamespace {
 			options.others[namespace] = &namespaceConfig{
-				namespace:       namespace,
-				Datasource:      datasource,
-				OperationsTable: "",
-				IndexTable:      "",
-				SpansTable:      defaultArchiveSpansTable,
-				Encoding:        defaultEncoding,
-				Connector:       defaultConnector,
-				ExporterId:      exporterId,
+				namespace:         namespace,
+				Datasource:        datasource,
+				OperationsTable:   "",
+				IndexTable:        "",
+				SpansTable:        defaultArchiveSpansTable,
+				Encoding:          defaultEncoding,
+				Connector:         defaultConnector,
+				ExporterId:        exporterId,
+				UseNewSchema:      useNewSchema,
+				IndexTableV3:      defaultIndexTableV3,
+				ResourceTableV3:   defaultResourceTableV3,
+				AttributeTableV2:  defaultAttributeTableV2,
+				MaxDistinctValues: config.AttributesLimits.MaxDistinctValues,
+				FetchKeysInterval: config.AttributesLimits.FetchKeysInterval,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}

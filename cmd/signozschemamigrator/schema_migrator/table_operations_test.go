@@ -198,6 +198,38 @@ func TestCreateTable(t *testing.T) {
 	}
 }
 
+func TestDropTable(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "drop-table",
+			op: DropTableOperation{
+				Database: "db",
+				Table:    "table",
+			},
+			want: "DROP TABLE IF EXISTS db.table",
+		},
+		{
+			name: "drop-table-with-settings",
+			op: DropTableOperation{
+				Database: "db",
+				Table:    "table",
+				Settings: TableSettings{{Name: "max_table_size_to_drop", Value: "0"}},
+			},
+			want: "DROP TABLE IF EXISTS db.table SETTINGS max_table_size_to_drop = 0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
+
 func TestCreateMaterializedView(t *testing.T) {
 	testCases := []struct {
 		name string

@@ -85,8 +85,9 @@ func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Set
 		config: storageConfig{
 			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
 		},
-		wg:        new(sync.WaitGroup),
-		closeChan: make(chan struct{}),
+		wg:           new(sync.WaitGroup),
+		closeChan:    make(chan struct{}),
+		useNewSchema: configClickHouse.UseNewSchema,
 	}
 
 	return &storage, nil
@@ -189,6 +190,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
+
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
@@ -299,9 +301,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			IsColumn: false,
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -328,9 +335,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
+
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -404,6 +417,16 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+	// if the new schema is enabled don't write to the old tables
+	err := s.pushTraceDataV3(ctx, td)
+	if err != nil {
+		return err
+	}
+	// if new schema is forced exit here else write to the old tables as well.
+	if s.useNewSchema {
+		return nil
+	}
+
 	s.wg.Add(1)
 	defer s.wg.Done()
 
