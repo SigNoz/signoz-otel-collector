@@ -155,6 +155,7 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		exporterId:        options.exporterId,
 		durationHistogram: durationHistogram,
 		indexTableV3:      options.indexTableV3,
+		resourceTableV3:   options.resourceTableV3,
 		useNewSchema:      options.useNewSchema,
 		keysCache:         keysCache,
 		rfCache:           rfCache,

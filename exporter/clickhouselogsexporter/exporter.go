@@ -136,6 +136,7 @@ func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, e
 	}
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
 	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
 	)
 	go keysCache.Start()
