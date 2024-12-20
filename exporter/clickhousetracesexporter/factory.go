@@ -59,7 +59,7 @@ func createTracesExporter(
 ) (exporter.Traces, error) {
 
 	c := cfg.(*Config)
-	oce, err := newExporter(cfg, params.Logger)
+	oce, err := newExporter(cfg, params.Logger, params)
 	if err != nil {
 		return nil, err
 	}

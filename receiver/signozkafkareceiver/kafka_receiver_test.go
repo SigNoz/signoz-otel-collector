@@ -14,7 +14,6 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/consumertest"
@@ -23,6 +22,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -105,8 +105,13 @@ func TestTracesReceiverStartConsume(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
 	require.NoError(t, c.Shutdown(context.Background()))
-	err := c.consumeLoop(ctx, &tracesConsumerGroupHandler{
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
+	err = c.consumeLoop(ctx, &tracesConsumerGroupHandler{
 		ready: make(chan bool),
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	})
 	assert.EqualError(t, err, context.Canceled.Error())
 }
@@ -132,12 +137,10 @@ func TestTracesReceiver_error(t *testing.T) {
 }
 
 func TestTracesConsumerGroupHandler(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -145,24 +148,17 @@ func TestTracesConsumerGroupHandler(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	testSession := testConsumerGroupSession{ctx: context.Background()}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -185,6 +181,8 @@ func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
@@ -197,6 +195,7 @@ func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 
@@ -225,12 +224,10 @@ func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -238,6 +235,9 @@ func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -245,18 +245,8 @@ func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -278,12 +268,17 @@ func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
 func TestTracesConsumerGroupHandler_error_unmarshal(t *testing.T) {
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -305,12 +300,17 @@ func TestTracesConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewErr(consumerError),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -406,8 +406,13 @@ func TestMetricsReceiverStartConsume(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
 	require.NoError(t, c.Shutdown(context.Background()))
-	err := c.consumeLoop(ctx, &logsConsumerGroupHandler{
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
+	err = c.consumeLoop(ctx, &metricsConsumerGroupHandler{
 		ready: make(chan bool),
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	})
 	assert.EqualError(t, err, context.Canceled.Error())
 }
@@ -433,12 +438,10 @@ func TestMetricsReceiver_error(t *testing.T) {
 }
 
 func TestMetricsConsumerGroupHandler(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -446,24 +449,17 @@ func TestMetricsConsumerGroupHandler(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	testSession := testConsumerGroupSession{ctx: context.Background()}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -486,6 +482,8 @@ func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
@@ -498,6 +496,7 @@ func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 
@@ -526,12 +525,10 @@ func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -539,6 +536,9 @@ func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -546,18 +546,8 @@ func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -578,12 +568,17 @@ func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
 func TestMetricsConsumerGroupHandler_error_unmarshal(t *testing.T) {
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -605,12 +600,17 @@ func TestMetricsConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewErr(consumerError),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -705,8 +705,13 @@ func TestLogsReceiverStartConsume(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
 	require.NoError(t, c.Shutdown(context.Background()))
-	err := c.consumeLoop(ctx, &logsConsumerGroupHandler{
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
+	err = c.consumeLoop(ctx, &logsConsumerGroupHandler{
 		ready: make(chan bool),
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	})
 	assert.EqualError(t, err, context.Canceled.Error())
 }
@@ -732,12 +737,10 @@ func TestLogsReceiver_error(t *testing.T) {
 }
 
 func TestLogsConsumerGroupHandler(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -745,24 +748,17 @@ func TestLogsConsumerGroupHandler(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	testSession := testConsumerGroupSession{ctx: context.Background()}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -785,6 +781,8 @@ func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
@@ -797,6 +795,7 @@ func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 			retryInterval:   1 * time.Second,
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
+			metrics:         metrics,
 		},
 	}
 
@@ -825,12 +824,10 @@ func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
-	view.Unregister(MetricViews()...)
-	views := MetricViews()
-	require.NoError(t, view.Register(views...))
-	defer view.Unregister(views...)
 
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -838,6 +835,9 @@ func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -845,18 +845,8 @@ func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
 	assert.False(t, ok)
-	viewData, err := view.RetrieveData(statPartitionStart.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData := viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	require.NoError(t, c.Cleanup(testSession))
-	viewData, err = view.RetrieveData(statPartitionClose.Name())
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(viewData))
-	distData = viewData[0].Data.(*view.SumData)
-	assert.Equal(t, float64(1), distData.Value)
 
 	groupClaim := testConsumerGroupClaim{
 		messageChan: make(chan *sarama.ConsumerMessage),
@@ -877,12 +867,17 @@ func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
 func TestLogsConsumerGroupHandler_error_unmarshal(t *testing.T) {
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewNop(),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -904,12 +899,17 @@ func TestLogsConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
 	require.NoError(t, err)
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
 		logger:       zap.NewNop(),
 		ready:        make(chan bool),
 		nextConsumer: consumertest.NewErr(consumerError),
 		obsrecv:      obsrecv,
+		baseConsumerGroupHandler: baseConsumerGroupHandler{
+			metrics: metrics,
+		},
 	}
 
 	wg := sync.WaitGroup{}
@@ -973,6 +973,8 @@ func TestLogsConsumerGroupHandler_unmarshal_text(t *testing.T) {
 			unmarshaler := newTextLogsUnmarshaler()
 			unmarshaler, err = unmarshaler.WithEnc(test.enc)
 			require.NoError(t, err)
+			metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+			require.NoError(t, err)
 			sink := &consumertest.LogsSink{}
 			c := logsConsumerGroupHandler{
 				unmarshaler:  unmarshaler,
@@ -980,6 +982,9 @@ func TestLogsConsumerGroupHandler_unmarshal_text(t *testing.T) {
 				ready:        make(chan bool),
 				nextConsumer: sink,
 				obsrecv:      obsrecv,
+				baseConsumerGroupHandler: baseConsumerGroupHandler{
+					metrics: metrics,
+				},
 			}
 
 			wg := sync.WaitGroup{}
