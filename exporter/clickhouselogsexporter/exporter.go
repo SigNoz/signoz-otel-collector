@@ -257,7 +257,11 @@ func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs
 
 	removeLog := func(log plog.LogRecord) bool {
 		t := log.Timestamp().AsTime()
-		return t.Unix() < acceptedDateTime.Unix()
+		exclude := t.Unix() < acceptedDateTime.Unix()
+		if exclude {
+			e.logger.Debug("removing log", zap.Time("timestamp", t), zap.Time("acceptedDateTime", acceptedDateTime), zap.String("body", log.Body().AsString()))
+		}
+		return exclude
 	}
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
