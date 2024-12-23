@@ -15,7 +15,10 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.5.0"
+	"go.opentelemetry.io/otel/attribute"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +41,7 @@ var (
 type clickhouseMetricsExporter struct {
 	cfg           *Config
 	logger        *zap.Logger
+	meter         metricapi.Meter
 	cache         *ttlcache.Cache[string, bool]
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
@@ -47,6 +51,9 @@ type clickhouseMetricsExporter struct {
 	timeSeriesSQL string
 	expHistSQL    string
 	metadataSQL   string
+
+	processMetricsDuration metricapi.Float64Histogram
+	exportMetricsDuration  metricapi.Float64Histogram
 }
 
 // sample represents a single metric sample
@@ -127,6 +134,13 @@ func WithLogger(logger *zap.Logger) ExporterOption {
 	}
 }
 
+func WithMeter(meter metricapi.Meter) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.meter = meter
+		return nil
+	}
+}
+
 func WithEnableExpHist(enableExpHist bool) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
 		e.enableExpHist = enableExpHist
@@ -186,6 +200,25 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 	chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
 	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
 	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
+
+	var err error
+	chExporter.processMetricsDuration, err = chExporter.meter.Float64Histogram(
+		"exporter_prepare_metrics_duration",
+		metricapi.WithDescription("Time taken (in millis) for exporter to prepare metrics"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	chExporter.exportMetricsDuration, err = chExporter.meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metricapi.WithDescription("Time taken to write data to ClickHouse"),
+		metricapi.WithUnit("ms"),
+		metricapi.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return chExporter, nil
 }
@@ -725,6 +758,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 
 func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch {
 	batch := &writeBatch{metaSeen: make(map[string]struct{})}
+	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
 		resAttrs := pcommon.NewMap()
@@ -758,6 +792,10 @@ func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch
 			}
 		}
 	}
+	c.processMetricsDuration.Record(
+		context.Background(),
+		float64(time.Since(start).Milliseconds()),
+	)
 	return batch
 }
 
@@ -770,6 +808,19 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *writeBatch) error {
 
 	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.TimeSeriesTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(timeSeries) == 0 {
 			return nil
 		}
@@ -813,6 +864,19 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 	}
 
 	writeSamples := func(ctx context.Context, samples []sample) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.SamplesTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(samples) == 0 {
 			return nil
 		}
@@ -841,6 +905,19 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 	}
 
 	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.ExpHistTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(expHist) == 0 {
 			return nil
 		}
@@ -873,6 +950,19 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 	}
 
 	writeMetadata := func(ctx context.Context, metadata []metadata) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.MetadataTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(metadata) == 0 {
 			return nil
 		}

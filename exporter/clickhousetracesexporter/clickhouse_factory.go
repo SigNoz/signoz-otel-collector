@@ -21,15 +21,15 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/exporter"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 // Factory implements storage.Factory for Clickhouse backend.
 type Factory struct {
 	logger     *zap.Logger
+	meter      metricapi.Meter
 	Options    *Options
 	db         clickhouse.Conn
 	archive    clickhouse.Conn
@@ -45,26 +45,11 @@ type Writer interface {
 
 type writerMaker func(WriterOptions) (Writer, error)
 
-var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
-)
-
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(exporterId uuid.UUID, config Config) *Factory {
-	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+func ClickHouseNewFactory(exporterId uuid.UUID, config Config, settings exporter.Settings) *Factory {
 
-	writeLatencyView := &view.View{
-		Name:        "exporter_db_write_latency",
-		Measure:     writeLatencyMillis,
-		Description: writeLatencyMillis.Description(),
-		TagKeys:     []tag.Key{exporterKey, tableKey},
-		Aggregation: writeLatencyDistribution,
-	}
-
-	view.Register(writeLatencyView)
 	return &Factory{
+		meter:   settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"),
 		Options: NewOptions(exporterId, config, primaryNamespace, config.UseNewSchema, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
@@ -111,6 +96,7 @@ func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
+		meter:             f.meter,
 		db:                f.db,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,

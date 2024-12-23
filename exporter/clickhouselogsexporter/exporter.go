@@ -38,9 +38,12 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -77,6 +80,8 @@ type clickhouseLogsExporter struct {
 	wg        *sync.WaitGroup
 	closeChan chan struct{}
 
+	durationHistogram metric.Float64Histogram
+
 	useNewSchema bool
 
 	keysCache *ttlcache.Cache[string, struct{}]
@@ -88,7 +93,10 @@ type clickhouseLogsExporter struct {
 	fetchShouldSkipKeysTicker *time.Ticker
 }
 
-func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, error) {
+func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, error) {
+	logger := set.Logger
+	meter := set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -118,6 +126,14 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		return nil, err
 	}
 
+	durationHistogram, err := meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
+	}
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
 	keysCache := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
@@ -136,7 +152,6 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 	go rfCache.Start()
 
 	return &clickhouseLogsExporter{
-		id:                id,
 		db:                client,
 		insertLogsSQL:     insertLogsSQL,
 		insertLogsSQLV2:   insertLogsSQLV2,
@@ -146,6 +161,7 @@ func newExporter(logger *zap.Logger, cfg *Config) (*clickhouseLogsExporter, erro
 		wg:                new(sync.WaitGroup),
 		closeChan:         make(chan struct{}),
 		useNewSchema:      cfg.UseNewSchema,
+		durationHistogram: durationHistogram,
 		keysCache:         keysCache,
 		rfCache:           rfCache,
 		maxDistinctValues: cfg.AttributesLimits.MaxDistinctValues,
@@ -557,12 +573,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		// store the duration for send the data
 		for i := 0; i < chLen; i++ {
 			sendDuration := <-chDuration
-			stats.RecordWithTags(ctx,
-				[]tag.Mutator{
-					tag.Upsert(exporterKey, pipeline.SignalLogs.String()),
-					tag.Upsert(tableKey, sendDuration.Name),
-				},
-				writeLatencyMillis.M(int64(sendDuration.duration.Milliseconds())),
+			e.durationHistogram.Record(
+				ctx,
+				float64(sendDuration.duration.Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("table", sendDuration.Name),
+					attribute.String("exporter", pipeline.SignalLogs.String()),
+				),
 			)
 		}
 

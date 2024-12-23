@@ -31,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
@@ -43,7 +44,7 @@ const (
 )
 
 // Crete new exporter.
-func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Settings) (*storage, error) {
 
 	if err := component.ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -53,7 +54,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	id := uuid.New()
 
-	f := ClickHouseNewFactory(id, *configClickHouse)
+	f := ClickHouseNewFactory(id, *configClickHouse, settings)
 
 	err := f.Initialize(logger)
 	if err != nil {
