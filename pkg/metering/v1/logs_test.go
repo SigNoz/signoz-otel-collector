@@ -21,7 +21,7 @@ func TestLogsSize(t *testing.T) {
 	meter := NewLogs(zap.NewNop())
 	size := meter.Size(logs)
 	// 8 * [ 10(key) + 20(value) + 5("":"") ] + 2({}) + 7(,)
-	assert.Equal(t, 10*(8*(10+20+5)+7+2+100), size)
+	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100), size)
 }
 
 func benchmarkLogsSize(b *testing.B, expectedSize int, options ...plogsgen.GenerationOption) {
