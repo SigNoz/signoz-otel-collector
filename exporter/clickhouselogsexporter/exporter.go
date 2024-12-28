@@ -28,6 +28,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -680,6 +681,16 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for i, v := range attrs.StringKeys {
+		if len(v) > common.MaxAttributeKeyLength {
+			e.logger.Debug("attribute key length exceeds the limit", zap.String("key", v))
+			continue
+		}
+
+		if len(attrs.StringValues[i]) > common.MaxAttributeValueLength {
+			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", v))
+			continue
+		}
+
 		key := utils.MakeKeyForAttributeKeys(v, tagType, utils.TagDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
