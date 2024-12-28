@@ -1,20 +1,20 @@
 package v1
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	"github.com/SigNoz/signoz-otel-collector/pkg/payloadmeter"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
 
 type logs struct {
 	Logger *zap.Logger
-	Sizer  metering.Sizer
+	Sizer  payloadmeter.Sizer
 }
 
-func NewLogs(logger *zap.Logger) metering.Logs {
+func NewLogs(logger *zap.Logger) payloadmeter.Logs {
 	return &logs{
 		Logger: logger,
-		Sizer:  metering.NewJSONSizer(logger),
+		Sizer:  payloadmeter.NewJSONSizer(logger),
 	}
 }
 
