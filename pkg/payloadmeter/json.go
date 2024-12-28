@@ -1,4 +1,4 @@
-package metering
+package payloadmeter
 
 import (
 	"encoding/json"
