@@ -28,10 +28,10 @@ type Logs interface {
 
 // Calculates billable metrics for traces.
 type Traces interface {
-	Meter[plog.Logs]
+	Meter[ptrace.Traces]
 }
 
 // Calculates billable metrics for metrics.
 type Metrics interface {
-	Meter[plog.Logs]
+	Meter[pmetric.Metrics]
 }
