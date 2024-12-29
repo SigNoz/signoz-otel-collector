@@ -1,9 +1,10 @@
 package v1
 
 import (
+	"github.com/SigNoz/signoz-otel-collector/pkg/payloadmeter"
+	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"testing"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
@@ -18,8 +19,15 @@ func TestLogsSize(t *testing.T) {
 		plogsgen.WithResourceAttributeStringValue("Lorem ipsum euismod."),
 	)
 
-	meter := NewLogs(zap.NewNop())
-	size := meter.Size(logs)
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	meter, err := NewLogsMeter(logger, payloadmeter.Json)
+	if err != nil {
+		panic(err)
+	}
+	size := meter.Size(logs, payloadmeter.Signoz)
 	// 8 * [ 10(key) + 20(value) + 5("":"") ] + 2({}) + 7(,)
 	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100), size)
 }
@@ -28,12 +36,19 @@ func benchmarkLogsSize(b *testing.B, expectedSize int, options ...plogsgen.Gener
 	b.Helper()
 
 	logs := plogsgen.Generate(options...)
-	meter := NewLogs(zap.NewNop())
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	meter, err := NewLogsMeter(logger, payloadmeter.Json)
+	if err != nil {
+		panic(err)
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		size := meter.Size(logs)
+		size := meter.Size(logs, payloadmeter.Signoz)
 		assert.Equal(b, expectedSize, size)
 	}
 }
