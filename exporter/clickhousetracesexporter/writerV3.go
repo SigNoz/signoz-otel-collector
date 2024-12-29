@@ -215,11 +215,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			v2Key := utils.MakeKeyForAttributeKeys(spanAttribute.Key, utils.TagType(spanAttribute.TagType), utils.TagDataType(spanAttribute.DataType))
 			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
 
-			if len(spanAttribute.Key) > common.MaxAttributeKeyLength {
-				w.logger.Debug("attribute key length exceeds the limit", zap.String("key", spanAttribute.Key))
-				continue
-			}
-
 			if len(spanAttribute.StringValue) > common.MaxAttributeValueLength {
 				w.logger.Debug("attribute value length exceeds the limit", zap.String("key", spanAttribute.Key))
 				continue

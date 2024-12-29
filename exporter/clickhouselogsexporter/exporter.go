@@ -681,10 +681,6 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for i, v := range attrs.StringKeys {
-		if len(v) > common.MaxAttributeKeyLength {
-			e.logger.Debug("attribute key length exceeds the limit", zap.String("key", v))
-			continue
-		}
 
 		if len(attrs.StringValues[i]) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", v))
