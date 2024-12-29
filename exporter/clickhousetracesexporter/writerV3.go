@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/jellydator/ttlcache/v3"
@@ -213,6 +214,11 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			mapOfSpanAttributeKeys[mapOfSpanAttributeKey] = struct{}{}
 			v2Key := utils.MakeKeyForAttributeKeys(spanAttribute.Key, utils.TagType(spanAttribute.TagType), utils.TagDataType(spanAttribute.DataType))
 			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
+
+			if len(spanAttribute.StringValue) > common.MaxAttributeValueLength {
+				w.logger.Debug("attribute value length exceeds the limit", zap.String("key", spanAttribute.Key))
+				continue
+			}
 
 			if spanAttribute.DataType == "string" {
 
