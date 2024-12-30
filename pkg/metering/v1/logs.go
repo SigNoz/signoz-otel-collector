@@ -2,6 +2,7 @@ package v1
 
 import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
@@ -19,8 +20,10 @@ func NewLogs(logger *zap.Logger) metering.Logs {
 }
 
 func (meter *logs) Size(ld plog.Logs) int {
-	total := 0
 
+	meter.Logger.Debug("Calculating logs size")
+
+	total := 0
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		resourceLog := ld.ResourceLogs().At(i)
 		resourceAttributesSize := meter.Sizer.SizeOfMapStringAny(resourceLog.Resource().Attributes().AsRaw())
@@ -37,6 +40,7 @@ func (meter *logs) Size(ld plog.Logs) int {
 
 		}
 	}
+	meter.Logger.Debug("Logs size", zap.Int("size", total))
 
 	return total
 }
