@@ -153,6 +153,7 @@ func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, e
 	go rfCache.Start()
 
 	return &clickhouseLogsExporter{
+		id:                id,
 		db:                client,
 		insertLogsSQL:     insertLogsSQL,
 		insertLogsSQLV2:   insertLogsSQLV2,
