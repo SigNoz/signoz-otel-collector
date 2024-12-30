@@ -73,6 +73,7 @@ func (e *UsageCollector) Start() error {
 }
 
 func (c *UsageCollector) Stop() error {
+	fmt.Println("stopping usage collector")
 	c.ir.Stop()
 	c.ir.Flush()
 	return nil
@@ -81,6 +82,7 @@ func (c *UsageCollector) Stop() error {
 func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
 	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
+		fmt.Println("error in usage parser", err)
 		return err
 	}
 	time := time.Now()
@@ -88,16 +90,19 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		usage.TimeStamp = time
 		usageBytes, err := json.Marshal(usage)
 		if err != nil {
+			fmt.Println("error in marshaling usage", err)
 			return err
 		}
 		encryptedData, err := Encrypt([]byte(e.exporterID.String())[:32], usageBytes)
 		if err != nil {
+			fmt.Println("error in encrypting usage", err)
 			return err
 		}
 
 		// insert everything as a new row
 		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.exporterID.String(), time, string(encryptedData))
 		if err != nil {
+			fmt.Println("error in inserting usage", err)
 			return err
 		}
 	}

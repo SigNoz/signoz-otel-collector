@@ -48,6 +48,7 @@ var (
 )
 
 func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage.Usage, error) {
+	fmt.Println("usage exporter called in clickhouse logsexporter")
 	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
 		if !strings.Contains(metric.Descriptor.Name, SigNozLogsCount) && !strings.Contains(metric.Descriptor.Name, SigNozLogsBytes) {
@@ -56,6 +57,7 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 		exporterIndex := usage.GetIndexOfLabel(metric.Descriptor.LabelKeys, usage.ExporterIDKey)
 		tenantIndex := usage.GetIndexOfLabel(metric.Descriptor.LabelKeys, usage.TenantKey)
 		if exporterIndex == -1 || tenantIndex == -1 {
+			fmt.Println("error in usage parser failed to get index of labels", metric.Descriptor.Name, metric.Descriptor.LabelKeys)
 			return nil, fmt.Errorf("usage: failed to get index of labels")
 		}
 
@@ -90,6 +92,9 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 				}
 			}
 		}
+	}
+	for _, d := range data {
+		fmt.Println("data.count, data.size, data.timestamp", d.Count, d.Size, d.TimeStamp)
 	}
 	return data, nil
 }
