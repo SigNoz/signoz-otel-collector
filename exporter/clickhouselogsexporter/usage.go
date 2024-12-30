@@ -51,6 +51,7 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 	fmt.Println("usage exporter called in clickhouse logsexporter")
 	data := map[string]usage.Usage{}
 	for _, metric := range metrics {
+		fmt.Println("metric.Descriptor.Name", metric.Descriptor.Name)
 		if !strings.Contains(metric.Descriptor.Name, SigNozLogsCount) && !strings.Contains(metric.Descriptor.Name, SigNozLogsBytes) {
 			continue
 		}

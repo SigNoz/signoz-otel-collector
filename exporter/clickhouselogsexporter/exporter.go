@@ -596,7 +596,16 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			zap.String("cost", duration.String()))
 
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+			fmt.Println("k, v", k, v, e.id.String())
+			recordError := stats.RecordWithTags(
+				ctx,
+				[]tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())},
+				ExporterSigNozSentLogRecords.M(int64(v.Count)),
+				ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)),
+			)
+			if recordError != nil {
+				fmt.Println("error in recording usage", recordError)
+			}
 		}
 
 		return err
