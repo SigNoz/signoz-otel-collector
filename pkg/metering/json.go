@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -138,7 +139,7 @@ func (sizer *jsonSizer) SizeOfSpanID(input pcommon.SpanID) int {
 	return 16
 }
 
-func (sizer *jsonSizer) SizeOfStringSlice(input []string) int {
+func (sizer *jsonSizer) SizeOfEvents(input []string) int {
 	bytes, err := json.Marshal(input)
 	if err != nil {
 		sizer.Logger.Error("cannot marshal object, setting size to 0", zap.Error(err), zap.Any("obj", input))
@@ -159,5 +160,22 @@ func (sizer *jsonSizer) SizeOfOtelSpanRefs(input []traces.OtelSpanRef) int {
 		return 0
 	}
 
-	return len(bytes)
+	escapeCharacters := strings.Count(string(bytes), "\"")
+	return len(bytes) + escapeCharacters
+}
+
+func (size *jsonSizer) TotalSizeIfKeyExists(key int, value int, extra int) int {
+	if value == 0 {
+		return 0
+	}
+
+	return key + value + extra
+}
+
+func (size *jsonSizer) TotalSizeIfKeyExistsAndValueIsMapOrSlice(key int, value int, extra int) int {
+	if value <= 2 {
+		return 0
+	}
+
+	return key + value + extra
 }

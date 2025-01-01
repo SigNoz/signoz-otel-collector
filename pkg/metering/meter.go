@@ -26,8 +26,10 @@ type Sizer interface {
 	SizeOfTraceID(pcommon.TraceID) int
 	SizeOfSpanID(pcommon.SpanID) int
 	SizeOfFlatPcommonMapInNumberStringBool(pcommon.Map) (int, int, int)
-	SizeOfStringSlice(input []string) int
-	SizeOfOtelSpanRefs(input []traces.OtelSpanRef) int
+	SizeOfEvents([]string) int
+	SizeOfOtelSpanRefs([]traces.OtelSpanRef) int
+	TotalSizeIfKeyExists(int, int, int) int
+	TotalSizeIfKeyExistsAndValueIsMapOrSlice(int, int, int) int
 }
 
 // Logs calculates billable metrics for logs.
