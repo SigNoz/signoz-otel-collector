@@ -88,6 +88,7 @@ func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Set
 		wg:           new(sync.WaitGroup),
 		closeChan:    make(chan struct{}),
 		useNewSchema: configClickHouse.UseNewSchema,
+		logger:       logger,
 	}
 
 	return &storage, nil
@@ -101,6 +102,7 @@ type storage struct {
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
 	useNewSchema   bool
+	logger         *zap.Logger
 }
 
 type storageConfig struct {

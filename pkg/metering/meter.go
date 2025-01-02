@@ -1,6 +1,8 @@
 package metering
 
 import (
+	"github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -18,6 +20,16 @@ type Meter[T ptrace.Traces | pmetric.Metrics | plog.Logs] interface {
 // Sizer is an interface that calculates the size of different of map[string]any
 type Sizer interface {
 	SizeOfMapStringAny(map[string]any) int
+	SizeOfFlatPcommonMapInMapStringString(pcommon.Map) int
+	SizeOfInt(int) int
+	SizeOfFloat64(float64) int
+	SizeOfTraceID(pcommon.TraceID) int
+	SizeOfSpanID(pcommon.SpanID) int
+	SizeOfFlatPcommonMapInNumberStringBool(pcommon.Map) (int, int, int)
+	SizeOfEvents([]string) int
+	SizeOfOtelSpanRefs([]traces.OtelSpanRef) int
+	TotalSizeIfKeyExists(int, int, int) int
+	TotalSizeIfKeyExistsAndValueIsMapOrSlice(int, int, int) int
 }
 
 // Logs calculates billable metrics for logs.

@@ -20,9 +20,6 @@ func NewLogs(logger *zap.Logger) metering.Logs {
 }
 
 func (meter *logs) Size(ld plog.Logs) int {
-
-	meter.Logger.Debug("Calculating logs size")
-
 	total := 0
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		resourceLog := ld.ResourceLogs().At(i)
@@ -40,7 +37,6 @@ func (meter *logs) Size(ld plog.Logs) int {
 
 		}
 	}
-	meter.Logger.Debug("Logs size", zap.Int("size", total))
 
 	return total
 }
