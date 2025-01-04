@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -297,9 +298,12 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 	case <-s.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		start := time.Now()
 		rss := td.ResourceSpans()
+		s.logger.Info("count_of_spans", zap.Int("count_of_spans", td.SpanCount()))
 		var batchOfSpans []*SpanV3
 
+		preProcessStart := time.Now()
 		count := 0
 		size := 0
 		metrics := map[string]usage.Metric{}
@@ -353,6 +357,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 				}
 			}
 		}
+		s.logger.Info("time_taken_to_pre_process", zap.Int64("time_taken_to_pre_process", time.Since(preProcessStart).Milliseconds()))
 
 		if s.useNewSchema {
 			usage.AddMetric(metrics, "default", int64(count), int64(size))
@@ -368,6 +373,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 		if err != nil {
 			return fmt.Errorf("error in writing resources to clickhouse: %w", err)
 		}
+		s.logger.Info("time_taken_to_write_batch_of_spans", zap.Int64("time_taken_to_write_batch_of_spans", time.Since(start).Milliseconds()))
 
 		return nil
 	}

@@ -295,31 +295,37 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, metrics map[string]usage.Metric) error {
+	spansStart := time.Now()
 	var wg sync.WaitGroup
 	var chErr = make(chan error, 2)
 
 	wg.Add(1)
 	go func() {
+		indexStart := time.Now()
 		defer wg.Done()
 		err := w.writeIndexBatchV3(ctx, batch)
 		if err != nil {
 			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
 			chErr <- err
 		}
+		w.logger.Info("time_taken_to_write_index", zap.Int64("time_taken_to_write_index", time.Since(indexStart).Milliseconds()))
 	}()
 
 	wg.Add(1)
 	go func() {
+		errorStart := time.Now()
 		defer wg.Done()
 		err := w.writeErrorBatchV3(ctx, batch)
 		if err != nil {
 			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
 			chErr <- err
 		}
+		w.logger.Info("time_taken_to_write_error", zap.Int64("time_taken_to_write_error", time.Since(errorStart).Milliseconds()))
 	}()
 
 	wg.Add(1)
 	go func() {
+		tagStart := time.Now()
 		defer wg.Done()
 		err := w.writeTagBatchV3(ctx, batch)
 		if err != nil {
@@ -327,6 +333,7 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 			// Not returning the error as we don't to block the exporter
 			// chErr <- err
 		}
+		w.logger.Info("time_taken_to_write_tag", zap.Int64("time_taken_to_write_tag", time.Since(tagStart).Milliseconds()))
 	}()
 
 	wg.Wait()
@@ -343,11 +350,12 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 			return fmt.Errorf("TracesWriteBatchOfSpansV3:%w", r)
 		}
 	}
-
+	w.logger.Info("time_taken_to_write_spans", zap.Int64("time_taken_to_write_spans", time.Since(spansStart).Milliseconds()))
 	return nil
 }
 
 func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int64]map[string]string) error {
+	resourcesStart := time.Now()
 	var insertResourcesStmtV3 driver.Batch
 
 	defer func() {
@@ -395,6 +403,7 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 			attribute.String("table", w.resourceTableV3),
 		),
 	)
+	w.logger.Info("time_taken_to_write_resources", zap.Int64("time_taken_to_write_resources", time.Since(resourcesStart).Milliseconds()))
 	return nil
 }
 
