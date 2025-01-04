@@ -579,6 +579,7 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 				return nil
 			}
 			start := time.Now()
+			c.logger.Info("cosumed message at", zap.Int64("time", start.UnixNano()), zap.Time("message_timestamp", message.Timestamp))
 			c.logger.Debug("Kafka message claimed",
 				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
@@ -607,7 +608,9 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 				metric.WithAttributes(attribute.String("name", c.id.String())),
 			)
 
+			unmarshalStart := time.Now()
 			traces, err := c.unmarshaler.Unmarshal(message.Value)
+			c.logger.Info("time_taken_to_unmarshal", zap.Int64("time_taken_to_unmarshal", time.Since(unmarshalStart).Milliseconds()))
 			if err != nil {
 				c.logger.Error("failed to unmarshal message", zap.Error(err))
 				if c.messageMarking.After && c.messageMarking.OnError {
@@ -617,6 +620,8 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			spanCount := traces.SpanCount()
+			c.logger.Info("span_count_from_kafka", zap.Int("span_count_from_kafka", spanCount))
+			processStart := time.Now()
 			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeTraces(session.Context(), traces) })
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
@@ -634,10 +639,12 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !c.autocommitEnabled {
 				session.Commit()
 			}
+			c.logger.Info("time_taken_to_process", zap.Int64("time_taken_to_process", time.Since(processStart).Milliseconds()))
 			c.metrics.processingTime.Record(session.Context(), float64(time.Since(start).Milliseconds()))
 			if err != nil {
 				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
+			c.logger.Info("processed message at", zap.Int64("time", time.Now().UnixNano()), zap.Time("message_timestamp", message.Timestamp))
 
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
