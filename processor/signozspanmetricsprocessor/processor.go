@@ -465,7 +465,7 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	ctx, span := p.tracer.Start(ctx, "ConsumeTraces")
+	ctx, span := p.tracer.Start(ctx, "spanmetricsprocessor.ConsumeTraces")
 	defer span.End()
 	p.lock.Lock()
 	p.aggregateMetrics(traces)
@@ -476,7 +476,7 @@ func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) 
 }
 
 func (p *processorImp) exportMetrics(ctx context.Context) {
-	ctx, span := p.tracer.Start(ctx, "exportMetrics")
+	ctx, span := p.tracer.Start(ctx, "spanmetricsprocessor.exportMetrics")
 	defer span.End()
 
 	p.lock.Lock()

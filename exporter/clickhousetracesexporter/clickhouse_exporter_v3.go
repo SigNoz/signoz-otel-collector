@@ -317,6 +317,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 		var prepareStructuredSpanDuration time.Duration
 		var resourceJsonMarshalDuration time.Duration
 		var serializedStructuredSpanDuration time.Duration
+		preprocessStart := time.Now()
 		for i := 0; i < rss.Len(); i++ {
 			rs := rss.At(i)
 
@@ -374,9 +375,12 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 			}
 		}
 		span.SetAttributes(
-			attribute.String("prepare_structured_span_duration", prepareStructuredSpanDuration.String()),
-			attribute.String("resource_json_marshal_duration", resourceJsonMarshalDuration.String()),
-			attribute.String("serialized_structured_span_duration", serializedStructuredSpanDuration.String()),
+			attribute.Int64("prepare_structured_span_duration", prepareStructuredSpanDuration.Milliseconds()),
+			attribute.Int64("resource_json_marshal_duration", resourceJsonMarshalDuration.Milliseconds()),
+			attribute.Int64("serialized_structured_span_duration", serializedStructuredSpanDuration.Milliseconds()),
+			attribute.Int64("preprocess_duration", time.Since(preprocessStart).Milliseconds()),
+			attribute.Int64("total_spans", int64(count)),
+			attribute.Int64("span_count", int64(td.SpanCount())),
 		)
 
 		if s.useNewSchema {
