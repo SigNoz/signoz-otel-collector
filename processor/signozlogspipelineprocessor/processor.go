@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension/experimental/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
@@ -29,12 +30,14 @@ func newLogsPipelineProcessor(
 	if err != nil {
 		return nil, err
 	}
+	tracer := telemetrySettings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor")
 
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
+		tracer:          tracer,
 	}, nil
 }
 
@@ -46,6 +49,7 @@ type logsPipelineProcessor struct {
 	firstOp         operator.Operator
 
 	shutdownFns []component.ShutdownFunc
+	tracer      trace.Tracer
 }
 
 // Collector starting up
@@ -90,7 +94,9 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 		zap.Any("logs", ld),
 	)
 
+	ctx, span := p.tracer.Start(ctx, "plogToEntries")
 	entries := plogToEntries(ld)
+	span.End()
 
 	for _, e := range entries {
 		if err := p.firstOp.Process(ctx, e); err != nil {
@@ -102,7 +108,10 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	// they modify the *entry.Entry passed to them in-place.
 	//
 	// So by this point, `entries` contains processed logs
+	_, span = p.tracer.Start(ctx, "convertEntriesToPlogs")
 	plog := convertEntriesToPlogs(entries)
+	span.End()
+
 	return plog, nil
 }
 

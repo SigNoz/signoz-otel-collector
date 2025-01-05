@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/exporter"
 	metricapi "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +40,7 @@ type Factory struct {
 // Writer writes spans to storage.
 type Writer interface {
 	WriteBatchOfSpans(ctx context.Context, span []*Span) error
-	WriteBatchOfSpansV3(ctx context.Context, span []*SpanV3, metrics map[string]usage.Metric) error
+	WriteBatchOfSpansV3(ctx context.Context, spans []*SpanV3, metrics map[string]usage.Metric, span trace.Span) error
 	WriteResourcesV3(ctx context.Context, resourcesSeen map[int64]map[string]string) error
 }
 

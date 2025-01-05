@@ -35,6 +35,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -89,6 +90,7 @@ func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Set
 		closeChan:    make(chan struct{}),
 		useNewSchema: configClickHouse.UseNewSchema,
 		logger:       logger,
+		tracer:       settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"),
 	}
 
 	return &storage, nil
@@ -103,6 +105,7 @@ type storage struct {
 	closeChan      chan struct{}
 	useNewSchema   bool
 	logger         *zap.Logger
+	tracer         trace.Tracer
 }
 
 type storageConfig struct {

@@ -38,6 +38,7 @@ import (
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
@@ -65,6 +66,7 @@ const (
 type clickHouse struct {
 	conn                 clickhouse.Conn
 	l                    *zap.Logger
+	tracer               trace.Tracer
 	database             string
 	maxTimeSeriesInQuery int
 
@@ -104,6 +106,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	logger := params.Settings.Logger
 	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
+	tracer := params.Settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
@@ -145,6 +148,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    logger,
+		tracer:               tracer,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 		cache:                cache,
@@ -228,12 +232,17 @@ func (ch *clickHouse) GetDBConn() interface{} {
 }
 
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
+	ctx, span := ch.tracer.Start(ctx, "write")
+	defer span.End()
+
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
 	fingerprintToName := make(map[uint64]map[string]string)
 
+	fingerprintsStart := time.Now()
 	for i, ts := range data.Timeseries {
+
 		var metricName string
 		var env string = "default"
 		labelsOverridden := make(map[string]*prompb.Label)
@@ -275,6 +284,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if len(fingerprints) != len(timeSeries) {
 		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
+	fingerprintsDuration := time.Since(fingerprintsStart)
+	span.SetAttributes(attribute.Int64("fingerprints_duration", int64(fingerprintsDuration.Milliseconds())))
 
 	// find new time series
 	newTimeSeries := make(map[uint64][]*prompb.Label)
@@ -296,6 +307,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		addToV2TSStart := time.Now()
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -315,9 +327,11 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				return err
 			}
 		}
+		span.SetAttributes(attribute.Int64("add_to_v2_time_series_duration", int64(time.Since(addToV2TSStart).Milliseconds())))
 
 		start := time.Now()
 		err = statement.Send()
+		span.SetAttributes(attribute.Int64("send_v2_time_series_duration", int64(time.Since(start).Milliseconds())))
 		ch.durationHistogram.Record(
 			ctx,
 			float64(time.Since(start).Milliseconds()),
@@ -339,6 +353,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		ctx := context.Background()
 
+		v2samplesStart := time.Now()
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
@@ -359,8 +374,12 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 			}
 		}
+		v2samplesDuration := time.Since(v2samplesStart)
+		span.SetAttributes(attribute.Int64("add_to_v2_samples_duration", int64(v2samplesDuration.Milliseconds())))
+
 		start := time.Now()
 		err = statement.Send()
+		span.SetAttributes(attribute.Int64("send_v2_samples_duration", int64(time.Since(start).Milliseconds())))
 		ch.durationHistogram.Record(
 			ctx,
 			float64(time.Since(start).Milliseconds()),
@@ -383,6 +402,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			v4SamplesStart := time.Now()
 
 			for i, ts := range data.Timeseries {
 				fingerprint := fingerprints[i]
@@ -418,9 +438,13 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					}
 				}
 			}
+			v4SamplesDuration := time.Since(v4SamplesStart)
+			span.SetAttributes(attribute.Int64("add_to_v4_samples_duration", int64(v4SamplesDuration.Milliseconds())))
 
 			start := time.Now()
 			err = statement.Send()
+			sendV4SamplesDuration := time.Since(start)
+			span.SetAttributes(attribute.Int64("send_v4_samples_duration", int64(sendV4SamplesDuration.Milliseconds())))
 			ch.durationHistogram.Record(
 				ctx,
 				float64(time.Since(start).Milliseconds()),
@@ -450,6 +474,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			// timestamp in milliseconds with nearest hour precision
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
+			v4TSStart := time.Now()
 			for fingerprint, labels := range timeSeries {
 				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
 				if item := ch.cache.Get(key); item != nil {
@@ -477,8 +502,13 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				ch.cache.Set(key, true, ttlcache.DefaultTTL)
 			}
 
+			v4TSDuration := time.Since(v4TSStart)
+			span.SetAttributes(attribute.Int64("add_to_v4_time_series_duration", int64(v4TSDuration.Milliseconds())))
+
 			start := time.Now()
 			err = statement.Send()
+			sendV4TSDuration := time.Since(start)
+			span.SetAttributes(attribute.Int64("send_v4_time_series_duration", int64(sendV4TSDuration.Milliseconds())))
 			ch.durationHistogram.Record(
 				ctx,
 				float64(time.Since(start).Milliseconds()),
@@ -506,6 +536,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		expHistStart := time.Now()
 
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
@@ -569,11 +600,16 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			}
 		}
 
+		expHistDuration := time.Since(expHistStart)
+		span.SetAttributes(attribute.Int64("add_to_exp_hist_duration", int64(expHistDuration.Milliseconds())))
+
 		start := time.Now()
 		err = statement.Send()
+		sendExpHistDuration := time.Since(start)
+		span.SetAttributes(attribute.Int64("send_exp_hist_duration", int64(sendExpHistDuration.Milliseconds())))
 		ch.durationHistogram.Record(
 			ctx,
-			float64(time.Since(start).Milliseconds()),
+			float64(sendExpHistDuration.Milliseconds()),
 			metric.WithAttributes(
 				attribute.String("exporter", pipeline.SignalMetrics.String()),
 				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),

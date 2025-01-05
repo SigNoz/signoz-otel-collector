@@ -26,6 +26,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/lightstep/go-expohisto/structure"
 	"github.com/tilinna/clock"
 	"go.opentelemetry.io/collector/component"
@@ -35,7 +36,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/collector/processor"
+	semconv "go.opentelemetry.io/collector/semconv/v1.5.0"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/cache"
@@ -80,6 +84,7 @@ type metricKey string
 type processorImp struct {
 	lock       sync.Mutex
 	logger     *zap.Logger
+	tracer     trace.Tracer
 	instanceID string
 	config     Config
 
@@ -195,8 +200,8 @@ func (h *exponentialHistogram) Observe(value float64) {
 	h.histogram.Update(value)
 }
 
-func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
-	logger.Info("Building signozspanmetricsprocessor with config", zap.Any("config", config))
+func newProcessor(params processor.Settings, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
+	logger := params.Logger
 	pConfig := config.(*Config)
 
 	bounds := defaultLatencyHistogramBucketsMs
@@ -257,8 +262,18 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 		excludePatternRegex[pattern.Name] = regexp.MustCompile(pattern.Pattern)
 	}
 
+	var instanceID string
+	serviceInstanceId, ok := params.Resource.Attributes().Get(semconv.AttributeServiceInstanceID)
+	if ok {
+		instanceID = serviceInstanceId.AsString()
+	} else {
+		instanceUUID, _ := uuid.NewRandom()
+		instanceID = instanceUUID.String()
+	}
+
 	return &processorImp{
 		logger:                                 logger,
+		tracer:                                 params.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"),
 		instanceID:                             instanceID,
 		config:                                 *pConfig,
 		startTimestamp:                         pcommon.NewTimestampFromTime(time.Now()),
@@ -450,6 +465,8 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
+	ctx, span := p.tracer.Start(ctx, "ConsumeTraces")
+	defer span.End()
 	p.lock.Lock()
 	p.aggregateMetrics(traces)
 	p.lock.Unlock()
@@ -459,6 +476,9 @@ func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) 
 }
 
 func (p *processorImp) exportMetrics(ctx context.Context) {
+	ctx, span := p.tracer.Start(ctx, "exportMetrics")
+	defer span.End()
+
 	p.lock.Lock()
 
 	m, err := p.buildMetrics()
@@ -1005,7 +1025,7 @@ func (p *processorImp) updateHistogram(key metricKey, latency float64, traceID p
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
 }
 
-func (p *processorImp) updateExpHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateExpHistogram(key metricKey, latency float64, _ pcommon.TraceID, _ pcommon.SpanID) {
 	histo, ok := p.expHistograms[key]
 	if !ok {
 		histogram := new(structure.Histogram[float64])

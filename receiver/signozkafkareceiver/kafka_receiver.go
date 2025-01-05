@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
@@ -160,6 +161,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
 			metrics:         metrics,
+			tracer:          c.settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"),
 		},
 	}
 	go func() {
@@ -273,6 +275,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
 			metrics:         metrics,
+			tracer:          c.settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"),
 		},
 	}
 	go func() {
@@ -413,6 +416,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 			pausePartition:  make(chan struct{}),
 			resumePartition: make(chan struct{}),
 			metrics:         metrics,
+			tracer:          c.settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"),
 		},
 	}
 	go func() {
@@ -454,10 +458,18 @@ type baseConsumerGroupHandler struct {
 	resumePartition chan struct{}
 
 	metrics *KafkaReceiverMetrics
+	tracer  trace.Tracer
 }
 
 // wrap is now a method of BaseConsumerGroupHandler
-func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim sarama.ConsumerGroupClaim, consume func() error) error {
+func (b *baseConsumerGroupHandler) WithMemoryLimiter(ctx context.Context, claim sarama.ConsumerGroupClaim, consume func() error, id component.ID) error {
+	attrs := []attribute.KeyValue{
+		attribute.String("name", id.String()),
+		attribute.Int("partition", int(claim.Partition())),
+		attribute.String("topic", claim.Topic()),
+	}
+	ctx, span := b.tracer.Start(ctx, "WithMemoryLimiter", trace.WithAttributes(attrs...))
+	defer span.End()
 	// Execute f() immediately
 	err := consume()
 	if err == nil || !(err.Error() == errHighMemoryUsage.Error()) {
@@ -578,9 +590,14 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			if !ok {
 				return nil
 			}
+			commonAttrs := []attribute.KeyValue{
+				attribute.String("name", c.id.String()),
+				attribute.Int("partition", int(claim.Partition())),
+				attribute.String("topic", claim.Topic()),
+			}
+			traceAttrs := append(commonAttrs, attribute.Int64("offset", message.Offset))
 			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
 				zap.String("topic", message.Topic),
 				zap.Int32("partition", message.Partition),
@@ -591,23 +608,13 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			ctx := c.obsrecv.StartTracesOp(session.Context())
-			c.metrics.messagesCount.Add(
-				session.Context(),
-				1,
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffset.Record(
-				session.Context(),
-				int64(message.Offset),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffsetLag.Record(
-				session.Context(),
-				int64(claim.HighWaterMarkOffset()-message.Offset-1),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
+			c.metrics.messagesCount.Add(ctx, 1, metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffset.Record(ctx, int64(message.Offset), metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffsetLag.Record(ctx, int64(claim.HighWaterMarkOffset()-message.Offset-1), metric.WithAttributes(commonAttrs...))
 
+			_, span := c.tracer.Start(ctx, "Unmarshal", trace.WithAttributes(traceAttrs...))
 			traces, err := c.unmarshaler.Unmarshal(message.Value)
+			span.End()
 			if err != nil {
 				c.logger.Error("failed to unmarshal message", zap.Error(err))
 				if c.messageMarking.After && c.messageMarking.OnError {
@@ -617,14 +624,14 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 
 			spanCount := traces.SpanCount()
-			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeTraces(session.Context(), traces) })
+			err = c.WithMemoryLimiter(ctx, claim, func() error { return c.nextConsumer.ConsumeTraces(ctx, traces) }, c.id)
+			c.metrics.processingTime.Record(ctx, float64(time.Since(start).Milliseconds()), metric.WithAttributes(commonAttrs...))
 			c.obsrecv.EndTracesOp(ctx, c.unmarshaler.Encoding(), spanCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export traces", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
 				if c.messageMarking.After && c.messageMarking.OnError {
 					session.MarkMessage(message, "")
 				}
-
 				return err
 			}
 
@@ -633,10 +640,6 @@ func (c *tracesConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			}
 			if !c.autocommitEnabled {
 				session.Commit()
-			}
-			c.metrics.processingTime.Record(session.Context(), float64(time.Since(start).Milliseconds()))
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
 
 		// Should return when `session.Context()` is done.
@@ -652,20 +655,12 @@ func (c *metricsConsumerGroupHandler) Setup(session sarama.ConsumerGroupSession)
 	c.readyCloser.Do(func() {
 		close(c.ready)
 	})
-	c.metrics.partitionStart.Add(
-		session.Context(),
-		1,
-		metric.WithAttributes(attribute.String("name", c.id.String())),
-	)
+	c.metrics.partitionStart.Add(session.Context(), 1, metric.WithAttributes(attribute.String("name", c.id.String())))
 	return nil
 }
 
 func (c *metricsConsumerGroupHandler) Cleanup(session sarama.ConsumerGroupSession) error {
-	c.metrics.partitionClose.Add(
-		session.Context(),
-		1,
-		metric.WithAttributes(attribute.String("name", c.id.String())),
-	)
+	c.metrics.partitionClose.Add(session.Context(), 1, metric.WithAttributes(attribute.String("name", c.id.String())))
 	return nil
 }
 
@@ -680,33 +675,31 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			if !ok {
 				return nil
 			}
+			commonAttrs := []attribute.KeyValue{
+				attribute.String("name", c.id.String()),
+				attribute.Int("partition", int(claim.Partition())),
+				attribute.String("topic", claim.Topic()),
+			}
+			traceAttrs := append(commonAttrs, attribute.Int64("offset", message.Offset))
 			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
-				zap.String("topic", message.Topic))
+				zap.String("topic", message.Topic),
+				zap.Int32("partition", message.Partition),
+				zap.Int64("offset", message.Offset),
+			)
 			if !c.messageMarking.After {
 				session.MarkMessage(message, "")
 			}
 
 			ctx := c.obsrecv.StartMetricsOp(session.Context())
-			c.metrics.messagesCount.Add(
-				session.Context(),
-				1,
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffset.Record(
-				session.Context(),
-				int64(message.Offset),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffsetLag.Record(
-				session.Context(),
-				int64(claim.HighWaterMarkOffset()-message.Offset-1),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
+			c.metrics.messagesCount.Add(ctx, 1, metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffset.Record(ctx, int64(message.Offset), metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffsetLag.Record(ctx, int64(claim.HighWaterMarkOffset()-message.Offset-1), metric.WithAttributes(commonAttrs...))
 
+			_, span := c.tracer.Start(ctx, "Unmarshal", trace.WithAttributes(traceAttrs...))
 			metrics, err := c.unmarshaler.Unmarshal(message.Value)
+			span.End()
 			if err != nil {
 				c.logger.Error("failed to unmarshal message", zap.Error(err))
 				if c.messageMarking.After && c.messageMarking.OnError {
@@ -716,7 +709,8 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			}
 
 			dataPointCount := metrics.DataPointCount()
-			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeMetrics(session.Context(), metrics) })
+			err = c.WithMemoryLimiter(ctx, claim, func() error { return c.nextConsumer.ConsumeMetrics(ctx, metrics) }, c.id)
+			c.metrics.processingTime.Record(ctx, float64(time.Since(start).Milliseconds()), metric.WithAttributes(commonAttrs...))
 			c.obsrecv.EndMetricsOp(ctx, c.unmarshaler.Encoding(), dataPointCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export metrics", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
@@ -730,14 +724,6 @@ func (c *metricsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupS
 			}
 			if !c.autocommitEnabled {
 				session.Commit()
-			}
-			c.metrics.processingTime.Record(
-				session.Context(),
-				float64(time.Since(start).Milliseconds()),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
 
 		// Should return when `session.Context()` is done.
@@ -782,9 +768,14 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			if !ok {
 				return nil
 			}
+			commonAttrs := []attribute.KeyValue{
+				attribute.String("name", c.id.String()),
+				attribute.Int("partition", int(claim.Partition())),
+				attribute.String("topic", claim.Topic()),
+			}
+			traceAttrs := append(commonAttrs, attribute.Int64("offset", message.Offset))
 			start := time.Now()
 			c.logger.Debug("Kafka message claimed",
-				zap.String("value", string(message.Value)),
 				zap.Time("timestamp", message.Timestamp),
 				zap.String("topic", message.Topic),
 				zap.Int32("partition", message.Partition),
@@ -794,23 +785,13 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 
 			ctx := c.obsrecv.StartLogsOp(session.Context())
-			c.metrics.messagesCount.Add(
-				session.Context(),
-				1,
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffset.Record(
-				session.Context(),
-				int64(message.Offset),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			c.metrics.messageOffsetLag.Record(
-				session.Context(),
-				int64(claim.HighWaterMarkOffset()-message.Offset-1),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
+			c.metrics.messagesCount.Add(ctx, 1, metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffset.Record(ctx, int64(message.Offset), metric.WithAttributes(commonAttrs...))
+			c.metrics.messageOffsetLag.Record(ctx, int64(claim.HighWaterMarkOffset()-message.Offset-1), metric.WithAttributes(commonAttrs...))
 
+			_, span := c.tracer.Start(ctx, "Unmarshal", trace.WithAttributes(traceAttrs...))
 			logs, err := c.unmarshaler.Unmarshal(message.Value)
+			span.End()
 			if err != nil {
 				c.logger.Error("failed to unmarshal message", zap.Error(err))
 				if c.messageMarking.After && c.messageMarking.OnError {
@@ -820,7 +801,8 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 
 			logCount := logs.LogRecordCount()
-			err = c.WithMemoryLimiter(session.Context(), claim, func() error { return c.nextConsumer.ConsumeLogs(session.Context(), logs) })
+			err = c.WithMemoryLimiter(ctx, claim, func() error { return c.nextConsumer.ConsumeLogs(ctx, logs) }, c.id)
+			c.metrics.processingTime.Record(ctx, float64(time.Since(start).Milliseconds()), metric.WithAttributes(commonAttrs...))
 			c.obsrecv.EndLogsOp(ctx, c.unmarshaler.Encoding(), logCount, err)
 			if err != nil {
 				c.logger.Error("kafka receiver: failed to export logs", zap.Error(err), zap.Int32("partition", claim.Partition()), zap.String("topic", claim.Topic()))
@@ -834,14 +816,6 @@ func (c *logsConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSess
 			}
 			if !c.autocommitEnabled {
 				session.Commit()
-			}
-			c.metrics.processingTime.Record(
-				session.Context(),
-				float64(time.Since(start).Milliseconds()),
-				metric.WithAttributes(attribute.String("name", c.id.String())),
-			)
-			if err != nil {
-				c.logger.Error("failed to record processing time", zap.Error(err))
 			}
 
 		// Should return when `session.Context()` is done.
