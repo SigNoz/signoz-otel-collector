@@ -382,6 +382,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 			attribute.Int64("preprocess_duration", time.Since(preprocessStart).Milliseconds()),
 			attribute.Int64("total_spans", int64(count)),
 			attribute.Int64("span_count", int64(td.SpanCount())),
+			attribute.Int64("total_spans_size", int64(size)),
 		)
 
 		if s.useNewSchema {
