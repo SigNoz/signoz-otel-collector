@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
+	chPkg "github.com/SigNoz/signoz-otel-collector/pkg/ch"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -128,6 +130,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
+	conn = chPkg.NewClickhouseConnWrapper(conn, chPkg.ClickhouseQuerySettings{})
 
 	cache := ttlcache.New[string, bool](
 		ttlcache.WithTTL[string, bool](45*time.Minute),
@@ -239,9 +242,11 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
 	fingerprintToName := make(map[uint64]map[string]string)
+	var samplesCount int
 
 	fingerprintsStart := time.Now()
 	for i, ts := range data.Timeseries {
+		samplesCount += len(ts.Samples)
 
 		var metricName string
 		var env string = "default"
@@ -299,6 +304,16 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}
 	ch.timeSeriesRW.Unlock()
 
+	span.SetAttributes(attribute.Int64("time_series_count", int64(len(newTimeSeries))))
+	span.SetAttributes(attribute.Int64("samples_count", int64(samplesCount)))
+	ctx = context.WithValue(ctx, chPkg.LogCommentKey, map[string]string{
+		"exporter":          "clickhouse_metrics_exporter",
+		"samples_count":     strconv.FormatInt(int64(samplesCount), 10),
+		"time_series_count": strconv.FormatInt(int64(len(newTimeSeries)), 10),
+		"trace_id":          span.SpanContext().TraceID().String(),
+		"span_id":           span.SpanContext().SpanID().String(),
+	})
+
 	err := func() error {
 		if ch.disableV2 {
 			return nil
@@ -351,7 +366,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if ch.disableV2 {
 			return nil
 		}
-		ctx := context.Background()
 
 		v2samplesStart := time.Now()
 		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE), driver.WithReleaseConnection())

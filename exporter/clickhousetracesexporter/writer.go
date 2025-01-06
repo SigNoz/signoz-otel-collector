@@ -24,6 +24,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/pkg/ch"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
@@ -141,9 +142,11 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 	)
 	go rfCache.Start()
 
+	conn := ch.NewClickhouseConnWrapper(options.db, ch.ClickhouseQuerySettings{})
+
 	writer := &SpanWriter{
 		logger:            options.logger,
-		db:                options.db,
+		db:                conn,
 		traceDatabase:     options.traceDatabase,
 		indexTable:        options.indexTable,
 		errorTable:        options.errorTable,

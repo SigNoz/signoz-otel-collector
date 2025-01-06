@@ -29,6 +29,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/ch"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -362,6 +363,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]string{
+			"exporter":   "clickhouse_logs_exporter",
+			"logs_count": strconv.FormatInt(int64(ld.LogRecordCount()), 10),
+			"trace_id":   span.SpanContext().TraceID().String(),
+			"span_id":    span.SpanContext().SpanID().String(),
+		})
 		start := time.Now()
 		chLen := 5
 		if !e.useNewSchema {
@@ -549,13 +556,29 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				}
 			}
 		}
+		var size int64
+		for _, v := range metrics {
+			size += v.Size
+		}
 		span.SetAttributes(
 			attribute.Int64("resource_attributes_processing_total_time", resourceAttributesDuration.Milliseconds()),
 			attribute.Int64("log_attributes_processing_total_time", logAttributesDuration.Milliseconds()),
 			attribute.Int64("add_to_tag_statement_total_time", addToTagStatementDuration.Milliseconds()),
 			attribute.Int64("add_to_log_statement_total_time", addToLogStatementDuration.Milliseconds()),
 			attribute.Int64("logs_count", int64(ld.LogRecordCount())),
+			attribute.Int64("logs_size", size),
 		)
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]string{
+			"exporter":   "clickhouse_logs_exporter",
+			"logs_count": strconv.FormatInt(int64(ld.LogRecordCount()), 10),
+			"resource_attributes_processing_total_time": strconv.FormatInt(resourceAttributesDuration.Milliseconds(), 10),
+			"log_attributes_processing_total_time":      strconv.FormatInt(logAttributesDuration.Milliseconds(), 10),
+			"add_to_tag_statement_total_time":           strconv.FormatInt(addToTagStatementDuration.Milliseconds(), 10),
+			"add_to_log_statement_total_time":           strconv.FormatInt(addToLogStatementDuration.Milliseconds(), 10),
+			"logs_size":                                 strconv.FormatInt(size, 10),
+			"trace_id":                                  span.SpanContext().TraceID().String(),
+			"span_id":                                   span.SpanContext().SpanID().String(),
+		})
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
@@ -1011,7 +1034,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	if err := db.Ping(ctx); err != nil {
 		return nil, err
 	}
-	return db, nil
+	conn := ch.NewClickhouseConnWrapper(db, ch.ClickhouseQuerySettings{})
+	return conn, nil
 }
 
 func renderInsertLogsSQL(_ *Config) string {
