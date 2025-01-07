@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"math"
 	"runtime/pprof"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -306,10 +305,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 	span.SetAttributes(attribute.Int64("time_series_count", int64(len(newTimeSeries))))
 	span.SetAttributes(attribute.Int64("samples_count", int64(samplesCount)))
-	ctx = context.WithValue(ctx, chPkg.LogCommentKey, map[string]string{
+	ctx = context.WithValue(ctx, chPkg.LogCommentKey, map[string]interface{}{
 		"exporter":          "clickhouse_metrics_exporter",
-		"samples_count":     strconv.FormatInt(int64(samplesCount), 10),
-		"time_series_count": strconv.FormatInt(int64(len(newTimeSeries)), 10),
+		"samples_count":     int64(samplesCount),
+		"time_series_count": int64(len(newTimeSeries)),
 		"trace_id":          span.SpanContext().TraceID().String(),
 		"span_id":           span.SpanContext().SpanID().String(),
 	})

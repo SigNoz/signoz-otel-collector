@@ -363,9 +363,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
 	default:
-		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]string{
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
 			"exporter":   "clickhouse_logs_exporter",
-			"logs_count": strconv.FormatInt(int64(ld.LogRecordCount()), 10),
+			"logs_count": int64(ld.LogRecordCount()),
 			"trace_id":   span.SpanContext().TraceID().String(),
 			"span_id":    span.SpanContext().SpanID().String(),
 		})
@@ -568,14 +568,14 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			attribute.Int64("logs_count", int64(ld.LogRecordCount())),
 			attribute.Int64("logs_size", size),
 		)
-		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]string{
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
 			"exporter":   "clickhouse_logs_exporter",
-			"logs_count": strconv.FormatInt(int64(ld.LogRecordCount()), 10),
-			"resource_attributes_processing_total_time": strconv.FormatInt(resourceAttributesDuration.Milliseconds(), 10),
-			"log_attributes_processing_total_time":      strconv.FormatInt(logAttributesDuration.Milliseconds(), 10),
-			"add_to_tag_statement_total_time":           strconv.FormatInt(addToTagStatementDuration.Milliseconds(), 10),
-			"add_to_log_statement_total_time":           strconv.FormatInt(addToLogStatementDuration.Milliseconds(), 10),
-			"logs_size":                                 strconv.FormatInt(size, 10),
+			"logs_count": int64(ld.LogRecordCount()),
+			"resource_attributes_processing_total_time": resourceAttributesDuration.Milliseconds(),
+			"log_attributes_processing_total_time":      logAttributesDuration.Milliseconds(),
+			"add_to_tag_statement_total_time":           addToTagStatementDuration.Milliseconds(),
+			"add_to_log_statement_total_time":           addToLogStatementDuration.Milliseconds(),
+			"logs_size":                                 size,
 			"trace_id":                                  span.SpanContext().TraceID().String(),
 			"span_id":                                   span.SpanContext().SpanID().String(),
 		})

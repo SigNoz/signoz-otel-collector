@@ -389,15 +389,15 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 			usage.AddMetric(metrics, "default", int64(count), int64(size))
 		}
 
-		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]string{
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
 			"exporter":                            "clickhouse_traces_exporter",
-			"span_count":                          strconv.FormatInt(int64(td.SpanCount()), 10),
-			"total_spans":                         strconv.FormatInt(int64(count), 10),
-			"total_spans_size":                    strconv.FormatInt(int64(size), 10),
-			"preprocess_duration":                 strconv.FormatInt(time.Since(preprocessStart).Milliseconds(), 10),
-			"prepare_structured_span_duration":    strconv.FormatInt(prepareStructuredSpanDuration.Milliseconds(), 10),
-			"resource_json_marshal_duration":      strconv.FormatInt(resourceJsonMarshalDuration.Milliseconds(), 10),
-			"serialized_structured_span_duration": strconv.FormatInt(serializedStructuredSpanDuration.Milliseconds(), 10),
+			"span_count":                          int64(td.SpanCount()),
+			"total_spans":                         int64(count),
+			"total_spans_size":                    int64(size),
+			"preprocess_duration":                 time.Since(preprocessStart).Milliseconds(),
+			"prepare_structured_span_duration":    prepareStructuredSpanDuration.Milliseconds(),
+			"resource_json_marshal_duration":      resourceJsonMarshalDuration.Milliseconds(),
+			"serialized_structured_span_duration": serializedStructuredSpanDuration.Milliseconds(),
 			"trace_id":                            span.SpanContext().TraceID().String(),
 			"span_id":                             span.SpanContext().SpanID().String(),
 		})

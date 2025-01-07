@@ -58,7 +58,7 @@ func (c clickhouseConnWrapper) getLogComment(ctx context.Context) string {
 		return ""
 	}
 
-	logCommentKVs, ok := kv.(map[string]string)
+	logCommentKVs, ok := kv.(map[string]interface{})
 	if !ok {
 		return ""
 	}
