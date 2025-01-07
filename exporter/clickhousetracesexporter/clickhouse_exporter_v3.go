@@ -196,6 +196,11 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	})
 
+	// debugging purpose
+	if v, ok := attrMap.StringMap["task.user_email"]; ok && v == "opera@freepik.com" {
+		zap.S().Error("found trace for task.user_email", zap.String("task.user_email", v), zap.String("traceID", otelSpan.TraceID().String()), zap.String("spanID", otelSpan.SpanID().String()))
+	}
+
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
 		if v.Type() == pcommon.ValueTypeMap {
 			result := flatten.FlattenJSON(v.Map().AsRaw(), k)

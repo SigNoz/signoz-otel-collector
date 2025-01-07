@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.uber.org/zap"
 )
 
 const (
@@ -63,6 +64,8 @@ func createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
+
+	zap.ReplaceGlobals(params.Logger)
 
 	return exporterhelper.NewTracesExporter(
 		ctx,
