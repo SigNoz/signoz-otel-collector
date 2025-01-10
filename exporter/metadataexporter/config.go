@@ -26,6 +26,23 @@ type AlwaysIncludeAttributesConfig struct {
 	Metrics []string `mapstructure:"metrics"`
 }
 
+type InMemoryCacheConfig struct {
+	MaxKeys uint64 `mapstructure:"max_keys"`
+}
+
+type RedisCacheConfig struct {
+	Addr     string `mapstructure:"addr"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+type CacheConfig struct {
+	Provider string              `mapstructure:"provider"`
+	InMemory InMemoryCacheConfig `mapstructure:"in_memory"`
+	Redis    RedisCacheConfig    `mapstructure:"redis"`
+}
+
 // Config defines configuration for Metadata exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
@@ -37,4 +54,6 @@ type Config struct {
 	MaxDistinctValues MaxDistinctValuesConfig `mapstructure:"max_distinct_values"`
 
 	AlwaysIncludeAttributes AlwaysIncludeAttributesConfig `mapstructure:"always_include_attributes"`
+
+	Cache CacheConfig `mapstructure:"cache"`
 }
