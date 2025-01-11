@@ -16,7 +16,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
-	"github.com/jellydator/ttlcache/v3"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
@@ -44,14 +44,30 @@ type tagValueCountFromDB struct {
 	numberValueCount    uint64
 }
 
+type bloomFilterStore struct {
+	bf                       *bloom.BloomFilter
+	currentEpochWindowMillis int64
+}
+
 type metadataExporter struct {
 	cfg Config
 	set exporter.Settings
 
-	conn                    driver.Conn
-	tracesFingerprintCache  *ttlcache.Cache[string, bool]
-	metricsFingerprintCache *ttlcache.Cache[string, bool]
-	logsFingerprintCache    *ttlcache.Cache[string, bool]
+	conn driver.Conn
+
+	// bloom filters for each signal type
+	bf map[pipeline.Signal]*bloomFilterStore
+
+	// sync the bloom filters with the redis cache
+	bfSyncTicker *time.Ticker
+
+	// when the sync is in progress, if we want to process the data, we need to either acquire the
+	// lock or copy the bf to local and process the data
+	// solving this would require making bunch of things thread safe, so we are just
+	// going to wait for the sync to complete and skip the data processing
+	// this is based on the assumption that the metadata will eventually converge and re-appear
+	// and it is safe to skip some pdata
+	syncInProgress atomic.Bool
 
 	redisClient *redis.Client
 	bloomClient *redisbloom.Client
@@ -112,26 +128,19 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	)
 	bloomClient.Reserve("fingerprint_cache", 0.01, 3000000)
 
-	tracesFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),              // don't update the ttl when the item is accessed
-		ttlcache.WithCapacity[string, bool](maxValuesInTracesCache), // max 1M items in the cache
-	)
-	go tracesFingerprintCache.Start()
-
-	metricsFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-		ttlcache.WithCapacity[string, bool](maxValuesInMetricsCache),
-	)
-	go metricsFingerprintCache.Start()
-
-	logsFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-		ttlcache.WithCapacity[string, bool](maxValuesInLogsCache),
-	)
-	go logsFingerprintCache.Start()
+	bf := make(map[pipeline.Signal]*bloomFilterStore)
+	bf[pipeline.SignalTraces] = &bloomFilterStore{
+		bf:                       bloom.NewWithEstimates(maxValuesInTracesCache, 0.01),
+		currentEpochWindowMillis: time.Now().UnixMilli() / sixHoursInMs,
+	}
+	bf[pipeline.SignalMetrics] = &bloomFilterStore{
+		bf:                       bloom.NewWithEstimates(maxValuesInMetricsCache, 0.01),
+		currentEpochWindowMillis: time.Now().UnixMilli() / sixHoursInMs,
+	}
+	bf[pipeline.SignalLogs] = &bloomFilterStore{
+		bf:                       bloom.NewWithEstimates(maxValuesInLogsCache, 0.01),
+		currentEpochWindowMillis: time.Now().UnixMilli() / sixHoursInMs,
+	}
 
 	tracesTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Traces.MaxKeys),
@@ -178,9 +187,8 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		cfg:                            cfg,
 		set:                            set,
 		conn:                           conn,
-		tracesFingerprintCache:         tracesFingerprintCache,
-		metricsFingerprintCache:        metricsFingerprintCache,
-		logsFingerprintCache:           logsFingerprintCache,
+		bf:                             bf,
+		bfSyncTicker:                   time.NewTicker(cfg.Cache.Redis.SyncInterval),
 		redisClient:                    redisClient,
 		bloomClient:                    bloomClient,
 		tracesTracker:                  tracesTracker,
@@ -243,6 +251,9 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		},
 	)
 
+	e.syncBloomFilters()
+	go e.syncPeriodically()
+
 	return nil
 }
 
@@ -254,7 +265,125 @@ func (e *metadataExporter) Shutdown(_ context.Context) error {
 	e.logTagValueCountCtxCancel()
 	e.tracesTagValueCountCtxCancel()
 	e.metricsTagValueCountCtxCancel()
+	e.syncBloomFilters()
+	e.bfSyncTicker.Stop()
 	return nil
+}
+
+// syncBloomFilters syncs the bloom filters with the redis cache
+// acquire a lock on the redis cache
+// get the bloom filters bytes from the redis cache
+// merge the local bloom filters with the bloom filters from the redis cache
+// update both the local bloom filters and the redis cache
+// release the lock on the redis cache
+// we are only interested in the bloom filters for the current epoch window
+func (e *metadataExporter) syncBloomFilters() error {
+	e.set.Logger.Info("syncing bloom filters")
+	if e.syncInProgress.Load() {
+		e.set.Logger.Info("sync in progress, skipping sync bloom filters")
+		return nil
+	}
+	e.syncInProgress.Store(true)
+	defer e.syncInProgress.Store(false)
+
+	syncStart := time.Now()
+	now := time.Now().UnixMilli()
+	ctx := context.Background()
+
+	// Try to acquire lock with a reasonable timeout
+	lockKey := "bloom_filter_sync_lock"
+	lockValue := strconv.FormatInt(now, 10)
+	locked, err := e.redisClient.SetNX(ctx, lockKey, lockValue, 30*time.Second).Result()
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	if !locked {
+		return nil // Another instance is syncing, we can skip
+	}
+	defer e.redisClient.Del(ctx, lockKey)
+
+	// Sync each signal type
+	for signal, store := range e.bf {
+		currentEpochWindow := now / sixHoursInMs
+		if store.currentEpochWindowMillis != currentEpochWindow {
+			// Reset bloom filter if we've moved to a new epoch window
+			store.bf = bloom.NewWithEstimates(getMaxValuesForSignal(signal), 0.01)
+			store.currentEpochWindowMillis = currentEpochWindow
+		}
+
+		getStart := time.Now()
+		// Get existing bloom filter from Redis
+		redisKey := fmt.Sprintf("bloom_filter_%s_%d", signal.String(), currentEpochWindow)
+		existingFilter, err := e.redisClient.Get(ctx, redisKey).Bytes()
+		e.set.Logger.Info("get bloom filter from redis", zap.String("signal", signal.String()), zap.Int64("duration", time.Since(getStart).Milliseconds()))
+		if err != nil && err != redis.Nil {
+			return fmt.Errorf("failed to get bloom filter from redis for signal %s: %w", signal, err)
+		}
+
+		if err == redis.Nil {
+			// No existing filter, store current one
+			filterBytes, err := store.bf.GobEncode()
+			if err != nil {
+				return fmt.Errorf("failed to encode bloom filter for signal %s: %w", signal, err)
+			}
+
+			// Store in Redis with TTL slightly longer than the epoch window
+			err = e.redisClient.Set(ctx, redisKey, filterBytes, sixHours+time.Hour).Err()
+			if err != nil {
+				return fmt.Errorf("failed to store bloom filter in redis for signal %s: %w", signal, err)
+			}
+			continue
+		}
+
+		mergeStart := time.Now()
+		// Merge existing filter with current one
+		existingBF := bloom.NewWithEstimates(getMaxValuesForSignal(signal), 0.01)
+		err = existingBF.GobDecode(existingFilter)
+		if err != nil {
+			return fmt.Errorf("failed to decode bloom filter from redis for signal %s: %w", signal, err)
+		}
+
+		// Merge the filters
+		store.bf.Merge(existingBF)
+		e.set.Logger.Info("merge bloom filter", zap.String("signal", signal.String()), zap.Int64("duration", time.Since(mergeStart).Milliseconds()))
+
+		storeStart := time.Now()
+		// Store merged filter back in Redis
+		mergedBytes, err := store.bf.GobEncode()
+		if err != nil {
+			return fmt.Errorf("failed to encode merged bloom filter for signal %s: %w", signal, err)
+		}
+
+		err = e.redisClient.Set(ctx, redisKey, mergedBytes, sixHours+time.Hour).Err()
+		e.set.Logger.Info("store bloom filter", zap.String("signal", signal.String()), zap.Int64("duration", time.Since(storeStart).Milliseconds()))
+		if err != nil {
+			return fmt.Errorf("failed to store merged bloom filter in redis for signal %s: %w", signal, err)
+		}
+	}
+	e.set.Logger.Info("sync bloom filters", zap.Int64("duration", time.Since(syncStart).Milliseconds()))
+
+	return nil
+}
+
+// Helper function to get max values based on signal type
+func getMaxValuesForSignal(signal pipeline.Signal) uint {
+	switch signal {
+	case pipeline.SignalTraces:
+		return maxValuesInTracesCache
+	case pipeline.SignalMetrics:
+		return maxValuesInMetricsCache
+	case pipeline.SignalLogs:
+		return maxValuesInLogsCache
+	default:
+		return maxValuesInTracesCache // default case
+	}
+}
+
+func (e *metadataExporter) syncPeriodically() {
+
+	for range e.bfSyncTicker.C {
+		e.syncBloomFilters()
+	}
 }
 
 type updateParams struct {
@@ -498,17 +627,18 @@ func makeFingerprintCacheKey(a, b uint64, datasource string) string {
 
 // writeToStmt writes the attributes to the statement
 func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds pipeline.Signal, resourceFingerprint, fprint uint64, rAttrs, filtered map[string]any, roundedSixHrsUnixMilli int64) (bool, error) {
-	var cache *ttlcache.Cache[string, bool]
+	var signalFilter *bloomFilterStore
 	switch ds {
 	case pipeline.SignalTraces:
-		cache = e.tracesFingerprintCache
+		signalFilter = e.bf[pipeline.SignalTraces]
 	case pipeline.SignalMetrics:
-		cache = e.metricsFingerprintCache
+		signalFilter = e.bf[pipeline.SignalMetrics]
 	case pipeline.SignalLogs:
-		cache = e.logsFingerprintCache
+		signalFilter = e.bf[pipeline.SignalLogs]
 	}
+	signalFilter.currentEpochWindowMillis = roundedSixHrsUnixMilli
 	cacheKey := makeFingerprintCacheKey(fprint, uint64(roundedSixHrsUnixMilli), ds.String())
-	if item := cache.Get(cacheKey); item != nil && item.Value() {
+	if signalFilter.bf.Test([]byte(cacheKey)) {
 		return true, nil
 	}
 
@@ -523,7 +653,7 @@ func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds 
 		return false, err
 	}
 
-	cache.Set(cacheKey, true, ttlcache.DefaultTTL)
+	signalFilter.bf.Add([]byte(cacheKey))
 	return false, nil
 }
 
@@ -597,26 +727,27 @@ type writeToStatementBatchRecord struct {
 
 func (e *metadataExporter) writeToStatementBatch(_ context.Context, stmt driver.Batch, records []writeToStatementBatchRecord) (int, error) {
 	// prepare the keys to search in bloom filter
-	keys := make([]string, 0)
+	keys := make([][18]byte, 0)
 	for _, record := range records {
 		key := FingerprintKey{
 			A:        record.resourceFingerprint,
 			B:        record.fprint,
 			DataEnum: dsToEnum(record.ds.String()),
 		}
-		keys = append(keys, key.ToBase64())
+		keys = append(keys, key.ToBytes())
 	}
 
 	start := time.Now()
-	exists, err := e.bloomClient.BfExistsMulti("fingerprint_cache", keys)
-	if err != nil {
-		return 0, err
+	exists := make([]bool, len(keys))
+	for i, key := range keys {
+		exists[i] = e.bf[records[i].ds].bf.Test(key[:])
 	}
+
 	e.set.Logger.Info("bloom filter check", zap.Int64("duration", time.Since(start).Milliseconds()))
 
 	written := 0
 	for idx, keyExists := range exists {
-		if keyExists == 0 {
+		if !keyExists {
 			stmt.Append(
 				records[idx].roundedSixHrsUnixMilli,
 				records[idx].ds,
@@ -629,13 +760,20 @@ func (e *metadataExporter) writeToStatementBatch(_ context.Context, stmt driver.
 		}
 	}
 	start = time.Now()
-	e.bloomClient.BfAddMulti("fingerprint_cache", keys)
+	// set the keys
+	for idx, key := range keys {
+		e.bf[records[idx].ds].bf.Add(key[:])
+	}
 	e.set.Logger.Info("bloom filter add", zap.Int64("duration", time.Since(start).Milliseconds()))
 
 	return written, nil
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
+	if e.syncInProgress.Load() {
+		e.set.Logger.Info("sync in progress, skipping push traces")
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return err
@@ -703,6 +841,10 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 }
 
 func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	if e.syncInProgress.Load() {
+		e.set.Logger.Info("sync in progress, skipping push metrics")
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return err
@@ -798,6 +940,10 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 }
 
 func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
+	if e.syncInProgress.Load() {
+		e.set.Logger.Info("sync in progress, skipping push logs")
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		return err

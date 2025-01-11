@@ -31,10 +31,11 @@ type InMemoryCacheConfig struct {
 }
 
 type RedisCacheConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	Addr         string        `mapstructure:"addr"`
+	Username     string        `mapstructure:"username"`
+	Password     string        `mapstructure:"password"`
+	DB           int           `mapstructure:"db"`
+	SyncInterval time.Duration `mapstructure:"sync_interval"`
 }
 
 type CacheConfig struct {
