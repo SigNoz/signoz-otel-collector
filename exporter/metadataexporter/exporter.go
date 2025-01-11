@@ -251,7 +251,10 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		},
 	)
 
-	e.syncBloomFilters()
+	err := e.syncBloomFilters()
+	if err != nil {
+		e.set.Logger.Error("failed to sync bloom filters", zap.Error(err))
+	}
 	go e.syncPeriodically()
 
 	return nil
@@ -265,7 +268,10 @@ func (e *metadataExporter) Shutdown(_ context.Context) error {
 	e.logTagValueCountCtxCancel()
 	e.tracesTagValueCountCtxCancel()
 	e.metricsTagValueCountCtxCancel()
-	e.syncBloomFilters()
+	err := e.syncBloomFilters()
+	if err != nil {
+		e.set.Logger.Error("failed to sync bloom filters", zap.Error(err))
+	}
 	e.bfSyncTicker.Stop()
 	return nil
 }
@@ -298,6 +304,7 @@ func (e *metadataExporter) syncBloomFilters() error {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
 	if !locked {
+		e.set.Logger.Info("another instance is syncing, skipping sync bloom filters")
 		return nil // Another instance is syncing, we can skip
 	}
 	defer e.redisClient.Del(ctx, lockKey)
@@ -382,7 +389,10 @@ func getMaxValuesForSignal(signal pipeline.Signal) uint {
 func (e *metadataExporter) syncPeriodically() {
 
 	for range e.bfSyncTicker.C {
-		e.syncBloomFilters()
+		err := e.syncBloomFilters()
+		if err != nil {
+			e.set.Logger.Error("failed to sync bloom filters", zap.Error(err))
+		}
 	}
 }
 
