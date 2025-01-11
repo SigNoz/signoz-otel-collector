@@ -595,8 +595,8 @@ type writeToStatementBatchRecord struct {
 	roundedSixHrsUnixMilli int64
 }
 
-func (e *metadataExporter) writeToStatementBatch(_ context.Context, stmt driver.Batch, records []writeToStatementBatchRecord) (int, error) {
-	// prepare the keys to search in bloom filter
+func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord) (int, error) {
+	// prepare the keys to check in sorted set
 	keys := make([]string, 0)
 	for _, record := range records {
 		key := FingerprintKey{
@@ -608,15 +608,19 @@ func (e *metadataExporter) writeToStatementBatch(_ context.Context, stmt driver.
 	}
 
 	start := time.Now()
-	exists, err := e.bloomClient.BfExistsMulti("fingerprint_cache", keys)
-	if err != nil {
+	// Check existence of all keys at once
+	exists, err := e.redisClient.ZMScore(ctx, "fingerprint_cache_sorted_set", keys...).Result()
+	if err != nil && err != redis.Nil {
 		return 0, err
 	}
-	e.set.Logger.Info("bloom filter check", zap.Int64("duration", time.Since(start).Milliseconds()))
+	e.set.Logger.Info("sorted set check", zap.Int64("duration", time.Since(start).Milliseconds()))
 
 	written := 0
-	for idx, keyExists := range exists {
-		if keyExists == 0 {
+	var addMembers []redis.Z
+
+	// If exists is nil or empty, all members are new
+	if len(exists) == 0 {
+		for idx, key := range keys {
 			stmt.Append(
 				records[idx].roundedSixHrsUnixMilli,
 				records[idx].ds,
@@ -626,11 +630,43 @@ func (e *metadataExporter) writeToStatementBatch(_ context.Context, stmt driver.
 				flattenJSONToStringMap(records[idx].attrs),
 			)
 			written++
+
+			addMembers = append(addMembers, redis.Z{
+				Score:  float64(time.Now().Unix()),
+				Member: key,
+			})
+		}
+	} else {
+		// Process each record
+		for idx, score := range exists {
+			// Members that don't exist will have score of 0
+			if score == 0 {
+				stmt.Append(
+					records[idx].roundedSixHrsUnixMilli,
+					records[idx].ds,
+					records[idx].resourceFingerprint,
+					records[idx].fprint,
+					flattenJSONToStringMap(records[idx].rAttrs),
+					flattenJSONToStringMap(records[idx].attrs),
+				)
+				written++
+
+				addMembers = append(addMembers, redis.Z{
+					Score:  float64(time.Now().Unix()),
+					Member: keys[idx],
+				})
+			}
 		}
 	}
-	start = time.Now()
-	e.bloomClient.BfAddMulti("fingerprint_cache", keys)
-	e.set.Logger.Info("bloom filter add", zap.Int64("duration", time.Since(start).Milliseconds()))
+
+	// Bulk add new members if any exist
+	if len(addMembers) > 0 {
+		start = time.Now()
+		if err := e.redisClient.ZAdd(ctx, "fingerprint_cache_sorted_set", addMembers...).Err(); err != nil {
+			return written, err
+		}
+		e.set.Logger.Info("sorted set add", zap.Int64("duration", time.Since(start).Milliseconds()))
+	}
 
 	return written, nil
 }
