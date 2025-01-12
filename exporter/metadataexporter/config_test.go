@@ -51,6 +51,10 @@ func TestLoadConfig(t *testing.T) {
 						FetchInterval:           5 * time.Minute,
 					},
 				},
+				Cache: CacheConfig{
+					Provider: CacheProviderInMemory,
+					InMemory: InMemoryCacheConfig{},
+				},
 			},
 		},
 	}
