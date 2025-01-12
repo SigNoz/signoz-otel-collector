@@ -2,7 +2,6 @@ package metadataexporter
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
-	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -43,10 +41,8 @@ type metadataExporter struct {
 	cfg Config
 	set exporter.Settings
 
-	conn                    driver.Conn
-	tracesFingerprintCache  *ttlcache.Cache[string, bool]
-	metricsFingerprintCache *ttlcache.Cache[string, bool]
-	logsFingerprintCache    *ttlcache.Cache[string, bool]
+	conn     driver.Conn
+	keyCache KeyCache
 
 	tracesTracker  *ValueTracker
 	metricsTracker *ValueTracker
@@ -67,6 +63,14 @@ type metadataExporter struct {
 	alwaysIncludeTracesAttributes  map[string]struct{}
 	alwaysIncludeLogsAttributes    map[string]struct{}
 	alwaysIncludeMetricsAttributes map[string]struct{}
+}
+
+type writeToStatementBatchRecord struct {
+	resourceFingerprint    uint64
+	fprint                 uint64
+	rAttrs                 map[string]any
+	attrs                  map[string]any
+	roundedSixHrsUnixMilli int64
 }
 
 func flattenJSONToStringMap(data map[string]any) map[string]string {
@@ -90,26 +94,33 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 		return nil, err
 	}
 
-	tracesFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),              // don't update the ttl when the item is accessed
-		ttlcache.WithCapacity[string, bool](maxValuesInTracesCache), // max 1M items in the cache
-	)
-	go tracesFingerprintCache.Start()
+	set.Logger.Info("cache provider", zap.String("provider", string(cfg.Cache.Provider)))
+	var keyCache KeyCache
 
-	metricsFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-		ttlcache.WithCapacity[string, bool](maxValuesInMetricsCache),
-	)
-	go metricsFingerprintCache.Start()
-
-	logsFingerprintCache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](sixHours),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-		ttlcache.WithCapacity[string, bool](maxValuesInLogsCache),
-	)
-	go logsFingerprintCache.Start()
+	if cfg.Cache.Provider == CacheProviderRedis {
+		keyCache = NewRedisKeyCache(RedisKeyCacheOptions{
+			Addr:                       cfg.Cache.Redis.Addr,
+			Username:                   cfg.Cache.Redis.Username,
+			Password:                   cfg.Cache.Redis.Password,
+			DB:                         cfg.Cache.Redis.DB,
+			TracesFingerprintCacheTTL:  sixHours,
+			MetricsFingerprintCacheTTL: sixHours,
+			LogsFingerprintCacheTTL:    sixHours,
+			TenantID:                   cfg.TenantID,
+			Logger:                     set.Logger,
+		})
+	} else {
+		keyCache = NewInMemoryKeyCache(InMemoryKeyCacheOptions{
+			TracesFingerprintCacheSize:  maxValuesInTracesCache,
+			MetricsFingerprintCacheSize: maxValuesInMetricsCache,
+			LogsFingerprintCacheSize:    maxValuesInLogsCache,
+			TracesFingerprintCacheTTL:   sixHours,
+			MetricsFingerprintCacheTTL:  sixHours,
+			LogsFingerprintCacheTTL:     sixHours,
+			TenantID:                    cfg.TenantID,
+			Logger:                      set.Logger,
+		})
+	}
 
 	tracesTracker := NewValueTracker(
 		int(cfg.MaxDistinctValues.Traces.MaxKeys),
@@ -153,12 +164,12 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	}
 
 	e := &metadataExporter{
-		cfg:                            cfg,
-		set:                            set,
-		conn:                           conn,
-		tracesFingerprintCache:         tracesFingerprintCache,
-		metricsFingerprintCache:        metricsFingerprintCache,
-		logsFingerprintCache:           logsFingerprintCache,
+		cfg:  cfg,
+		set:  set,
+		conn: conn,
+
+		keyCache: keyCache,
+
 		tracesTracker:                  tracesTracker,
 		metricsTracker:                 metricsTracker,
 		logsTracker:                    logsTracker,
@@ -254,6 +265,7 @@ func (e *metadataExporter) periodicallyUpdateTagValueCountFromDB(ctx context.Con
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			e.keyCache.Debug(ctx)
 			e.updateTagValueCountFromDB(ctx, params)
 		}
 	}
@@ -428,6 +440,44 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 	return false
 }
 
+func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error) {
+	keys := make([]string, 0)
+	for _, record := range records {
+		key := FingerprintKey{
+			ResourceFingerprint:  record.resourceFingerprint,
+			AttributeFingerprint: record.fprint,
+		}
+		keys = append(keys, key.ToBase64())
+	}
+
+	start := time.Now()
+	exists, err := e.keyCache.ExistsMulti(ctx, keys, ds)
+	if err != nil {
+		return 0, err
+	}
+	e.set.Logger.Info("exists multi check", zap.Int64("duration", time.Since(start).Milliseconds()))
+
+	written := 0
+	for idx, keyExists := range exists {
+		if !keyExists {
+			stmt.Append(
+				records[idx].roundedSixHrsUnixMilli,
+				ds,
+				records[idx].resourceFingerprint,
+				records[idx].fprint,
+				flattenJSONToStringMap(records[idx].rAttrs),
+				flattenJSONToStringMap(records[idx].attrs),
+			)
+			written++
+		}
+	}
+	start = time.Now()
+	e.keyCache.AddMulti(ctx, keys, ds)
+	e.set.Logger.Info("add multi check", zap.Int64("duration", time.Since(start).Milliseconds()))
+
+	return written, nil
+}
+
 // filterAttrs filters attributes based on the unique value tracker
 func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
 
@@ -461,48 +511,6 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 	return attrs
 }
 
-func makeFingerprintCacheKey(a, b uint64, datasource string) string {
-	builder := strings.Builder{}
-	builder.Grow(40 + len(datasource))
-	builder.WriteString(strconv.FormatUint(a, 10))
-	builder.WriteByte(':')
-	builder.WriteString(strconv.FormatUint(b, 10))
-	builder.WriteByte(':')
-	builder.WriteString(datasource)
-	return builder.String()
-}
-
-// writeToStmt writes the attributes to the statement
-func (e *metadataExporter) writeToStmt(_ context.Context, stmt driver.Batch, ds pipeline.Signal, resourceFingerprint, fprint uint64, rAttrs, filtered map[string]any, roundedSixHrsUnixMilli int64) (bool, error) {
-	var cache *ttlcache.Cache[string, bool]
-	switch ds {
-	case pipeline.SignalTraces:
-		cache = e.tracesFingerprintCache
-	case pipeline.SignalMetrics:
-		cache = e.metricsFingerprintCache
-	case pipeline.SignalLogs:
-		cache = e.logsFingerprintCache
-	}
-	cacheKey := makeFingerprintCacheKey(fprint, uint64(roundedSixHrsUnixMilli), ds.String())
-	if item := cache.Get(cacheKey); item != nil && item.Value() {
-		return true, nil
-	}
-
-	if err := stmt.Append(
-		roundedSixHrsUnixMilli,
-		ds,
-		resourceFingerprint,
-		fprint,
-		flattenJSONToStringMap(rAttrs),
-		flattenJSONToStringMap(filtered),
-	); err != nil {
-		return false, err
-	}
-
-	cache.Set(cacheKey, true, ttlcache.DefaultTTL)
-	return false, nil
-}
-
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
@@ -510,7 +518,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	}
 
 	totalSpans := 0
-	skippedSpans := 0
+	records := make([]writeToStatementBatchRecord, 0)
 
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
@@ -549,31 +557,23 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
 				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 
-				skipped, err := e.writeToStmt(
-					ctx,
-					stmt,
-					pipeline.SignalTraces,
-					resourceFingerprint,
-					spanFingerprint,
-					flattenedResourceAttrs,
-					filteredSpanAttrs,
-					roundedSixHrsUnixMilli,
-				)
-				if err != nil {
-					e.set.Logger.Error("failed to write to stmt", zap.Error(err))
-				}
-				if skipped {
-					skippedSpans++
-				}
+				records = append(records, writeToStatementBatchRecord{
+					resourceFingerprint:    resourceFingerprint,
+					fprint:                 spanFingerprint,
+					rAttrs:                 flattenedResourceAttrs,
+					attrs:                  filteredSpanAttrs,
+					roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
+				})
 			}
 		}
 	}
 
-	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skippedSpans))
-
-	if err := stmt.Send(); err != nil {
+	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalTraces)
+	if err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err))
 	}
+	skipped := totalSpans - written
+	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skipped))
 	return nil
 }
 
@@ -582,6 +582,9 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	if err != nil {
 		return err
 	}
+
+	totalDps := 0
+	records := make([]writeToStatementBatchRecord, 0)
 
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
@@ -603,26 +606,31 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 				switch metric.Type() {
 				case pmetric.MetricTypeGauge:
 					dps := metric.Gauge().DataPoints()
+					totalDps += dps.Len()
 					for l := 0; l < dps.Len(); l++ {
 						pAttrs = append(pAttrs, dps.At(l).Attributes())
 					}
 				case pmetric.MetricTypeSum:
 					dps := metric.Sum().DataPoints()
+					totalDps += dps.Len()
 					for l := 0; l < dps.Len(); l++ {
 						pAttrs = append(pAttrs, dps.At(l).Attributes())
 					}
 				case pmetric.MetricTypeHistogram:
 					dps := metric.Histogram().DataPoints()
+					totalDps += dps.Len()
 					for l := 0; l < dps.Len(); l++ {
 						pAttrs = append(pAttrs, dps.At(l).Attributes())
 					}
 				case pmetric.MetricTypeExponentialHistogram:
 					dps := metric.ExponentialHistogram().DataPoints()
+					totalDps += dps.Len()
 					for l := 0; l < dps.Len(); l++ {
 						pAttrs = append(pAttrs, dps.At(l).Attributes())
 					}
 				case pmetric.MetricTypeSummary:
 					dps := metric.Summary().DataPoints()
+					totalDps += dps.Len()
 					for l := 0; l < dps.Len(); l++ {
 						pAttrs = append(pAttrs, dps.At(l).Attributes())
 					}
@@ -640,18 +648,25 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 					unixMilli := time.Now().UnixMilli()
 					roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 
-					_, err := e.writeToStmt(ctx, stmt, pipeline.SignalMetrics, resourceFingerprint, metricFingerprint, flattenedResourceAttrs, flattenedMetricAttrs, roundedSixHrsUnixMilli)
-					if err != nil {
-						e.set.Logger.Error("failed to write to stmt", zap.Error(err))
-					}
+					records = append(records, writeToStatementBatchRecord{
+						resourceFingerprint:    resourceFingerprint,
+						fprint:                 metricFingerprint,
+						rAttrs:                 flattenedResourceAttrs,
+						attrs:                  flattenedMetricAttrs,
+						roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
+					})
+
 				}
 			}
 		}
 	}
 
-	if err := stmt.Send(); err != nil {
+	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalMetrics)
+	if err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err))
 	}
+	skipped := totalDps - written
+	e.set.Logger.Info("pushed metrics attributes", zap.Int("total_dps", totalDps), zap.Int("skipped_dps", skipped))
 	return nil
 }
 
@@ -662,7 +677,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 
 	totalLogRecords := 0
-	skippedLogRecords := 0
+	records := make([]writeToStatementBatchRecord, 0)
 
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
@@ -701,33 +716,22 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
 				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
 
-				skipped, err := e.writeToStmt(
-					ctx,
-					stmt,
-					pipeline.SignalLogs,
-					resourceFingerprint,
-					logRecordFingerprint,
-					flattenedResourceAttrs,
-					filteredLogRecordAttrs,
-					roundedSixHrsUnixMilli,
-				)
-				if err != nil {
-					e.set.Logger.Error("failed to write to stmt", zap.Error(err))
-				}
-				if skipped {
-					skippedLogRecords++
-				}
+				records = append(records, writeToStatementBatchRecord{
+					resourceFingerprint:    resourceFingerprint,
+					fprint:                 logRecordFingerprint,
+					rAttrs:                 flattenedResourceAttrs,
+					attrs:                  filteredLogRecordAttrs,
+					roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
+				})
 			}
 		}
 	}
 
-	e.set.Logger.Info("pushed logs attributes",
-		zap.Int("total_log_records", totalLogRecords),
-		zap.Int("skipped_log_records", skippedLogRecords),
-	)
-
-	if err := stmt.Send(); err != nil {
+	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalLogs)
+	if err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err))
 	}
+	skipped := totalLogRecords - written
+	e.set.Logger.Info("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))
 	return nil
 }
