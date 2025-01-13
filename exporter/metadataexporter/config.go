@@ -64,4 +64,6 @@ type Config struct {
 	Cache CacheConfig `mapstructure:"cache"`
 
 	TenantID string `mapstructure:"tenant_id"`
+
+	Enabled bool `mapstructure:"enabled"`
 }

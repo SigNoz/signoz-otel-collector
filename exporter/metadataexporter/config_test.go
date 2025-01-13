@@ -55,6 +55,7 @@ func TestLoadConfig(t *testing.T) {
 					Provider: CacheProviderInMemory,
 					InMemory: InMemoryCacheConfig{},
 				},
+				Enabled: false,
 			},
 		},
 	}

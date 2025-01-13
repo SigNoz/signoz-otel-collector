@@ -512,9 +512,13 @@ func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		return err
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		return nil
 	}
 
 	totalSpans := 0
@@ -578,9 +582,13 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 }
 
 func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		return err
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		return nil
 	}
 
 	totalDps := 0
@@ -671,9 +679,13 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 }
 
 func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		return err
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		return nil
 	}
 
 	totalLogRecords := 0
