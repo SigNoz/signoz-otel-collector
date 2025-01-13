@@ -54,7 +54,7 @@ type InMemoryKeyCache struct {
 	logger *zap.Logger
 }
 
-func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) InMemoryKeyCache {
+func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) *InMemoryKeyCache {
 	tracesFingerprintCache := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](opts.TracesFingerprintCacheTTL),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
@@ -76,7 +76,7 @@ func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) InMemoryKeyCache {
 	)
 	go logsFingerprintCache.Start()
 
-	return InMemoryKeyCache{
+	return &InMemoryKeyCache{
 		tracesFingerprintCache:  tracesFingerprintCache,
 		metricsFingerprintCache: metricsFingerprintCache,
 		logsFingerprintCache:    logsFingerprintCache,
@@ -93,7 +93,7 @@ func getKeyForInMemory(tenantID string, ds pipeline.Signal, key string) string {
 	return newKey.String()
 }
 
-func (c InMemoryKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) error {
+func (c *InMemoryKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) error {
 	key = getKeyForInMemory(c.tenantID, ds, key)
 	switch ds {
 	case pipeline.SignalTraces:
@@ -106,7 +106,7 @@ func (c InMemoryKeyCache) Add(ctx context.Context, key string, ds pipeline.Signa
 	return nil
 }
 
-func (c InMemoryKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signal) (bool, error) {
+func (c *InMemoryKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signal) (bool, error) {
 	key = getKeyForInMemory(c.tenantID, ds, key)
 	switch ds {
 	case pipeline.SignalTraces:
@@ -119,7 +119,7 @@ func (c InMemoryKeyCache) Exists(ctx context.Context, key string, ds pipeline.Si
 	return false, nil
 }
 
-func (c InMemoryKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pipeline.Signal) ([]bool, error) {
+func (c *InMemoryKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pipeline.Signal) ([]bool, error) {
 	exists := make([]bool, len(keys))
 	for i, key := range keys {
 		exists[i], _ = c.Exists(ctx, key, ds)
@@ -127,14 +127,14 @@ func (c InMemoryKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pip
 	return exists, nil
 }
 
-func (c InMemoryKeyCache) AddMulti(ctx context.Context, keys []string, ds pipeline.Signal) error {
+func (c *InMemoryKeyCache) AddMulti(ctx context.Context, keys []string, ds pipeline.Signal) error {
 	for _, key := range keys {
 		c.Add(ctx, key, ds)
 	}
 	return nil
 }
 
-func (c InMemoryKeyCache) Debug(ctx context.Context) {
+func (c *InMemoryKeyCache) Debug(ctx context.Context) {
 	c.logger.Debug("IN MEMORY KEY CACHE DEBUG")
 	c.logger.Debug("TRACES", zap.Strings("keys", c.tracesFingerprintCache.Keys()))
 	c.logger.Debug("METRICS", zap.Strings("keys", c.metricsFingerprintCache.Keys()))
@@ -164,8 +164,8 @@ type RedisKeyCacheOptions struct {
 	Logger                     *zap.Logger
 }
 
-func NewRedisKeyCache(opts RedisKeyCacheOptions) RedisKeyCache {
-	return RedisKeyCache{
+func NewRedisKeyCache(opts RedisKeyCacheOptions) *RedisKeyCache {
+	return &RedisKeyCache{
 		redisClient: redis.NewClient(&redis.Options{
 			Addr:     opts.Addr,
 			Username: opts.Username,
@@ -181,7 +181,7 @@ func NewRedisKeyCache(opts RedisKeyCacheOptions) RedisKeyCache {
 }
 
 // getTTL returns the TTL for the given signal type
-func (c RedisKeyCache) getTTL(ds pipeline.Signal) time.Duration {
+func (c *RedisKeyCache) getTTL(ds pipeline.Signal) time.Duration {
 	switch ds {
 	case pipeline.SignalTraces:
 		return c.tracesTTL
@@ -194,7 +194,7 @@ func (c RedisKeyCache) getTTL(ds pipeline.Signal) time.Duration {
 	}
 }
 
-func (c RedisKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) error {
+func (c *RedisKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) error {
 	if key == "" {
 		return errors.New("key cannot be empty")
 	}
@@ -210,7 +210,7 @@ func (c RedisKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) 
 	return err
 }
 
-func (c RedisKeyCache) AddMulti(ctx context.Context, keys []string, ds pipeline.Signal) error {
+func (c *RedisKeyCache) AddMulti(ctx context.Context, keys []string, ds pipeline.Signal) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -237,7 +237,7 @@ func (c RedisKeyCache) AddMulti(ctx context.Context, keys []string, ds pipeline.
 	return err
 }
 
-func (c RedisKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signal) (bool, error) {
+func (c *RedisKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signal) (bool, error) {
 	if key == "" {
 		return false, errors.New("key cannot be empty")
 	}
@@ -246,7 +246,7 @@ func (c RedisKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signa
 	return c.redisClient.SIsMember(ctx, redisKey, key).Result()
 }
 
-func (c RedisKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pipeline.Signal) ([]bool, error) {
+func (c *RedisKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pipeline.Signal) ([]bool, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -265,7 +265,7 @@ func (c RedisKeyCache) ExistsMulti(ctx context.Context, keys []string, ds pipeli
 	return results, nil
 }
 
-func (c RedisKeyCache) Debug(ctx context.Context) {
+func (c *RedisKeyCache) Debug(ctx context.Context) {
 	c.logger.Debug("DEBUGGING REDIS KEY CACHE")
 	// get the keys matching the patter tenant_id:metadata:* and their cardinality
 	keys, err := c.redisClient.Keys(ctx, fmt.Sprintf("%s:metadata:*", c.tenantID)).Result()

@@ -55,6 +55,7 @@ func createDefaultConfig() component.Config {
 			Provider: CacheProviderInMemory,
 			InMemory: InMemoryCacheConfig{},
 		},
+		Enabled: false,
 	}
 }
 
