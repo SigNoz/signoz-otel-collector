@@ -51,6 +51,11 @@ func createDefaultConfig() component.Config {
 				FetchInterval:           15 * time.Minute,
 			},
 		},
+		Cache: CacheConfig{
+			Provider: CacheProviderInMemory,
+			InMemory: InMemoryCacheConfig{},
+		},
+		Enabled: false,
 	}
 }
 

@@ -188,6 +188,7 @@ require (
 	github.com/prometheus/client_golang v1.20.4
 	github.com/prometheus/common v0.60.0
 	github.com/prometheus/prometheus v0.54.1
+	github.com/redis/go-redis/v9 v9.6.1
 	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -520,7 +521,6 @@ require (
 	github.com/prometheus-community/windows_exporter v0.27.2 // indirect
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
-	github.com/redis/go-redis/v9 v9.6.1 // indirect
 	github.com/relvacode/iso8601 v1.4.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
