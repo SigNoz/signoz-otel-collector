@@ -464,7 +464,11 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	if err != nil {
 		return 0, err
 	}
-	e.set.Logger.Info("exists multi check", zap.Int64("duration", time.Since(start).Milliseconds()))
+	e.set.Logger.Info("exists multi check",
+		zap.Int64("duration", time.Since(start).Milliseconds()),
+		zap.String("pipeline", ds.String()),
+		zap.Int("count", len(keys)),
+	)
 
 	written := 0
 	for idx, keyExists := range exists {
@@ -480,9 +484,20 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 			written++
 		}
 	}
+
+	sendStart := time.Now()
+	if err := stmt.Send(); err != nil {
+		return 0, err
+	}
+	e.set.Logger.Info("stmt send", zap.Int64("duration", time.Since(sendStart).Milliseconds()), zap.String("pipeline", ds.String()))
+
 	start = time.Now()
 	e.keyCache.AddMulti(ctx, keys, ds)
-	e.set.Logger.Info("add multi check", zap.Int64("duration", time.Since(start).Milliseconds()))
+	e.set.Logger.Info("add multi check",
+		zap.Int64("duration", time.Since(start).Milliseconds()),
+		zap.String("pipeline", ds.String()),
+		zap.Int("count", len(keys)),
+	)
 
 	return written, nil
 }
@@ -526,7 +541,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 		return nil
 	}
 
@@ -583,7 +598,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 
 	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalTraces)
 	if err != nil {
-		e.set.Logger.Error("failed to send stmt", zap.Error(err))
+		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 	}
 	skipped := totalSpans - written
 	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skipped))
@@ -596,7 +611,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 		return nil
 	}
 
@@ -680,7 +695,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 
 	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalMetrics)
 	if err != nil {
-		e.set.Logger.Error("failed to send stmt", zap.Error(err))
+		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 	}
 	skipped := totalDps - written
 	e.set.Logger.Info("pushed metrics attributes", zap.Int("total_dps", totalDps), zap.Int("skipped_dps", skipped))
@@ -693,7 +708,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
-		e.set.Logger.Error("failed to prepare batch", zap.Error(err))
+		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil
 	}
 
@@ -750,7 +765,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 
 	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalLogs)
 	if err != nil {
-		e.set.Logger.Error("failed to send stmt", zap.Error(err))
+		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 	}
 	skipped := totalLogRecords - written
 	e.set.Logger.Info("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))
