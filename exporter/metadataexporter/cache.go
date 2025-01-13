@@ -14,14 +14,17 @@ import (
 	"go.uber.org/zap"
 )
 
+func getCurrentEpochWindowMillis() int64 {
+	return time.Now().UnixMilli() / sixHoursInMs * sixHoursInMs
+}
+
 func getKey(tenantID string, ds pipeline.Signal) string {
-	currentEpochWindowMillis := (time.Now().UnixMilli() / sixHoursInMs) * sixHoursInMs
 	var key strings.Builder
 	key.WriteString(tenantID)
 	key.WriteString(":metadata:")
 	key.WriteString(ds.String())
 	key.WriteString(":")
-	key.WriteString(strconv.FormatInt(currentEpochWindowMillis, 10))
+	key.WriteString(strconv.FormatInt(getCurrentEpochWindowMillis(), 10))
 	return key.String()
 }
 
@@ -54,7 +57,7 @@ type InMemoryKeyCache struct {
 	logger *zap.Logger
 }
 
-func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) *InMemoryKeyCache {
+func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) (*InMemoryKeyCache, error) {
 	tracesFingerprintCache := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](opts.TracesFingerprintCacheTTL),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
@@ -82,19 +85,19 @@ func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) *InMemoryKeyCache {
 		logsFingerprintCache:    logsFingerprintCache,
 		tenantID:                opts.TenantID,
 		logger:                  opts.Logger,
-	}
+	}, nil
 }
 
-func getKeyForInMemory(tenantID string, ds pipeline.Signal, key string) string {
+func getKeyForInMemory(key string) string {
 	var newKey strings.Builder
-	newKey.WriteString(getKey(tenantID, ds))
+	newKey.WriteString(strconv.FormatInt(getCurrentEpochWindowMillis(), 10))
 	newKey.WriteString(":")
 	newKey.WriteString(key)
 	return newKey.String()
 }
 
 func (c *InMemoryKeyCache) Add(ctx context.Context, key string, ds pipeline.Signal) error {
-	key = getKeyForInMemory(c.tenantID, ds, key)
+	key = getKeyForInMemory(key)
 	switch ds {
 	case pipeline.SignalTraces:
 		c.tracesFingerprintCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
@@ -107,7 +110,7 @@ func (c *InMemoryKeyCache) Add(ctx context.Context, key string, ds pipeline.Sign
 }
 
 func (c *InMemoryKeyCache) Exists(ctx context.Context, key string, ds pipeline.Signal) (bool, error) {
-	key = getKeyForInMemory(c.tenantID, ds, key)
+	key = getKeyForInMemory(key)
 	switch ds {
 	case pipeline.SignalTraces:
 		return c.tracesFingerprintCache.Get(key) != nil, nil
@@ -164,20 +167,26 @@ type RedisKeyCacheOptions struct {
 	Logger                     *zap.Logger
 }
 
-func NewRedisKeyCache(opts RedisKeyCacheOptions) *RedisKeyCache {
-	return &RedisKeyCache{
-		redisClient: redis.NewClient(&redis.Options{
-			Addr:     opts.Addr,
-			Username: opts.Username,
-			Password: opts.Password,
-			DB:       opts.DB,
-		}),
-		tenantID:   opts.TenantID,
-		tracesTTL:  opts.TracesFingerprintCacheTTL,
-		metricsTTL: opts.MetricsFingerprintCacheTTL,
-		logsTTL:    opts.LogsFingerprintCacheTTL,
-		logger:     opts.Logger,
+func NewRedisKeyCache(opts RedisKeyCacheOptions) (*RedisKeyCache, error) {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     opts.Addr,
+		Username: opts.Username,
+		Password: opts.Password,
+		DB:       opts.DB,
+	})
+
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		return nil, err
 	}
+
+	return &RedisKeyCache{
+		redisClient: redisClient,
+		tenantID:    opts.TenantID,
+		tracesTTL:   opts.TracesFingerprintCacheTTL,
+		metricsTTL:  opts.MetricsFingerprintCacheTTL,
+		logsTTL:     opts.LogsFingerprintCacheTTL,
+		logger:      opts.Logger,
+	}, nil
 }
 
 // getTTL returns the TTL for the given signal type

@@ -11,6 +11,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
+	"github.com/pkg/errors"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -96,9 +97,10 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 
 	set.Logger.Info("cache provider", zap.String("provider", string(cfg.Cache.Provider)))
 	var keyCache KeyCache
+	var cacheErr error
 
 	if cfg.Cache.Provider == CacheProviderRedis {
-		keyCache = NewRedisKeyCache(RedisKeyCacheOptions{
+		keyCache, cacheErr = NewRedisKeyCache(RedisKeyCacheOptions{
 			Addr:                       cfg.Cache.Redis.Addr,
 			Username:                   cfg.Cache.Redis.Username,
 			Password:                   cfg.Cache.Redis.Password,
@@ -110,7 +112,7 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 			Logger:                     set.Logger,
 		})
 	} else {
-		keyCache = NewInMemoryKeyCache(InMemoryKeyCacheOptions{
+		keyCache, cacheErr = NewInMemoryKeyCache(InMemoryKeyCacheOptions{
 			TracesFingerprintCacheSize:  maxValuesInTracesCache,
 			MetricsFingerprintCacheSize: maxValuesInMetricsCache,
 			LogsFingerprintCacheSize:    maxValuesInLogsCache,
@@ -120,6 +122,10 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 			TenantID:                    cfg.TenantID,
 			Logger:                      set.Logger,
 		})
+	}
+
+	if cacheErr != nil {
+		return nil, errors.Wrap(cacheErr, "failed to create key cache")
 	}
 
 	tracesTracker := NewValueTracker(
@@ -192,6 +198,9 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 }
 
 func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
 	e.set.Logger.Info("starting metadata exporter")
 
 	go e.periodicallyUpdateTagValueCountFromDB(
