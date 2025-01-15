@@ -457,7 +457,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
-			fmt.Sprintf("INSERT into %s.%s", databaseName, distributedLogsResourceV2),
+			fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceV2),
 			driver.WithReleaseConnection(),
 		)
 		if err != nil {
