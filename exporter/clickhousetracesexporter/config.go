@@ -24,8 +24,8 @@ import (
 )
 
 type AttributesLimits struct {
-	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
-	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values"`
 }
 
 // Config defines configuration for tracing exporter.

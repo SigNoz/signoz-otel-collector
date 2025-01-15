@@ -184,14 +184,16 @@ func (e *SpanWriter) doFetchShouldSkipKeys() {
 		HAVING string_count > %d OR number_count > %d
 		SETTINGS max_threads = 2`, e.traceDatabase, e.attributeTableV2, e.maxDistinctValues, e.maxDistinctValues)
 
-	e.logger.Info("fetching should skip keys", zap.String("query", query))
+	e.logger.Debug("fetching should skip keys", zap.String("query", query))
 
 	keys := []shouldSkipKey{}
 
+	start := time.Now()
 	err := e.db.Select(context.Background(), &keys, query)
 	if err != nil {
 		e.logger.Error("error while fetching should skip keys", zap.Error(err))
 	}
+	e.logger.Info("fetch should skip keys", zap.Int64("duration", time.Since(start).Milliseconds()), zap.String("pipeline", pipeline.SignalTraces.String()))
 
 	shouldSkipKeys := make(map[string]shouldSkipKey)
 	for _, key := range keys {

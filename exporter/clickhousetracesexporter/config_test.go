@@ -54,7 +54,7 @@ func Test_loadConfig(t *testing.T) {
 			},
 			AttributesLimits: AttributesLimits{
 				FetchKeysInterval: 10 * time.Minute,
-				MaxDistinctValues: 25000,
+				MaxDistinctValues: 2048,
 			},
 		})
 }

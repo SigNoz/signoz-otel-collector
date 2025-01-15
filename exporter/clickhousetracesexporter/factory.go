@@ -38,7 +38,7 @@ func createDefaultConfig() component.Config {
 		BackOffConfig: configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
-			MaxDistinctValues: 25000,
+			MaxDistinctValues: 2048,
 		},
 	}
 }
