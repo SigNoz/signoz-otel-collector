@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
@@ -64,7 +66,42 @@ func createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	c := cfg.(*Config)
-	exporter, err := newExporter(set, c)
+
+	client, err := newClickhouseClient(set.Logger, c)
+	if err != nil {
+		return nil, fmt.Errorf("cannot configure clickhouse logs exporter: %w", err)
+	}
+
+	id := uuid.New()
+
+	// keys cache is used to avoid duplicate inserts for the same attribute key.
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+	)
+	go keysCache.Start()
+
+	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
+	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
+	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](distributedLogsResourceV2Seconds*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go rfCache.Start()
+
+	meter := set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")
+	opts := []LogExporterOption{
+		WithClickHouseClient(client),
+		WithLogger(set.Logger),
+		WithNewUsageCollector(id, client),
+		WithMeter(meter),
+		WithKeysCache(keysCache),
+		WithRFCache(rfCache),
+	}
+
+	exporter, err := newExporter(set, c, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot configure clickhouse logs exporter: %w", err)
 	}
