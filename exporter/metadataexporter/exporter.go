@@ -2,7 +2,6 @@ package metadataexporter
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -472,13 +471,15 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	resourcesLimitCheckStart := time.Now()
 	// check max resources limit
 	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
-		return 0, fmt.Errorf("resource limit exceeded")
+		e.set.Logger.Info("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		return 0, nil
 	}
 	resourcesLimitCheckDuration = time.Since(resourcesLimitCheckStart)
 
 	totalCardinalityLimitCheckStart := time.Now()
 	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
-		return 0, fmt.Errorf("total cardinality limit exceeded")
+		e.set.Logger.Info("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		return 0, nil
 	}
 	totalCardinalityLimitCheckDuration = time.Since(totalCardinalityLimitCheckStart)
 
@@ -518,7 +519,8 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		existenceStart := time.Now()
 		existence, err := e.keyCache.AttrsExistForResource(ctx, resourceFp, attrFps, ds)
 		if err != nil {
-			return 0, err
+			e.set.Logger.Info("failed to check attrs existence", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+			continue
 		}
 		existsCheckDuration += time.Since(existenceStart)
 
@@ -554,7 +556,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 			addAttrsStart := time.Now()
 			err := e.keyCache.AddAttrsToResource(ctx, resourceFp, newAttrFps, ds)
 			if err != nil {
-				e.set.Logger.Error("failed to add to keyCache", zap.Error(err))
+				e.set.Logger.Info("failed to add to keyCache", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 			}
 			addAttrsDuration += time.Since(addAttrsStart)
 		}
