@@ -465,7 +465,26 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 	return false
 }
 
+func removeDuplicateRecords(records []writeToStatementBatchRecord) []writeToStatementBatchRecord {
+	seen := make(map[uint64]map[uint64]writeToStatementBatchRecord)
+	for _, rec := range records {
+		if _, ok := seen[rec.resourceFingerprint]; !ok {
+			seen[rec.resourceFingerprint] = make(map[uint64]writeToStatementBatchRecord)
+		}
+		seen[rec.resourceFingerprint][rec.fprint] = rec
+	}
+	uniqueRecords := make([]writeToStatementBatchRecord, 0)
+	for _, rec := range seen {
+		for _, r := range rec {
+			uniqueRecords = append(uniqueRecords, r)
+		}
+	}
+	return uniqueRecords
+}
+
 func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error) {
+
+	records = removeDuplicateRecords(records)
 
 	var existsCheckDuration, addAttrsDuration, resourcesLimitCheckDuration, totalCardinalityLimitCheckDuration time.Duration
 	resourcesLimitCheckStart := time.Now()

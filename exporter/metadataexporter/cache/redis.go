@@ -210,8 +210,8 @@ func (c *RedisKeyCache) AddAttrsToResource(ctx context.Context, resourceFp uint6
 		return err
 	}
 	if card+int64(len(attrFps)) > int64(c.getMaxAttrs(ds)) {
-		return fmt.Errorf("too many attribute fingerprints for resource %d in %s cache",
-			resourceFp, ds.String())
+		return fmt.Errorf("too many attribute fingerprints for resource %d in %s cache (card: %d, max: %d)",
+			resourceFp, ds.String(), card+int64(len(attrFps)), c.getMaxAttrs(ds))
 	}
 
 	// Convert each attrFp to string
