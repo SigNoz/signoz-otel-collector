@@ -75,6 +75,7 @@ func createDefaultConfig() component.Config {
 				MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
 				MaxTotalCardinality:       DefaultMaxTotalCardinality,
 			},
+			Debug: false,
 		},
 		Enabled: false,
 	}

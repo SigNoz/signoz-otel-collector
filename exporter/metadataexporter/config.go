@@ -56,6 +56,9 @@ type CacheConfig struct {
 	Traces   CacheLimits         `mapstructure:"traces_limits"`
 	Metrics  CacheLimits         `mapstructure:"metrics_limits"`
 	Logs     CacheLimits         `mapstructure:"logs_limits"`
+	// Iterate over all the keys in the cache and print the cardinality
+	// Since this is expensive, it is disabled by default
+	Debug bool `mapstructure:"debug"`
 }
 
 // Config defines configuration for Metadata exporter.

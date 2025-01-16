@@ -120,6 +120,7 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 			TracesMaxTotalCardinality:        cfg.Cache.Traces.MaxTotalCardinality,
 			MetricsMaxTotalCardinality:       cfg.Cache.Metrics.MaxTotalCardinality,
 			LogsMaxTotalCardinality:          cfg.Cache.Logs.MaxTotalCardinality,
+			Debug:                            cfg.Cache.Debug,
 		})
 	} else {
 		keyCache, cacheErr = kash.NewInMemoryKeyCache(kash.InMemoryKeyCacheOptions{
@@ -137,6 +138,7 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 			TracesMaxTotalCardinality:        cfg.Cache.Traces.MaxTotalCardinality,
 			MetricsMaxTotalCardinality:       cfg.Cache.Metrics.MaxTotalCardinality,
 			LogsMaxTotalCardinality:          cfg.Cache.Logs.MaxTotalCardinality,
+			Debug:                            cfg.Cache.Debug,
 		})
 	}
 

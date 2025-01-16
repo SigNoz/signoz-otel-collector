@@ -38,6 +38,8 @@ type InMemoryKeyCacheOptions struct {
 
 	TenantID string
 	Logger   *zap.Logger
+
+	Debug bool
 }
 
 type InMemoryKeyCache struct {
@@ -59,6 +61,8 @@ type InMemoryKeyCache struct {
 
 	tenantID string
 	logger   *zap.Logger
+
+	debug bool
 }
 
 var _ KeyCache = (*InMemoryKeyCache)(nil)
@@ -102,6 +106,7 @@ func NewInMemoryKeyCache(opts InMemoryKeyCacheOptions) (*InMemoryKeyCache, error
 
 		tenantID: opts.TenantID,
 		logger:   opts.Logger,
+		debug:    opts.Debug,
 	}, nil
 }
 
@@ -215,6 +220,10 @@ func (c *InMemoryKeyCache) CardinalityLimitExceeded(ctx context.Context, resourc
 }
 
 func (c *InMemoryKeyCache) Debug(ctx context.Context) {
+	if !c.debug {
+		return
+	}
+
 	c.logger.Debug("IN MEMORY KEY CACHE DEBUG")
 
 	dump := func(name string, cache *ttlcache.Cache[uint64, *resourceEntry]) {

@@ -34,6 +34,8 @@ type RedisKeyCache struct {
 	tracesMaxTotalCardinality  uint64
 	metricsMaxTotalCardinality uint64
 	logsMaxTotalCardinality    uint64
+
+	debug bool
 }
 
 type RedisKeyCacheOptions struct {
@@ -61,6 +63,8 @@ type RedisKeyCacheOptions struct {
 	TracesMaxTotalCardinality  uint64
 	MetricsMaxTotalCardinality uint64
 	LogsMaxTotalCardinality    uint64
+
+	Debug bool
 }
 
 var _ KeyCache = (*RedisKeyCache)(nil)
@@ -103,6 +107,8 @@ func NewRedisKeyCache(opts RedisKeyCacheOptions) (*RedisKeyCache, error) {
 		tracesMaxTotalCardinality:  opts.TracesMaxTotalCardinality,
 		metricsMaxTotalCardinality: opts.MetricsMaxTotalCardinality,
 		logsMaxTotalCardinality:    opts.LogsMaxTotalCardinality,
+
+		debug: opts.Debug,
 	}, nil
 }
 
@@ -322,6 +328,10 @@ func (c *RedisKeyCache) CardinalityLimitExceededMulti(ctx context.Context, resou
 // Debug prints the keys that match the metadata pattern, plus each set’s cardinality.
 // (Doesn’t print HLL counts, but you could add that easily with PFCount calls.)
 func (c *RedisKeyCache) Debug(ctx context.Context) {
+	if !c.debug {
+		return
+	}
+
 	c.logger.Debug("DEBUGGING REDIS KEY CACHE")
 	pattern := fmt.Sprintf("%s:metadata:*", c.tenantID)
 	keys, err := c.redisClient.Keys(ctx, pattern).Result()
