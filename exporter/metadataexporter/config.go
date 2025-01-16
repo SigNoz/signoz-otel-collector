@@ -43,10 +43,19 @@ type RedisCacheConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+type CacheLimits struct {
+	MaxResources              uint64 `mapstructure:"max_resources"`
+	MaxCardinalityPerResource uint64 `mapstructure:"max_cardinality_per_resource"`
+	MaxTotalCardinality       uint64 `mapstructure:"max_total_cardinality"`
+}
+
 type CacheConfig struct {
 	Provider CacheProvider       `mapstructure:"provider"`
 	InMemory InMemoryCacheConfig `mapstructure:"in_memory"`
 	Redis    RedisCacheConfig    `mapstructure:"redis"`
+	Traces   CacheLimits         `mapstructure:"traces_limits"`
+	Metrics  CacheLimits         `mapstructure:"metrics_limits"`
+	Logs     CacheLimits         `mapstructure:"logs_limits"`
 }
 
 // Config defines configuration for Metadata exporter.

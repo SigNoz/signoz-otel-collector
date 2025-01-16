@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -20,16 +21,15 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
+
+	kash "github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/cache"
 )
 
 const (
-	sixHours                = 6 * time.Hour                      // window size for attributes aggregation
-	sixHoursInMs            = int64(sixHours / time.Millisecond) // window size in ms
-	maxValuesInTracesCache  = 500_000                            // max number of values for traces fingerprint cache
-	maxValuesInMetricsCache = 2_000_000                          // max number of values for metrics fingerprint cache
-	maxValuesInLogsCache    = 500_000                            // max number of values for logs fingerprint cache
-	valuTrackerKeysTTL      = 45 * time.Minute                   // ttl for keys in value tracker
-	insertStmtQuery         = "INSERT INTO signoz_metadata.distributed_attributes_metadata"
+	sixHours           = 6 * time.Hour                      // window size for attributes aggregation
+	sixHoursInMs       = int64(sixHours / time.Millisecond) // window size in ms
+	valuTrackerKeysTTL = 45 * time.Minute                   // ttl for keys in value tracker
+	insertStmtQuery    = "INSERT INTO signoz_metadata.distributed_attributes_metadata"
 )
 
 type tagValueCountFromDB struct {
@@ -43,7 +43,7 @@ type metadataExporter struct {
 	set exporter.Settings
 
 	conn     driver.Conn
-	keyCache KeyCache
+	keyCache kash.KeyCache
 
 	tracesTracker  *ValueTracker
 	metricsTracker *ValueTracker
@@ -96,31 +96,48 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	}
 
 	set.Logger.Info("cache provider", zap.String("provider", string(cfg.Cache.Provider)))
-	var keyCache KeyCache
+	var keyCache kash.KeyCache
 	var cacheErr error
 
 	if cfg.Cache.Provider == CacheProviderRedis {
-		keyCache, cacheErr = NewRedisKeyCache(RedisKeyCacheOptions{
-			Addr:                       cfg.Cache.Redis.Addr,
-			Username:                   cfg.Cache.Redis.Username,
-			Password:                   cfg.Cache.Redis.Password,
-			DB:                         cfg.Cache.Redis.DB,
-			TracesFingerprintCacheTTL:  sixHours,
-			MetricsFingerprintCacheTTL: sixHours,
-			LogsFingerprintCacheTTL:    sixHours,
-			TenantID:                   cfg.TenantID,
-			Logger:                     set.Logger,
+		keyCache, cacheErr = kash.NewRedisKeyCache(kash.RedisKeyCacheOptions{
+			Addr:     cfg.Cache.Redis.Addr,
+			Username: cfg.Cache.Redis.Username,
+			Password: cfg.Cache.Redis.Password,
+			DB:       cfg.Cache.Redis.DB,
+			TenantID: cfg.TenantID,
+			Logger:   set.Logger,
+
+			TracesTTL:  sixHours,
+			MetricsTTL: sixHours,
+			LogsTTL:    sixHours,
+
+			MaxTracesResourceFp:              cfg.Cache.Traces.MaxResources,
+			MaxMetricsResourceFp:             cfg.Cache.Metrics.MaxResources,
+			MaxLogsResourceFp:                cfg.Cache.Logs.MaxResources,
+			MaxTracesCardinalityPerResource:  cfg.Cache.Traces.MaxCardinalityPerResource,
+			MaxMetricsCardinalityPerResource: cfg.Cache.Metrics.MaxCardinalityPerResource,
+			MaxLogsCardinalityPerResource:    cfg.Cache.Logs.MaxCardinalityPerResource,
+			TracesMaxTotalCardinality:        cfg.Cache.Traces.MaxTotalCardinality,
+			MetricsMaxTotalCardinality:       cfg.Cache.Metrics.MaxTotalCardinality,
+			LogsMaxTotalCardinality:          cfg.Cache.Logs.MaxTotalCardinality,
 		})
 	} else {
-		keyCache, cacheErr = NewInMemoryKeyCache(InMemoryKeyCacheOptions{
-			TracesFingerprintCacheSize:  maxValuesInTracesCache,
-			MetricsFingerprintCacheSize: maxValuesInMetricsCache,
-			LogsFingerprintCacheSize:    maxValuesInLogsCache,
-			TracesFingerprintCacheTTL:   sixHours,
-			MetricsFingerprintCacheTTL:  sixHours,
-			LogsFingerprintCacheTTL:     sixHours,
-			TenantID:                    cfg.TenantID,
-			Logger:                      set.Logger,
+		keyCache, cacheErr = kash.NewInMemoryKeyCache(kash.InMemoryKeyCacheOptions{
+			MaxTracesResourceFp:              cfg.Cache.Traces.MaxResources,
+			MaxMetricsResourceFp:             cfg.Cache.Metrics.MaxResources,
+			MaxLogsResourceFp:                cfg.Cache.Logs.MaxResources,
+			MaxTracesCardinalityPerResource:  cfg.Cache.Traces.MaxCardinalityPerResource,
+			MaxMetricsCardinalityPerResource: cfg.Cache.Metrics.MaxCardinalityPerResource,
+			MaxLogsCardinalityPerResource:    cfg.Cache.Logs.MaxCardinalityPerResource,
+			TracesFingerprintCacheTTL:        sixHours,
+			MetricsFingerprintCacheTTL:       sixHours,
+			LogsFingerprintCacheTTL:          sixHours,
+			TenantID:                         cfg.TenantID,
+			Logger:                           set.Logger,
+			TracesMaxTotalCardinality:        cfg.Cache.Traces.MaxTotalCardinality,
+			MetricsMaxTotalCardinality:       cfg.Cache.Metrics.MaxTotalCardinality,
+			LogsMaxTotalCardinality:          cfg.Cache.Logs.MaxTotalCardinality,
 		})
 	}
 
@@ -450,56 +467,95 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 }
 
 func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error) {
-	keys := make([]string, 0)
-	for _, record := range records {
-		key := FingerprintKey{
-			ResourceFingerprint:  record.resourceFingerprint,
-			AttributeFingerprint: record.fprint,
+
+	var existsCheckDuration, addAttrsDuration time.Duration
+	// check max resources limit
+	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
+		return 0, fmt.Errorf("resource limit exceeded")
+	}
+
+	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
+		return 0, fmt.Errorf("total cardinality limit exceeded")
+	}
+
+	// Group by resourceFingerprint
+	// resourceFp -> slice of attributeFp
+	recordGroups := make(map[uint64][]uint64)
+	indexByFp := make(map[uint64][]int) // resourceFp -> indices in 'records'
+	for i, rec := range records {
+		resourceFp := rec.resourceFingerprint
+		recordGroups[resourceFp] = append(recordGroups[resourceFp], rec.fprint)
+		indexByFp[resourceFp] = append(indexByFp[resourceFp], i)
+	}
+
+	e.set.Logger.Info("resourceGroupsCount", zap.Int("count", len(recordGroups)))
+
+	totalWrites := 0
+
+	// For each resource, check which attrFps exist
+	for resourceFp, attrFps := range recordGroups {
+		// check cardinality limit
+		if e.keyCache.CardinalityLimitExceeded(ctx, resourceFp, ds) {
+			e.set.Logger.Info("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
+			continue
 		}
-		keys = append(keys, key.ToBase64())
-	}
 
-	start := time.Now()
-	exists, err := e.keyCache.ExistsMulti(ctx, keys, ds)
-	if err != nil {
-		return 0, err
-	}
-	e.set.Logger.Info("exists multi check",
-		zap.Int64("duration", time.Since(start).Milliseconds()),
-		zap.String("pipeline", ds.String()),
-		zap.Int("count", len(keys)),
-	)
+		existenceStart := time.Now()
+		existence, err := e.keyCache.AttrsExistForResource(ctx, resourceFp, attrFps, ds)
+		if err != nil {
+			return 0, err
+		}
+		existsCheckDuration += time.Since(existenceStart)
 
-	written := 0
-	for idx, keyExists := range exists {
-		if !keyExists {
+		// existence is parallel to attrFps
+		indices := indexByFp[resourceFp]
+		newAttrFps := make([]uint64, 0, len(attrFps))
+		var newRecords []writeToStatementBatchRecord
+
+		for j, exists := range existence {
+			if !exists {
+				idxInRecords := indices[j] // index in 'records'
+				newAttrFps = append(newAttrFps, attrFps[j])
+				newRecords = append(newRecords, records[idxInRecords])
+			}
+		}
+
+		for _, nr := range newRecords {
 			stmt.Append(
-				records[idx].roundedSixHrsUnixMilli,
+				nr.roundedSixHrsUnixMilli,
 				ds,
-				records[idx].resourceFingerprint,
-				records[idx].fprint,
-				flattenJSONToStringMap(records[idx].rAttrs),
-				flattenJSONToStringMap(records[idx].attrs),
+				nr.resourceFingerprint,
+				nr.fprint,
+				flattenJSONToStringMap(nr.rAttrs),
+				flattenJSONToStringMap(nr.attrs),
 			)
-			written++
+		}
+
+		// We'll accumulate how many new records we wrote
+		totalWrites += len(newRecords)
+
+		// Add these new attrFps to the cache
+		if len(newAttrFps) > 0 {
+			addAttrsStart := time.Now()
+			err := e.keyCache.AddAttrsToResource(ctx, resourceFp, newAttrFps, ds)
+			if err != nil {
+				e.set.Logger.Error("failed to add to keyCache", zap.Error(err))
+			}
+			addAttrsDuration += time.Since(addAttrsStart)
 		}
 	}
 
-	sendStart := time.Now()
+	e.set.Logger.Info("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()))
+	e.set.Logger.Info("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()))
+
+	stmtStart := time.Now()
 	if err := stmt.Send(); err != nil {
-		return 0, err
+		return totalWrites, err
 	}
-	e.set.Logger.Info("stmt send", zap.Int64("duration", time.Since(sendStart).Milliseconds()), zap.String("pipeline", ds.String()))
+	stmtDuration := time.Since(stmtStart)
+	e.set.Logger.Info("stmtDuration", zap.Int64("duration", stmtDuration.Milliseconds()))
 
-	start = time.Now()
-	e.keyCache.AddMulti(ctx, keys, ds)
-	e.set.Logger.Info("add multi check",
-		zap.Int64("duration", time.Since(start).Milliseconds()),
-		zap.String("pipeline", ds.String()),
-		zap.Int("count", len(keys)),
-	)
-
-	return written, nil
+	return totalWrites, nil
 }
 
 // filterAttrs filters attributes based on the unique value tracker
