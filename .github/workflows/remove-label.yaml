@@ -1,0 +1,16 @@
+name: remove-label
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - synchronize
+
+jobs:
+  remove:
+    uses: signoz/primus.workflows/.github/workflows/github-remove-label.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      label: safe to test
