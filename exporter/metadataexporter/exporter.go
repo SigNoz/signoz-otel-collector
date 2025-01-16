@@ -468,15 +468,30 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 
 func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error) {
 
-	var existsCheckDuration, addAttrsDuration time.Duration
+	var existsCheckDuration, addAttrsDuration, resourcesLimitCheckDuration, totalCardinalityLimitCheckDuration time.Duration
+	resourcesLimitCheckStart := time.Now()
 	// check max resources limit
 	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
 		return 0, fmt.Errorf("resource limit exceeded")
 	}
+	resourcesLimitCheckDuration = time.Since(resourcesLimitCheckStart)
 
+	totalCardinalityLimitCheckStart := time.Now()
 	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
 		return 0, fmt.Errorf("total cardinality limit exceeded")
 	}
+	totalCardinalityLimitCheckDuration = time.Since(totalCardinalityLimitCheckStart)
+
+	e.set.Logger.Info("resourcesLimitCheckDuration",
+		zap.Int64("duration", resourcesLimitCheckDuration.Milliseconds()),
+		zap.String("datasource", ds.String()),
+		zap.Int("records", len(records)),
+	)
+	e.set.Logger.Info("totalCardinalityLimitCheckDuration",
+		zap.Int64("duration", totalCardinalityLimitCheckDuration.Milliseconds()),
+		zap.String("datasource", ds.String()),
+		zap.Int("records", len(records)),
+	)
 
 	// Group by resourceFingerprint
 	// resourceFp -> slice of attributeFp
@@ -488,7 +503,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		indexByFp[resourceFp] = append(indexByFp[resourceFp], i)
 	}
 
-	e.set.Logger.Info("resourceGroupsCount", zap.Int("count", len(recordGroups)))
+	e.set.Logger.Info("resourceGroupsCount", zap.Int("count", len(recordGroups)), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	totalWrites := 0
 
@@ -545,15 +560,19 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		}
 	}
 
-	e.set.Logger.Info("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()))
-	e.set.Logger.Info("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()))
+	e.set.Logger.Info("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+	e.set.Logger.Info("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	stmtStart := time.Now()
 	if err := stmt.Send(); err != nil {
 		return totalWrites, err
 	}
 	stmtDuration := time.Since(stmtStart)
-	e.set.Logger.Info("stmtDuration", zap.Int64("duration", stmtDuration.Milliseconds()))
+	e.set.Logger.Info("stmtDuration",
+		zap.Int64("duration", stmtDuration.Milliseconds()),
+		zap.String("datasource", ds.String()),
+		zap.Int("records", len(records)),
+	)
 
 	return totalWrites, nil
 }
