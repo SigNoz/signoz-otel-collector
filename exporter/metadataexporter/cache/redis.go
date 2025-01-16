@@ -185,8 +185,7 @@ func (c *RedisKeyCache) AddAttrsToResource(ctx context.Context, resourceFp uint6
 			return err
 		}
 		if card >= int64(c.getMaxResourceFp(ds)) {
-			c.logger.Info("too many resource fingerprints in cache", zap.String("datasource", ds.String()), zap.Uint64("maxResourceCount", c.getMaxResourceFp(ds)))
-			return nil
+			return fmt.Errorf("too many resource fingerprints in %s cache", ds.String())
 		}
 		pipe.SAdd(ctx, resourceSetKey, resourceFpStr)
 		pipe.Expire(ctx, resourceSetKey, ttl)
@@ -198,8 +197,8 @@ func (c *RedisKeyCache) AddAttrsToResource(ctx context.Context, resourceFp uint6
 		return err
 	}
 	if card+int64(len(attrFps)) > int64(c.getMaxAttrs(ds)) {
-		c.logger.Info("too many attribute fingerprints for resource", zap.Uint64("resourceFp", resourceFp), zap.String("datasource", ds.String()), zap.Uint64("maxAttrCount", c.getMaxAttrs(ds)))
-		return nil
+		return fmt.Errorf("too many attribute fingerprints for resource %d in %s cache",
+			resourceFp, ds.String())
 	}
 
 	// Convert each attrFp to string

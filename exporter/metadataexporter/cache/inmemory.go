@@ -127,8 +127,7 @@ func (c *InMemoryKeyCache) AddAttrsToResource(ctx context.Context, resourceFp ui
 	if entry == nil {
 		// Check how many total resources are in the cache
 		if uint64(len(cache.Keys())) >= maxResourceCount {
-			c.logger.Info("too many resource fingerprints in cache", zap.String("datasource", ds.String()), zap.Uint64("maxResourceCount", maxResourceCount))
-			return nil
+			return fmt.Errorf("too many resource fingerprints in %s cache", ds.String())
 		}
 		// Create a new resource entry
 		newEntry := &resourceEntry{
@@ -144,8 +143,8 @@ func (c *InMemoryKeyCache) AddAttrsToResource(ctx context.Context, resourceFp ui
 
 	// Check if adding these attributes will exceed the limit
 	if uint64(len(entry.Value().attrs))+uint64(len(attrFps)) > maxAttrCount {
-		c.logger.Info("too many attribute fingerprints for resource", zap.Uint64("resourceFp", resourceFp), zap.String("datasource", ds.String()), zap.Uint64("maxAttrCount", maxAttrCount))
-		return nil
+		return fmt.Errorf("too many attribute fingerprints for resource %d in %s cache",
+			resourceFp, ds.String())
 	}
 
 	for _, a := range attrFps {

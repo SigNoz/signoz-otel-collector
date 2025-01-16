@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -471,15 +472,13 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	resourcesLimitCheckStart := time.Now()
 	// check max resources limit
 	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
-		e.set.Logger.Info("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-		return 0, nil
+		return 0, fmt.Errorf("resource limit exceeded")
 	}
 	resourcesLimitCheckDuration = time.Since(resourcesLimitCheckStart)
 
 	totalCardinalityLimitCheckStart := time.Now()
 	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
-		e.set.Logger.Info("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-		return 0, nil
+		return 0, fmt.Errorf("total cardinality limit exceeded")
 	}
 	totalCardinalityLimitCheckDuration = time.Since(totalCardinalityLimitCheckStart)
 
