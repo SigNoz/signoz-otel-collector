@@ -190,6 +190,21 @@ func (c *InMemoryKeyCache) TotalCardinalityLimitExceeded(ctx context.Context, ds
 	return totalCardinality >= c.maxTracesCardinalityPerResource
 }
 
+func (c *InMemoryKeyCache) CardinalityLimitExceededMulti(ctx context.Context, resourceFps []uint64, ds pipeline.Signal) ([]bool, error) {
+	cache, _, _ := c.getCacheAndLimits(ds)
+
+	out := make([]bool, len(resourceFps))
+	for i, resourceFp := range resourceFps {
+		entry := cache.Get(resourceFp)
+		if entry == nil {
+			out[i] = false
+			continue
+		}
+		out[i] = uint64(len(entry.Value().attrs)) >= c.maxTracesCardinalityPerResource
+	}
+	return out, nil
+}
+
 func (c *InMemoryKeyCache) CardinalityLimitExceeded(ctx context.Context, resourceFp uint64, ds pipeline.Signal) bool {
 	cache, _, _ := c.getCacheAndLimits(ds)
 	entry := cache.Get(resourceFp)

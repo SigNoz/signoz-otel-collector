@@ -498,8 +498,13 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	// resourceFp -> slice of attributeFp
 	recordGroups := make(map[uint64][]uint64)
 	indexByFp := make(map[uint64][]int) // resourceFp -> indices in 'records'
+	resourceFps := make([]uint64, 0)
+	exceedsCardinality := make(map[uint64]bool)
 	for i, rec := range records {
 		resourceFp := rec.resourceFingerprint
+		if _, ok := recordGroups[resourceFp]; !ok {
+			resourceFps = append(resourceFps, resourceFp)
+		}
 		recordGroups[resourceFp] = append(recordGroups[resourceFp], rec.fprint)
 		indexByFp[resourceFp] = append(indexByFp[resourceFp], i)
 	}
@@ -508,10 +513,18 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 
 	totalWrites := 0
 
+	exceeds, err := e.keyCache.CardinalityLimitExceededMulti(ctx, resourceFps, ds)
+	if err != nil {
+		e.set.Logger.Info("failed to check cardinality limit exceeded", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+	}
+	for i, exceeds := range exceeds {
+		exceedsCardinality[resourceFps[i]] = exceeds
+	}
+
 	// For each resource, check which attrFps exist
 	for resourceFp, attrFps := range recordGroups {
 		// check cardinality limit
-		if e.keyCache.CardinalityLimitExceeded(ctx, resourceFp, ds) {
+		if exceedsCardinality[resourceFp] {
 			e.set.Logger.Info("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
 			continue
 		}

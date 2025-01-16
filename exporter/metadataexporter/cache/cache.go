@@ -24,6 +24,10 @@ type KeyCache interface {
 	// CardinalityLimitExceeded returns true if the cardinality limit has been exceeded for the given resourceFp.
 	CardinalityLimitExceeded(ctx context.Context, resourceFp uint64, ds pipeline.Signal) bool
 
+	// CardinalityLimitExceededMulti returns true if the cardinality limit has been exceeded for given resourceFps.
+	// Returns a parallel slice of booleans for each resourceFp.
+	CardinalityLimitExceededMulti(ctx context.Context, resourceFps []uint64, ds pipeline.Signal) ([]bool, error)
+
 	// TotalCardinalityLimitExceeded returns true if the total cardinality limit has been exceeded.
 	TotalCardinalityLimitExceeded(ctx context.Context, ds pipeline.Signal) bool
 }
