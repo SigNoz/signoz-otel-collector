@@ -1,3 +1,3 @@
 # SigNoz-Otel-Collector
 
-OpenTelemetry Distro by SigNoz
+SigNoz OpenTelemetry Distro
