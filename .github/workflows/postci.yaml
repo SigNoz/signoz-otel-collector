@@ -8,7 +8,7 @@ on:
       - synchronize
 
 jobs:
-  remove-label:
+  remove:
     uses: signoz/primus.workflows/.github/workflows/github-label.yaml@main
     secrets: inherit
     with:
