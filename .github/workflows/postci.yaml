@@ -13,4 +13,4 @@ jobs:
     secrets: inherit
     with:
       PRIMUS_REF: main
-      GITHUB_LABEL_NAME: safe to test
+      GITHUB_LABEL_NAME: safe-to-test
