@@ -1,4 +1,4 @@
-name: remove-label
+name: postci
 
 on:
   pull_request_target:
