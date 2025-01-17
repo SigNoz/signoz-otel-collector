@@ -46,7 +46,7 @@ import (
 // FIXME(srikanthccv): Enable the tests once this issue is fixed: https://github.com/SigNoz/signoz-otel-collector/issues/65
 func skip_Test_NewPRWExporter(t *testing.T) {
 	cfg := &Config{
-		TimeoutSettings:    exporterhelper.TimeoutSettings{},
+		TimeoutConfig:      exporterhelper.TimeoutConfig{},
 		BackOffConfig:      configretry.BackOffConfig{},
 		Namespace:          "",
 		ExternalLabels:     map[string]string{},
@@ -56,7 +56,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopCreateSettings()
+	set := exportertest.NewNopSettings()
 	set.BuildInfo = buildInfo
 
 	tests := []struct {
@@ -67,7 +67,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 		concurrency         int
 		externalLabels      map[string]string
 		returnErrorOnCreate bool
-		set                 exporter.CreateSettings
+		set                 exporter.Settings
 	}{
 		{
 			name:                "invalid_URL",
@@ -138,16 +138,16 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 // FIXME(srikanthccv): Enable the tests once this issue is fixed: https://github.com/SigNoz/signoz-otel-collector/issues/65
 func skip_Test_Start(t *testing.T) {
 	cfg := &Config{
-		TimeoutSettings: exporterhelper.TimeoutSettings{},
-		BackOffConfig:   configretry.BackOffConfig{},
-		Namespace:       "",
-		ExternalLabels:  map[string]string{},
+		TimeoutConfig:  exporterhelper.TimeoutConfig{},
+		BackOffConfig:  configretry.BackOffConfig{},
+		Namespace:      "",
+		ExternalLabels: map[string]string{},
 	}
 	buildInfo := component.BuildInfo{
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopCreateSettings()
+	set := exportertest.NewNopSettings()
 	set.BuildInfo = buildInfo
 	tests := []struct {
 		name                 string
@@ -156,7 +156,7 @@ func skip_Test_Start(t *testing.T) {
 		concurrency          int
 		externalLabels       map[string]string
 		returnErrorOnStartUp bool
-		set                  exporter.CreateSettings
+		set                  exporter.Settings
 		endpoint             string
 		clientSettings       confighttp.ClientConfig
 	}{
@@ -340,7 +340,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopCreateSettings()
+	set := exportertest.NewNopSettings()
 	set.BuildInfo = buildInfo
 	// after this, instantiate a CortexExporter with the current HTTP client and endpoint set to passed in endpoint
 	prwe, err := NewPrwExporter(cfg, set)
@@ -354,7 +354,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		return errs
 	}
 
-	errs = append(errs, prwe.export(context.Background(), testmap)...)
+	errs = append(errs, prwe.export(context.Background(), testmap, prwe.metricNameToMeta)...)
 	return errs
 }
 
@@ -634,7 +634,7 @@ func temp_dis_Test_PushMetrics(t *testing.T) {
 				Description: "OpenTelemetry Collector",
 				Version:     "1.0",
 			}
-			set := exportertest.NewNopCreateSettings()
+			set := exportertest.NewNopSettings()
 			set.BuildInfo = buildInfo
 			prwe, nErr := NewPrwExporter(cfg, set)
 			require.NoError(t, nErr)

@@ -16,56 +16,41 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"flag"
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/exporter"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 // Factory implements storage.Factory for Clickhouse backend.
 type Factory struct {
 	logger     *zap.Logger
+	meter      metricapi.Meter
 	Options    *Options
 	db         clickhouse.Conn
 	archive    clickhouse.Conn
-	datasource string
 	makeWriter writerMaker
 }
 
 // Writer writes spans to storage.
 type Writer interface {
 	WriteBatchOfSpans(ctx context.Context, span []*Span) error
+	WriteBatchOfSpansV3(ctx context.Context, span []*SpanV3, metrics map[string]usage.Metric) error
+	WriteResourcesV3(ctx context.Context, resourcesSeen map[int64]map[string]string) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)
 
-var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
-)
-
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(exporterId uuid.UUID, migrations string, datasource string, dockerMultiNodeCluster bool, numConsumers int) *Factory {
-	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+func ClickHouseNewFactory(exporterId uuid.UUID, config Config, settings exporter.Settings) *Factory {
 
-	writeLatencyView := &view.View{
-		Name:        "exporter_db_write_latency",
-		Measure:     writeLatencyMillis,
-		Description: writeLatencyMillis.Description(),
-		TagKeys:     []tag.Key{exporterKey, tableKey},
-		Aggregation: writeLatencyDistribution,
-	}
-
-	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(exporterId, migrations, datasource, dockerMultiNodeCluster, numConsumers, primaryNamespace, archiveNamespace),
+		meter:   settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"),
+		Options: NewOptions(exporterId, config, primaryNamespace, config.UseNewSchema, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -106,30 +91,28 @@ func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	return cfg.Connector(cfg)
 }
 
-// AddFlags implements plugin.Configurable
-func (f *Factory) AddFlags(flagSet *flag.FlagSet) {
-	f.Options.AddFlags(flagSet)
-}
-
-// InitFromViper implements plugin.Configurable
-func (f *Factory) InitFromViper(v *viper.Viper) {
-	f.Options.InitFromViper(v)
-}
-
 // CreateSpanWriter implements storage.Factory
 func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
+		meter:             f.meter,
 		db:                f.db,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 
@@ -147,9 +130,16 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
 		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 

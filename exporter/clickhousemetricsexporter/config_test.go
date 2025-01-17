@@ -52,7 +52,7 @@ func Test_loadConfig(t *testing.T) {
 	e1 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "2")]
 	assert.Equal(t, e1,
 		&Config{
-			TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
+			TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
 			BackOffConfig: configretry.BackOffConfig{
 				Enabled:             true,
 				InitialInterval:     10 * time.Second,
@@ -88,6 +88,7 @@ func Test_loadConfig(t *testing.T) {
 			WatcherInterval:             30 * time.Second,
 			WriteTSToV4:                 true,
 			DisableV2:                   false,
+			EnableExpHist:               false,
 		})
 }
 

@@ -16,25 +16,31 @@ package clickhouselogsexporter
 
 import (
 	"errors"
+	"time"
 
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
 )
 
+type AttributesLimits struct {
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
+}
+
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"`
-	configretry.BackOffConfig      `mapstructure:"retry_on_failure"`
-	exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
 	// For http protocol reference: [mailru/go-clickhouse/#dsn](https://github.com/mailru/go-clickhouse/#dsn).
-	DSN string `mapstructure:"dsn"`
-	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
-	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
-	UseNewSchema           bool `mapstructure:"use_new_schema" default:"false"`
+	DSN          string `mapstructure:"dsn"`
+	UseNewSchema bool   `mapstructure:"use_new_schema" default:"false"`
+
+	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
 }
 
 var (

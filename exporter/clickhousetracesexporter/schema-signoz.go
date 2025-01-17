@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 type Event struct {
 	Name         string            `json:"name,omitempty"`
 	TimeUnixNano uint64            `json:"timeUnixNano,omitempty"`
@@ -131,6 +132,69 @@ type Span struct {
 	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
 }
 
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+type ErrorEvent struct {
+	Event        Event  `json:"errorEvent,omitempty"`
+	ErrorID      string `json:"errorID,omitempty"`
+	ErrorGroupID string `json:"errorGroupID,omitempty"`
+}
+
+type SpanV3 struct {
+	TsBucketStart uint64 `json:"-"`
+	FingerPrint   string `json:"-"`
+
+	StartTimeUnixNano uint64 `json:"startTimeUnixNano,omitempty"`
+
+	TraceId      string `json:"traceId,omitempty"`
+	SpanId       string `json:"spanId,omitempty"`
+	TraceState   string `json:"traceState,omitempty"`
+	ParentSpanId string `json:"parentSpanId,omitempty"`
+	Flags        uint32 `json:"flags,omitempty"`
+
+	Name string `json:"name,omitempty"`
+
+	Kind     int8   `json:"kind,omitempty"`
+	SpanKind string `json:"spanKind,omitempty"`
+
+	DurationNano uint64 `json:"-"`
+
+	StatusCode       int16  `json:"-"`
+	StatusMessage    string `json:"-"`
+	StatusCodeString string `json:"-"`
+
+	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
+	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
+	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
+
+	ResourcesString map[string]string `json:"resources_string,omitempty"`
+
+	// for events
+	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+	Events []string `json:"event,omitempty"`
+	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+	ErrorEvents []ErrorEvent `json:"-"`
+
+	ServiceName string `json:"serviceName,omitempty"` // for error table
+
+	// custom columns
+	ResponseStatusCode string `json:"-"`
+	ExternalHttpUrl    string `json:"-"`
+	HttpUrl            string `json:"-"`
+	ExternalHttpMethod string `json:"-"`
+	HttpMethod         string `json:"-"`
+	HttpHost           string `json:"-"`
+	DBName             string `json:"-"`
+	DBOperation        string `json:"-"`
+	HasError           bool   `json:"-"`
+	IsRemote           string `json:"-"`
+
+	// check if this is really required
+	Tenant *string `json:"-"`
+
+	References     string          `json:"references,omitempty"`
+	SpanAttributes []SpanAttribute `json:"-"`
+}
+
 type SpanAttribute struct {
 	Key         string
 	TagType     string
@@ -179,6 +243,7 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 type OtelSpanRef struct {
 	TraceId string `json:"traceId,omitempty"`
 	SpanId  string `json:"spanId,omitempty"`

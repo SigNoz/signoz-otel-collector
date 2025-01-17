@@ -47,7 +47,7 @@ func TestLoadConfig(t *testing.T) {
 	r1 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "full")].(*Config)
 	assert.Equal(t, r1, &Config{
 		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
-		TimeoutSettings: exporterhelper.TimeoutSettings{
+		TimeoutConfig: exporterhelper.TimeoutConfig{
 			Timeout: 5 * time.Second,
 		},
 		BackOffConfig: configretry.BackOffConfig{
@@ -58,10 +58,14 @@ func TestLoadConfig(t *testing.T) {
 			RandomizationFactor: 0.7,
 			Multiplier:          1.3,
 		},
-		QueueSettings: exporterhelper.QueueSettings{
+		QueueConfig: exporterhelper.QueueConfig{
 			Enabled:      true,
 			NumConsumers: 10,
 			QueueSize:    100,
+		},
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 10 * time.Minute,
+			MaxDistinctValues: 25000,
 		},
 	})
 

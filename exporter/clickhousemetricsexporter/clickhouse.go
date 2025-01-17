@@ -31,11 +31,14 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -61,7 +64,7 @@ const (
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
 	conn                 clickhouse.Conn
-	l                    *logrus.Entry
+	l                    *zap.Logger
 	database             string
 	maxTimeSeriesInQuery int
 
@@ -80,6 +83,8 @@ type clickHouse struct {
 	mWrittenTimeSeries prometheus.Counter
 
 	exporterID uuid.UUID
+
+	durationHistogram metric.Float64Histogram
 }
 
 type ClickHouseParams struct {
@@ -92,10 +97,13 @@ type ClickHouseParams struct {
 	WriteTSToV4          bool
 	DisableV2            bool
 	ExporterId           uuid.UUID
+	Settings             exporter.Settings
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
-	l := logrus.WithField("component", "clickhouse")
+
+	logger := params.Settings.Logger
+	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
@@ -124,9 +132,19 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	)
 	go cache.Start()
 
+	durationHistogram, err := meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	ch := &clickHouse{
 		conn:                 conn,
-		l:                    l,
+		l:                    logger,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 		cache:                cache,
@@ -139,10 +157,11 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Name:      "written_time_series",
 			Help:      "Number of written time series.",
 		}),
-		watcherInterval: params.WatcherInterval,
-		writeTSToV4:     params.WriteTSToV4,
-		disableV2:       params.DisableV2,
-		exporterID:      params.ExporterId,
+		watcherInterval:   params.WatcherInterval,
+		writeTSToV4:       params.WriteTSToV4,
+		disableV2:         params.DisableV2,
+		exporterID:        params.ExporterId,
+		durationHistogram: durationHistogram,
 	}
 
 	go func() {
@@ -158,7 +177,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
+	q := `SELECT count() FROM system.clusters`
 	for {
 
 		err := func() error {
@@ -176,7 +195,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 
 			ch.timeSeriesRW.Lock()
 			if ch.prevShardCount != shardCount {
-				ch.l.Infof("Shard count changed from %d to %d. Resetting time series map.", ch.prevShardCount, shardCount)
+				ch.l.Info("Shard count changed. Resetting time series map.", zap.Uint64("prev", ch.prevShardCount), zap.Uint64("current", shardCount))
 				ch.timeSeries = make(map[uint64]struct{})
 			}
 			ch.prevShardCount = shardCount
@@ -184,12 +203,12 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 			return nil
 		}()
 		if err != nil {
-			ch.l.Error(err)
+			ch.l.Error("error getting shard count", zap.Error(err))
 		}
 
 		select {
 		case <-ctx.Done():
-			ch.l.Warn(ctx.Err())
+			ch.l.Warn("shard count watcher stopped", zap.Error(ctx.Err()))
 			return
 		case <-ticker.C:
 		}
@@ -254,7 +273,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		fingerprintToName[f][envLabel] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
-		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
+		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
 
 	// find new time series
@@ -299,11 +318,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 
@@ -339,11 +361,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_SAMPLES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 	if err != nil {
@@ -396,11 +421,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			start := time.Now()
 			err = statement.Send()
-			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-				tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE_V4),
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
+				),
 			)
-			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 			return err
 		}()
 
@@ -424,8 +452,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			for fingerprint, labels := range timeSeries {
 				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
-				if ch.cache.Get(key) != nil && ch.cache.Get(key).Value() {
-					continue
+				if item := ch.cache.Get(key); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
 				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
@@ -449,11 +479,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			start := time.Now()
 			err = statement.Send()
-			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
+				),
 			)
-			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 			return err
 		}()
 
@@ -465,7 +498,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	n := len(newTimeSeries)
 	if n != 0 {
 		ch.mWrittenTimeSeries.Add(float64(n))
-		ch.l.Debugf("Wrote %d new time series.", n)
+		ch.l.Debug("wrote new time series", zap.Int("count", n))
 	}
 
 	err = func() error {
@@ -538,11 +571,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics.String())),
-			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 	if err != nil {

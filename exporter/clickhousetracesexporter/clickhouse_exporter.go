@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -32,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
@@ -44,7 +44,7 @@ const (
 )
 
 // Crete new exporter.
-func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Settings) (*storage, error) {
 
 	if err := component.ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 
 	id := uuid.New()
 
-	f := ClickHouseNewFactory(id, configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster, configClickHouse.QueueSettings.NumConsumers)
+	f := ClickHouseNewFactory(id, *configClickHouse, settings)
 
 	err := f.Initialize(logger)
 	if err != nil {
@@ -72,9 +72,6 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		"signoz_traces",
 		UsageExporter,
 	)
-	if err != nil {
-		log.Fatalf("Error creating usage collector for traces: %v", err)
-	}
 	collector.Start()
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
@@ -88,8 +85,10 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 		config: storageConfig{
 			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
 		},
-		wg:        new(sync.WaitGroup),
-		closeChan: make(chan struct{}),
+		wg:           new(sync.WaitGroup),
+		closeChan:    make(chan struct{}),
+		useNewSchema: configClickHouse.UseNewSchema,
+		logger:       logger,
 	}
 
 	return &storage, nil
@@ -102,6 +101,8 @@ type storage struct {
 	config         storageConfig
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
+	useNewSchema   bool
+	logger         *zap.Logger
 }
 
 type storageConfig struct {
@@ -191,6 +192,7 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
+
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
@@ -301,9 +303,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			IsColumn: false,
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -330,9 +337,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
+
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -406,6 +419,16 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+	// if the new schema is enabled don't write to the old tables
+	err := s.pushTraceDataV3(ctx, td)
+	if err != nil {
+		return err
+	}
+	// if new schema is forced exit here else write to the old tables as well.
+	if s.useNewSchema {
+		return nil
+	}
+
 	s.wg.Add(1)
 	defer s.wg.Done()
 

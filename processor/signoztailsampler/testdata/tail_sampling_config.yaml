@@ -9,10 +9,10 @@ signoz_tail_sampling:
           type: policy_group,
           priority: 1,
           policy_filter: {
-            string_attributes: {
+            string_attributes: [{
               key: source,
               values: ["security"]
-            }
+            }]
           }, 
           sampling: {sampling_percentage: 100},
           sub_policies: [{
@@ -20,10 +20,10 @@ signoz_tail_sampling:
             type: policy_group, 
             priority: 1, 
             policy_filter: {
-              string_attributes: {
+              string_attributes: [{
                 key: source,
                 values: ["security"]
-              }
+              }]
             }, 
           }]
         },

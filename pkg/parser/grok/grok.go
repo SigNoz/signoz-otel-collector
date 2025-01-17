@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"github.com/vjeantet/grok"
 	"go.opentelemetry.io/collector/component"
 )
@@ -15,6 +16,7 @@ const operatorType = "grok_parser"
 
 func init() {
 	operator.Register(operatorType, func() operator.Builder { return NewConfig() })
+	signozlogspipelinestanzaoperator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
 // NewConfig creates a new grok parser config with default values
@@ -25,13 +27,13 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new grok parser config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		ParserConfig: helper.NewParserConfig(operatorID, operatorType),
+		ParserConfig: signozstanzahelper.NewParserConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of a grok parser operator.
 type Config struct {
-	helper.ParserConfig `mapstructure:",squash"`
+	signozstanzahelper.ParserConfig `mapstructure:",squash"`
 
 	// grok pattern
 	Pattern string `mapstructure:"pattern"`
@@ -100,7 +102,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 // Parser is an operator that parses grok in an entry.
 type Parser struct {
-	helper.ParserOperator
+	signozstanzahelper.ParserOperator
 	grok               *grok.Grok
 	pattern            string
 	cache              cache

@@ -18,19 +18,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+)
+
+const (
+	DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS = 1800
 )
 
 type Encoding string
@@ -42,6 +51,14 @@ const (
 	EncodingProto Encoding = "protobuf"
 )
 
+type shouldSkipKey struct {
+	TagKey      string `ch:"tag_key"`
+	TagType     string `ch:"tag_type"`
+	TagDataType string `ch:"tag_data_type"`
+	StringCount uint64 `ch:"string_count"`
+	NumberCount uint64 `ch:"number_count"`
+}
+
 // SpanWriter for writing spans to ClickHouse
 type SpanWriter struct {
 	logger            *zap.Logger
@@ -51,22 +68,45 @@ type SpanWriter struct {
 	errorTable        string
 	spansTable        string
 	attributeTable    string
+	attributeTableV2  string
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+	durationHistogram metricapi.Float64Histogram
+
+	indexTableV3    string
+	resourceTableV3 string
+	useNewSchema    bool
+
+	keysCache *ttlcache.Cache[string, struct{}]
+	rfCache   *ttlcache.Cache[string, struct{}]
+
+	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
+
+	maxDistinctValues         int
+	fetchKeysInterval         time.Duration
+	fetchShouldSkipKeysTicker *time.Ticker
 }
 
 type WriterOptions struct {
 	logger            *zap.Logger
+	meter             metricapi.Meter
 	db                clickhouse.Conn
 	traceDatabase     string
 	spansTable        string
 	indexTable        string
 	errorTable        string
 	attributeTable    string
+	attributeTableV2  string
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
+
+	indexTableV3      string
+	resourceTableV3   string
+	useNewSchema      bool
+	maxDistinctValues int
+	fetchKeysInterval time.Duration
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -74,6 +114,33 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil
 	}
+
+	durationHistogram, err := options.meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil
+	}
+	// keys cache is used to avoid duplicate inserts for the same attribute key.
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+	)
+	go keysCache.Start()
+
+	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
+	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
+	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](DISTRIBUTED_TRACES_RESOURCE_V2_SECONDS*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go rfCache.Start()
+
 	writer := &SpanWriter{
 		logger:            options.logger,
 		db:                options.db,
@@ -82,12 +149,63 @@ func NewSpanWriter(options WriterOptions) *SpanWriter {
 		errorTable:        options.errorTable,
 		spansTable:        options.spansTable,
 		attributeTable:    options.attributeTable,
+		attributeTableV2:  options.attributeTableV2,
 		attributeKeyTable: options.attributeKeyTable,
 		encoding:          options.encoding,
 		exporterId:        options.exporterId,
+		durationHistogram: durationHistogram,
+		indexTableV3:      options.indexTableV3,
+		resourceTableV3:   options.resourceTableV3,
+		useNewSchema:      options.useNewSchema,
+		keysCache:         keysCache,
+		rfCache:           rfCache,
+
+		maxDistinctValues:         options.maxDistinctValues,
+		fetchKeysInterval:         options.fetchKeysInterval,
+		fetchShouldSkipKeysTicker: time.NewTicker(options.fetchKeysInterval),
 	}
 
+	// Fetch keys immediately, then start the background ticker routine
+	go func() {
+		writer.doFetchShouldSkipKeys() // Immediate first fetch
+		writer.fetchShouldSkipKeys()   // Start ticker routine
+	}()
+
 	return writer
+}
+
+// doFetchShouldSkipKeys contains the logic for fetching skip keys
+func (e *SpanWriter) doFetchShouldSkipKeys() {
+	query := fmt.Sprintf(`
+		SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
+		FROM %s.%s
+		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
+		GROUP BY tag_key, tag_type, tag_data_type
+		HAVING string_count > %d OR number_count > %d
+		SETTINGS max_threads = 2`, e.traceDatabase, e.attributeTableV2, e.maxDistinctValues, e.maxDistinctValues)
+
+	e.logger.Info("fetching should skip keys", zap.String("query", query))
+
+	keys := []shouldSkipKey{}
+
+	err := e.db.Select(context.Background(), &keys, query)
+	if err != nil {
+		e.logger.Error("error while fetching should skip keys", zap.Error(err))
+	}
+
+	shouldSkipKeys := make(map[string]shouldSkipKey)
+	for _, key := range keys {
+		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+		e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
+		shouldSkipKeys[mapKey] = key
+	}
+	e.shouldSkipKeyValue.Store(shouldSkipKeys)
+}
+
+func (e *SpanWriter) fetchShouldSkipKeys() {
+	for range e.fetchShouldSkipKeysTicker.C {
+		e.doFetchShouldSkipKeys()
+	}
 }
 
 func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) error {
@@ -101,8 +219,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 	}()
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for index table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
 
 	for _, span := range batchSpans {
@@ -144,8 +261,7 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.SpanKind,
 		)
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 	}
 
@@ -153,193 +269,14 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 
 	err = statement.Send()
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
-		tag.Upsert(tableKey, w.indexTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.indexTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-	return err
-}
-
-func (w *SpanWriter) writeTagBatch(ctx context.Context, batchSpans []*Span) error {
-	var tagKeyStatement driver.Batch
-	var tagStatement driver.Batch
-	var err error
-
-	defer func() {
-		if tagKeyStatement != nil {
-			_ = tagKeyStatement.Abort()
-		}
-		if tagStatement != nil {
-			_ = tagStatement.Abort()
-		}
-	}()
-	tagStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTable), driver.WithReleaseConnection())
-	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes table due to error: ", zap.Error(err))
-		return err
-	}
-	tagKeyStatement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeKeyTable), driver.WithReleaseConnection())
-	if err != nil {
-		w.logger.Error("Could not prepare batch for span attributes key table due to error: ", zap.Error(err))
-		return err
-	}
-	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
-	mapOfSpanAttributeKeys := make(map[string]struct{})
-
-	// create map of span attributes of key, tagType, dataType, isColumn and value to avoid duplicates in batch
-	mapOfSpanAttributeValues := make(map[string]struct{})
-
-	for _, span := range batchSpans {
-		for _, spanAttribute := range span.SpanAttributes {
-
-			// form a map key of span attribute key, tagType, dataType, isColumn and value
-			mapOfSpanAttributeValueKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + strconv.FormatBool(spanAttribute.IsColumn) + spanAttribute.StringValue + strconv.FormatFloat(spanAttribute.NumberValue, 'f', -1, 64)
-
-			// check if mapOfSpanAttributeValueKey already exists in map
-			_, ok := mapOfSpanAttributeValues[mapOfSpanAttributeValueKey]
-			if ok {
-				continue
-			}
-			// add mapOfSpanAttributeValueKey to map
-			mapOfSpanAttributeValues[mapOfSpanAttributeValueKey] = struct{}{}
-
-			// form a map key of span attribute key, tagType, dataType and isColumn
-			mapOfSpanAttributeKey := spanAttribute.Key + spanAttribute.TagType + spanAttribute.DataType + strconv.FormatBool(spanAttribute.IsColumn)
-
-			// check if mapOfSpanAttributeKey already exists in map
-			_, ok = mapOfSpanAttributeKeys[mapOfSpanAttributeKey]
-			if !ok {
-				err = tagKeyStatement.Append(
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.IsColumn,
-				)
-				if err != nil {
-					w.logger.Error("Could not append span to tagKey Statement to batch due to error: ", zap.Error(err), zap.Object("span", span))
-					return err
-				}
-			}
-			// add mapOfSpanAttributeKey to map
-			mapOfSpanAttributeKeys[mapOfSpanAttributeKey] = struct{}{}
-
-			if spanAttribute.DataType == "string" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					spanAttribute.StringValue,
-					nil,
-					spanAttribute.IsColumn,
-				)
-			} else if spanAttribute.DataType == "float64" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					spanAttribute.NumberValue,
-					spanAttribute.IsColumn,
-				)
-			} else if spanAttribute.DataType == "bool" {
-				err = tagStatement.Append(
-					time.Unix(0, int64(span.StartTimeUnixNano)),
-					spanAttribute.Key,
-					spanAttribute.TagType,
-					spanAttribute.DataType,
-					nil,
-					nil,
-					spanAttribute.IsColumn,
-				)
-			}
-			if err != nil {
-				w.logger.Error("Could not append span to tag Statement batch due to error: ", zap.Error(err), zap.Object("span", span))
-				return err
-			}
-		}
-	}
-
-	tagStart := time.Now()
-	err = tagStatement.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
-			tag.Upsert(tableKey, w.attributeTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
-	)
-	if err != nil {
-		w.logger.Error("Could not write to span attributes table due to error: ", zap.Error(err))
-		return err
-	}
-
-	tagKeyStart := time.Now()
-	err = tagKeyStatement.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
-			tag.Upsert(tableKey, w.attributeKeyTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
-	)
-	if err != nil {
-		w.logger.Error("Could not write to span attributes key table due to error: ", zap.Error(err))
-		return err
-	}
-
-	return err
-}
-
-func (w *SpanWriter) writeErrorBatch(ctx context.Context, batchSpans []*Span) error {
-	var statement driver.Batch
-	var err error
-
-	defer func() {
-		if statement != nil {
-			_ = statement.Abort()
-		}
-	}()
-	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.errorTable), driver.WithReleaseConnection())
-	if err != nil {
-		w.logger.Error("Could not prepare batch for error table: ", zap.Error(err))
-		return err
-	}
-
-	for _, span := range batchSpans {
-		if span.ErrorEvent.Name == "" {
-			continue
-		}
-		err = statement.Append(
-			time.Unix(0, int64(span.ErrorEvent.TimeUnixNano)),
-			span.ErrorID,
-			span.ErrorGroupID,
-			span.TraceId,
-			span.SpanId,
-			span.ServiceName,
-			span.ErrorEvent.AttributeMap["exception.type"],
-			span.ErrorEvent.AttributeMap["exception.message"],
-			span.ErrorEvent.AttributeMap["exception.stacktrace"],
-			stringToBool(span.ErrorEvent.AttributeMap["exception.escaped"]),
-			span.ResourceTagsMap,
-		)
-		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-			return err
-		}
-	}
-
-	start := time.Now()
-
-	err = statement.Send()
-
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
-		tag.Upsert(tableKey, w.errorTable),
-	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
@@ -359,8 +296,7 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.spansTable), driver.WithReleaseConnection())
 	if err != nil {
-		w.logger.Error("Could not prepare batch for model table: ", zap.Error(err))
-		return err
+		return fmt.Errorf("could not prepare batch for model table: %w", err)
 	}
 
 	metrics := map[string]usage.Metric{}
@@ -370,35 +306,43 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 		usageMap.TagMap = map[string]string{}
 		serialized, err = json.Marshal(span.TraceModel)
 		if err != nil {
-			return err
+			return fmt.Errorf("could not marshal trace model: %w", err)
 		}
-		serializedUsage, err := json.Marshal(usageMap)
 
+		serializedUsage, err := json.Marshal(usageMap)
 		if err != nil {
-			return err
+			return fmt.Errorf("could not marshal usage map: %w", err)
 		}
 
 		err = statement.Append(time.Unix(0, int64(span.StartTimeUnixNano)), span.TraceId, string(serialized))
 		if err != nil {
-			w.logger.Error("Could not append span to batch: ", zap.Object("span", span), zap.Error(err))
-			return err
+			return fmt.Errorf("could not append span to batch: %w", err)
 		}
 
-		usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
+		if !w.useNewSchema {
+			usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
+		}
 	}
+
 	start := time.Now()
 
 	err = statement.Send()
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, string(component.DataTypeTraces.String())),
-		tag.Upsert(tableKey, w.spansTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metricapi.WithAttributes(
+			attribute.String("table", w.spansTable),
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	if err != nil {
-		return err
+		return fmt.Errorf("could not send batch to model table: %w", err)
 	}
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+
+	if !w.useNewSchema {
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		}
 	}
 
 	return nil
@@ -406,30 +350,20 @@ func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) er
 
 // WriteBatchOfSpans writes the encoded batch of spans
 func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error {
+	// inserts to the singoz_spans table
 	if w.spansTable != "" {
 		if err := w.writeModelBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to model table: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not write a batch of spans to model table: %w", err)
 		}
 	}
+
+	// inserts to the signoz_index_v2 table
 	if w.indexTable != "" {
 		if err := w.writeIndexBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to index table: ", zap.Error(err))
-			return err
+			return fmt.Errorf("could not write a batch of spans to index table: %w", err)
 		}
 	}
-	if w.errorTable != "" {
-		if err := w.writeErrorBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to error table: ", zap.Error(err))
-			return err
-		}
-	}
-	if w.attributeTable != "" && w.attributeKeyTable != "" {
-		if err := w.writeTagBatch(ctx, batch); err != nil {
-			w.logger.Error("Could not write a batch of spans to tag/tagKey tables: ", zap.Error(err))
-			return err
-		}
-	}
+
 	return nil
 }
 

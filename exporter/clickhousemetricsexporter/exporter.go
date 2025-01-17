@@ -43,7 +43,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-const maxBatchByteSize = 3000000
+const maxBatchByteSize = 128000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
@@ -63,11 +63,12 @@ type PrwExporter struct {
 	metricNameToMeta map[string]base.MetricMeta
 	mux              *sync.Mutex
 	logger           *zap.Logger
+	enableExpHist    bool
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
 // client parameter cannot be nil.
-func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, error) {
+func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 
 	sanitizedLabels, err := validateAndSanitizeExternalLabels(cfg.ExternalLabels)
 	if err != nil {
@@ -94,6 +95,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		WriteTSToV4:          cfg.WriteTSToV4,
 		DisableV2:            cfg.DisableV2,
 		ExporterId:           id,
+		Settings:             set,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
@@ -135,6 +137,7 @@ func NewPrwExporter(cfg *Config, set exporter.CreateSettings) (*PrwExporter, err
 		metricNameToMeta: make(map[string]base.MetricMeta),
 		mux:              new(sync.Mutex),
 		logger:           set.Logger,
+		enableExpHist:    cfg.EnableExpHist,
 	}, nil
 }
 
@@ -163,6 +166,8 @@ func (prwe *PrwExporter) Shutdown(context.Context) error {
 func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
+
+	nameToMeta := make(map[string]base.MetricMeta)
 
 	select {
 	case <-prwe.closeChan:
@@ -212,11 +217,11 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					if metricType == pmetric.MetricTypeSum {
 						meta.IsMonotonic = metric.Sum().IsMonotonic()
 					}
-					prwe.metricNameToMeta[metricName] = meta
+					nameToMeta[metricName] = meta
 
 					if metricType == pmetric.MetricTypeHistogram || metricType == pmetric.MetricTypeSummary {
-						prwe.metricNameToMeta[metricName+bucketStr] = meta
-						prwe.metricNameToMeta[metricName+countStr] = base.MetricMeta{
+						nameToMeta[metricName+bucketStr] = meta
+						nameToMeta[metricName+countStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -224,7 +229,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							Typ:         pmetric.MetricTypeSum,
 							IsMonotonic: temporality == pmetric.AggregationTemporalityCumulative,
 						}
-						prwe.metricNameToMeta[metricName+sumStr] = base.MetricMeta{
+						nameToMeta[metricName+sumStr] = base.MetricMeta{
 							Name:        metricName,
 							Temporality: temporality,
 							Description: metric.Description(),
@@ -252,7 +257,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
@@ -261,23 +266,26 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped summary metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
+						if !prwe.enableExpHist {
+							continue
+						}
 						// we don't support cumulative exponential histograms
 						if temporality == pmetric.AggregationTemporalityCumulative {
 							dropped++
-							prwe.logger.Warn("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped cumulative histogram metric", zap.String("name", metric.Name()))
 							continue
 						}
 
 						dataPoints := metric.ExponentialHistogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
-							prwe.logger.Warn("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
+							prwe.logger.Debug("Dropped exponential histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 
 						for x := 0; x < dataPoints.Len(); x++ {
@@ -293,7 +301,18 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 			}
 		}
 
-		if exportErrors := prwe.export(ctx, tsMap); len(exportErrors) != 0 {
+		prwe.mux.Lock()
+		for k, v := range nameToMeta {
+			prwe.metricNameToMeta[k] = v
+		}
+		// make a copy of prwe.metricNameToMeta
+		allMetricNameToMeta := make(map[string]base.MetricMeta)
+		for k, v := range prwe.metricNameToMeta {
+			allMetricNameToMeta[k] = v
+		}
+		prwe.mux.Unlock()
+
+		if exportErrors := prwe.export(ctx, tsMap, allMetricNameToMeta); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
 			errs = multierr.Append(errs, multierr.Combine(exportErrors...))
 		}
@@ -333,14 +352,7 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 }
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
-func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries) []error {
-	prwe.mux.Lock()
-	// make a copy of metricNameToMeta
-	metricNameToMeta := make(map[string]base.MetricMeta)
-	for k, v := range prwe.metricNameToMeta {
-		metricNameToMeta[k] = v
-	}
-	prwe.mux.Unlock()
+func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries, metricNameToMeta map[string]base.MetricMeta) []error {
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests := batchTimeSeries(tsMap, maxBatchByteSize)
