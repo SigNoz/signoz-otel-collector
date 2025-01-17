@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 type Event struct {
 	Name         string            `json:"name,omitempty"`
 	TimeUnixNano uint64            `json:"timeUnixNano,omitempty"`
@@ -43,6 +44,7 @@ type TraceModel struct {
 	StartTimeUnixNano uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName       string             `json:"serviceName,omitempty"`
 	Kind              int8               `json:"kind,omitempty"`
+	SpanKind          string             `json:"spanKind,omitempty"`
 	References        references         `json:"references,omitempty"`
 	StatusCode        int16              `json:"statusCode,omitempty"`
 	TagMap            map[string]string  `json:"tagMap,omitempty"`
@@ -51,6 +53,8 @@ type TraceModel struct {
 	BoolTagMap        map[string]bool    `json:"boolTagMap,omitempty"`
 	Events            []string           `json:"event,omitempty"`
 	HasError          bool               `json:"hasError,omitempty"`
+	StatusMessage     string             `json:"statusMessage,omitempty"`
+	StatusCodeString  string             `json:"statusCodeString,omitempty"`
 }
 
 func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -61,8 +65,11 @@ func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", t.StartTimeUnixNano)
 	enc.AddString("serviceName", t.ServiceName)
 	enc.AddInt8("kind", t.Kind)
+	enc.AddString("spanKind", t.SpanKind)
 	enc.AddInt16("statusCode", t.StatusCode)
 	enc.AddBool("hasError", t.HasError)
+	enc.AddString("statusMessage", t.StatusMessage)
+	enc.AddString("statusCodeString", t.StatusCodeString)
 	enc.AddArray("references", &t.References)
 	enc.AddString("tagMap", fmt.Sprintf("%v", t.TagMap))
 	enc.AddString("event", fmt.Sprintf("%v", t.Events))
@@ -90,17 +97,16 @@ type Span struct {
 	StartTimeUnixNano  uint64             `json:"startTimeUnixNano,omitempty"`
 	ServiceName        string             `json:"serviceName,omitempty"`
 	Kind               int8               `json:"kind,omitempty"`
+	SpanKind           string             `json:"spanKind,omitempty"`
 	StatusCode         int16              `json:"statusCode,omitempty"`
 	ExternalHttpMethod string             `json:"externalHttpMethod,omitempty"`
 	HttpUrl            string             `json:"httpUrl,omitempty"`
 	HttpMethod         string             `json:"httpMethod,omitempty"`
 	HttpHost           string             `json:"httpHost,omitempty"`
 	HttpRoute          string             `json:"httpRoute,omitempty"`
-	HttpCode           string             `json:"httpCode,omitempty"`
 	MsgSystem          string             `json:"msgSystem,omitempty"`
 	MsgOperation       string             `json:"msgOperation,omitempty"`
 	ExternalHttpUrl    string             `json:"externalHttpUrl,omitempty"`
-	Component          string             `json:"component,omitempty"`
 	DBSystem           string             `json:"dbSystem,omitempty"`
 	DBName             string             `json:"dbName,omitempty"`
 	DBOperation        string             `json:"dbOperation,omitempty"`
@@ -109,21 +115,84 @@ type Span struct {
 	ErrorEvent         Event              `json:"errorEvent,omitempty"`
 	ErrorID            string             `json:"errorID,omitempty"`
 	ErrorGroupID       string             `json:"errorGroupID,omitempty"`
-	TagMap             map[string]string  `json:"tagMap,omitempty"`
 	StringTagMap       map[string]string  `json:"stringTagMap,omitempty"`
 	NumberTagMap       map[string]float64 `json:"numberTagMap,omitempty"`
 	BoolTagMap         map[string]bool    `json:"boolTagMap,omitempty"`
 	ResourceTagsMap    map[string]string  `json:"resourceTagsMap,omitempty"`
 	HasError           bool               `json:"hasError,omitempty"`
+	StatusMessage      string             `json:"statusMessage,omitempty"`
+	StatusCodeString   string             `json:"statusCodeString,omitempty"`
+	IsRemote           string             `json:"isRemote,omitempty"`
 	TraceModel         TraceModel         `json:"traceModel,omitempty"`
-	GRPCCode           string             `json:"gRPCCode,omitempty"`
-	GRPCMethod         string             `json:"gRPCMethod,omitempty"`
 	RPCSystem          string             `json:"rpcSystem,omitempty"`
 	RPCService         string             `json:"rpcService,omitempty"`
 	RPCMethod          string             `json:"rpcMethod,omitempty"`
 	ResponseStatusCode string             `json:"responseStatusCode,omitempty"`
 	Tenant             *string            `json:"-"`
 	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
+}
+
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+type ErrorEvent struct {
+	Event        Event  `json:"errorEvent,omitempty"`
+	ErrorID      string `json:"errorID,omitempty"`
+	ErrorGroupID string `json:"errorGroupID,omitempty"`
+}
+
+type SpanV3 struct {
+	TsBucketStart uint64 `json:"-"`
+	FingerPrint   string `json:"-"`
+
+	StartTimeUnixNano uint64 `json:"startTimeUnixNano,omitempty"`
+
+	TraceId      string `json:"traceId,omitempty"`
+	SpanId       string `json:"spanId,omitempty"`
+	TraceState   string `json:"traceState,omitempty"`
+	ParentSpanId string `json:"parentSpanId,omitempty"`
+	Flags        uint32 `json:"flags,omitempty"`
+
+	Name string `json:"name,omitempty"`
+
+	Kind     int8   `json:"kind,omitempty"`
+	SpanKind string `json:"spanKind,omitempty"`
+
+	DurationNano uint64 `json:"-"`
+
+	StatusCode       int16  `json:"-"`
+	StatusMessage    string `json:"-"`
+	StatusCodeString string `json:"-"`
+
+	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
+	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
+	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
+
+	ResourcesString map[string]string `json:"resources_string,omitempty"`
+
+	// for events
+	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+	Events []string `json:"event,omitempty"`
+	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
+	ErrorEvents []ErrorEvent `json:"-"`
+
+	ServiceName string `json:"serviceName,omitempty"` // for error table
+
+	// custom columns
+	ResponseStatusCode string `json:"-"`
+	ExternalHttpUrl    string `json:"-"`
+	HttpUrl            string `json:"-"`
+	ExternalHttpMethod string `json:"-"`
+	HttpMethod         string `json:"-"`
+	HttpHost           string `json:"-"`
+	DBName             string `json:"-"`
+	DBOperation        string `json:"-"`
+	HasError           bool   `json:"-"`
+	IsRemote           string `json:"-"`
+
+	// check if this is really required
+	Tenant *string `json:"-"`
+
+	References     string          `json:"references,omitempty"`
+	SpanAttributes []SpanAttribute `json:"-"`
 }
 
 type SpanAttribute struct {
@@ -144,38 +213,37 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("startTimeUnixNano", s.StartTimeUnixNano)
 	enc.AddString("serviceName", s.ServiceName)
 	enc.AddInt8("kind", s.Kind)
+	enc.AddString("spanKind", s.SpanKind)
 	enc.AddInt16("statusCode", s.StatusCode)
 	enc.AddString("externalHttpMethod", s.ExternalHttpMethod)
 	enc.AddString("httpUrl", s.HttpUrl)
 	enc.AddString("httpMethod", s.HttpMethod)
 	enc.AddString("httpHost", s.HttpHost)
 	enc.AddString("httpRoute", s.HttpRoute)
-	enc.AddString("httpCode", s.HttpCode)
 	enc.AddString("msgSystem", s.MsgSystem)
 	enc.AddString("msgOperation", s.MsgOperation)
 	enc.AddString("externalHttpUrl", s.ExternalHttpUrl)
-	enc.AddString("component", s.Component)
 	enc.AddString("dbSystem", s.DBSystem)
 	enc.AddString("dbName", s.DBName)
 	enc.AddString("dbOperation", s.DBOperation)
 	enc.AddString("peerService", s.PeerService)
-	enc.AddString("gRPCCode", s.GRPCCode)
-	enc.AddString("gRPCMethod", s.GRPCMethod)
 	enc.AddString("rpcSystem", s.RPCSystem)
 	enc.AddString("rpcService", s.RPCService)
 	enc.AddString("rpcMethod", s.RPCMethod)
 	enc.AddString("responseStatusCode", s.ResponseStatusCode)
 	enc.AddBool("hasError", s.HasError)
+	enc.AddString("statusMessage", s.StatusMessage)
+	enc.AddString("statusCodeString", s.StatusCodeString)
 	enc.AddString("errorID", s.ErrorID)
 	enc.AddString("errorGroupID", s.ErrorGroupID)
 	enc.AddObject("errorEvent", &s.ErrorEvent)
 	enc.AddObject("traceModel", &s.TraceModel)
 	enc.AddString("event", fmt.Sprintf("%v", s.Events))
-	enc.AddString("tagMap", fmt.Sprintf("%v", s.TagMap))
 
 	return nil
 }
 
+// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 type OtelSpanRef struct {
 	TraceId string `json:"traceId,omitempty"`
 	SpanId  string `json:"spanId,omitempty"`

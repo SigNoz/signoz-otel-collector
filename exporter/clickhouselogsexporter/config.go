@@ -16,31 +16,31 @@ package clickhouselogsexporter
 
 import (
 	"errors"
+	"time"
 
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
 )
 
+type AttributesLimits struct {
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
+}
+
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"`
-	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
-	// QueueSettings is a subset of exporterhelper.QueueSettings,
-	// because only QueueSize is user-settable.
-	QueueSettings QueueSettings `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
 	// For http protocol reference: [mailru/go-clickhouse/#dsn](https://github.com/mailru/go-clickhouse/#dsn).
-	DSN string `mapstructure:"dsn"`
-	// Docker Multi Node Cluster is a flag to enable the docker multi node cluster. Default is false.
-	DockerMultiNodeCluster bool `mapstructure:"docker_multi_node_cluster" default:"false"`
-}
+	DSN          string `mapstructure:"dsn"`
+	UseNewSchema bool   `mapstructure:"use_new_schema" default:"false"`
 
-// QueueSettings is a subset of exporterhelper.QueueSettings.
-type QueueSettings struct {
-	// QueueSize set the length of the sending queue
-	QueueSize int `mapstructure:"queue_size"`
+	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
 }
 
 var (
@@ -53,12 +53,4 @@ func (cfg *Config) Validate() (err error) {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
 	return err
-}
-
-func (cfg *Config) enforcedQueueSettings() exporterhelper.QueueSettings {
-	return exporterhelper.QueueSettings{
-		Enabled:      true,
-		NumConsumers: 1,
-		QueueSize:    cfg.QueueSettings.QueueSize,
-	}
 }

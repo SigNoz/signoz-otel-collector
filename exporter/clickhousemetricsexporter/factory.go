@@ -20,12 +20,10 @@ import (
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -35,33 +33,16 @@ const (
 	typeStr = "clickhousemetricswrite"
 )
 
-var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
-)
-
 // NewFactory creates a new Prometheus Remote Write exporter.
 func NewFactory() exporter.Factory {
 
-	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
-
-	writeLatencyView := &view.View{
-		Name:        "exporter_db_write_latency",
-		Measure:     writeLatencyMillis,
-		Description: writeLatencyMillis.Description(),
-		TagKeys:     []tag.Key{exporterKey, tableKey},
-		Aggregation: writeLatencyDistribution,
-	}
-
-	view.Register(writeLatencyView)
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
 
-func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
+func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	cfg component.Config) (exporter.Metrics, error) {
 
 	prwCfg, ok := cfg.(*Config)
@@ -85,13 +66,13 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 		set,
 		cfg,
 		prwe.PushMetrics,
-		exporterhelper.WithTimeout(prwCfg.TimeoutSettings),
-		exporterhelper.WithQueue(exporterhelper.QueueSettings{
+		exporterhelper.WithTimeout(prwCfg.TimeoutConfig),
+		exporterhelper.WithQueue(exporterhelper.QueueConfig{
 			Enabled:      prwCfg.RemoteWriteQueue.Enabled,
 			NumConsumers: 1,
 			QueueSize:    prwCfg.RemoteWriteQueue.QueueSize,
 		}),
-		exporterhelper.WithRetry(prwCfg.RetrySettings),
+		exporterhelper.WithRetry(prwCfg.BackOffConfig),
 		exporterhelper.WithStart(prwe.Start),
 		exporterhelper.WithShutdown(prwe.Shutdown),
 	)
@@ -105,21 +86,16 @@ func createMetricsExporter(ctx context.Context, set exporter.CreateSettings,
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		Namespace:       "",
-		ExternalLabels:  map[string]string{},
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
-		RetrySettings: exporterhelper.RetrySettings{
-			Enabled:         true,
-			InitialInterval: 50 * time.Millisecond,
-			MaxInterval:     200 * time.Millisecond,
-			MaxElapsedTime:  1 * time.Minute,
-		},
-		HTTPClientSettings: confighttp.HTTPClientSettings{
+		Namespace:      "",
+		ExternalLabels: map[string]string{},
+		TimeoutConfig:  exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:  configretry.NewDefaultBackOffConfig(),
+		HTTPClientSettings: confighttp.ClientConfig{
 			Endpoint: "http://some.url:9411/api/prom/push",
 			// We almost read 0 bytes, so no need to tune ReadBufferSize.
 			ReadBufferSize:  0,
 			WriteBufferSize: 512 * 1024,
-			Timeout:         exporterhelper.NewDefaultTimeoutSettings().Timeout,
+			Timeout:         exporterhelper.NewDefaultTimeoutConfig().Timeout,
 			Headers:         map[string]configopaque.String{},
 		},
 		// TODO(jbd): Adjust the default queue size.
@@ -129,5 +105,8 @@ func createDefaultConfig() component.Config {
 			NumConsumers: 5,
 		},
 		WatcherInterval: 30 * time.Second,
+		WriteTSToV4:     true,
+		DisableV2:       false,
+		EnableExpHist:   false,
 	}
 }

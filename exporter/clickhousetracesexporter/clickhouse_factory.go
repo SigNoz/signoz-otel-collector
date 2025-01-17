@@ -16,59 +16,41 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"net/url"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/clickhouse"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/spf13/viper"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/collector/exporter"
+	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 // Factory implements storage.Factory for Clickhouse backend.
 type Factory struct {
 	logger     *zap.Logger
+	meter      metricapi.Meter
 	Options    *Options
 	db         clickhouse.Conn
 	archive    clickhouse.Conn
-	datasource string
 	makeWriter writerMaker
 }
 
 // Writer writes spans to storage.
 type Writer interface {
-	WriteBatchOfSpans(span []*Span) error
+	WriteBatchOfSpans(ctx context.Context, span []*Span) error
+	WriteBatchOfSpansV3(ctx context.Context, span []*SpanV3, metrics map[string]usage.Metric) error
+	WriteResourcesV3(ctx context.Context, resourcesSeen map[int64]map[string]string) error
 }
 
 type writerMaker func(WriterOptions) (Writer, error)
 
-var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
-)
-
 // NewFactory creates a new Factory.
-func ClickHouseNewFactory(migrations string, datasource string, dockerMultiNodeCluster bool) *Factory {
-	writeLatencyDistribution := view.Distribution(100, 250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 512000)
+func ClickHouseNewFactory(exporterId uuid.UUID, config Config, settings exporter.Settings) *Factory {
 
-	writeLatencyView := &view.View{
-		Name:        "exporter_db_write_latency",
-		Measure:     writeLatencyMillis,
-		Description: writeLatencyMillis.Description(),
-		TagKeys:     []tag.Key{exporterKey, tableKey},
-		Aggregation: writeLatencyDistribution,
-	}
-
-	view.Register(writeLatencyView)
 	return &Factory{
-		Options: NewOptions(migrations, datasource, dockerMultiNodeCluster, primaryNamespace, archiveNamespace),
+		meter:   settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"),
+		Options: NewOptions(exporterId, config, primaryNamespace, config.UseNewSchema, archiveNamespace),
 		// makeReader: func(db *clickhouse.Conn, operationsTable, indexTable, spansTable string) (spanstore.Reader, error) {
 		// 	return store.NewTraceReader(db, operationsTable, indexTable, spansTable), nil
 		// },
@@ -98,156 +80,7 @@ func (f *Factory) Initialize(logger *zap.Logger) error {
 
 		f.archive = archive
 	}
-
-	err = patchGroupByParenInMV(db, f)
-	if err != nil {
-		return err
-	}
-
-	// drop schema migrations table if running in docker multi node cluster mode so that migrations are run on new nodes
-	if f.Options.primary.DockerMultiNodeCluster {
-		err = dropSchemaMigrationsTable(db, f)
-		if err != nil {
-			return err
-		}
-	}
-
-	f.logger.Info("Running migrations from path: ", zap.Any("test", f.Options.primary.Migrations))
-	clickhouseUrl, err := buildClickhouseMigrateURL(f.Options.primary.Datasource, f.Options.primary.Cluster)
-	if err != nil {
-		return fmt.Errorf("Failed to build Clickhouse migrate URL, error: %s", err)
-	}
-	m, err := migrate.New(
-		"file://"+f.Options.primary.Migrations,
-		clickhouseUrl)
-	if err != nil {
-		return fmt.Errorf("Clickhouse Migrate failed to run, error: %s", err)
-	}
-	err = m.Up()
-	f.logger.Info("Clickhouse Migrate finished", zap.Error(err))
 	return nil
-}
-
-func patchGroupByParenInMV(db clickhouse.Conn, f *Factory) error {
-
-	// check if views already exist, if not, skip as patch is not required for fresh install
-	for _, table := range []string{f.Options.getPrimary().DependencyGraphDbMV, f.Options.getPrimary().DependencyGraphServiceMV, f.Options.getPrimary().DependencyGraphMessagingMV} {
-		var exists uint8
-		err := db.QueryRow(context.Background(), fmt.Sprintf("EXISTS VIEW %s.%s", f.Options.getPrimary().TraceDatabase, table)).Scan(&exists)
-		if err != nil {
-			return err
-		}
-		if exists == 0 {
-			f.logger.Info("View does not exist, skipping patch", zap.String("table", table))
-			return nil
-		}
-	}
-	f.logger.Info("Patching views")
-	// drop views
-	for _, table := range []string{f.Options.getPrimary().DependencyGraphDbMV, f.Options.getPrimary().DependencyGraphServiceMV, f.Options.getPrimary().DependencyGraphMessagingMV} {
-		err := db.Exec(context.Background(), fmt.Sprintf("DROP VIEW IF EXISTS %s.%s ON CLUSTER %s", f.Options.getPrimary().TraceDatabase, table, f.Options.getPrimary().Cluster))
-		if err != nil {
-			f.logger.Error(fmt.Sprintf("Error dropping %s view", table), zap.Error(err))
-			return fmt.Errorf("error dropping %s view: %v", table, err)
-		}
-	}
-
-	// create views with patched group by
-	err := db.Exec(context.Background(), fmt.Sprintf(`CREATE MATERIALIZED VIEW IF NOT EXISTS %s.%s ON CLUSTER %s
-		TO %s.%s AS
-		SELECT
-			A.serviceName as src,
-			B.serviceName as dest,
-			quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(B.durationNano)) as duration_quantiles_state,
-			countIf(B.statusCode=2) as error_count,
-			count(*) as total_count,
-			toStartOfMinute(B.timestamp) as timestamp
-		FROM %s.%s AS A, %s.%s AS B
-		WHERE (A.serviceName != B.serviceName) AND (A.spanID = B.parentSpanID)
-		GROUP BY timestamp, src, dest;`, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphServiceMV,
-		f.Options.getPrimary().Cluster, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphTable,
-		f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().LocalIndexTable, f.Options.getPrimary().TraceDatabase,
-		f.Options.getPrimary().LocalIndexTable))
-	if err != nil {
-		f.logger.Error("Error creating "+f.Options.getPrimary().DependencyGraphServiceMV, zap.Error(err))
-		return fmt.Errorf("error creating %s: %v", f.Options.getPrimary().DependencyGraphServiceMV, err)
-	}
-	err = db.Exec(context.Background(), fmt.Sprintf(`CREATE MATERIALIZED VIEW IF NOT EXISTS %s.%s ON CLUSTER %s
-		TO %s.%s AS
-		SELECT
-			serviceName as src,
-			tagMap['db.system'] as dest,
-			quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(durationNano)) as duration_quantiles_state,
-			countIf(statusCode=2) as error_count,
-			count(*) as total_count,
-			toStartOfMinute(timestamp) as timestamp
-		FROM %s.%s
-		WHERE dest != '' and kind != 2
-		GROUP BY timestamp, src, dest;`, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphDbMV,
-		f.Options.getPrimary().Cluster, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphTable,
-		f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().LocalIndexTable))
-	if err != nil {
-		f.logger.Error("Error creating "+f.Options.getPrimary().DependencyGraphDbMV, zap.Error(err))
-		return fmt.Errorf("error creating %s: %v", f.Options.getPrimary().DependencyGraphDbMV, err)
-	}
-	err = db.Exec(context.Background(), fmt.Sprintf(`CREATE MATERIALIZED VIEW IF NOT EXISTS %s.%s ON CLUSTER %s
-		TO %s.%s AS
-		SELECT
-			serviceName as src,
-			tagMap['messaging.system'] as dest,
-			quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(durationNano)) as duration_quantiles_state,
-			countIf(statusCode=2) as error_count,
-			count(*) as total_count,
-			toStartOfMinute(timestamp) as timestamp
-		FROM %s.%s
-		WHERE dest != '' and kind != 2
-		GROUP BY timestamp, src, dest;`, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphMessagingMV,
-		f.Options.getPrimary().Cluster, f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().DependencyGraphTable,
-		f.Options.getPrimary().TraceDatabase, f.Options.getPrimary().LocalIndexTable))
-	if err != nil {
-		f.logger.Error("Error creating "+f.Options.getPrimary().DependencyGraphMessagingMV, zap.Error(err))
-		return fmt.Errorf("error creating %s: %v", f.Options.getPrimary().DependencyGraphMessagingMV, err)
-	}
-
-	return nil
-}
-
-func dropSchemaMigrationsTable(db clickhouse.Conn, f *Factory) error {
-	err := db.Exec(context.Background(), fmt.Sprintf(`DROP TABLE IF EXISTS %s.%s ON CLUSTER %s;`,
-		f.Options.getPrimary().TraceDatabase, "schema_migrations", f.Options.getPrimary().Cluster))
-	if err != nil {
-		f.logger.Error("Error dropping schema_migrations table", zap.Error(err))
-		return fmt.Errorf("error dropping schema_migrations table: %v", err)
-	}
-	return nil
-}
-
-func buildClickhouseMigrateURL(datasource string, cluster string) (string, error) {
-	// return fmt.Sprintf("clickhouse://localhost:9000?database=default&x-multi-statement=true"), nil
-	var clickhouseUrl string
-	database := "signoz_traces"
-	parsedURL, err := url.Parse(datasource)
-	if err != nil {
-		return "", err
-	}
-	host := parsedURL.Host
-	if host == "" {
-		return "", fmt.Errorf("Unable to parse host")
-
-	}
-	paramMap, err := url.ParseQuery(parsedURL.RawQuery)
-	if err != nil {
-		return "", err
-	}
-	username := paramMap["username"]
-	password := paramMap["password"]
-
-	if len(username) > 0 && len(password) > 0 {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s:%s@%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", username[0], password[0], host, database, cluster)
-	} else {
-		clickhouseUrl = fmt.Sprintf("clickhouse://%s/%s?x-multi-statement=true&x-cluster-name=%s&x-migrations-table=schema_migrations&x-migrations-table-engine=MergeTree", host, database, cluster)
-	}
-	return clickhouseUrl, nil
 }
 
 func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
@@ -258,29 +91,28 @@ func (f *Factory) connect(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	return cfg.Connector(cfg)
 }
 
-// AddFlags implements plugin.Configurable
-func (f *Factory) AddFlags(flagSet *flag.FlagSet) {
-	f.Options.AddFlags(flagSet)
-}
-
-// InitFromViper implements plugin.Configurable
-func (f *Factory) InitFromViper(v *viper.Viper) {
-	f.Options.InitFromViper(v)
-}
-
 // CreateSpanWriter implements storage.Factory
 func (f *Factory) CreateSpanWriter() (Writer, error) {
 	cfg := f.Options.getPrimary()
 	return f.makeWriter(WriterOptions{
 		logger:            f.logger,
+		meter:             f.meter,
 		db:                f.db,
 		traceDatabase:     cfg.TraceDatabase,
 		spansTable:        cfg.SpansTable,
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
+		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 
@@ -298,8 +130,16 @@ func (f *Factory) CreateArchiveSpanWriter() (Writer, error) {
 		indexTable:        cfg.IndexTable,
 		errorTable:        cfg.ErrorTable,
 		attributeTable:    cfg.AttributeTable,
+		attributeTableV2:  cfg.AttributeTableV2,
 		attributeKeyTable: cfg.AttributeKeyTable,
 		encoding:          cfg.Encoding,
+		exporterId:        cfg.ExporterId,
+
+		useNewSchema:      cfg.UseNewSchema,
+		indexTableV3:      cfg.IndexTableV3,
+		resourceTableV3:   cfg.ResourceTableV3,
+		maxDistinctValues: cfg.MaxDistinctValues,
+		fetchKeysInterval: cfg.FetchKeysInterval,
 	})
 }
 

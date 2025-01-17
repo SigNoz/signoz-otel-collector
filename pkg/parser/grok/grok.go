@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
-
+	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
+	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"github.com/vjeantet/grok"
+	"go.opentelemetry.io/collector/component"
 )
 
 const operatorType = "grok_parser"
 
 func init() {
 	operator.Register(operatorType, func() operator.Builder { return NewConfig() })
+	signozlogspipelinestanzaoperator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
 // NewConfig creates a new grok parser config with default values
@@ -26,13 +27,13 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new grok parser config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		ParserConfig: helper.NewParserConfig(operatorID, operatorType),
+		ParserConfig: signozstanzahelper.NewParserConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of a grok parser operator.
 type Config struct {
-	helper.ParserConfig `mapstructure:",squash"`
+	signozstanzahelper.ParserConfig `mapstructure:",squash"`
 
 	// grok pattern
 	Pattern string `mapstructure:"pattern"`
@@ -49,8 +50,8 @@ type Config struct {
 }
 
 // Build will build a grok parser operator.
-func (c Config) Build(logger *zap.SugaredLogger) (operator.Operator, error) {
-	parserOperator, err := c.ParserConfig.Build(logger)
+func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error) {
+	parserOperator, err := c.ParserConfig.Build(set)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ func (c Config) Build(logger *zap.SugaredLogger) (operator.Operator, error) {
 
 	if c.Cache.Size > 0 {
 		op.cache = newMemoryCache(c.Cache.Size, 0)
-		logger.Debugf("configured %s with memory cache of size %d", op.ID(), op.cache.maxSize())
+		set.Logger.Sugar().Debugf("configured %s with memory cache of size %d", op.ID(), op.cache.maxSize())
 	}
 
 	return op, nil
@@ -101,7 +102,7 @@ func (c Config) Build(logger *zap.SugaredLogger) (operator.Operator, error) {
 
 // Parser is an operator that parses grok in an entry.
 type Parser struct {
-	helper.ParserOperator
+	signozstanzahelper.ParserOperator
 	grok               *grok.Grok
 	pattern            string
 	cache              cache

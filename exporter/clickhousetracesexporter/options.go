@@ -16,45 +16,33 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"flag"
-	"fmt"
-	"net/url"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/spf13/viper"
+	"github.com/google/uuid"
 )
 
 const (
 	defaultDatasource               string   = "tcp://127.0.0.1:9000/?database=signoz_traces"
-	defaultTraceDatabase            string   = "signoz_traces"
-	defaultMigrations               string   = "/migrations"
+	DefaultTraceDatabase            string   = "signoz_traces"
 	defaultOperationsTable          string   = "distributed_signoz_operations"
-	defaultIndexTable               string   = "distributed_signoz_index_v2"
-	localIndexTable                 string   = "signoz_index_v2"
+	DefaultIndexTable               string   = "distributed_signoz_index_v2"
+	LocalIndexTable                 string   = "signoz_index_v2"
 	defaultErrorTable               string   = "distributed_signoz_error_index_v2"
 	defaultSpansTable               string   = "distributed_signoz_spans"
 	defaultAttributeTable           string   = "distributed_span_attributes"
+	defaultAttributeTableV2         string   = "distributed_tag_attributes_v2"
 	defaultAttributeKeyTable        string   = "distributed_span_attributes_keys"
-	defaultDurationSortTable        string   = "durationSort"
-	defaultDurationSortMVTable      string   = "durationSortMV"
+	DefaultDurationSortTable        string   = "durationSort"
+	DefaultDurationSortMVTable      string   = "durationSortMV"
 	defaultArchiveSpansTable        string   = "signoz_archive_spans"
-	defaultClusterName              string   = "cluster"
 	defaultDependencyGraphTable     string   = "dependency_graph_minutes"
 	defaultDependencyGraphServiceMV string   = "dependency_graph_minutes_service_calls_mv"
 	defaultDependencyGraphDbMV      string   = "dependency_graph_minutes_db_calls_mv"
 	DependencyGraphMessagingMV      string   = "dependency_graph_minutes_messaging_calls_mv"
 	defaultEncoding                 Encoding = EncodingJSON
-)
-
-const (
-	suffixEnabled         = ".enabled"
-	suffixDatasource      = ".datasource"
-	suffixTraceDatabase   = ".trace-database"
-	suffixMigrations      = ".migrations"
-	suffixOperationsTable = ".operations-table"
-	suffixIndexTable      = ".index-table"
-	suffixSpansTable      = ".spans-table"
-	suffixEncoding        = ".encoding"
+	defaultIndexTableV3             string   = "distributed_signoz_index_v3"
+	defaultResourceTableV3          string   = "distributed_traces_v3_resource"
 )
 
 // NamespaceConfig is Clickhouse's internal configuration data
@@ -62,7 +50,6 @@ type namespaceConfig struct {
 	namespace                  string
 	Enabled                    bool
 	Datasource                 string
-	Migrations                 string
 	TraceDatabase              string
 	OperationsTable            string
 	IndexTable                 string
@@ -70,17 +57,23 @@ type namespaceConfig struct {
 	SpansTable                 string
 	ErrorTable                 string
 	AttributeTable             string
+	AttributeTableV2           string
 	AttributeKeyTable          string
-	Cluster                    string
 	DurationSortTable          string
 	DurationSortMVTable        string
 	DependencyGraphServiceMV   string
 	DependencyGraphDbMV        string
 	DependencyGraphMessagingMV string
 	DependencyGraphTable       string
-	DockerMultiNodeCluster     bool
+	NumConsumers               int
 	Encoding                   Encoding
 	Connector                  Connector
+	ExporterId                 uuid.UUID
+	UseNewSchema               bool
+	IndexTableV3               string
+	ResourceTableV3            string
+	MaxDistinctValues          int
+	FetchKeysInterval          time.Duration
 }
 
 // Connecto defines how to connect to the database
@@ -88,16 +81,19 @@ type Connector func(cfg *namespaceConfig) (clickhouse.Conn, error)
 
 func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 	ctx := context.Background()
-	dsnURL, err := url.Parse(cfg.Datasource)
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
+	options, err := clickhouse.ParseDSN(cfg.Datasource)
+
+	if err != nil {
+		return nil, err
 	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-		options.Auth = auth
+
+	// setting maxOpenIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout`
+	// error when using multiple consumers along with usage exporter
+	maxIdleConnections := cfg.NumConsumers + 1
+
+	if options.MaxIdleConns < maxIdleConnections {
+		options.MaxIdleConns = maxIdleConnections
+		options.MaxOpenConns = maxIdleConnections + 5
 	}
 	db, err := clickhouse.Open(options)
 	if err != nil {
@@ -108,10 +104,6 @@ func defaultConnector(cfg *namespaceConfig) (clickhouse.Conn, error) {
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, dsnURL.Query().Get("database"), cfg.Cluster)
-	if err := db.Exec(ctx, query); err != nil {
-		return nil, err
-	}
 	return db, nil
 }
 
@@ -123,13 +115,11 @@ type Options struct {
 }
 
 // NewOptions creates a new Options struct.
-func NewOptions(migrations string, datasource string, dockerMultiNodeCluster bool, primaryNamespace string, otherNamespaces ...string) *Options {
+func NewOptions(exporterId uuid.UUID, config Config, primaryNamespace string, useNewSchema bool, otherNamespaces ...string) *Options {
 
+	datasource := config.Datasource
 	if datasource == "" {
 		datasource = defaultDatasource
-	}
-	if migrations == "" {
-		migrations = defaultMigrations
 	}
 
 	options := &Options{
@@ -137,25 +127,30 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 			namespace:                  primaryNamespace,
 			Enabled:                    true,
 			Datasource:                 datasource,
-			Migrations:                 migrations,
-			TraceDatabase:              defaultTraceDatabase,
+			TraceDatabase:              DefaultTraceDatabase,
 			OperationsTable:            defaultOperationsTable,
-			IndexTable:                 defaultIndexTable,
-			LocalIndexTable:            localIndexTable,
+			IndexTable:                 DefaultIndexTable,
+			LocalIndexTable:            LocalIndexTable,
 			ErrorTable:                 defaultErrorTable,
 			SpansTable:                 defaultSpansTable,
 			AttributeTable:             defaultAttributeTable,
+			AttributeTableV2:           defaultAttributeTableV2,
 			AttributeKeyTable:          defaultAttributeKeyTable,
-			DurationSortTable:          defaultDurationSortTable,
-			DurationSortMVTable:        defaultDurationSortMVTable,
-			Cluster:                    defaultClusterName,
+			DurationSortTable:          DefaultDurationSortTable,
+			DurationSortMVTable:        DefaultDurationSortMVTable,
 			DependencyGraphTable:       defaultDependencyGraphTable,
 			DependencyGraphServiceMV:   defaultDependencyGraphServiceMV,
 			DependencyGraphDbMV:        defaultDependencyGraphDbMV,
 			DependencyGraphMessagingMV: DependencyGraphMessagingMV,
-			DockerMultiNodeCluster:     dockerMultiNodeCluster,
+			NumConsumers:               config.QueueConfig.NumConsumers,
 			Encoding:                   defaultEncoding,
 			Connector:                  defaultConnector,
+			ExporterId:                 exporterId,
+			UseNewSchema:               useNewSchema,
+			IndexTableV3:               defaultIndexTableV3,
+			ResourceTableV3:            defaultResourceTableV3,
+			MaxDistinctValues:          config.AttributesLimits.MaxDistinctValues,
+			FetchKeysInterval:          config.AttributesLimits.FetchKeysInterval,
 		},
 		others: make(map[string]*namespaceConfig, len(otherNamespaces)),
 	}
@@ -163,14 +158,20 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 	for _, namespace := range otherNamespaces {
 		if namespace == archiveNamespace {
 			options.others[namespace] = &namespaceConfig{
-				namespace:       namespace,
-				Datasource:      datasource,
-				Migrations:      migrations,
-				OperationsTable: "",
-				IndexTable:      "",
-				SpansTable:      defaultArchiveSpansTable,
-				Encoding:        defaultEncoding,
-				Connector:       defaultConnector,
+				namespace:         namespace,
+				Datasource:        datasource,
+				OperationsTable:   "",
+				IndexTable:        "",
+				SpansTable:        defaultArchiveSpansTable,
+				Encoding:          defaultEncoding,
+				Connector:         defaultConnector,
+				ExporterId:        exporterId,
+				UseNewSchema:      useNewSchema,
+				IndexTableV3:      defaultIndexTableV3,
+				ResourceTableV3:   defaultResourceTableV3,
+				AttributeTableV2:  defaultAttributeTableV2,
+				MaxDistinctValues: config.AttributesLimits.MaxDistinctValues,
+				FetchKeysInterval: config.AttributesLimits.FetchKeysInterval,
 			}
 		} else {
 			options.others[namespace] = &namespaceConfig{namespace: namespace}
@@ -180,74 +181,7 @@ func NewOptions(migrations string, datasource string, dockerMultiNodeCluster boo
 	return options
 }
 
-// AddFlags adds flags for Options
-func (opt *Options) AddFlags(flagSet *flag.FlagSet) {
-	addFlags(flagSet, opt.primary)
-	for _, cfg := range opt.others {
-		addFlags(flagSet, cfg)
-	}
-}
-
-func addFlags(flagSet *flag.FlagSet, nsConfig *namespaceConfig) {
-	if nsConfig.namespace == archiveNamespace {
-		flagSet.Bool(
-			nsConfig.namespace+suffixEnabled,
-			nsConfig.Enabled,
-			"Enable archive storage")
-	}
-
-	flagSet.String(
-		nsConfig.namespace+suffixDatasource,
-		nsConfig.Datasource,
-		"Clickhouse datasource string.",
-	)
-
-	if nsConfig.namespace != archiveNamespace {
-		flagSet.String(
-			nsConfig.namespace+suffixOperationsTable,
-			nsConfig.OperationsTable,
-			"Clickhouse operations table name.",
-		)
-
-		flagSet.String(
-			nsConfig.namespace+suffixIndexTable,
-			nsConfig.IndexTable,
-			"Clickhouse index table name.",
-		)
-	}
-
-	flagSet.String(
-		nsConfig.namespace+suffixSpansTable,
-		nsConfig.SpansTable,
-		"Clickhouse spans table name.",
-	)
-
-	flagSet.String(
-		nsConfig.namespace+suffixEncoding,
-		string(nsConfig.Encoding),
-		"Encoding to store spans (json allows out of band queries, protobuf is more compact)",
-	)
-}
-
-// InitFromViper initializes Options with properties from viper
-func (opt *Options) InitFromViper(v *viper.Viper) {
-	initFromViper(opt.primary, v)
-	for _, cfg := range opt.others {
-		initFromViper(cfg, v)
-	}
-}
-
-func initFromViper(cfg *namespaceConfig, v *viper.Viper) {
-	cfg.Enabled = v.GetBool(cfg.namespace + suffixEnabled)
-	cfg.Datasource = v.GetString(cfg.namespace + suffixDatasource)
-	cfg.TraceDatabase = v.GetString(cfg.namespace + suffixTraceDatabase)
-	cfg.IndexTable = v.GetString(cfg.namespace + suffixIndexTable)
-	cfg.SpansTable = v.GetString(cfg.namespace + suffixSpansTable)
-	cfg.OperationsTable = v.GetString(cfg.namespace + suffixOperationsTable)
-	cfg.Encoding = Encoding(v.GetString(cfg.namespace + suffixEncoding))
-}
-
-// GetPrimary returns the primary namespace configuration
+// getPrimary returns the primary namespace configuration
 func (opt *Options) getPrimary() *namespaceConfig {
 	return opt.primary
 }

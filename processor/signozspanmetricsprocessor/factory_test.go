@@ -58,7 +58,7 @@ func TestNewProcessor(t *testing.T) {
 			// Prepare
 			factory := NewFactory()
 
-			creationParams := processortest.NewNopCreateSettings()
+			creationParams := processortest.NewNopSettings()
 			cfg := factory.CreateDefaultConfig().(*Config)
 			cfg.LatencyHistogramBuckets = tc.latencyHistogramBuckets
 			cfg.Dimensions = tc.dimensions

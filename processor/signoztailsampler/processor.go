@@ -71,9 +71,6 @@ const (
 // newTracesProcessor returns a processor.TracesProcessor that will perform tail sampling according to the given
 // configuration.
 func newTracesProcessor(logger *zap.Logger, nextConsumer consumer.Traces, cfg Config) (processor.Traces, error) {
-	if nextConsumer == nil {
-		return nil, component.ErrNilNextConsumer
-	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config invalid: %v", err)

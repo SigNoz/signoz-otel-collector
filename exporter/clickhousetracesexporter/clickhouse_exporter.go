@@ -18,36 +18,45 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
 	"go.uber.org/zap"
 )
 
+const (
+	hasIsRemoteMask uint32 = 0x00000100
+	isRemoteMask    uint32 = 0x00000200
+)
+
 // Crete new exporter.
-func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
+func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Settings) (*storage, error) {
+
+	if err := component.ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
 
 	configClickHouse := cfg.(*Config)
 
-	f := ClickHouseNewFactory(configClickHouse.Migrations, configClickHouse.Datasource, configClickHouse.DockerMultiNodeCluster)
+	id := uuid.New()
+
+	f := ClickHouseNewFactory(id, *configClickHouse, settings)
 
 	err := f.Initialize(logger)
-	if err != nil {
-		return nil, err
-	}
-	err = initFeatures(f.db, f.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -57,29 +66,43 @@ func newExporter(cfg component.Config, logger *zap.Logger) (*storage, error) {
 	}
 
 	collector := usage.NewUsageCollector(
+		id,
 		f.db,
 		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
 		"signoz_traces",
 		UsageExporter,
 	)
-	if err != nil {
-		log.Fatalf("Error creating usage collector for traces: %v", err)
-	}
 	collector.Start()
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil, err
 	}
 
-	storage := storage{Writer: spanWriter, usageCollector: collector, config: storageConfig{lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping}}
+	storage := storage{
+		id:             id,
+		Writer:         spanWriter,
+		usageCollector: collector,
+		config: storageConfig{
+			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
+		},
+		wg:           new(sync.WaitGroup),
+		closeChan:    make(chan struct{}),
+		useNewSchema: configClickHouse.UseNewSchema,
+		logger:       logger,
+	}
 
 	return &storage, nil
 }
 
 type storage struct {
+	id             uuid.UUID
 	Writer         Writer
 	usageCollector *usage.UsageCollector
 	config         storageConfig
+	wg             *sync.WaitGroup
+	closeChan      chan struct{}
+	useNewSchema   bool
+	logger         *zap.Logger
 }
 
 type storageConfig struct {
@@ -150,19 +173,15 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == "http.status_code" {
+		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
 			statusString, err := strconv.Atoi(v.Str())
 			statusInt := v.Int()
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			if statusInt >= 400 {
-				span.HasError = true
-			}
-			span.HttpCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.HttpCode
-		} else if k == "http.url" && span.Kind == 3 {
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
 			value := v.Str()
 			valueUrl, err := url.Parse(value)
 			if err == nil {
@@ -170,28 +189,28 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
-		} else if k == "http.method" && span.Kind == 3 {
+		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
-		} else if k == "http.url" && span.Kind != 3 {
+
+		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
-		} else if k == "http.method" && span.Kind != 3 {
+		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
 		} else if k == "http.route" {
 			span.HttpRoute = v.Str()
-		} else if k == "http.host" {
+		} else if k == "http.host" || k == "server.address" ||
+			k == "client.address" || k == "http.request.header.host" {
 			span.HttpHost = v.Str()
 		} else if k == "messaging.system" {
 			span.MsgSystem = v.Str()
 		} else if k == "messaging.operation" {
 			span.MsgOperation = v.Str()
-		} else if k == "component" {
-			span.Component = v.Str()
 		} else if k == "db.system" {
 			span.DBSystem = v.Str()
-		} else if k == "db.name" {
+		} else if k == "db.name" || k == "db.namespace" {
 			span.DBName = v.Str()
-		} else if k == "db.operation" {
+		} else if k == "db.operation" || k == "db.operation.name" {
 			span.DBOperation = v.Str()
 		} else if k == "peer.service" {
 			span.PeerService = v.Str()
@@ -202,17 +221,9 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			if err == nil && statusString != 0 {
 				statusInt = int64(statusString)
 			}
-			if statusInt >= 2 {
-				span.HasError = true
-			}
-			span.GRPCCode = strconv.FormatInt(statusInt, 10)
-			span.ResponseStatusCode = span.GRPCCode
+			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
 		} else if k == "rpc.method" {
 			span.RPCMethod = v.Str()
-			system, found := attributes.Get("rpc.system")
-			if found && system.Str() == "grpc" {
-				span.GRPCMethod = v.Str()
-			}
 		} else if k == "rpc.service" {
 			span.RPCService = v.Str()
 		} else if k == "rpc.system" {
@@ -265,6 +276,15 @@ func populateTraceModel(span *Span) {
 func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) *Span {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
+	isRemote := "unknown"
+	flags := otelSpan.Flags()
+	if flags&hasIsRemoteMask != 0 {
+		isRemote = "no"
+		if flags&isRemoteMask != 0 {
+			isRemote = "yes"
+		}
+	}
+
 	attributes := otelSpan.Attributes()
 	resourceAttributes := resource.Attributes()
 	tagMap := map[string]string{}
@@ -283,9 +303,14 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			IsColumn: false,
 		}
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -312,9 +337,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		}
 		resourceAttrs[k] = v.AsString()
 		if v.Type() == pcommon.ValueTypeDouble {
-			numberTagMap[k] = v.Double()
-			spanAttribute.NumberValue = v.Double()
-			spanAttribute.DataType = "float64"
+			if utils.IsValidFloat(v.Double()) {
+				numberTagMap[k] = v.Double()
+				spanAttribute.NumberValue = v.Double()
+				spanAttribute.DataType = "float64"
+			} else {
+				zap.S().Warn("NaN value in tag map, skipping key: ", zap.String("key", k))
+				return true
+			}
+
 		} else if v.Type() == pcommon.ValueTypeInt {
 			numberTagMap[k] = float64(v.Int())
 			spanAttribute.NumberValue = float64(v.Int())
@@ -345,13 +376,15 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 		DurationNano:      durationNano,
 		ServiceName:       ServiceName,
 		Kind:              int8(otelSpan.Kind()),
+		SpanKind:          otelSpan.Kind().String(),
 		StatusCode:        int16(otelSpan.Status().Code()),
-		TagMap:            tagMap,
 		StringTagMap:      stringTagMap,
 		NumberTagMap:      numberTagMap,
 		BoolTagMap:        boolTagMap,
 		ResourceTagsMap:   resourceAttrs,
 		HasError:          false,
+		StatusMessage:     otelSpan.Status().Message(),
+		StatusCodeString:  otelSpan.Status().Code().String(),
 		TraceModel: TraceModel{
 			TraceId:           utils.TraceIDToHexOrEmptyString(otelSpan.TraceID()),
 			SpanId:            utils.SpanIDToHexOrEmptyString(otelSpan.SpanID()),
@@ -360,17 +393,20 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 			StartTimeUnixNano: uint64(otelSpan.StartTimestamp()),
 			ServiceName:       ServiceName,
 			Kind:              int8(otelSpan.Kind()),
+			SpanKind:          otelSpan.Kind().String(),
 			References:        references,
 			TagMap:            tagMap,
 			StringTagMap:      stringTagMap,
 			NumberTagMap:      numberTagMap,
 			BoolTagMap:        boolTagMap,
 			HasError:          false,
+			StatusMessage:     otelSpan.Status().Message(),
+			StatusCodeString:  otelSpan.Status().Code().String(),
 		},
-		Tenant: &tenant,
+		Tenant:   &tenant,
+		IsRemote: isRemote,
 	}
-
-	if span.StatusCode == 2 {
+	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
 	populateOtherDimensions(attributes, span)
@@ -383,38 +419,58 @@ func newStructuredSpan(otelSpan ptrace.Span, ServiceName string, resource pcommo
 
 // traceDataPusher implements OTEL exporterhelper.traceDataPusher
 func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+	// if the new schema is enabled don't write to the old tables
+	err := s.pushTraceDataV3(ctx, td)
+	if err != nil {
+		return err
+	}
+	// if new schema is forced exit here else write to the old tables as well.
+	if s.useNewSchema {
+		return nil
+	}
 
-	rss := td.ResourceSpans()
-	var batchOfSpans []*Span
-	for i := 0; i < rss.Len(); i++ {
-		// fmt.Printf("ResourceSpans #%d\n", i)
-		rs := rss.At(i)
+	s.wg.Add(1)
+	defer s.wg.Done()
 
-		serviceName := ServiceNameForResource(rs.Resource())
+	select {
+	case <-s.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		rss := td.ResourceSpans()
+		var batchOfSpans []*Span
+		for i := 0; i < rss.Len(); i++ {
+			rs := rss.At(i)
 
-		ilss := rs.ScopeSpans()
-		for j := 0; j < ilss.Len(); j++ {
-			// fmt.Printf("InstrumentationLibrarySpans #%d\n", j)
-			ils := ilss.At(j)
+			serviceName := ServiceNameForResource(rs.Resource())
 
-			spans := ils.Spans()
+			ilss := rs.ScopeSpans()
+			for j := 0; j < ilss.Len(); j++ {
+				ils := ilss.At(j)
 
-			for k := 0; k < spans.Len(); k++ {
-				span := spans.At(k)
-				structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
-				batchOfSpans = append(batchOfSpans, structuredSpan)
+				spans := ils.Spans()
+
+				for k := 0; k < spans.Len(); k++ {
+					span := spans.At(k)
+					structuredSpan := newStructuredSpan(span, serviceName, rs.Resource(), s.config)
+					batchOfSpans = append(batchOfSpans, structuredSpan)
+				}
 			}
 		}
+		err := s.Writer.WriteBatchOfSpans(ctx, batchOfSpans)
+		if err != nil {
+			zap.S().Error("Error in writing spans to clickhouse: ", err)
+			return err
+		}
+		return nil
 	}
-	err := s.Writer.WriteBatchOfSpans(batchOfSpans)
-	if err != nil {
-		zap.S().Error("Error in writing spans to clickhouse: ", err)
-	}
-	return nil
 }
 
 // Shutdown will shutdown the exporter.
 func (s *storage) Shutdown(_ context.Context) error {
+
+	close(s.closeChan)
+	s.wg.Wait()
+
 	if s.usageCollector != nil {
 		s.usageCollector.Stop()
 	}
@@ -470,6 +526,13 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		NumberValue: float64(span.Kind),
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "spanKind",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.SpanKind,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "durationNano",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -490,6 +553,20 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		DataType: "bool",
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusMessage",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.StatusMessage,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "statusCodeString",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.StatusCodeString,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "externalHttpMethod",
 		TagType:     "tag",
 		IsColumn:    true,
@@ -502,13 +579,6 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.ExternalHttpUrl,
-	})
-	spanAttributes = append(spanAttributes, SpanAttribute{
-		Key:         "component",
-		TagType:     "tag",
-		IsColumn:    true,
-		DataType:    "string",
-		StringValue: span.Component,
 	})
 	spanAttributes = append(spanAttributes, SpanAttribute{
 		Key:         "dbSystem",

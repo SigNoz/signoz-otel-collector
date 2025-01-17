@@ -33,14 +33,5 @@ func ParseAgentManagerConfig(configLocation string) (*AgentManagerConfig, error)
 		config.ID = ulid.MustNew(ulid.Now(), nil).String()
 	}
 
-	// Write back the config file with the generated ID
-	data, err = yaml.Marshal(&config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config: %w", err)
-	}
-	if err := os.WriteFile(configLocation, data, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write config file %s: %w", configLocation, err)
-	}
-
 	return &config, nil
 }

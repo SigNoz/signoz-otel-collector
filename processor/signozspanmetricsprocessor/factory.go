@@ -16,26 +16,29 @@ package signozspanmetricsprocessor
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/tilinna/clock"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
+	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 )
 
 const (
 	// The value of "type" key in configuration.
 	typeStr = "signozspanmetrics"
 	// The stability level of the processor.
-	stability = component.StabilityLevelBeta
-
-	signozID = "signoz.collector.id"
+	stability                              = component.StabilityLevelBeta
+	maxNumberOfServicesToTrack             = 256
+	maxNumberOfOperationsToTrackPerService = 2048
 )
 
 // NewFactory creates a factory for the spanmetrics processor.
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		processor.WithTraces(createTracesProcessor, stability),
 	)
@@ -43,15 +46,33 @@ func NewFactory() processor.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-		DimensionsCacheSize:    defaultDimensionsCacheSize,
-		skipSanitizeLabel:      dropSanitizationFeatureGate.IsEnabled(),
+		AggregationTemporality:         "AGGREGATION_TEMPORALITY_CUMULATIVE",
+		DimensionsCacheSize:            defaultDimensionsCacheSize,
+		skipSanitizeLabel:              dropSanitizationFeatureGate.IsEnabled(),
+		MetricsFlushInterval:           60 * time.Second,
+		EnableExpHistogram:             false,
+		MaxServicesToTrack:             maxNumberOfServicesToTrack,
+		MaxOperationsToTrackPerService: maxNumberOfOperationsToTrackPerService,
 	}
 }
 
-func createTracesProcessor(_ context.Context, params processor.CreateSettings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
-	// TODO(srikanthccv): use the instanceID from params when it is added
-	instanceUUID, _ := uuid.NewRandom()
-	instanceID := instanceUUID.String()
-	return newProcessor(params.Logger, instanceID, cfg, nextConsumer)
+func createTracesProcessor(ctx context.Context, params processor.Settings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
+	var instanceID string
+	serviceInstanceId, ok := params.Resource.Attributes().Get(semconv.AttributeServiceInstanceID)
+	if ok {
+		instanceID = serviceInstanceId.AsString()
+	} else {
+		instanceUUID, _ := uuid.NewRandom()
+		instanceID = instanceUUID.String()
+	}
+	p, err := newProcessor(params.Logger, instanceID, cfg, metricsTicker(ctx, cfg))
+	if err != nil {
+		return nil, err
+	}
+	p.tracesConsumer = nextConsumer
+	return p, nil
+}
+
+func metricsTicker(ctx context.Context, cfg component.Config) *clock.Ticker {
+	return clock.FromContext(ctx).NewTicker(cfg.(*Config).MetricsFlushInterval)
 }

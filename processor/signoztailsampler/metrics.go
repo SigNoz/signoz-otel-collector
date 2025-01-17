@@ -19,7 +19,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/config/configtelemetry"
-	"go.opentelemetry.io/collector/obsreport"
+	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
 // Variables related to metrics specific to tail sampling.
@@ -55,34 +55,34 @@ func SamplingProcessorMetricViews(level configtelemetry.Level) []*view.View {
 	ageDistributionAggregation := view.Distribution(1, 2, 5, 10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600, 1800, 3600, 7200)
 
 	decisionLatencyView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statDecisionLatencyMicroSec.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statDecisionLatencyMicroSec.Name()),
 		Measure:     statDecisionLatencyMicroSec,
 		Description: statDecisionLatencyMicroSec.Description(),
 		TagKeys:     policyTagKeys,
 		Aggregation: latencyDistributionAggregation,
 	}
 	overallDecisionLatencyView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statOverallDecisionLatencyUs.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statOverallDecisionLatencyUs.Name()),
 		Measure:     statOverallDecisionLatencyUs,
 		Description: statOverallDecisionLatencyUs.Description(),
 		Aggregation: latencyDistributionAggregation,
 	}
 
 	traceRemovalAgeView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statTraceRemovalAgeSec.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statTraceRemovalAgeSec.Name()),
 		Measure:     statTraceRemovalAgeSec,
 		Description: statTraceRemovalAgeSec.Description(),
 		Aggregation: ageDistributionAggregation,
 	}
 	lateSpanArrivalView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statLateSpanArrivalAfterDecision.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statLateSpanArrivalAfterDecision.Name()),
 		Measure:     statLateSpanArrivalAfterDecision,
 		Description: statLateSpanArrivalAfterDecision.Description(),
 		Aggregation: ageDistributionAggregation,
 	}
 
 	countPolicyEvaluationErrorView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statPolicyEvaluationErrorCount.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statPolicyEvaluationErrorCount.Name()),
 		Measure:     statPolicyEvaluationErrorCount,
 		Description: statPolicyEvaluationErrorCount.Description(),
 		Aggregation: view.Sum(),
@@ -90,7 +90,7 @@ func SamplingProcessorMetricViews(level configtelemetry.Level) []*view.View {
 
 	sampledTagKeys := []tag.Key{tagPolicyKey, tagSampledKey}
 	countTracesSampledView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statCountTracesSampled.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statCountTracesSampled.Name()),
 		Measure:     statCountTracesSampled,
 		Description: statCountTracesSampled.Description(),
 		TagKeys:     sampledTagKeys,
@@ -98,19 +98,19 @@ func SamplingProcessorMetricViews(level configtelemetry.Level) []*view.View {
 	}
 
 	countTraceDroppedTooEarlyView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statDroppedTooEarlyCount.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statDroppedTooEarlyCount.Name()),
 		Measure:     statDroppedTooEarlyCount,
 		Description: statDroppedTooEarlyCount.Description(),
 		Aggregation: view.Sum(),
 	}
 	countTraceIDArrivalView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statNewTraceIDReceivedCount.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statNewTraceIDReceivedCount.Name()),
 		Measure:     statNewTraceIDReceivedCount,
 		Description: statNewTraceIDReceivedCount.Description(),
 		Aggregation: view.Sum(),
 	}
 	trackTracesOnMemorylView := &view.View{
-		Name:        obsreport.BuildProcessorCustomMetricName(typeStr, statTracesOnMemoryGauge.Name()),
+		Name:        processorhelper.BuildCustomMetricName(typeStr, statTracesOnMemoryGauge.Name()),
 		Measure:     statTracesOnMemoryGauge,
 		Description: statTracesOnMemoryGauge.Description(),
 		Aggregation: view.LastValue(),

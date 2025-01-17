@@ -16,8 +16,10 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -30,16 +32,21 @@ const (
 )
 
 func createDefaultConfig() component.Config {
-	// opts := NewOptions(primaryNamespace, archiveNamespace)
 	return &Config{
-		// Options:          *opts,
+		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
+		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 10 * time.Minute,
+			MaxDistinctValues: 25000,
+		},
 	}
 }
 
 // NewFactory creates a factory for Logging exporter
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		exporter.WithTraces(createTracesExporter, component.StabilityLevelUndefined),
 	)
@@ -47,11 +54,12 @@ func NewFactory() exporter.Factory {
 
 func createTracesExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 
-	oce, err := newExporter(cfg, params.Logger)
+	c := cfg.(*Config)
+	oce, err := newExporter(cfg, params.Logger, params)
 	if err != nil {
 		return nil, err
 	}
@@ -61,5 +69,8 @@ func createTracesExporter(
 		params,
 		cfg,
 		oce.pushTraceData,
-		exporterhelper.WithShutdown(oce.Shutdown))
+		exporterhelper.WithShutdown(oce.Shutdown),
+		exporterhelper.WithTimeout(c.TimeoutConfig),
+		exporterhelper.WithQueue(c.QueueConfig),
+		exporterhelper.WithRetry(c.BackOffConfig))
 }

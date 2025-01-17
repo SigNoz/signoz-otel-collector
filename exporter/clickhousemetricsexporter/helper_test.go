@@ -340,39 +340,30 @@ func Test_batchTimeSeries(t *testing.T) {
 		tsMap               map[string]*prompb.TimeSeries
 		maxBatchByteSize    int
 		numExpectedRequests int
-		returnErr           bool
 	}{
 		{
 			"no_timeseries",
 			tsMap1,
 			100,
-			-1,
-			true,
+			0,
 		},
 		{
 			"normal_case",
 			tsMap2,
 			300,
 			1,
-			false,
 		},
 		{
 			"two_requests",
 			tsMap3,
 			300,
 			2,
-			false,
 		},
 	}
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			requests, err := batchTimeSeries(tt.tsMap, tt.maxBatchByteSize)
-			if tt.returnErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
+			requests := batchTimeSeries(tt.tsMap, tt.maxBatchByteSize)
 			assert.Equal(t, tt.numExpectedRequests, len(requests))
 		})
 	}

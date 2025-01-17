@@ -1,0 +1,17 @@
+name: postci
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - synchronize
+
+jobs:
+  remove:
+    uses: signoz/primus.workflows/.github/workflows/github-label.yaml@main
+    secrets: inherit
+    with:
+      PRIMUS_REF: main
+      GITHUB_LABEL_ACTION: remove
+      GITHUB_LABEL_NAME: safe-to-test

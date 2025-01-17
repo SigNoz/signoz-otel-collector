@@ -28,7 +28,6 @@ import (
 	"go.opentelemetry.io/collector/processor/batchprocessor"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver"
 )
@@ -36,24 +35,33 @@ import (
 func TestLoadConfig(t *testing.T) {
 	defaultMethod := "GET"
 	testcases := []struct {
-		configFile                  string
-		wantMetricsExporter         string
-		wantLatencyHistogramBuckets []time.Duration
-		wantDimensions              []Dimension
-		wantDimensionsCacheSize     int
-		wantAggregationTemporality  string
+		configFile                         string
+		wantMetricsExporter                string
+		wantLatencyHistogramBuckets        []time.Duration
+		wantDimensions                     []Dimension
+		wantDimensionsCacheSize            int
+		wantAggregationTemporality         string
+		wantMetricsFlushInterval           time.Duration
+		wantMaxServicesToTrack             int
+		wantMaxOperationsToTrackPerService int
 	}{
 		{
-			configFile:                 "config-2-pipelines.yaml",
-			wantMetricsExporter:        "prometheus",
-			wantAggregationTemporality: cumulative,
-			wantDimensionsCacheSize:    500,
+			configFile:                         "config-2-pipelines.yaml",
+			wantMetricsExporter:                "prometheus",
+			wantAggregationTemporality:         cumulative,
+			wantDimensionsCacheSize:            500,
+			wantMetricsFlushInterval:           30 * time.Second,
+			wantMaxServicesToTrack:             256,
+			wantMaxOperationsToTrackPerService: 2048,
 		},
 		{
-			configFile:                 "config-3-pipelines.yaml",
-			wantMetricsExporter:        "otlp/spanmetrics",
-			wantAggregationTemporality: cumulative,
-			wantDimensionsCacheSize:    defaultDimensionsCacheSize,
+			configFile:                         "config-3-pipelines.yaml",
+			wantMetricsExporter:                "otlp/spanmetrics",
+			wantAggregationTemporality:         cumulative,
+			wantDimensionsCacheSize:            defaultDimensionsCacheSize,
+			wantMetricsFlushInterval:           60 * time.Second,
+			wantMaxServicesToTrack:             256,
+			wantMaxOperationsToTrackPerService: 2048,
 		},
 		{
 			configFile:          "config-full.yaml",
@@ -71,8 +79,11 @@ func TestLoadConfig(t *testing.T) {
 				{"http.method", &defaultMethod},
 				{"http.status_code", nil},
 			},
-			wantDimensionsCacheSize:    1500,
-			wantAggregationTemporality: delta,
+			wantDimensionsCacheSize:            1500,
+			wantAggregationTemporality:         delta,
+			wantMetricsFlushInterval:           60 * time.Second,
+			wantMaxServicesToTrack:             512,
+			wantMaxOperationsToTrackPerService: 69420,
 		},
 	}
 	for _, tc := range testcases {
@@ -81,15 +92,14 @@ func TestLoadConfig(t *testing.T) {
 			factories, err := otelcoltest.NopFactories()
 			require.NoError(t, err)
 
-			factories.Receivers["otlp"] = otlpreceiver.NewFactory()
-			factories.Receivers["jaeger"] = jaegerreceiver.NewFactory()
+			factories.Receivers[component.MustNewType("otlp")] = otlpreceiver.NewFactory()
+			factories.Receivers[component.MustNewType("jaeger")] = jaegerreceiver.NewFactory()
 
-			factories.Processors[typeStr] = NewFactory()
-			factories.Processors["batch"] = batchprocessor.NewFactory()
+			factories.Processors[component.MustNewType(typeStr)] = NewFactory()
+			factories.Processors[component.MustNewType("batch")] = batchprocessor.NewFactory()
 
-			factories.Exporters["otlp"] = otlpexporter.NewFactory()
-			factories.Exporters["prometheus"] = prometheusexporter.NewFactory()
-			factories.Exporters["jaeger"] = jaegerexporter.NewFactory()
+			factories.Exporters[component.MustNewType("otlp")] = otlpexporter.NewFactory()
+			factories.Exporters[component.MustNewType("prometheus")] = prometheusexporter.NewFactory()
 
 			// Test
 			cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", tc.configFile), factories)
@@ -99,13 +109,16 @@ func TestLoadConfig(t *testing.T) {
 			require.NotNil(t, cfg)
 			assert.Equal(t,
 				&Config{
-					MetricsExporter:         tc.wantMetricsExporter,
-					LatencyHistogramBuckets: tc.wantLatencyHistogramBuckets,
-					Dimensions:              tc.wantDimensions,
-					DimensionsCacheSize:     tc.wantDimensionsCacheSize,
-					AggregationTemporality:  tc.wantAggregationTemporality,
+					MetricsExporter:                tc.wantMetricsExporter,
+					LatencyHistogramBuckets:        tc.wantLatencyHistogramBuckets,
+					Dimensions:                     tc.wantDimensions,
+					DimensionsCacheSize:            tc.wantDimensionsCacheSize,
+					AggregationTemporality:         tc.wantAggregationTemporality,
+					MetricsFlushInterval:           tc.wantMetricsFlushInterval,
+					MaxServicesToTrack:             tc.wantMaxServicesToTrack,
+					MaxOperationsToTrackPerService: tc.wantMaxOperationsToTrackPerService,
 				},
-				cfg.Processors[component.NewID(typeStr)],
+				cfg.Processors[component.NewID(component.MustNewType(typeStr))],
 			)
 		})
 	}

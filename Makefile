@@ -1,6 +1,7 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
 IMAGE_NAME ?= signoz-otel-collector
+MIGRATOR_IMAGE_NAME ?= signoz-schema-migrator
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
@@ -36,7 +37,8 @@ build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o signoz-collector ./cmd/signozcollector
 
 .PHONY: build-static
-	CGO_ENABLED=1 go build -tags timetzdata -o build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
+	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-collector -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozcollector
+	CGO_ENABLED=1 go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator -ldflags "-linkmode external -extldflags '-static' -s -w ${LD_FLAGS}" ./cmd/signozschemamigrator
 
 .PHONY: amd64
 amd64:
@@ -76,6 +78,24 @@ build-signoz-collector:
 		--no-cache -f cmd/signozcollector/Dockerfile --progress plain \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
+.PHONY: build-signoz-schema-migrator
+build-signoz-schema-migrator:
+	@echo "------------------"
+	@echo  "--> Build schema migrator docker image"
+	@echo "------------------"
+	docker build --build-arg TARGETPLATFORM="linux/amd64" \
+		--no-cache -f cmd/signozschemamigrator/Dockerfile --progress plain \
+		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
+
+.PHONY: build-and-push-signoz-schema-migrator
+build-and-push-signoz-schema-migrator:
+	@echo "------------------"
+	@echo  "--> Build and push schema migrator docker image"
+	@echo "------------------"
+	docker buildx build --platform linux/amd64,linux/arm64 --progress plain \
+		--no-cache --push -f cmd/signozschemamigrator/Dockerfile \
+		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
+
 .PHONY: lint
 lint:
 	@echo "Running linters..."
@@ -86,12 +106,3 @@ install-ci: install-tools
 
 .PHONY: test-ci
 test-ci: lint
-
-
-.PHONY: migrate-logs
-migrate-logs: 
-	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" up
-
-.PHONY: migrate-logs-down
-migrate-logs-down: 
-	migrate -verbose  -path "./exporter/clickhouselogsexporter/migrations/" -database "clickhouse://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}?database=signoz_logs&x-multi-statement=true" down

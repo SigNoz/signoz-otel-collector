@@ -21,13 +21,14 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for Remote Write exporter.
 type Config struct {
-	exporterhelper.TimeoutSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
-	exporterhelper.RetrySettings   `mapstructure:"retry_on_failure"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
+	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
 	// QueueConfig allows users to fine tune the queues
 	// that handle outgoing requests.
 	RemoteWriteQueue RemoteWriteQueue `mapstructure:"remote_write_queue"`
@@ -38,7 +39,7 @@ type Config struct {
 	// ExternalLabels defines a map of label keys and values that are allowed to start with reserved prefix "__"
 	ExternalLabels map[string]string `mapstructure:"external_labels"`
 
-	HTTPClientSettings confighttp.HTTPClientSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
+	HTTPClientSettings confighttp.ClientConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
 
 	// ResourceToTelemetrySettings is the option for converting resource attributes to telemetry attributes.
 	// "Enabled" - A boolean field to enable/disable this option. Default is `false`.
@@ -46,6 +47,10 @@ type Config struct {
 	ResourceToTelemetrySettings resourcetotelemetry.Settings `mapstructure:"resource_to_telemetry_conversion"`
 
 	WatcherInterval time.Duration `mapstructure:"watcher_interval"`
+
+	WriteTSToV4   bool `mapstructure:"write_ts_to_v4"`
+	DisableV2     bool `mapstructure:"disable_v2"`
+	EnableExpHist bool `mapstructure:"enable_exp_hist"`
 }
 
 // RemoteWriteQueue allows to configure the remote write queue.

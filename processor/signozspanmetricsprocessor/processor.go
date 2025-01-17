@@ -26,30 +26,37 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/lightstep/go-expohisto/structure"
+	"github.com/tilinna/clock"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pipeline"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/cache"
 )
 
 const (
-	serviceNameKey     = conventions.AttributeServiceName
-	operationKey       = "operation"   // OpenTelemetry non-standard constant.
-	spanKindKey        = "span.kind"   // OpenTelemetry non-standard constant.
-	statusCodeKey      = "status.code" // OpenTelemetry non-standard constant.
-	tagHTTPStatusCode  = conventions.AttributeHTTPStatusCode
-	metricKeySeparator = string(byte(0))
-	traceIDKey         = "trace_id"
+	serviceNameKey          = conventions.AttributeServiceName
+	operationKey            = "operation"   // OpenTelemetry non-standard constant.
+	spanKindKey             = "span.kind"   // OpenTelemetry non-standard constant.
+	statusCodeKey           = "status.code" // OpenTelemetry non-standard constant.
+	tagHTTPStatusCode       = conventions.AttributeHTTPStatusCode
+	tagHTTPStatusCodeStable = "http.response.status_code"
+	metricKeySeparator      = string(byte(0))
+	traceIDKey              = "trace_id"
+
+	signozID = "signoz.collector.id"
 
 	defaultDimensionsCacheSize = 1000
 	resourcePrefix             = "resource_"
+	overflowServiceName        = "overflow_service"
+	overflowOperation          = "overflow_operation"
 )
 
 var (
@@ -64,6 +71,10 @@ type exemplarData struct {
 	value   float64
 }
 
+type exponentialHistogram struct {
+	histogram *structure.Histogram[float64]
+}
+
 type metricKey string
 
 type processorImp struct {
@@ -72,11 +83,12 @@ type processorImp struct {
 	instanceID string
 	config     Config
 
-	metricsExporter exporter.Metrics
-	nextConsumer    consumer.Traces
+	metricsConsumer consumer.Metrics
+	tracesConsumer  consumer.Traces
 
 	// Additional dimensions to add to metrics.
 	dimensions             []dimension // signoz_latency metric
+	expDimensions          []dimension // signoz_latency exphisto metric
 	callDimensions         []dimension // signoz_calls_total metric
 	dbCallDimensions       []dimension // signoz_db_latency_* metric
 	externalCallDimensions []dimension // signoz_external_call_latency_* metric
@@ -87,6 +99,8 @@ type processorImp struct {
 	// Histogram.
 	histograms    map[metricKey]*histogramData // signoz_latency metric
 	latencyBounds []float64
+
+	expHistograms map[metricKey]*exponentialHistogram
 
 	callHistograms    map[metricKey]*histogramData // signoz_calls_total metric
 	callLatencyBounds []float64
@@ -102,12 +116,23 @@ type processorImp struct {
 	// An LRU cache of dimension key-value maps keyed by a unique identifier formed by a concatenation of its values:
 	// e.g. { "foo/barOK": { "serviceName": "foo", "operation": "/bar", "status_code": "OK" }}
 	metricKeyToDimensions             *cache.Cache[metricKey, pcommon.Map]
+	expHistogramKeyToDimensions       *cache.Cache[metricKey, pcommon.Map]
 	callMetricKeyToDimensions         *cache.Cache[metricKey, pcommon.Map]
 	dbCallMetricKeyToDimensions       *cache.Cache[metricKey, pcommon.Map]
 	externalCallMetricKeyToDimensions *cache.Cache[metricKey, pcommon.Map]
 
 	attrsCardinality    map[string]map[string]struct{}
 	excludePatternRegex map[string]*regexp.Regexp
+
+	ticker  *clock.Ticker
+	done    chan struct{}
+	started bool
+
+	shutdownOnce sync.Once
+
+	serviceToOperations                    map[string]map[string]struct{}
+	maxNumberOfServicesToTrack             int
+	maxNumberOfOperationsToTrackPerService int
 }
 
 type dimension struct {
@@ -137,8 +162,41 @@ type histogramData struct {
 	exemplarsData []exemplarData
 }
 
-func newProcessor(logger *zap.Logger, instanceID string, config component.Config, nextConsumer consumer.Traces) (*processorImp, error) {
-	logger.Info("Building signozspanmetricsprocessor")
+func expoHistToExponentialDataPoint(agg *structure.Histogram[float64], dp pmetric.ExponentialHistogramDataPoint) {
+	dp.SetCount(agg.Count())
+	dp.SetSum(agg.Sum())
+	if agg.Count() != 0 {
+		dp.SetMin(agg.Min())
+		dp.SetMax(agg.Max())
+	}
+
+	dp.SetZeroCount(agg.ZeroCount())
+	dp.SetScale(agg.Scale())
+
+	for _, half := range []struct {
+		inFunc  func() *structure.Buckets
+		outFunc func() pmetric.ExponentialHistogramDataPointBuckets
+	}{
+		{agg.Positive, dp.Positive},
+		{agg.Negative, dp.Negative},
+	} {
+		in := half.inFunc()
+		out := half.outFunc()
+		out.SetOffset(in.Offset())
+		out.BucketCounts().EnsureCapacity(int(in.Len()))
+
+		for i := uint32(0); i < in.Len(); i++ {
+			out.BucketCounts().Append(in.At(i))
+		}
+	}
+}
+
+func (h *exponentialHistogram) Observe(value float64) {
+	h.histogram.Update(value)
+}
+
+func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
+	logger.Info("Building signozspanmetricsprocessor with config", zap.Any("config", config))
 	pConfig := config.(*Config)
 
 	bounds := defaultLatencyHistogramBucketsMs
@@ -176,6 +234,11 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	if err != nil {
 		return nil, err
 	}
+	expHistogramKeyToDimensionsCache, err := cache.NewCache[metricKey, pcommon.Map](pConfig.DimensionsCacheSize)
+	if err != nil {
+		return nil, err
+	}
+
 	callMetricKeyToDimensionsCache, err := cache.NewCache[metricKey, pcommon.Map](pConfig.DimensionsCacheSize)
 	if err != nil {
 		return nil, err
@@ -195,30 +258,37 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	}
 
 	return &processorImp{
-		logger:                            logger,
-		instanceID:                        instanceID,
-		config:                            *pConfig,
-		startTimestamp:                    pcommon.NewTimestampFromTime(time.Now()),
-		histograms:                        make(map[metricKey]*histogramData),
-		callHistograms:                    make(map[metricKey]*histogramData),
-		dbCallHistograms:                  make(map[metricKey]*histogramData),
-		externalCallHistograms:            make(map[metricKey]*histogramData),
-		latencyBounds:                     bounds,
-		callLatencyBounds:                 bounds,
-		dbCallLatencyBounds:               bounds,
-		externalCallLatencyBounds:         bounds,
-		nextConsumer:                      nextConsumer,
-		dimensions:                        newDimensions(pConfig.Dimensions),
-		callDimensions:                    newDimensions(callDimensions),
-		dbCallDimensions:                  newDimensions(dbCallDimensions),
-		externalCallDimensions:            newDimensions(externalCallDimensions),
-		keyBuf:                            bytes.NewBuffer(make([]byte, 0, 1024)),
-		metricKeyToDimensions:             metricKeyToDimensionsCache,
-		callMetricKeyToDimensions:         callMetricKeyToDimensionsCache,
-		dbCallMetricKeyToDimensions:       dbMetricKeyToDimensionsCache,
-		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensionsCache,
-		attrsCardinality:                  make(map[string]map[string]struct{}),
-		excludePatternRegex:               excludePatternRegex,
+		logger:                                 logger,
+		instanceID:                             instanceID,
+		config:                                 *pConfig,
+		startTimestamp:                         pcommon.NewTimestampFromTime(time.Now()),
+		histograms:                             make(map[metricKey]*histogramData),
+		expHistograms:                          make(map[metricKey]*exponentialHistogram),
+		callHistograms:                         make(map[metricKey]*histogramData),
+		dbCallHistograms:                       make(map[metricKey]*histogramData),
+		externalCallHistograms:                 make(map[metricKey]*histogramData),
+		latencyBounds:                          bounds,
+		callLatencyBounds:                      bounds,
+		dbCallLatencyBounds:                    bounds,
+		externalCallLatencyBounds:              bounds,
+		dimensions:                             newDimensions(pConfig.Dimensions),
+		expDimensions:                          newDimensions(pConfig.Dimensions),
+		callDimensions:                         newDimensions(callDimensions),
+		dbCallDimensions:                       newDimensions(dbCallDimensions),
+		externalCallDimensions:                 newDimensions(externalCallDimensions),
+		keyBuf:                                 bytes.NewBuffer(make([]byte, 0, 1024)),
+		metricKeyToDimensions:                  metricKeyToDimensionsCache,
+		expHistogramKeyToDimensions:            expHistogramKeyToDimensionsCache,
+		callMetricKeyToDimensions:              callMetricKeyToDimensionsCache,
+		dbCallMetricKeyToDimensions:            dbMetricKeyToDimensionsCache,
+		externalCallMetricKeyToDimensions:      externalCallMetricKeyToDimensionsCache,
+		attrsCardinality:                       make(map[string]map[string]struct{}),
+		excludePatternRegex:                    excludePatternRegex,
+		ticker:                                 ticker,
+		done:                                   make(chan struct{}),
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             pConfig.MaxServicesToTrack,
+		maxNumberOfOperationsToTrackPerService: pConfig.MaxOperationsToTrackPerService,
 	}, nil
 }
 
@@ -300,15 +370,25 @@ func (p *processorImp) shouldSkip(serviceName string, span ptrace.Span, resource
 	return false
 }
 
+type getExporters interface {
+	GetExporters() map[pipeline.Signal]map[component.ID]component.Component
+}
+
 // Start implements the component.Component interface.
 func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	p.logger.Info("Starting signozspanmetricsprocessor with config", zap.Any("config", p.config))
-	exporters := host.GetExporters()
 
-	var availableMetricsExporters []string
+	ge, ok := host.(getExporters)
+	if !ok {
+		return fmt.Errorf("unable to get exporters")
+	}
+
+	exporters := ge.GetExporters()
+
+	availableMetricsExporters := make([]string, 0, len(exporters[pipeline.SignalMetrics]))
 
 	// The available list of exporters come from any configured metrics pipelines' exporters.
-	for k, exp := range exporters[component.DataTypeMetrics] {
+	for k, exp := range exporters[pipeline.SignalMetrics] {
 		metricsExp, ok := exp.(exporter.Metrics)
 		if !ok {
 			return fmt.Errorf("the exporter %q isn't a metrics exporter", k.String())
@@ -321,22 +401,43 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 			zap.Any("available-exporters", availableMetricsExporters),
 		)
 		if k.String() == p.config.MetricsExporter {
-			p.metricsExporter = metricsExp
+			p.metricsConsumer = metricsExp
 			p.logger.Info("Found exporter", zap.String("signozspanmetrics-exporter", p.config.MetricsExporter))
 			break
 		}
 	}
-	if p.metricsExporter == nil {
+	if p.metricsConsumer == nil {
 		return fmt.Errorf("failed to find metrics exporter: '%s'; please configure metrics_exporter from one of: %+v",
 			p.config.MetricsExporter, availableMetricsExporters)
 	}
 	p.logger.Info("Started signozspanmetricsprocessor")
+
+	p.started = true
+	go func() {
+		for {
+			select {
+			case <-p.done:
+				return
+			case <-p.ticker.C:
+				p.exportMetrics(ctx)
+			}
+		}
+	}()
+
 	return nil
 }
 
 // Shutdown implements the component.Component interface.
 func (p *processorImp) Shutdown(ctx context.Context) error {
 	p.logger.Info("Shutting down signozspanmetricsprocessor")
+	p.shutdownOnce.Do(func() {
+		if p.started {
+			p.logger.Info("Stopping ticker")
+			p.ticker.Stop()
+			p.done <- struct{}{}
+			p.started = false
+		}
+	})
 	return nil
 }
 
@@ -349,14 +450,16 @@ func (p *processorImp) Capabilities() consumer.Capabilities {
 // It aggregates the trace data to generate metrics, forwarding these metrics to the discovered metrics exporter.
 // The original input trace data will be forwarded to the next consumer, unmodified.
 func (p *processorImp) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	// Forward trace data unmodified and propagate both metrics and trace pipeline errors, if any.
-	return multierr.Combine(p.tracesToMetrics(ctx, traces), p.nextConsumer.ConsumeTraces(ctx, traces))
+	p.lock.Lock()
+	p.aggregateMetrics(traces)
+	p.lock.Unlock()
+
+	// Forward trace data unmodified and propagate trace pipeline errors, if any.
+	return p.tracesConsumer.ConsumeTraces(ctx, traces)
 }
 
-func (p *processorImp) tracesToMetrics(ctx context.Context, traces ptrace.Traces) error {
+func (p *processorImp) exportMetrics(ctx context.Context) {
 	p.lock.Lock()
-
-	p.aggregateMetrics(traces)
 
 	m, err := p.buildMetrics()
 
@@ -369,14 +472,13 @@ func (p *processorImp) tracesToMetrics(ctx context.Context, traces ptrace.Traces
 
 	if err != nil {
 		p.logCardinalityInfo()
-		return err
+		p.logger.Error("Failed to build metrics", zap.Error(err))
 	}
 
-	if err = p.metricsExporter.ConsumeMetrics(ctx, m); err != nil {
-		return err
+	if err := p.metricsConsumer.ConsumeMetrics(ctx, m); err != nil {
+		p.logger.Error("Failed ConsumeMetrics", zap.Error(err))
+		return
 	}
-
-	return nil
 }
 
 // buildMetrics collects the computed raw metrics data, builds the metrics object and
@@ -399,10 +501,42 @@ func (p *processorImp) buildMetrics() (pmetric.Metrics, error) {
 		return pmetric.Metrics{}, err
 	}
 
+	if err := p.collectExpHistogramMetrics(ilm); err != nil {
+		return pmetric.Metrics{}, err
+	}
+
 	p.metricKeyToDimensions.RemoveEvictedItems()
+	p.expHistogramKeyToDimensions.RemoveEvictedItems()
 	p.callMetricKeyToDimensions.RemoveEvictedItems()
 	p.dbCallMetricKeyToDimensions.RemoveEvictedItems()
 	p.externalCallMetricKeyToDimensions.RemoveEvictedItems()
+
+	for key := range p.histograms {
+		if !p.metricKeyToDimensions.Contains(key) {
+			delete(p.histograms, key)
+		}
+	}
+	for key := range p.callHistograms {
+		if !p.callMetricKeyToDimensions.Contains(key) {
+			delete(p.callHistograms, key)
+		}
+	}
+	for key := range p.dbCallHistograms {
+		if !p.dbCallMetricKeyToDimensions.Contains(key) {
+			delete(p.dbCallHistograms, key)
+		}
+	}
+	for key := range p.externalCallHistograms {
+		if !p.externalCallMetricKeyToDimensions.Contains(key) {
+			delete(p.externalCallHistograms, key)
+		}
+	}
+
+	for key := range p.expHistograms {
+		if !p.expHistogramKeyToDimensions.Contains(key) {
+			delete(p.expHistograms, key)
+		}
+	}
 
 	// If delta metrics, reset accumulated data
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
@@ -446,11 +580,35 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 
 		dimensions, err := p.getDimensionsByMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
 		dimensions.CopyTo(dpLatency.Attributes())
+	}
+	return nil
+}
+
+// collectExpHistogramMetrics collects the raw latency metrics, writing the data
+// into the given instrumentation library metrics.
+func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) error {
+	mExpLatency := ilm.Metrics().AppendEmpty()
+	mExpLatency.SetName("signoz_latency")
+	mExpLatency.SetUnit("ms")
+	mExpLatency.SetEmptyExponentialHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
+	dps := mExpLatency.ExponentialHistogram().DataPoints()
+	dps.EnsureCapacity(len(p.expHistograms))
+	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	for key, hist := range p.expHistograms {
+		dp := dps.AppendEmpty()
+		dp.SetStartTimestamp(p.startTimestamp)
+		dp.SetTimestamp(timestamp)
+		expoHistToExponentialDataPoint(hist.histogram, dp)
+		dimensions, err := p.getDimensionsByExpHistogramKey(key)
+		if err != nil {
+			return err
+		}
+
+		dimensions.CopyTo(dps.At(dps.Len() - 1).Attributes())
 	}
 	return nil
 }
@@ -489,7 +647,6 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 		dimensions, err := p.getDimensionsByDBCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -531,7 +688,6 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 		dimensions, err := p.getDimensionsByExternalCallMetricKey(key)
 		if err != nil {
-			p.logger.Error(err.Error())
 			return err
 		}
 
@@ -575,6 +731,14 @@ func (p *processorImp) getDimensionsByMetricKey(k metricKey) (pcommon.Map, error
 	return pcommon.Map{}, fmt.Errorf("value not found in metricKeyToDimensions cache by key %q", k)
 }
 
+// getDimensionsByExpHistogramKey gets dimensions from `expHistogramKeyToDimensions` cache.
+func (p *processorImp) getDimensionsByExpHistogramKey(k metricKey) (pcommon.Map, error) {
+	if attributeMap, ok := p.expHistogramKeyToDimensions.Get(k); ok {
+		return attributeMap, nil
+	}
+	return pcommon.Map{}, fmt.Errorf("value not found in expHistogramKeyToDimensions cache by key %q", k)
+}
+
 // callMetricKeyToDimensions gets dimensions from `callMetricKeyToDimensions` cache.
 func (p *processorImp) getDimensionsByCallMetricKey(k metricKey) (pcommon.Map, error) {
 	if attributeMap, ok := p.callMetricKeyToDimensions.Get(k); ok {
@@ -614,6 +778,17 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 			}
 			return addr, true
 		}
+		// net.peer.name|net.host.name is renamed to server.address
+		peerAddress, ok := attrs.Get("server.address")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("server.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
 		peerIp, ok := attrs.Get(conventions.AttributeNetPeerIP)
 		if ok {
 			addr = peerIp.Str()
@@ -623,6 +798,28 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 			}
 			return addr, true
 		}
+		// net.peer.ip is renamed to net.sock.peer.addr
+		peerAddress, ok = attrs.Get("net.sock.peer.addr")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("net.sock.peer.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
+		// And later net.sock.peer.addr is renamed to network.peer.address
+		peerAddress, ok = attrs.Get("network.peer.address")
+		if ok {
+			addr = peerAddress.Str()
+			port, ok := attrs.Get("network.peer.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
+
 		return "", false
 	}
 
@@ -664,6 +861,10 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 	// If none of the above is set, check for full URL.
 	httpURL, ok := attrs.Get(conventions.AttributeHTTPURL)
+	if !ok {
+		// http.url is renamed to url.full
+		httpURL, ok = attrs.Get("url.full")
+	}
 	if ok {
 		urlValue := httpURL.Str()
 		// url pattern from godoc [scheme:][//[userinfo@]host][/]path[?query][#fragment]
@@ -700,13 +901,21 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	}
 	// Always reset the buffer before re-using.
 	p.keyBuf.Reset()
-	buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
+	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
 	key := metricKey(p.keyBuf.String())
 	p.cache(serviceName, span, key, resourceAttr)
 	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
+	if p.config.EnableExpHistogram {
+		p.keyBuf.Reset()
+		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
+		expKey := metricKey(p.keyBuf.String())
+		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
+		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
+	}
+
 	p.keyBuf.Reset()
-	buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
+	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
 	callKey := metricKey(p.keyBuf.String())
 	p.callCache(serviceName, span, callKey, resourceAttr)
 	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
@@ -766,11 +975,13 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 // metricKeyToDimensions.
 func (p *processorImp) resetAccumulatedMetrics() {
 	p.histograms = make(map[metricKey]*histogramData)
+	p.expHistograms = make(map[metricKey]*exponentialHistogram)
 	p.callHistograms = make(map[metricKey]*histogramData)
 	p.dbCallHistograms = make(map[metricKey]*histogramData)
 	p.externalCallHistograms = make(map[metricKey]*histogramData)
 
 	p.metricKeyToDimensions.Purge()
+	p.expHistogramKeyToDimensions.Purge()
 	p.callMetricKeyToDimensions.Purge()
 	p.dbCallMetricKeyToDimensions.Purge()
 	p.externalCallMetricKeyToDimensions.Purge()
@@ -792,6 +1003,24 @@ func (p *processorImp) updateHistogram(key metricKey, latency float64, traceID p
 	index := sort.SearchFloat64s(p.latencyBounds, latency)
 	histo.bucketCounts[index]++
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
+}
+
+func (p *processorImp) updateExpHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+	histo, ok := p.expHistograms[key]
+	if !ok {
+		histogram := new(structure.Histogram[float64])
+		cfg := structure.NewConfig(
+			structure.WithMaxSize(structure.DefaultMaxSize),
+		)
+		histogram.Init(cfg)
+
+		histo = &exponentialHistogram{
+			histogram: histogram,
+		}
+		p.expHistograms[key] = histo
+	}
+
+	histo.Observe(latency)
 }
 
 func (p *processorImp) updateCallHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
@@ -864,10 +1093,19 @@ func (p *processorImp) resetExemplarData() {
 }
 
 func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) pcommon.Map {
+
+	spanName := span.Name()
+	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
+		serviceName = overflowServiceName
+	}
+	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+		spanName = overflowOperation
+	}
+
 	dims := pcommon.NewMap()
 	dims.EnsureCapacity(4 + len(optionalDims))
 	dims.PutStr(serviceNameKey, serviceName)
-	dims.PutStr(operationKey, span.Name())
+	dims.PutStr(operationKey, spanName)
 	dims.PutStr(spanKindKey, SpanKindStr(span.Kind()))
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
 	for _, d := range optionalDims {
@@ -929,9 +1167,18 @@ func concatDimensionValue(dest *bytes.Buffer, value string, prefixSep bool) {
 // or resource attributes. If the dimension exists in both, the span's attributes, being the most specific, takes precedence.
 //
 // The metric key is a simple concatenation of dimension values, delimited by a null character.
-func buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
+func (p *processorImp) buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
+	spanName := span.Name()
+	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
+		p.logger.Warn("Too many services to track, using overflow service name", zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
+		serviceName = overflowServiceName
+	}
+	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+		p.logger.Warn("Too many operations to track, using overflow operation name", zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService))
+		spanName = overflowOperation
+	}
 	concatDimensionValue(dest, serviceName, false)
-	concatDimensionValue(dest, span.Name(), true)
+	concatDimensionValue(dest, spanName, true)
 	concatDimensionValue(dest, SpanKindStr(span.Kind()), true)
 	concatDimensionValue(dest, StatusCodeStr(span.Status().Code()), true)
 
@@ -940,6 +1187,11 @@ func buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optional
 			concatDimensionValue(dest, v.AsString(), true)
 		}
 	}
+	if _, ok := p.serviceToOperations[serviceName]; !ok {
+		p.serviceToOperations[serviceName] = make(map[string]struct{})
+	}
+	p.serviceToOperations[serviceName][spanName] = struct{}{}
+
 }
 
 // buildCustomKey builds the metric key from the service name and span metadata such as operation, kind, status_code and
@@ -977,6 +1229,10 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 	// The more specific span attribute should take precedence.
 	if attr, exists := spanAttr.Get(d.name); exists {
 		return attr, true
+	} else if d.name == tagHTTPStatusCode {
+		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+			return attr, true
+		}
 	}
 	if attr, exists := resourceAttr.Get(d.name); exists {
 		return attr, true
@@ -989,9 +1245,15 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 }
 
 func getDimensionValueWithResource(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool, foundInResource bool) {
-	// The more specific span attribute should take precedence.
 	if attr, exists := spanAttr.Get(d.name); exists {
+		if _, exists := resourceAttr.Get(d.name); exists {
+			return attr, true, true
+		}
 		return attr, true, false
+	} else if d.name == tagHTTPStatusCode {
+		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+			return attr, true, false
+		}
 	}
 	if attr, exists := resourceAttr.Get(d.name); exists {
 		return attr, true, true
@@ -1011,6 +1273,17 @@ func (p *processorImp) cache(serviceName string, span ptrace.Span, k metricKey, 
 	// Use Get to ensure any existing key has its recent-ness updated.
 	if _, has := p.metricKeyToDimensions.Get(k); !has {
 		p.metricKeyToDimensions.Add(k, p.buildDimensionKVs(serviceName, span, p.dimensions, resourceAttrs))
+	}
+}
+
+// expHistogramCache caches the dimension key-value map for the metricKey if there is a cache miss.
+// This enables a lookup of the dimension key-value map when constructing the metric like so:
+//
+//	LabelsMap().InitFromMap(p.expHistogramKeyToDimensions[key])
+func (p *processorImp) expHistogramCache(serviceName string, span ptrace.Span, k metricKey, resourceAttrs pcommon.Map) {
+	// Use Get to ensure any existing key has its recent-ness updated.
+	if _, has := p.expHistogramKeyToDimensions.Get(k); !has {
+		p.expHistogramKeyToDimensions.Add(k, p.buildDimensionKVs(serviceName, span, p.expDimensions, resourceAttrs))
 	}
 }
 

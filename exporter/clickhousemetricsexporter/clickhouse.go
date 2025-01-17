@@ -18,21 +18,27 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
-	"net/url"
+	"math"
 	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
 
+	chproto "github.com/ClickHouse/ch-go/proto"
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
@@ -44,13 +50,13 @@ const (
 	namespace                        = "promhouse"
 	subsystem                        = "clickhouse"
 	nameLabel                        = "__name__"
-	CLUSTER                          = "cluster"
 	DISTRIBUTED_TIME_SERIES_TABLE    = "distributed_time_series_v2"
 	DISTRIBUTED_TIME_SERIES_TABLE_V3 = "distributed_time_series_v3"
+	DISTRIBUTED_TIME_SERIES_TABLE_V4 = "distributed_time_series_v4"
 	DISTRIBUTED_SAMPLES_TABLE        = "distributed_samples_v2"
+	DISTRIBUTED_SAMPLES_TABLE_V4     = "distributed_samples_v4"
+	DISTRIBUTED_EXP_HIST_TABLE       = "distributed_exp_hist"
 	TIME_SERIES_TABLE                = "time_series_v2"
-	TIME_SERIES_TABLE_V3             = "time_series_v3"
-	SAMPLES_TABLE                    = "samples_v2"
 	temporalityLabel                 = "__temporality__"
 	envLabel                         = "env"
 )
@@ -58,9 +64,11 @@ const (
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
 	conn                 clickhouse.Conn
-	l                    *logrus.Entry
+	l                    *zap.Logger
 	database             string
 	maxTimeSeriesInQuery int
+
+	cache *ttlcache.Cache[string, bool]
 
 	timeSeriesRW sync.RWMutex
 	// Maintains the lookup map for fingerprints that are
@@ -69,150 +77,77 @@ type clickHouse struct {
 	timeSeries      map[uint64]struct{}
 	prevShardCount  uint64
 	watcherInterval time.Duration
+	writeTSToV4     bool
+	disableV2       bool
 
 	mWrittenTimeSeries prometheus.Counter
+
+	exporterID uuid.UUID
+
+	durationHistogram metric.Float64Histogram
 }
 
 type ClickHouseParams struct {
 	DSN                  string
 	DropDatabase         bool
+	MaxIdleConns         int
 	MaxOpenConns         int
 	MaxTimeSeriesInQuery int
 	WatcherInterval      time.Duration
+	WriteTSToV4          bool
+	DisableV2            bool
+	ExporterId           uuid.UUID
+	Settings             exporter.Settings
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
-	l := logrus.WithField("component", "clickhouse")
 
-	dsnURL, err := url.Parse(params.DSN)
+	logger := params.Settings.Logger
+	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
+
+	options, err := clickhouse.ParseDSN(params.DSN)
 
 	if err != nil {
 		return nil, err
 	}
-	database := dsnURL.Query().Get("database")
-	if database == "" {
-		return nil, fmt.Errorf("database should be set in ClickHouse DSN")
+
+	if options.MaxIdleConns < params.MaxIdleConns {
+		options.MaxIdleConns = params.MaxIdleConns
+	}
+	if options.MaxOpenConns < params.MaxOpenConns {
+		options.MaxOpenConns = params.MaxOpenConns
+	}
+	if options.DialTimeout < 1*time.Minute {
+		options.DialTimeout = 1 * time.Minute
 	}
 
-	var queries []string
-	if params.DropDatabase {
-		queries = append(queries, fmt.Sprintf(`DROP DATABASE IF EXISTS %s ON CLUSTER %s;`, database, CLUSTER))
-	}
-	queries = append(queries, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s`, database, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			value Float64 Codec(Gorilla, LZ4)
-		)
-		ENGINE = MergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint, timestamp_ms)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", "%s", %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE, CLUSTER, database, SAMPLES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, SAMPLES_TABLE, CLUSTER))
-
-	queries = append(queries, `SET allow_experimental_object_type = 1`)
-
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s(
-			metric_name LowCardinality(String),
-			fingerprint UInt64 Codec(DoubleDelta, LZ4),
-			timestamp_ms Int64 Codec(DoubleDelta, LZ4),
-			labels String Codec(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (metric_name, fingerprint)
-			TTL toDateTime(timestamp_ms/1000) + INTERVAL 2592000 SECOND DELETE;`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-			CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE, CLUSTER, database, TIME_SERIES_TABLE))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s DROP COLUMN IF EXISTS labels_object`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s MODIFY SETTING ttl_only_drop_parts = 1;`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	// Add temporality column to time_series table
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality LowCardinality(String) DEFAULT 'Unspecified' CODEC(ZSTD(5))`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD COLUMN IF NOT EXISTS temporality LowCardinality(String) DEFAULT 'Unspecified' CODEC(ZSTD(5))`, database, DISTRIBUTED_TIME_SERIES_TABLE, CLUSTER))
-
-	// Add set index on temporality column
-	queries = append(queries, fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s ADD INDEX IF NOT EXISTS temporality_index temporality TYPE SET(3) GRANULARITY 1`, database, TIME_SERIES_TABLE, CLUSTER))
-
-	// Create a new table
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s (
-			env LowCardinality(String) DEFAULT 'default',
-			temporality LowCardinality(String) DEFAULT 'Unspecified',
-			metric_name LowCardinality(String),
-			fingerprint UInt64 CODEC(Delta, ZSTD),
-			timestamp_ms Int64 CODEC(Delta, ZSTD),
-			labels String CODEC(ZSTD(5))
-		)
-		ENGINE = ReplacingMergeTree
-			PARTITION BY toDate(timestamp_ms / 1000)
-			ORDER BY (env, temporality, metric_name, fingerprint);`, database, TIME_SERIES_TABLE_V3, CLUSTER))
-
-	// Create a new distributed table
-	queries = append(queries, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s.%s ON CLUSTER %s AS %s.%s ENGINE = Distributed("%s", %s, %s, cityHash64(env, temporality, metric_name, fingerprint));`, database, DISTRIBUTED_TIME_SERIES_TABLE_V3, CLUSTER, database, TIME_SERIES_TABLE_V3, CLUSTER, database, TIME_SERIES_TABLE_V3))
-
-	options := &clickhouse.Options{
-		Addr: []string{dsnURL.Host},
-	}
-	if dsnURL.Query().Get("username") != "" {
-		auth := clickhouse.Auth{
-			// Database: "",
-			Username: dsnURL.Query().Get("username"),
-			Password: dsnURL.Query().Get("password"),
-		}
-
-		options.Auth = auth
-	}
 	conn, err := clickhouse.Open(options)
-
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
-	for _, q := range queries {
-		q = strings.TrimSpace(q)
-		l.Infof("Executing:\n%s\n", q)
-		if err = conn.Exec(context.Background(), q); err != nil {
-			return nil, err
-		}
-	}
+	cache := ttlcache.New[string, bool](
+		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[string, bool](),
+	)
+	go cache.Start()
 
-	// TODO(srikanthccv): Remove this once we have a better way to handle data and last write
-	removeTTL := fmt.Sprintf(`
-		ALTER TABLE %s.%s ON CLUSTER %s REMOVE TTL;`, database, TIME_SERIES_TABLE, CLUSTER)
-	if err = conn.Exec(context.Background(), removeTTL); err != nil {
-		if !strings.Contains(err.Error(), "Table doesn't have any table TTL expression, cannot remove.") {
-			return nil, err
-		}
+	durationHistogram, err := meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	ch := &clickHouse{
 		conn:                 conn,
-		l:                    l,
-		database:             database,
+		l:                    logger,
+		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
+		cache:                cache,
 
 		timeSeries: make(map[uint64]struct{}, 8192),
 
@@ -222,7 +157,11 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Name:      "written_time_series",
 			Help:      "Number of written time series.",
 		}),
-		watcherInterval: params.WatcherInterval,
+		watcherInterval:   params.WatcherInterval,
+		writeTSToV4:       params.WriteTSToV4,
+		disableV2:         params.DisableV2,
+		exporterID:        params.ExporterId,
+		durationHistogram: durationHistogram,
 	}
 
 	go func() {
@@ -238,7 +177,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 	ticker := time.NewTicker(ch.watcherInterval)
 	defer ticker.Stop()
 
-	q := `SELECT count() FROM system.clusters WHERE cluster='cluster'`
+	q := `SELECT count() FROM system.clusters`
 	for {
 
 		err := func() error {
@@ -256,7 +195,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 
 			ch.timeSeriesRW.Lock()
 			if ch.prevShardCount != shardCount {
-				ch.l.Infof("Shard count changed from %d to %d. Resetting time series map.", ch.prevShardCount, shardCount)
+				ch.l.Info("Shard count changed. Resetting time series map.", zap.Uint64("prev", ch.prevShardCount), zap.Uint64("current", shardCount))
 				ch.timeSeries = make(map[uint64]struct{})
 			}
 			ch.prevShardCount = shardCount
@@ -264,12 +203,12 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 			return nil
 		}()
 		if err != nil {
-			ch.l.Error(err)
+			ch.l.Error("error getting shard count", zap.Error(err))
 		}
 
 		select {
 		case <-ctx.Done():
-			ch.l.Warn(ctx.Err())
+			ch.l.Warn("shard count watcher stopped", zap.Error(ctx.Err()))
 			return
 		case <-ticker.C:
 		}
@@ -288,7 +227,7 @@ func (ch *clickHouse) GetDBConn() interface{} {
 	return ch.conn
 }
 
-func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToTemporality map[string]pmetric.AggregationTemporality) error {
+func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
@@ -316,10 +255,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		// add temporality label
 		if metricName != "" {
-			if t, ok := metricNameToTemporality[metricName]; ok {
+			if t, ok := metricNameToMeta[metricName]; ok {
 				labels = append(labels, &prompb.Label{
 					Name:  temporalityLabel,
-					Value: t.String(),
+					Value: t.Temporality.String(),
 				})
 			}
 		}
@@ -331,10 +270,10 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			fingerprintToName[f] = make(map[string]string)
 		}
 		fingerprintToName[f][nameLabel] = metricName
-		fingerprintToName[f][env] = env
+		fingerprintToName[f][envLabel] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
-		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
+		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
 
 	// find new time series
@@ -350,25 +289,27 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	ch.timeSeriesRW.Unlock()
 
 	err := func() error {
-		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
+		if ch.disableV2 {
+			return nil
 		}
-
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels) VALUES (?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (metric_name, temporality, timestamp_ms, fingerprint, labels, description, unit, type, is_monotonic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+			meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 			err = statement.Append(
 				fingerprintToName[fingerprint][nameLabel],
-				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
+				meta.Temporality.String(),
 				timestamp,
 				fingerprint,
 				encodedLabels,
+				meta.Description,
+				meta.Unit,
+				meta.Typ.String(),
+				meta.IsMonotonic,
 			)
 			if err != nil {
 				return err
@@ -377,11 +318,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 
@@ -389,53 +333,13 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
-	// Write to time_series_v3 table
 	err = func() error {
-		ctx := context.Background()
-		err := ch.conn.Exec(ctx, `SET allow_experimental_object_type = 1`)
-		if err != nil {
-			return err
+		if ch.disableV2 {
+			return nil
 		}
-
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, timestamp_ms, labels) VALUES (?, ?, ?, ?, ?, ?)", ch.database, TIME_SERIES_TABLE_V3))
-		if err != nil {
-			return err
-		}
-		timestamp := model.Now().Time().UnixMilli()
-		for fingerprint, labels := range newTimeSeries {
-			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
-			err = statement.Append(
-				fingerprintToName[fingerprint][envLabel],
-				metricNameToTemporality[fingerprintToName[fingerprint][nameLabel]].String(),
-				fingerprintToName[fingerprint][nameLabel],
-				fingerprint,
-				timestamp,
-				encodedLabels,
-			)
-			if err != nil {
-				return err
-			}
-		}
-
-		start := time.Now()
-		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-			tag.Upsert(tableKey, TIME_SERIES_TABLE_V3),
-		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
-		return err
-	}()
-
-	if err != nil {
-		return err
-	}
-
-	metrics := map[string]usage.Metric{}
-	err = func() error {
 		ctx := context.Background()
 
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE))
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", ch.database, DISTRIBUTED_SAMPLES_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -443,23 +347,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
 			for _, s := range ts.Samples {
-
-				// usage collection checks
-				tenant := "default"
-				collectUsage := true
-				for _, val := range timeSeries[fingerprint] {
-					if val.Name == nameLabel && strings.HasPrefix(val.Value, "signoz_") {
-						collectUsage = false
-						break
-					}
-					if val.Name == "tenant" {
-						tenant = val.Value
-					}
-				}
-
-				if collectUsage {
-					usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
-				}
 
 				err = statement.Append(
 					fingerprintToName[fingerprint][nameLabel],
@@ -474,26 +361,230 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, string(component.DataTypeMetrics)),
-			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_SAMPLES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 	if err != nil {
 		return err
 	}
 
-	for k, v := range metrics {
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k)}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+	// write to distributed_samples_v4 table
+	if ch.writeTSToV4 {
+		metrics := map[string]usage.Metric{}
+		err = func() error {
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+			if err != nil {
+				return err
+			}
+
+			for i, ts := range data.Timeseries {
+				fingerprint := fingerprints[i]
+				for _, s := range ts.Samples {
+					metricName := fingerprintToName[fingerprint][nameLabel]
+					err = statement.Append(
+						fingerprintToName[fingerprint][envLabel],
+						metricNameToMeta[metricName].Temporality.String(),
+						metricName,
+						fingerprint,
+						s.Timestamp,
+						s.Value,
+					)
+					if err != nil {
+						return err
+					}
+
+					// usage collection checks
+					tenant := "default"
+					collectUsage := true
+					for _, val := range timeSeries[fingerprint] {
+						if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
+							collectUsage = false
+							break
+						}
+						if val.Name == "tenant" {
+							tenant = val.Value
+						}
+					}
+
+					if collectUsage {
+						usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+					}
+				}
+			}
+
+			start := time.Now()
+			err = statement.Send()
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
+				),
+			)
+			return err
+		}()
+
+		if err != nil {
+			return err
+		}
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+		}
+	}
+
+	// write to distributed_time_series_v4 table
+	if ch.writeTSToV4 {
+		err = func() error {
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4), driver.WithReleaseConnection())
+			if err != nil {
+				return err
+			}
+			// timestamp in milliseconds with nearest hour precision
+			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
+
+			for fingerprint, labels := range timeSeries {
+				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
+				if item := ch.cache.Get(key); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
+				}
+				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				err = statement.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					meta.Description,
+					meta.Unit,
+					meta.Typ.String(),
+					meta.IsMonotonic,
+					fingerprint,
+					unixMilli,
+					encodedLabels,
+				)
+				if err != nil {
+					return err
+				}
+				ch.cache.Set(key, true, ttlcache.DefaultTTL)
+			}
+
+			start := time.Now()
+			err = statement.Send()
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
+				),
+			)
+			return err
+		}()
+
+		if err != nil {
+			return err
+		}
 	}
 
 	n := len(newTimeSeries)
 	if n != 0 {
 		ch.mWrittenTimeSeries.Add(float64(n))
-		ch.l.Debugf("Wrote %d new time series.", n)
+		ch.l.Debug("wrote new time series", zap.Int("count", n))
 	}
+
+	err = func() error {
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+
+		for i, ts := range data.Timeseries {
+			fingerprint := fingerprints[i]
+			for _, s := range ts.Histograms {
+
+				sum := s.Sum
+				var count uint64
+				if x, ok := s.Count.(*prompb.Histogram_CountInt); ok {
+					count = uint64(x.CountInt)
+				} else if x, ok := s.Count.(*prompb.Histogram_CountFloat); ok {
+					count = uint64(x.CountFloat)
+				}
+				min, max := s.PositiveCounts[1], s.PositiveCounts[2]
+				gamma := math.Pow(2, math.Pow(2, float64(-s.Schema)))
+				positiveOffset := s.PositiveCounts[0]
+				negativeOffset := s.NegativeCounts[0]
+				var positivebinCounts []float64
+				for _, x := range s.PositiveDeltas {
+					positivebinCounts = append(positivebinCounts, float64(x))
+				}
+				var negativebinCounts []float64
+				for _, x := range s.NegativeDeltas {
+					negativebinCounts = append(negativebinCounts, float64(x))
+				}
+				var zeroCount int
+				if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountInt); ok {
+					zeroCount = int(x.ZeroCountInt)
+				} else if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountFloat); ok {
+					zeroCount = int(x.ZeroCountFloat)
+				}
+
+				sketch := chproto.DD{
+					Mapping: &chproto.IndexMapping{Gamma: gamma},
+					PositiveValues: &chproto.Store{
+						ContiguousBinIndexOffset: int32(positiveOffset),
+						ContiguousBinCounts:      positivebinCounts,
+					},
+					NegativeValues: &chproto.Store{
+						ContiguousBinIndexOffset: int32(negativeOffset),
+						ContiguousBinCounts:      negativebinCounts,
+					},
+					ZeroCount: float64(zeroCount),
+				}
+
+				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				err = statement.Append(
+					fingerprintToName[fingerprint][envLabel],
+					meta.Temporality.String(),
+					fingerprintToName[fingerprint][nameLabel],
+					fingerprint,
+					s.Timestamp,
+					count,
+					sum,
+					min,
+					max,
+					sketch,
+				)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		start := time.Now()
+		err = statement.Send()
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
+			),
+		)
+		return err
+	}()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

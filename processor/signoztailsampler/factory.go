@@ -43,7 +43,7 @@ func NewFactory() processor.Factory {
 	})
 
 	return processor.NewFactory(
-		typeStr,
+		component.MustNewType(typeStr),
 		createDefaultConfig,
 		processor.WithTraces(createTracesProcessor, stability))
 }
@@ -58,7 +58,7 @@ func createDefaultConfig() component.Config {
 
 func createTracesProcessor(
 	_ context.Context,
-	params processor.CreateSettings,
+	params processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
