@@ -1,0 +1,2 @@
+# SigNoz-Otel-Collector
+
