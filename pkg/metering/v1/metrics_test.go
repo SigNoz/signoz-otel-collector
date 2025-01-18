@@ -15,7 +15,7 @@ func TestMetrics(t *testing.T) {
 	md := pmetric.NewMetrics()
 	md.ResourceMetrics().AppendEmpty()
 
-	assert.Equal(t, 0, meter.Size(md))
+	assert.Equal(t, 0, meter.Count(md))
 }
 
 func TestMetrics_CountGaugeMetrics(t *testing.T) {
