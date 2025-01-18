@@ -17,7 +17,6 @@ package clickhousetracesexporter
 import (
 	"context"
 
-	"io"
 	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -155,8 +154,5 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 		s.usageCollector.Stop()
 	}
 
-	if closer, ok := s.Writer.(io.Closer); ok {
-		return closer.Close()
-	}
 	return nil
 }
