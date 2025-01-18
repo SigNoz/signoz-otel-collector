@@ -16,156 +16,139 @@ package clickhousetracesexporter
 
 import (
 	"context"
+
 	"io"
 	"sync"
 
+	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
-	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.5.0"
-	"go.uber.org/zap"
 )
 
 const (
-	hasIsRemoteMask uint32 = 0x00000100
-	isRemoteMask    uint32 = 0x00000200
+	hasIsRemoteMask          uint32 = 0x00000100
+	isRemoteMask             uint32 = 0x00000200
+	defaultDatasource        string = "tcp://127.0.0.1:9000/?database=signoz_traces"
+	defaultTraceDatabase     string = "signoz_traces"
+	defaultErrorTable        string = "distributed_signoz_error_index_v2"
+	defaultAttributeTableV2  string = "distributed_tag_attributes_v2"
+	defaultAttributeKeyTable string = "distributed_span_attributes_keys"
+	defaultIndexTableV3      string = "distributed_signoz_index_v3"
+	defaultResourceTableV3   string = "distributed_traces_v3_resource"
+	insertTraceSQLTemplateV2        = `INSERT INTO %s.%s (
+		ts_bucket_start,
+		resource_fingerprint,
+		timestamp,
+		trace_id,
+		span_id,
+		trace_state,
+		parent_span_id,
+		flags,
+		name,
+		kind,
+		kind_string,
+		duration_nano,
+		status_code,
+		status_message,
+		status_code_string,
+		attributes_string,
+		attributes_number,
+		attributes_bool,
+		resources_string,
+		events,
+		links,
+		response_status_code,
+		external_http_url,
+		http_url,
+		external_http_method,
+		http_method,
+		http_host,
+		db_name,
+		db_operation,
+		has_error,
+		is_remote
+		) VALUES (
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?
+			)`
 )
 
-// Crete new exporter.
-func newExporter(cfg component.Config, logger *zap.Logger, settings exporter.Settings) (*storage, error) {
-
-	if err := component.ValidateConfig(cfg); err != nil {
-		return nil, err
-	}
-
-	configClickHouse := cfg.(*Config)
-
-	id := uuid.New()
-
-	f := ClickHouseNewFactory(id, *configClickHouse, settings)
-
-	err := f.Initialize(logger)
-	if err != nil {
-		return nil, err
-	}
-	spanWriter, err := f.CreateSpanWriter()
-	if err != nil {
-		return nil, err
-	}
-
-	collector := usage.NewUsageCollector(
-		id,
-		f.db,
-		usage.Options{ReportingInterval: usage.DefaultCollectionInterval},
-		"signoz_traces",
-		UsageExporter,
-	)
-	collector.Start()
-
-	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
-		return nil, err
-	}
-
-	storage := storage{
-		id:             id,
-		Writer:         spanWriter,
-		usageCollector: collector,
-		config: storageConfig{
-			lowCardinalExceptionGrouping: configClickHouse.LowCardinalExceptionGrouping,
-		},
-		wg:           new(sync.WaitGroup),
-		closeChan:    make(chan struct{}),
-		useNewSchema: configClickHouse.UseNewSchema,
-		logger:       logger,
-	}
-
-	return &storage, nil
-}
-
-type storage struct {
+type clickhouseTracesExporter struct {
 	id             uuid.UUID
+	db             driver.Conn
 	Writer         Writer
 	usageCollector *usage.UsageCollector
 	config         storageConfig
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
-	useNewSchema   bool
-	logger         *zap.Logger
 }
 
 type storageConfig struct {
 	lowCardinalExceptionGrouping bool
 }
 
-func makeJaegerProtoReferences(
-	links ptrace.SpanLinkSlice,
-	parentSpanID pcommon.SpanID,
-	traceID pcommon.TraceID,
-) ([]OtelSpanRef, error) {
+// Crete new exporter.
+func newExporter(cfg *Config, _ exporter.Settings, writerOpts []WriterOption, exporterOpts []TraceExporterOption) (*clickhouseTracesExporter, error) {
 
-	parentSpanIDSet := len([8]byte(parentSpanID)) != 0
-	if !parentSpanIDSet && links.Len() == 0 {
-		return nil, nil
+	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
+		return nil, err
 	}
 
-	refsCount := links.Len()
-	if parentSpanIDSet {
-		refsCount++
+	writer := NewSpanWriter(writerOpts...)
+
+	exporter := clickhouseTracesExporter{
+		Writer: writer,
+		config: storageConfig{
+			lowCardinalExceptionGrouping: cfg.LowCardinalExceptionGrouping,
+		},
+		wg:        new(sync.WaitGroup),
+		closeChan: make(chan struct{}),
 	}
 
-	refs := make([]OtelSpanRef, 0, refsCount)
-
-	// Put parent span ID at the first place because usually backends look for it
-	// as the first CHILD_OF item in the model.SpanRef slice.
-	if parentSpanIDSet {
-
-		refs = append(refs, OtelSpanRef{
-			TraceId: utils.TraceIDToHexOrEmptyString(traceID),
-			SpanId:  utils.SpanIDToHexOrEmptyString(parentSpanID),
-			RefType: "CHILD_OF",
-		})
+	for _, opt := range exporterOpts {
+		opt(&exporter)
 	}
 
-	for i := 0; i < links.Len(); i++ {
-		link := links.At(i)
-
-		refs = append(refs, OtelSpanRef{
-			TraceId: utils.TraceIDToHexOrEmptyString(link.TraceID()),
-			SpanId:  utils.SpanIDToHexOrEmptyString(link.SpanID()),
-
-			// Since Jaeger RefType is not captured in internal data,
-			// use SpanRefType_FOLLOWS_FROM by default.
-			// SpanRefType_CHILD_OF supposed to be set only from parentSpanID.
-			RefType: "FOLLOWS_FROM",
-		})
-	}
-
-	return refs, nil
+	return &exporter, nil
 }
 
-// ServiceNameForResource gets the service name for a specified Resource.
-// TODO: Find a better package for this function.
-func ServiceNameForResource(resource pcommon.Resource) string {
-
-	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
-	if !found {
-		return "<nil-service-name>"
-	}
-
-	return service.Str()
-}
-
-func (s *storage) pushTraceData(ctx context.Context, td ptrace.Traces) error {
+func (s *clickhouseTracesExporter) pushTraceData(ctx context.Context, td ptrace.Traces) error {
 	return s.pushTraceDataV3(ctx, td)
 }
 
-// Shutdown will shutdown the exporter.
-func (s *storage) Shutdown(_ context.Context) error {
+func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 
 	close(s.closeChan)
 	s.wg.Wait()

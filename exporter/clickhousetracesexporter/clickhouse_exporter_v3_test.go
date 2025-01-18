@@ -1,13 +1,25 @@
 package clickhousetracesexporter
 
 import (
+	"context"
+	"log"
 	"reflect"
 	"sort"
 	"testing"
 	"time"
 
+	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
+	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
+	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap"
 )
 
 func Test_attributesData_add(t *testing.T) {
@@ -412,4 +424,128 @@ func Test_newStructuredSpanV3(t *testing.T) {
 			}
 		})
 	}
+}
+
+func eventually(t *testing.T, f func() bool) {
+	assert.Eventually(t, f, 10*time.Second, 100*time.Millisecond)
+}
+
+func testWriterOptions() []WriterOption {
+	// keys cache is used to avoid duplicate inserts for the same attribute key.
+	keysCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+	)
+	go keysCache.Start()
+
+	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
+	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
+	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
+	rfCache := ttlcache.New[string, struct{}](
+		ttlcache.WithTTL[string, struct{}](distributedTracesResourceV2Seconds*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go rfCache.Start()
+
+	meter := noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter")
+
+	attrsLimits := AttributesLimits{
+		FetchKeysInterval: 10 * time.Minute,
+		MaxDistinctValues: 25000,
+	}
+
+	return []WriterOption{
+		WithLogger(zap.NewNop()),
+		WithMeter(meter),
+		WithKeysCache(keysCache),
+		WithRFCache(rfCache),
+		WithAttributesLimits(attrsLimits),
+	}
+}
+
+// setupTestExporter creates a new exporter with mock ClickHouse client for testing
+func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseTracesExporter {
+	writerOpts := testWriterOptions()
+	writerOpts = append(writerOpts, WithClickHouseClient(mock))
+	id := uuid.New()
+	exporterOpts := []TraceExporterOption{
+		WithNewUsageCollector(id, mock),
+	}
+	writerOpts = append(writerOpts, WithExporterID(id))
+
+	exporter, err := newExporter(&Config{}, exporter.Settings{}, writerOpts, exporterOpts)
+	if err != nil {
+		t.Fatalf("failed to create exporter: %v", err)
+	}
+
+	return exporter
+}
+
+func TestExporterInit(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+
+	cols := make([]cmock.ColumnType, 0)
+	cols = append(cols, cmock.ColumnType{Name: "tag_key", Type: "String"})
+	cols = append(cols, cmock.ColumnType{Name: "tag_type", Type: "String"})
+	cols = append(cols, cmock.ColumnType{Name: "tag_data_type", Type: "String"})
+	cols = append(cols, cmock.ColumnType{Name: "string_count", Type: "UInt64"})
+	cols = append(cols, cmock.ColumnType{Name: "number_count", Type: "UInt64"})
+
+	rows := cmock.NewRows(cols, [][]interface{}{{"key1", "string", "string", 2, 1}, {"key2", "number", "number", 1, 2}})
+
+	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
+
+	setupTestExporter(t, mock)
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
+}
+
+func TestExporterPushLogsData(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	mock.MatchExpectationsInOrder(false)
+
+	// expect prepare batch for 5 tables
+	indexV3Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	errorIndexV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_error_index_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_span_attributes_keys")
+	tagAttributesV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_tag_attributes_v2")
+	resourceStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_traces_v3_resource")
+
+	indexV3Statement.ExpectAppend()
+	indexV3Statement.ExpectSend()
+	errorIndexV2Statement.ExpectAppend()
+	errorIndexV2Statement.ExpectSend()
+	attributeKeysStmt.ExpectAppend()
+	attributeKeysStmt.ExpectSend()
+	tagAttributesV2Statement.ExpectAppend()
+	tagAttributesV2Statement.ExpectSend()
+	resourceStatement.ExpectAppend()
+	resourceStatement.ExpectSend()
+
+	// make sure usage is inserted on shutdown
+	mock.ExpectExec(".*insert into signoz_traces.distributed_usage.*").WithArgs()
+
+	exporter := setupTestExporter(t, mock)
+
+	traces := ptracesgen.Generate()
+
+	err = exporter.pushTraceDataV3(context.Background(), traces)
+	if err != nil {
+		t.Fatalf("failed to push traces data: %v", err)
+	}
+
+	exporter.Shutdown(context.Background())
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }
