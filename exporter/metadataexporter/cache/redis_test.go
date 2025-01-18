@@ -46,23 +46,26 @@ func buildMockRedisKeyCache(_ *testing.T, mockFn func(redismock.ClientMock)) (*R
 func TestRedisKeyCache_AddAttrsToResource_NewResource_Success(t *testing.T) {
 	ctx := context.Background()
 	epochWindow := getCurrentEpochWindowMillis()
-	resourceSetKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources", epochWindow)
+	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:1000", epochWindow)
+	attrsHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:attrs:hll", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
 		// 1) First check if resource exists
-		m.ExpectSIsMember(resourceSetKey, "1000").SetVal(false)
-
-		// 2) Then check resource count
-		m.ExpectSCard(resourceSetKey).SetVal(0)
+		m.ExpectPFCount(resourceHLLKey).SetVal(0)
 
 		// 3) Then check existing attributes count
 		m.ExpectSCard(attrsKey).SetVal(0)
 
-		m.ExpectSAdd(resourceSetKey, "1000").SetVal(1)
-		m.ExpectExpire(resourceSetKey, 10*time.Second).SetVal(true)
+		// 2) Then check resource count
+		m.ExpectPFAdd(resourceHLLKey, "1000").SetVal(0)
+		m.ExpectExpire(resourceHLLKey, 10*time.Second).SetVal(true)
+
 		m.ExpectSAdd(attrsKey, "1", "2").SetVal(2)
 		m.ExpectExpire(attrsKey, 10*time.Second).SetVal(true)
+
+		m.ExpectPFAdd(attrsHLLKey, "1", "2").SetVal(0)
+		m.ExpectExpire(attrsHLLKey, 10*time.Second).SetVal(true)
 	})
 
 	err := cache.AddAttrsToResource(ctx, 1000, []uint64{1, 2}, pipeline.SignalTraces)
@@ -75,13 +78,14 @@ func TestRedisKeyCache_AddAttrsToResource_NewResource_Success(t *testing.T) {
 func TestRedisKeyCache_AddAttrsToResource_ResourceLimitExceeded(t *testing.T) {
 	ctx := context.Background()
 	epochWindow := getCurrentEpochWindowMillis()
-	resourceSetKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources", epochWindow)
+	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
+	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:1000", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
 		// 1) SIsMember => false (resource not exist)
-		m.ExpectSIsMember(resourceSetKey, "2000").SetVal(false)
+		m.ExpectPFCount(resourceHLLKey).SetVal(2)
 		// 2) SCard => 2 (already 2 resources exist)
-		m.ExpectSCard(resourceSetKey).SetVal(2)
+		m.ExpectSCard(attrsKey).SetVal(2)
 	})
 
 	err := cache.AddAttrsToResource(ctx, 2000, []uint64{123}, pipeline.SignalTraces)
@@ -93,12 +97,12 @@ func TestRedisKeyCache_AddAttrsToResource_ResourceLimitExceeded(t *testing.T) {
 func TestRedisKeyCache_AddAttrsToResource_AttrCardinalityExceeded(t *testing.T) {
 	ctx := context.Background()
 	epochWindow := getCurrentEpochWindowMillis()
-	resourceSetKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources", epochWindow)
+	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:3000", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
 		// For an existing resource:
-		m.ExpectSIsMember(resourceSetKey, "3000").SetVal(true)
+		m.ExpectPFCount(resourceHLLKey).SetVal(1)
 		// Then we do not check resource set cardinality
 		// Next step is SCard on resource:3000
 		m.ExpectSCard(attrsKey).SetVal(3)
@@ -162,11 +166,10 @@ func TestRedisKeyCache_ResourcesLimitExceeded(t *testing.T) {
 	ctx := context.Background()
 
 	epochWindow := getCurrentEpochWindowMillis()
-	resourceSetKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources", epochWindow)
+	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
-		// SCard => 2 for traces => we only allow 2
-		m.ExpectSCard(resourceSetKey).SetVal(2)
+		m.ExpectPFCount(resourceHLLKey).SetVal(3)
 	})
 
 	// The function under test:
