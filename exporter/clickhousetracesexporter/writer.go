@@ -16,25 +16,17 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/pipeline"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	metricapi "go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -72,7 +64,7 @@ type SpanWriter struct {
 	attributeKeyTable string
 	encoding          Encoding
 	exporterId        uuid.UUID
-	durationHistogram metricapi.Float64Histogram
+	durationHistogram metric.Float64Histogram
 
 	indexTableV3    string
 	resourceTableV3 string
@@ -90,7 +82,7 @@ type SpanWriter struct {
 
 type WriterOptions struct {
 	logger            *zap.Logger
-	meter             metricapi.Meter
+	meter             metric.Meter
 	db                clickhouse.Conn
 	traceDatabase     string
 	spansTable        string
@@ -208,163 +200,8 @@ func (e *SpanWriter) fetchShouldSkipKeys() {
 	}
 }
 
-func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) error {
-	var statement driver.Batch
-	var err error
-
-	defer func() {
-		if statement != nil {
-			_ = statement.Abort()
-		}
-	}()
-	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.indexTable), driver.WithReleaseConnection())
-	if err != nil {
-		return fmt.Errorf("could not prepare batch for index table: %w", err)
-	}
-
-	for _, span := range batchSpans {
-		err = statement.Append(
-			time.Unix(0, int64(span.StartTimeUnixNano)),
-			span.TraceId,
-			span.SpanId,
-			span.ParentSpanId,
-			span.ServiceName,
-			span.Name,
-			span.Kind,
-			span.DurationNano,
-			span.StatusCode,
-			span.ExternalHttpMethod,
-			span.ExternalHttpUrl,
-			span.DBSystem,
-			span.DBName,
-			span.DBOperation,
-			span.PeerService,
-			span.Events,
-			span.HttpMethod,
-			span.HttpUrl,
-			span.HttpRoute,
-			span.HttpHost,
-			span.MsgSystem,
-			span.MsgOperation,
-			span.HasError,
-			span.RPCSystem,
-			span.RPCService,
-			span.RPCMethod,
-			span.ResponseStatusCode,
-			span.StringTagMap,
-			span.NumberTagMap,
-			span.BoolTagMap,
-			span.ResourceTagsMap,
-			span.IsRemote,
-			span.StatusMessage,
-			span.StatusCodeString,
-			span.SpanKind,
-		)
-		if err != nil {
-			return fmt.Errorf("could not append span to batch: %w", err)
-		}
-	}
-
-	start := time.Now()
-
-	err = statement.Send()
-
-	w.durationHistogram.Record(
-		ctx,
-		float64(time.Since(start).Milliseconds()),
-		metricapi.WithAttributes(
-			attribute.String("table", w.indexTable),
-			attribute.String("exporter", pipeline.SignalTraces.String()),
-		),
-	)
-	return err
-}
-
 func stringToBool(s string) bool {
 	return strings.ToLower(s) == "true"
-}
-
-func (w *SpanWriter) writeModelBatch(ctx context.Context, batchSpans []*Span) error {
-	var statement driver.Batch
-	var err error
-
-	defer func() {
-		if statement != nil {
-			_ = statement.Abort()
-		}
-	}()
-
-	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.spansTable), driver.WithReleaseConnection())
-	if err != nil {
-		return fmt.Errorf("could not prepare batch for model table: %w", err)
-	}
-
-	metrics := map[string]usage.Metric{}
-	for _, span := range batchSpans {
-		var serialized []byte
-		usageMap := span.TraceModel
-		usageMap.TagMap = map[string]string{}
-		serialized, err = json.Marshal(span.TraceModel)
-		if err != nil {
-			return fmt.Errorf("could not marshal trace model: %w", err)
-		}
-
-		serializedUsage, err := json.Marshal(usageMap)
-		if err != nil {
-			return fmt.Errorf("could not marshal usage map: %w", err)
-		}
-
-		err = statement.Append(time.Unix(0, int64(span.StartTimeUnixNano)), span.TraceId, string(serialized))
-		if err != nil {
-			return fmt.Errorf("could not append span to batch: %w", err)
-		}
-
-		if !w.useNewSchema {
-			usage.AddMetric(metrics, *span.Tenant, 1, int64(len(serializedUsage)))
-		}
-	}
-
-	start := time.Now()
-
-	err = statement.Send()
-	w.durationHistogram.Record(
-		ctx,
-		float64(time.Since(start).Milliseconds()),
-		metricapi.WithAttributes(
-			attribute.String("table", w.spansTable),
-			attribute.String("exporter", pipeline.SignalTraces.String()),
-		),
-	)
-	if err != nil {
-		return fmt.Errorf("could not send batch to model table: %w", err)
-	}
-
-	if !w.useNewSchema {
-		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
-		}
-	}
-
-	return nil
-}
-
-// WriteBatchOfSpans writes the encoded batch of spans
-func (w *SpanWriter) WriteBatchOfSpans(ctx context.Context, batch []*Span) error {
-	// inserts to the singoz_spans table
-	if w.spansTable != "" {
-		if err := w.writeModelBatch(ctx, batch); err != nil {
-			return fmt.Errorf("could not write a batch of spans to model table: %w", err)
-		}
-	}
-
-	// inserts to the signoz_index_v2 table
-	if w.indexTable != "" {
-		if err := w.writeIndexBatch(ctx, batch); err != nil {
-			return fmt.Errorf("could not write a batch of spans to index table: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // Close closes the writer
