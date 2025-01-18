@@ -20,7 +20,6 @@ import (
 	"io"
 	"sync"
 
-	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
@@ -107,7 +106,6 @@ const (
 
 type clickhouseTracesExporter struct {
 	id             uuid.UUID
-	db             driver.Conn
 	Writer         Writer
 	usageCollector *usage.UsageCollector
 	config         storageConfig
