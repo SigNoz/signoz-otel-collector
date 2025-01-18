@@ -506,7 +506,7 @@ func TestExporterInit(t *testing.T) {
 	})
 }
 
-func TestExporterPushLogsData(t *testing.T) {
+func TestExporterPushTracesData(t *testing.T) {
 	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
