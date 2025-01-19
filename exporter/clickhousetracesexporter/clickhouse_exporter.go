@@ -106,7 +106,7 @@ const (
 
 type clickhouseTracesExporter struct {
 	id             uuid.UUID
-	Writer         Writer
+	Writer         *SpanWriter
 	usageCollector *usage.UsageCollector
 	config         storageConfig
 	wg             *sync.WaitGroup
@@ -153,8 +153,12 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 
 	if s.usageCollector != nil {
 		fmt.Println("Stopping usage collector")
-		s.usageCollector.Stop()
+		err := s.usageCollector.Stop()
+		if err != nil {
+			fmt.Println("Error stopping usage collector", err)
+		}
 	}
+	s.Writer.Close()
 
 	return nil
 }
