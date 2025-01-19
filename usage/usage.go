@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
+	"go.opencensus.io/metric/metricproducer"
 )
 
 // Options provides options for LogExporter
@@ -73,6 +74,14 @@ func (e *UsageCollector) Start() error {
 }
 
 func (c *UsageCollector) Stop() error {
+
+	producers := metricproducer.GlobalManager().GetAll()
+	data := []*metricdata.Metric{}
+	for _, producer := range producers {
+		data = append(data, producer.Read()...)
+	}
+	fmt.Println("Stopping usage collector data", data)
+
 	c.ir.Stop()
 	c.ir.Flush()
 	return nil
