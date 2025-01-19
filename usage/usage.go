@@ -67,7 +67,11 @@ func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options
 func (e *UsageCollector) Start() error {
 	// start collector routine which
 	e.initReaderOnce.Do(func() {
-		e.ir, _ = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
+		var err error
+		e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
+		if err != nil {
+			fmt.Println("Error starting usage collector", err)
+		}
 	})
 	e.ir.ReportingInterval = e.o.ReportingInterval
 	return e.ir.Start()

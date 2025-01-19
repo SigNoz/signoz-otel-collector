@@ -53,7 +53,10 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn) TraceExporterOption {
 			"signoz_traces",
 			UsageExporter,
 		)
-		e.usageCollector.Start()
+		err := e.usageCollector.Start()
+		if err != nil {
+			fmt.Println("Error starting usage collector", err)
+		}
 		e.id = id
 	}
 }
