@@ -16,6 +16,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"fmt"
 
 	"sync"
 
@@ -151,6 +152,7 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 	s.wg.Wait()
 
 	if s.usageCollector != nil {
+		fmt.Println("Stopping usage collector")
 		s.usageCollector.Stop()
 	}
 

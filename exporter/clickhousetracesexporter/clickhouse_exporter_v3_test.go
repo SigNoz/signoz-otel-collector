@@ -546,6 +546,7 @@ func TestExporterPushTracesData(t *testing.T) {
 	exporter.Shutdown(context.Background())
 
 	eventually(t, func() bool {
+		t.Log("ExpectationsWereMet", mock.ExpectationsWereMet())
 		return mock.ExpectationsWereMet() == nil
 	})
 }
