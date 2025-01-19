@@ -436,7 +436,10 @@ func (w *SpanWriter) WriteBatchOfSpansV3(ctx context.Context, batch []*SpanV3, m
 
 	for k, v := range metrics {
 		fmt.Println("WriteBatchOfSpansV3 usage metric", k, v)
-		stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		err := stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, w.exporterId.String())}, ExporterSigNozSentSpans.M(int64(v.Count)), ExporterSigNozSentSpansBytes.M(int64(v.Size)))
+		if err != nil {
+			fmt.Println("WriteBatchOfSpansV3 usage metric error", err)
+		}
 	}
 
 	close(chErr)
