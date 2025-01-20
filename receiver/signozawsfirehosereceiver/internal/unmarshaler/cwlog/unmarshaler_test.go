@@ -89,19 +89,18 @@ func TestCWLogTimestampUnmarshaling(t *testing.T) {
 	// ensure timestamps are unmarshaled correctly
 	require := require.New(t)
 
-	recordBytes, err := os.ReadFile(filepath.Join(".", "testdata", "single_record"))
+	testRecordBytes, err := os.ReadFile(filepath.Join(".", "testdata", "single_record"))
 	require.NoError(err)
 
-	compressedRecord, err := compression.Zip(recordBytes)
+	compressedTestRecord, err := compression.Zip(testRecordBytes)
 	require.NoError(err)
-	records := [][]byte{compressedRecord}
 
 	unmarshaler := NewUnmarshaler(zap.NewNop())
-	plogs, err := unmarshaler.Unmarshal(records)
+	unmarshaledPlogs, err := unmarshaler.Unmarshal([][]byte{compressedTestRecord})
 	require.NoError(err)
 
-	require.Equal(1, plogs.ResourceLogs().Len())
-	rLogs := plogs.ResourceLogs().At(0)
+	require.Equal(1, unmarshaledPlogs.ResourceLogs().Len())
+	rLogs := unmarshaledPlogs.ResourceLogs().At(0)
 	require.Equal(1, rLogs.ScopeLogs().Len())
 	sLogs := rLogs.ScopeLogs().At(0)
 	require.Equal(1, sLogs.LogRecords().Len())
@@ -109,16 +108,15 @@ func TestCWLogTimestampUnmarshaling(t *testing.T) {
 
 	// extract timestamp present in test data
 	// and validate it matches the unmarshaled log record.
-	cwRecord := cWLog{}
-	err = json.Unmarshal(recordBytes, &cwRecord)
+	testCWLogsRecord := cWLog{}
+	err = json.Unmarshal(testRecordBytes, &testCWLogsRecord)
 	require.NoError(err)
 
-	require.Equal(1, len(cwRecord.LogEvents))
-	cwLogEvent := cwRecord.LogEvents[0]
+	require.Equal(1, len(testCWLogsRecord.LogEvents))
+	testCwLogEvent := testCWLogsRecord.LogEvents[0]
 
-	// CW Log events include timestamp in milliseconds
 	require.Equal(
 		unmarshaledLogRecord.Timestamp().AsTime().UnixMilli(),
-		cwLogEvent.Timestamp,
+		testCwLogEvent.Timestamp, // CW Log events have timestamp in milliseconds
 	)
 }
