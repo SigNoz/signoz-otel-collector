@@ -4,6 +4,8 @@
 package cwlog // import "github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/cwlog"
 
 import (
+	"time"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
@@ -44,7 +46,11 @@ func newResourceLogsBuilder(logs plog.Logs, attrs resourceAttributes) *resourceL
 func (rlb *resourceLogsBuilder) AddLog(log cWLog) {
 	for _, event := range log.LogEvents {
 		logLine := rlb.rls.AppendEmpty()
-		logLine.SetTimestamp(pcommon.Timestamp(event.Timestamp))
+
+		// CW Log events include timestamp in millis
+		ts := pcommon.NewTimestampFromTime(time.UnixMilli(event.Timestamp))
+		logLine.SetTimestamp(ts)
+
 		logLine.Body().SetStr(event.Message)
 	}
 }
