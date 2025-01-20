@@ -4,7 +4,7 @@
 package cwlog // import "github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/cwlog"
 
 import (
-	"time"
+	"math"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -47,10 +47,23 @@ func (rlb *resourceLogsBuilder) AddLog(log cWLog) {
 	for _, event := range log.LogEvents {
 		logLine := rlb.rls.AppendEmpty()
 
-		// CW Log events include timestamp in millis
-		ts := pcommon.NewTimestampFromTime(time.UnixMilli(event.Timestamp))
-		logLine.SetTimestamp(ts)
+		logLine.SetTimestamp(pcommon.Timestamp(toEpochNano(event.Timestamp)))
 
 		logLine.Body().SetStr(event.Message)
 	}
+}
+
+// convert `epoch` of any precision to nanos
+func toEpochNano(epoch int64) uint64 {
+	epochCopy := epoch
+	count := 0
+	if epoch == 0 {
+		count = 1
+	} else {
+		for epoch != 0 {
+			epoch /= 10
+			count++
+		}
+	}
+	return uint64(epochCopy) * uint64(math.Pow(10, float64(19-count)))
 }
