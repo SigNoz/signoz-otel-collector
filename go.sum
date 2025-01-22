@@ -2483,6 +2483,8 @@ go.opentelemetry.io/collector/consumer/consumertest v0.111.0 h1:ZEikGRPdrhVAq7xh
 go.opentelemetry.io/collector/consumer/consumertest v0.111.0/go.mod h1:EHPrn8ovcTGdTDlCEi1grOXSP3jUUYU0zvl92uA5L+4=
 go.opentelemetry.io/collector/exporter v0.111.0 h1:NpiP6xXGOmSi59RlB5gGTB+PtCLldVeK3vCQBJPW0sU=
 go.opentelemetry.io/collector/exporter v0.111.0/go.mod h1:FjO80zGWZjqXil8vM1MS8gyxxzZ29WmChTNV2y9xjHo=
+go.opentelemetry.io/collector/exporter/debugexporter v0.111.0 h1:KiypGuW+JG1gV9l6pvSEIMKwn+MLJn0Ol62HMe5ytr4=
+go.opentelemetry.io/collector/exporter/debugexporter v0.111.0/go.mod h1:7ihw3KDcvrY5kXIRNxB64Pz6kguf5Q0x9mJAvbBLT5Y=
 go.opentelemetry.io/collector/exporter/exporterprofiles v0.111.0 h1:fpIRPzqsaEtbVip/wsU6h/GMGISo7UjiiYV61MOMEpQ=
 go.opentelemetry.io/collector/exporter/exporterprofiles v0.111.0/go.mod h1:NGUTQd1fminFnw289fVQFN4dxdyedK4GTTrJUc9gCtw=
 go.opentelemetry.io/collector/exporter/loggingexporter v0.110.0 h1:mKS+unh+v/N8Prkofcqf8N0XbIG5vaR4ipB4LtwsnHc=
