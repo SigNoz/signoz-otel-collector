@@ -9,8 +9,9 @@ ARG USER_UID=10001
 USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
-COPY .build/${TARGETOS}-${TARGETARCH}/signoz-schema-migrator /signoz-schema-migrator
+COPY .build/${TARGETOS}-${TARGETARCH}/signoz-schema-migrator /usr/local/bin/signoz-schema-migrator
+COPY cmd/signozschemamigrator/run.sh /run.sh
 
-# run the binary as the entrypoint and pass the default dsn as a flag
-ENTRYPOINT [ "/signoz-schema-migrator" ]
-CMD ["--dsn", "tcp://localhost:9000"]
+# run both sync and async schema migrations in sequence using script
+ENTRYPOINT [ "/run.sh" ]
+CMD ["all"]
