@@ -35,7 +35,7 @@ run_migration() {
 }
 
 # Validate input arguments
-if [[ $# -eq 0 ]];
+if [[ $# -eq 0 ]]; then
     show_usage
     exit 1
 fi
@@ -55,7 +55,7 @@ if [[ "$additional_args" == "" ]]; then
 fi
 
 # Main execution
-echo "Starting schema migrations with args: ${additional_args}"
+echo "Starting schema migrations with args: \"${additional_args}\""
 if [[ "$migration_type" == "all" ]]; then
     run_migration "sync" "${additional_args}"
     run_migration "async" "${additional_args}"
