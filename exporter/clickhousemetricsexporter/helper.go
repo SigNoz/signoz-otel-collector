@@ -573,3 +573,39 @@ func convertTimeseriesToRequest(tsArray []prompb.TimeSeries) *prompb.WriteReques
 		Timeseries: orderBySampleTimestamp(tsArray),
 	}
 }
+
+func addAttributesToNumberDataPoints(ps pmetric.NumberDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+		}
+		return true
+	})
+}
+
+func addAttributesToHistogramDataPoints(ps pmetric.HistogramDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+		}
+		return true
+	})
+}
+
+func addAttributesToSummaryDataPoints(ps pmetric.SummaryDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+		}
+		return true
+	})
+}
+
+func addAttributesToExponentialHistogramDataPoints(ps pmetric.ExponentialHistogramDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+		}
+		return true
+	})
+}
