@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 )
 
 const (
@@ -574,38 +575,53 @@ func convertTimeseriesToRequest(tsArray []prompb.TimeSeries) *prompb.WriteReques
 	}
 }
 
-func addAttributesToNumberDataPoints(ps pmetric.NumberDataPointSlice, resource pcommon.Map) {
+func addAttributesToNumberDataPoints(logger *zap.Logger, ps pmetric.NumberDataPointSlice, resource pcommon.Map) {
 	resource.Range(func(k string, v pcommon.Value) bool {
 		for i := 0; i < ps.Len(); i++ {
-			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+			addValue(logger, ps.At(i).Attributes(), k, v)
 		}
 		return true
 	})
 }
 
-func addAttributesToHistogramDataPoints(ps pmetric.HistogramDataPointSlice, resource pcommon.Map) {
+func addAttributesToHistogramDataPoints(logger *zap.Logger, ps pmetric.HistogramDataPointSlice, resource pcommon.Map) {
 	resource.Range(func(k string, v pcommon.Value) bool {
 		for i := 0; i < ps.Len(); i++ {
-			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+			addValue(logger, ps.At(i).Attributes(), k, v)
 		}
 		return true
 	})
 }
 
-func addAttributesToSummaryDataPoints(ps pmetric.SummaryDataPointSlice, resource pcommon.Map) {
+func addAttributesToSummaryDataPoints(logger *zap.Logger, ps pmetric.SummaryDataPointSlice, resource pcommon.Map) {
 	resource.Range(func(k string, v pcommon.Value) bool {
 		for i := 0; i < ps.Len(); i++ {
-			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+			addValue(logger, ps.At(i).Attributes(), k, v)
 		}
 		return true
 	})
 }
 
-func addAttributesToExponentialHistogramDataPoints(ps pmetric.ExponentialHistogramDataPointSlice, resource pcommon.Map) {
+func addAttributesToExponentialHistogramDataPoints(logger *zap.Logger, ps pmetric.ExponentialHistogramDataPointSlice, resource pcommon.Map) {
 	resource.Range(func(k string, v pcommon.Value) bool {
 		for i := 0; i < ps.Len(); i++ {
-			v.CopyTo(ps.At(i).Attributes().PutEmpty(k))
+			addValue(logger, ps.At(i).Attributes(), k, v)
 		}
 		return true
 	})
+}
+
+func addValue(logger *zap.Logger, attributes pcommon.Map, k string, v pcommon.Value) {
+	switch v.Type() {
+	case pcommon.ValueTypeBool:
+		attributes.PutBool(k, v.Bool())
+	case pcommon.ValueTypeDouble:
+		attributes.PutDouble(k, v.Double())
+	case pcommon.ValueTypeInt:
+		attributes.PutInt(k, v.Int())
+	case pcommon.ValueTypeStr:
+		attributes.PutStr(k, v.Str())
+	default:
+		logger.Info("encountered something else", zap.String("type", v.Type().String()), zap.String("value", v.AsString()))
+	}
 }

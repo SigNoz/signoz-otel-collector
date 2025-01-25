@@ -196,19 +196,19 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					switch metricType {
 					case pmetric.MetricTypeGauge:
 						temporality = pmetric.AggregationTemporalityUnspecified
-						addAttributesToNumberDataPoints(metric.Gauge().DataPoints(), resource.Attributes())
+						addAttributesToNumberDataPoints(prwe.logger, metric.Gauge().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeSum:
 						temporality = metric.Sum().AggregationTemporality()
-						addAttributesToNumberDataPoints(metric.Sum().DataPoints(), resource.Attributes())
+						addAttributesToNumberDataPoints(prwe.logger, metric.Sum().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeHistogram:
 						temporality = metric.Histogram().AggregationTemporality()
-						addAttributesToHistogramDataPoints(metric.Histogram().DataPoints(), resource.Attributes())
+						addAttributesToHistogramDataPoints(prwe.logger, metric.Histogram().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeExponentialHistogram:
 						temporality = metric.ExponentialHistogram().AggregationTemporality()
-						addAttributesToExponentialHistogramDataPoints(metric.ExponentialHistogram().DataPoints(), resource.Attributes())
+						addAttributesToExponentialHistogramDataPoints(prwe.logger, metric.ExponentialHistogram().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeSummary:
 						temporality = pmetric.AggregationTemporalityUnspecified
-						addAttributesToSummaryDataPoints(metric.Summary().DataPoints(), resource.Attributes())
+						addAttributesToSummaryDataPoints(prwe.logger, metric.Summary().DataPoints(), resource.Attributes())
 					default:
 					}
 					metricName := getPromMetricName(metric, prwe.namespace)
