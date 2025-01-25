@@ -180,6 +180,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 		for i := 0; i < resourceMetricsSlice.Len(); i++ {
 			resourceMetrics := resourceMetricsSlice.At(i)
 			resource := resourceMetrics.Resource()
+			resourceAsPromLabels := resourceAsPromLables(resource)
 			scopeMetricsSlice := resourceMetrics.ScopeMetrics()
 			// TODO: add resource attributes as labels, probably in next PR
 			for j := 0; j < scopeMetricsSlice.Len(); j++ {
@@ -196,19 +197,19 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					switch metricType {
 					case pmetric.MetricTypeGauge:
 						temporality = pmetric.AggregationTemporalityUnspecified
-						addAttributesToNumberDataPoints(prwe.logger, metric.Gauge().DataPoints(), resource.Attributes())
+						//addAttributesToNumberDataPoints(prwe.logger, metric.Gauge().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeSum:
 						temporality = metric.Sum().AggregationTemporality()
-						addAttributesToNumberDataPoints(prwe.logger, metric.Sum().DataPoints(), resource.Attributes())
+						//addAttributesToNumberDataPoints(prwe.logger, metric.Sum().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeHistogram:
 						temporality = metric.Histogram().AggregationTemporality()
-						addAttributesToHistogramDataPoints(prwe.logger, metric.Histogram().DataPoints(), resource.Attributes())
+						//addAttributesToHistogramDataPoints(prwe.logger, metric.Histogram().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeExponentialHistogram:
 						temporality = metric.ExponentialHistogram().AggregationTemporality()
-						addAttributesToExponentialHistogramDataPoints(prwe.logger, metric.ExponentialHistogram().DataPoints(), resource.Attributes())
+						//addAttributesToExponentialHistogramDataPoints(prwe.logger, metric.ExponentialHistogram().DataPoints(), resource.Attributes())
 					case pmetric.MetricTypeSummary:
 						temporality = pmetric.AggregationTemporalityUnspecified
-						addAttributesToSummaryDataPoints(prwe.logger, metric.Summary().DataPoints(), resource.Attributes())
+						//addAttributesToSummaryDataPoints(prwe.logger, metric.Summary().DataPoints(), resource.Attributes())
 					default:
 					}
 					metricName := getPromMetricName(metric, prwe.namespace)
@@ -248,13 +249,13 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					switch metricType {
 					case pmetric.MetricTypeGauge:
 						dataPoints := metric.Gauge().DataPoints()
-						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
+						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric, resourceAsPromLabels); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
 					case pmetric.MetricTypeSum:
 						dataPoints := metric.Sum().DataPoints()
-						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
+						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric, resourceAsPromLabels); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
@@ -265,7 +266,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
-							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels, resourceAsPromLabels)
 						}
 					case pmetric.MetricTypeSummary:
 						dataPoints := metric.Summary().DataPoints()
@@ -274,7 +275,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
-							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels, resourceAsPromLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
 						if !prwe.enableExpHist {
@@ -294,7 +295,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						}
 
 						for x := 0; x < dataPoints.Len(); x++ {
-							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels, resourceAsPromLabels)
 						}
 					default:
 						dropped++
@@ -349,9 +350,9 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 	return sanitizedLabels, nil
 }
 
-func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
+func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric, resourceAsPromLabels map[string]prompb.Label) error {
 	for x := 0; x < dataPoints.Len(); x++ {
-		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels, resourceAsPromLabels)
 	}
 	return nil
 }
