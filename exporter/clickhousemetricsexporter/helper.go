@@ -181,21 +181,16 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, externa
 		}
 	}
 
-	// resource.Attributes().Range(func(key string, value pcommon.Value) bool {
-	// 	// if isUsefulResourceAttribute(key) {
-	// 	// 	l[key] = prompb.Label{
-	// 	// 		Name:  sanitize(key),
-	// 	// 		Value: value.Str(), // TODO(jbd): Decide what to do with non-string attributes.
-	// 	// 	}
-	// 	// }
+	resource.Attributes().Range(func(key string, value pcommon.Value) bool {
+		if isUsefulResourceAttribute(key) {
+			l[key] = prompb.Label{
+				Name:  sanitize(key),
+				Value: value.Str(), // TODO(jbd): Decide what to do with non-string attributes.
+			}
+		}
 
-	// 	l[key] = prompb.Label{
-	// 		Name:  sanitize(key),
-	// 		Value: value.Str(),
-	// 	}
-
-	// 	return true
-	// })
+		return true
+	})
 
 	attributes.Range(func(key string, value pcommon.Value) bool {
 		l[key] = prompb.Label{
