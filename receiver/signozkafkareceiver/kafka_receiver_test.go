@@ -28,7 +28,6 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/testdata"
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/textutils"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 func TestNewTracesReceiver_version_err(t *testing.T) {
@@ -62,7 +61,7 @@ func TestNewTracesReceiver_err_auth_type(t *testing.T) {
 		// 	},
 		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
@@ -363,7 +362,7 @@ func TestNewMetricsExporter_err_auth_type(t *testing.T) {
 		// 	},
 		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
@@ -662,7 +661,7 @@ func TestNewLogsExporter_err_auth_type(t *testing.T) {
 		// 	},
 		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
