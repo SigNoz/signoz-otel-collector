@@ -307,18 +307,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 			}
 		}
 
-		prwe.mux.Lock()
-		for k, v := range nameToMeta {
-			prwe.metricNameToMeta[k] = v
-		}
-		// make a copy of prwe.metricNameToMeta
-		allMetricNameToMeta := make(map[string]base.MetricMeta)
-		for k, v := range prwe.metricNameToMeta {
-			allMetricNameToMeta[k] = v
-		}
-		prwe.mux.Unlock()
-
-		if exportErrors := prwe.export(ctx, tsMap, allMetricNameToMeta); len(exportErrors) != 0 {
+		if exportErrors := prwe.export(ctx, tsMap, nameToMeta); len(exportErrors) != 0 {
 			dropped = md.MetricCount()
 			errs = multierr.Append(errs, multierr.Combine(exportErrors...))
 		}
