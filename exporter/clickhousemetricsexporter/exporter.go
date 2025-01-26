@@ -47,23 +47,22 @@ const maxBatchByteSize = 128000000
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
-	id               uuid.UUID
-	namespace        string
-	externalLabels   map[string]string
-	endpointURL      *url.URL
-	client           *http.Client
-	wg               *sync.WaitGroup
-	closeChan        chan struct{}
-	concurrency      int
-	userAgentHeader  string
-	clientSettings   *confighttp.ClientConfig
-	settings         component.TelemetrySettings
-	ch               base.Storage
-	usageCollector   *usage.UsageCollector
-	metricNameToMeta map[string]base.MetricMeta
-	mux              *sync.Mutex
-	logger           *zap.Logger
-	enableExpHist    bool
+	id              uuid.UUID
+	namespace       string
+	externalLabels  map[string]string
+	endpointURL     *url.URL
+	client          *http.Client
+	wg              *sync.WaitGroup
+	closeChan       chan struct{}
+	concurrency     int
+	userAgentHeader string
+	clientSettings  *confighttp.ClientConfig
+	settings        component.TelemetrySettings
+	ch              base.Storage
+	usageCollector  *usage.UsageCollector
+	mux             *sync.Mutex
+	logger          *zap.Logger
+	enableExpHist   bool
 }
 
 // NewPrwExporter initializes a new PrwExporter instance and sets fields accordingly.
@@ -122,22 +121,21 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 	}
 
 	return &PrwExporter{
-		id:               id,
-		namespace:        cfg.Namespace,
-		externalLabels:   sanitizedLabels,
-		endpointURL:      endpointURL,
-		wg:               new(sync.WaitGroup),
-		closeChan:        make(chan struct{}),
-		userAgentHeader:  userAgentHeader,
-		concurrency:      cfg.RemoteWriteQueue.NumConsumers,
-		clientSettings:   &cfg.HTTPClientSettings,
-		settings:         set.TelemetrySettings,
-		ch:               ch,
-		usageCollector:   collector,
-		metricNameToMeta: make(map[string]base.MetricMeta),
-		mux:              new(sync.Mutex),
-		logger:           set.Logger,
-		enableExpHist:    cfg.EnableExpHist,
+		id:              id,
+		namespace:       cfg.Namespace,
+		externalLabels:  sanitizedLabels,
+		endpointURL:     endpointURL,
+		wg:              new(sync.WaitGroup),
+		closeChan:       make(chan struct{}),
+		userAgentHeader: userAgentHeader,
+		concurrency:     cfg.RemoteWriteQueue.NumConsumers,
+		clientSettings:  &cfg.HTTPClientSettings,
+		settings:        set.TelemetrySettings,
+		ch:              ch,
+		usageCollector:  collector,
+		mux:             new(sync.Mutex),
+		logger:          set.Logger,
+		enableExpHist:   cfg.EnableExpHist,
 	}, nil
 }
 
