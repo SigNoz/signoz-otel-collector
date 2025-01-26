@@ -41,6 +41,7 @@ import (
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const maxBatchByteSize = 128000000
@@ -162,6 +163,8 @@ func (prwe *PrwExporter) Shutdown(context.Context) error {
 // TimeSeries, validates and handles each individual metric, adding the converted TimeSeries to the map, and finally
 // exports the map.
 func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	ctx, span := prwe.settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter").Start(ctx, "exporter/clickhousemetricswrite/metrics/PushMetrics", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
@@ -346,6 +349,8 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries, metricNameToMeta map[string]base.MetricMeta) []error {
+	ctx, span := prwe.settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter").Start(ctx, "exporter/clickhousemetricswrite/metrics/export", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests := batchTimeSeries(tsMap, maxBatchByteSize)
