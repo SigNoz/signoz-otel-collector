@@ -234,7 +234,7 @@ func (ch *clickHouse) GetDBConn() interface{} {
 }
 
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
-	ctx, span := ch.tracer.Start(ctx, "clickhousemetricswrite/Write", trace.WithSpanKind(trace.SpanKindClient))
+	ctx, span := ch.tracer.Start(ctx, "exporter/clickhousemetricswrite/metrics/Write", trace.WithSpanKind(trace.SpanKindClient))
 	span.SetAttributes(attribute.String("db.system.name", "clickhouse"))
 	defer span.End()
 
