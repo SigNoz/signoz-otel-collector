@@ -37,7 +37,9 @@ import (
 	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
@@ -85,6 +87,8 @@ type clickHouse struct {
 	exporterID uuid.UUID
 
 	durationHistogram metric.Float64Histogram
+
+	tracer trace.Tracer
 }
 
 type ClickHouseParams struct {
@@ -104,6 +108,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	logger := params.Settings.Logger
 	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
+	tracer := params.Settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
@@ -145,6 +150,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	ch := &clickHouse{
 		conn:                 conn,
 		l:                    logger,
+		tracer:               tracer,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 		cache:                cache,
@@ -228,6 +234,10 @@ func (ch *clickHouse) GetDBConn() interface{} {
 }
 
 func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metricNameToMeta map[string]base.MetricMeta) error {
+	ctx, span := ch.tracer.Start(ctx, "clickhousemetricswrite/Write", trace.WithSpanKind(trace.SpanKindClient))
+	span.SetAttributes(attribute.String("db.system.name", "clickhouse"))
+	defer span.End()
+
 	// calculate fingerprints, map them to time series
 	fingerprints := make([]uint64, len(data.Timeseries))
 	timeSeries := make(map[uint64][]*prompb.Label, len(data.Timeseries))
@@ -275,6 +285,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if len(fingerprints) != len(timeSeries) {
 		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
+
+	span.SetAttributes(attribute.Int("data.fingerprints.num", len(fingerprints)), attribute.Int("data.timeseries.num", len(timeSeries)))
 
 	// find new time series
 	newTimeSeries := make(map[uint64][]*prompb.Label)
@@ -375,125 +387,174 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		return err
 	}
 
+	errC := make(chan error, 3)
+
 	// write to distributed_samples_v4 table
-	if ch.writeTSToV4 {
-		metrics := map[string]usage.Metric{}
-		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+	go func() {
+		if ch.writeTSToV4 {
+			metrics := map[string]usage.Metric{}
+			err = func(ctx context.Context) error {
+				ctx, span := ch.tracer.Start(ctx, "INSERT", trace.WithSpanKind(trace.SpanKindClient))
+				defer span.End()
+
+				text := fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4)
+				statement, err := ch.conn.PrepareBatch(ctx, text, driver.WithReleaseConnection())
+				if err != nil {
+					return err
+				}
+
+				for i, ts := range data.Timeseries {
+					fingerprint := fingerprints[i]
+					for _, s := range ts.Samples {
+						metricName := fingerprintToName[fingerprint][nameLabel]
+						err = statement.Append(
+							fingerprintToName[fingerprint][envLabel],
+							metricNameToMeta[metricName].Temporality.String(),
+							metricName,
+							fingerprint,
+							s.Timestamp,
+							s.Value,
+						)
+						if err != nil {
+							return err
+						}
+
+						// usage collection checks
+						tenant := "default"
+						collectUsage := true
+						for _, val := range timeSeries[fingerprint] {
+							if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
+								collectUsage = false
+								break
+							}
+							if val.Name == "tenant" {
+								tenant = val.Value
+							}
+						}
+
+						if collectUsage {
+							usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
+						}
+					}
+				}
+
+				start := time.Now()
+				err = statement.Send()
+				ch.durationHistogram.Record(
+					ctx,
+					float64(time.Since(start).Milliseconds()),
+					metric.WithAttributes(
+						attribute.String("exporter", pipeline.SignalMetrics.String()),
+						attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
+					),
+				)
+				span.SetAttributes(
+					attribute.String("db.system.name", "clickhouse"),
+					attribute.String("db.namespace", ch.database),
+					attribute.String("db.operation.name", "INSERT"),
+					attribute.String("db.query.text", text),
+					attribute.Int("db.response.returned_rows", len(data.Timeseries)),
+				)
+				if err != nil {
+					span.SetStatus(codes.Error, "")
+					span.RecordError(err)
+					return err
+				}
+
+				return nil
+			}(ctx)
+
 			if err != nil {
-				return err
+				errC <- err
+				return
 			}
 
-			for i, ts := range data.Timeseries {
-				fingerprint := fingerprints[i]
-				for _, s := range ts.Samples {
-					metricName := fingerprintToName[fingerprint][nameLabel]
+			for k, v := range metrics {
+				stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+			}
+
+			errC <- nil
+			return
+		}
+
+		errC <- nil
+	}()
+
+	// write to distributed_time_series_v4 table
+	go func() {
+		if ch.writeTSToV4 {
+			err = func(ctx context.Context) error {
+				ctx, span := ch.tracer.Start(ctx, "INSERT", trace.WithSpanKind(trace.SpanKindClient))
+				defer span.End()
+
+				text := fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4)
+				statement, err := ch.conn.PrepareBatch(ctx, text, driver.WithReleaseConnection())
+				if err != nil {
+					return err
+				}
+				// timestamp in milliseconds with nearest hour precision
+				unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
+
+				for fingerprint, labels := range timeSeries {
+					key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
+					if item := ch.cache.Get(key); item != nil {
+						if value := item.Value(); value {
+							continue
+						}
+					}
+					encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
+					meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
 					err = statement.Append(
 						fingerprintToName[fingerprint][envLabel],
-						metricNameToMeta[metricName].Temporality.String(),
-						metricName,
+						meta.Temporality.String(),
+						fingerprintToName[fingerprint][nameLabel],
+						meta.Description,
+						meta.Unit,
+						meta.Typ.String(),
+						meta.IsMonotonic,
 						fingerprint,
-						s.Timestamp,
-						s.Value,
+						unixMilli,
+						encodedLabels,
 					)
 					if err != nil {
 						return err
 					}
-
-					// usage collection checks
-					tenant := "default"
-					collectUsage := true
-					for _, val := range timeSeries[fingerprint] {
-						if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
-							collectUsage = false
-							break
-						}
-						if val.Name == "tenant" {
-							tenant = val.Value
-						}
-					}
-
-					if collectUsage {
-						usage.AddMetric(metrics, tenant, 1, int64(len(s.String())))
-					}
+					ch.cache.Set(key, true, ttlcache.DefaultTTL)
 				}
-			}
 
-			start := time.Now()
-			err = statement.Send()
-			ch.durationHistogram.Record(
-				ctx,
-				float64(time.Since(start).Milliseconds()),
-				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
-				),
-			)
-			return err
-		}()
+				start := time.Now()
+				err = statement.Send()
+				ch.durationHistogram.Record(
+					ctx,
+					float64(time.Since(start).Milliseconds()),
+					metric.WithAttributes(
+						attribute.String("exporter", pipeline.SignalMetrics.String()),
+						attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
+					),
+				)
 
-		if err != nil {
-			return err
-		}
-		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
-		}
-	}
-
-	// write to distributed_time_series_v4 table
-	if ch.writeTSToV4 {
-		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_TIME_SERIES_TABLE_V4), driver.WithReleaseConnection())
-			if err != nil {
-				return err
-			}
-			// timestamp in milliseconds with nearest hour precision
-			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
-
-			for fingerprint, labels := range timeSeries {
-				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
-				if item := ch.cache.Get(key); item != nil {
-					if value := item.Value(); value {
-						continue
-					}
-				}
-				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
-				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-				err = statement.Append(
-					fingerprintToName[fingerprint][envLabel],
-					meta.Temporality.String(),
-					fingerprintToName[fingerprint][nameLabel],
-					meta.Description,
-					meta.Unit,
-					meta.Typ.String(),
-					meta.IsMonotonic,
-					fingerprint,
-					unixMilli,
-					encodedLabels,
+				span.SetAttributes(
+					attribute.String("db.system.name", "clickhouse"),
+					attribute.String("db.namespace", ch.database),
+					attribute.String("db.operation.name", "INSERT"),
+					attribute.String("db.query.text", text),
+					attribute.Int("db.response.returned_rows", len(data.Timeseries)),
 				)
 				if err != nil {
+					span.SetStatus(codes.Error, "")
+					span.RecordError(err)
 					return err
 				}
-				ch.cache.Set(key, true, ttlcache.DefaultTTL)
-			}
 
-			start := time.Now()
-			err = statement.Send()
-			ch.durationHistogram.Record(
-				ctx,
-				float64(time.Since(start).Milliseconds()),
-				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
-				),
-			)
-			return err
-		}()
+				return nil
+			}(ctx)
 
-		if err != nil {
-			return err
+			errC <- err
+			return
 		}
-	}
+
+		errC <- nil
+	}()
 
 	n := len(newTimeSeries)
 	if n != 0 {
@@ -501,88 +562,117 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		ch.l.Debug("wrote new time series", zap.Int("count", n))
 	}
 
-	err = func() error {
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
-		if err != nil {
-			return err
-		}
+	go func() {
+		err = func(ctx context.Context) error {
+			ctx, span := ch.tracer.Start(ctx, "INSERT", trace.WithSpanKind(trace.SpanKindClient))
+			defer span.End()
 
-		for i, ts := range data.Timeseries {
-			fingerprint := fingerprints[i]
-			for _, s := range ts.Histograms {
+			text := fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE)
+			statement, err := ch.conn.PrepareBatch(ctx, text, driver.WithReleaseConnection())
+			if err != nil {
+				return err
+			}
 
-				sum := s.Sum
-				var count uint64
-				if x, ok := s.Count.(*prompb.Histogram_CountInt); ok {
-					count = uint64(x.CountInt)
-				} else if x, ok := s.Count.(*prompb.Histogram_CountFloat); ok {
-					count = uint64(x.CountFloat)
-				}
-				min, max := s.PositiveCounts[1], s.PositiveCounts[2]
-				gamma := math.Pow(2, math.Pow(2, float64(-s.Schema)))
-				positiveOffset := s.PositiveCounts[0]
-				negativeOffset := s.NegativeCounts[0]
-				var positivebinCounts []float64
-				for _, x := range s.PositiveDeltas {
-					positivebinCounts = append(positivebinCounts, float64(x))
-				}
-				var negativebinCounts []float64
-				for _, x := range s.NegativeDeltas {
-					negativebinCounts = append(negativebinCounts, float64(x))
-				}
-				var zeroCount int
-				if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountInt); ok {
-					zeroCount = int(x.ZeroCountInt)
-				} else if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountFloat); ok {
-					zeroCount = int(x.ZeroCountFloat)
-				}
+			count := 0
+			for i, ts := range data.Timeseries {
+				count += len(ts.Histograms)
+				fingerprint := fingerprints[i]
+				for _, s := range ts.Histograms {
 
-				sketch := chproto.DD{
-					Mapping: &chproto.IndexMapping{Gamma: gamma},
-					PositiveValues: &chproto.Store{
-						ContiguousBinIndexOffset: int32(positiveOffset),
-						ContiguousBinCounts:      positivebinCounts,
-					},
-					NegativeValues: &chproto.Store{
-						ContiguousBinIndexOffset: int32(negativeOffset),
-						ContiguousBinCounts:      negativebinCounts,
-					},
-					ZeroCount: float64(zeroCount),
-				}
+					sum := s.Sum
+					var count uint64
+					if x, ok := s.Count.(*prompb.Histogram_CountInt); ok {
+						count = uint64(x.CountInt)
+					} else if x, ok := s.Count.(*prompb.Histogram_CountFloat); ok {
+						count = uint64(x.CountFloat)
+					}
+					min, max := s.PositiveCounts[1], s.PositiveCounts[2]
+					gamma := math.Pow(2, math.Pow(2, float64(-s.Schema)))
+					positiveOffset := s.PositiveCounts[0]
+					negativeOffset := s.NegativeCounts[0]
+					var positivebinCounts []float64
+					for _, x := range s.PositiveDeltas {
+						positivebinCounts = append(positivebinCounts, float64(x))
+					}
+					var negativebinCounts []float64
+					for _, x := range s.NegativeDeltas {
+						negativebinCounts = append(negativebinCounts, float64(x))
+					}
+					var zeroCount int
+					if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountInt); ok {
+						zeroCount = int(x.ZeroCountInt)
+					} else if x, ok := s.ZeroCount.(*prompb.Histogram_ZeroCountFloat); ok {
+						zeroCount = int(x.ZeroCountFloat)
+					}
 
-				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-				err = statement.Append(
-					fingerprintToName[fingerprint][envLabel],
-					meta.Temporality.String(),
-					fingerprintToName[fingerprint][nameLabel],
-					fingerprint,
-					s.Timestamp,
-					count,
-					sum,
-					min,
-					max,
-					sketch,
-				)
-				if err != nil {
-					return err
+					sketch := chproto.DD{
+						Mapping: &chproto.IndexMapping{Gamma: gamma},
+						PositiveValues: &chproto.Store{
+							ContiguousBinIndexOffset: int32(positiveOffset),
+							ContiguousBinCounts:      positivebinCounts,
+						},
+						NegativeValues: &chproto.Store{
+							ContiguousBinIndexOffset: int32(negativeOffset),
+							ContiguousBinCounts:      negativebinCounts,
+						},
+						ZeroCount: float64(zeroCount),
+					}
+
+					meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+					err = statement.Append(
+						fingerprintToName[fingerprint][envLabel],
+						meta.Temporality.String(),
+						fingerprintToName[fingerprint][nameLabel],
+						fingerprint,
+						s.Timestamp,
+						count,
+						sum,
+						min,
+						max,
+						sketch,
+					)
+					if err != nil {
+						return err
+					}
 				}
 			}
-		}
 
-		start := time.Now()
-		err = statement.Send()
-		ch.durationHistogram.Record(
-			ctx,
-			float64(time.Since(start).Milliseconds()),
-			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
-				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
-			),
-		)
-		return err
+			start := time.Now()
+			err = statement.Send()
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
+				),
+			)
+
+			span.SetAttributes(
+				attribute.String("db.system.name", "clickhouse"),
+				attribute.String("db.namespace", ch.database),
+				attribute.String("db.operation.name", "INSERT"),
+				attribute.String("db.query.text", text),
+				attribute.Int("db.response.returned_rows", count),
+			)
+			if err != nil {
+				span.SetStatus(codes.Error, "")
+				span.RecordError(err)
+				return err
+			}
+
+			return nil
+		}(ctx)
+
+		errC <- err
 	}()
-	if err != nil {
-		return err
+
+	for i := 0; i < 3; i++ {
+		if err := <-errC; err != nil {
+			span.SetStatus(codes.Error, "")
+			span.RecordError(err)
+			return err
+		}
 	}
 
 	return nil
