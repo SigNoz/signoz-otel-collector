@@ -8,7 +8,6 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 
-	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
@@ -65,7 +64,7 @@ type Config struct {
 	// Client, and shared by the Producer/Consumer.
 	Metadata kafkaexporter.Metadata `mapstructure:"metadata"`
 
-	Authentication kafka.Authentication `mapstructure:"auth"`
+	//Authentication kafka.Authentication `mapstructure:"auth"`
 
 	// Controls the auto-commit functionality
 	AutoCommit AutoCommit `mapstructure:"autocommit"`
