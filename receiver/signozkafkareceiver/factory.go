@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 const (
@@ -94,9 +93,9 @@ func createDefaultConfig() component.Config {
 		ClientID:      defaultClientID,
 		GroupID:       defaultGroupID,
 		InitialOffset: defaultInitialOffset,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: defaultMetadataFull,
-			Retry: kafkaexporter.MetadataRetry{
+			Retry: MetadataRetry{
 				Max:     defaultMetadataRetryMax,
 				Backoff: defaultMetadataRetryBackoff,
 			},

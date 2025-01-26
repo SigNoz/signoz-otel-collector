@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -46,9 +45,9 @@ func TestLoadConfig(t *testing.T) {
 				// 		},
 				// 	},
 				// },
-				Metadata: kafkaexporter.Metadata{
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},
@@ -86,9 +85,9 @@ func TestLoadConfig(t *testing.T) {
 				// 		},
 				// 	},
 				// },
-				Metadata: kafkaexporter.Metadata{
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},

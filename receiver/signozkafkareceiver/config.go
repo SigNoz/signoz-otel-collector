@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 type AutoCommit struct {
@@ -29,6 +27,28 @@ type MessageMarking struct {
 	// Note: this can block the entire partition in case a message processing returns
 	// a permanent error.
 	OnError bool `mapstructure:"on_error"`
+}
+
+type Metadata struct {
+	// Whether to maintain a full set of metadata for all topics, or just
+	// the minimal set that has been necessary so far. The full set is simpler
+	// and usually more convenient, but can take up a substantial amount of
+	// memory if you have many topics and partitions. Defaults to true.
+	Full bool `mapstructure:"full"`
+
+	// Retry configuration for metadata.
+	// This configuration is useful to avoid race conditions when broker
+	// is starting at the same time as collector.
+	Retry MetadataRetry `mapstructure:"retry"`
+}
+
+type MetadataRetry struct {
+	// The total number of times to retry a metadata request when the
+	// cluster is in the middle of a leader election or at startup (default 3).
+	Max int `mapstructure:"max"`
+	// How long to wait for leader election to occur before retrying
+	// (default 250ms). Similar to the JVM's `retry.backoff.ms`.
+	Backoff time.Duration `mapstructure:"backoff"`
 }
 
 type SaramaConsumerConfig struct {
@@ -62,7 +82,7 @@ type Config struct {
 
 	// Metadata is the namespace for metadata management properties used by the
 	// Client, and shared by the Producer/Consumer.
-	Metadata kafkaexporter.Metadata `mapstructure:"metadata"`
+	Metadata Metadata `mapstructure:"metadata"`
 
 	//Authentication kafka.Authentication `mapstructure:"auth"`
 
