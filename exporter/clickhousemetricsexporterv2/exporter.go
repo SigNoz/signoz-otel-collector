@@ -2,6 +2,7 @@ package clickhousemetricsexporterv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -809,7 +810,6 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *writeBatch) error {
-
 	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
 		start := time.Now()
 
@@ -862,10 +862,6 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeTimeSeries(ctx, batch.ts); err != nil {
-		return err
-	}
-
 	writeSamples := func(ctx context.Context, samples []sample) error {
 		start := time.Now()
 
@@ -901,10 +897,6 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 			}
 		}
 		return statement.Send()
-	}
-
-	if err := writeSamples(ctx, batch.samples); err != nil {
-		return err
 	}
 
 	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
@@ -946,10 +938,6 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 			}
 		}
 		return statement.Send()
-	}
-
-	if err := writeExpHist(ctx, batch.expHist); err != nil {
-		return err
 	}
 
 	writeMetadata := func(ctx context.Context, metadata []metadata) error {
@@ -995,12 +983,38 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeMetadata(ctx, batch.metadata); err != nil {
-		// we don't need to return an error here because the metadata is not critical to the operation of the exporter
-		// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
-		// if there were a generic error, it would have been returned in the other write functions
-		c.logger.Error("error writing metadata", zap.Error(err))
+	// Send all statements in parallel
+	errC := make(chan error, 4)
+
+	go func() {
+		errC <- writeTimeSeries(ctx, batch.ts)
+	}()
+
+	go func() {
+		errC <- writeSamples(ctx, batch.samples)
+	}()
+
+	go func() {
+		errC <- writeExpHist(ctx, batch.expHist)
+	}()
+
+	go func() {
+		if err := writeMetadata(ctx, batch.metadata); err != nil {
+			// we don't need to return an error here because the metadata is not critical to the operation of the exporter
+			// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
+			// if there were a generic error, it would have been returned in the other write functions
+			c.logger.Error("error writing metadata", zap.Error(err))
+		}
+
+		errC <- nil
+	}()
+
+	var errs []error
+	for i := 0; i < 4; i++ {
+		if err := <-errC; err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }

@@ -23,3 +23,7 @@ vendor/
 .build
 *.rollback
 signoz-collector
+
+# tmp
+tmp/
+**/tmp/**
