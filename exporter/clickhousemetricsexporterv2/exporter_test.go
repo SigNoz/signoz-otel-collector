@@ -1,6 +1,7 @@
 package clickhousemetricsexporterv2
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -23,7 +24,7 @@ func Test_prepareBatchGauge(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
 	)
 	require.NoError(t, err)
-	batch := exp.prepareBatch(metrics)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	expectedSamples := []sample{
 		{
@@ -89,7 +90,7 @@ func Test_prepareBatchSum(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
 	)
 	require.NoError(t, err)
-	batch := exp.prepareBatch(metrics)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	expectedSamples := []sample{
 		{
@@ -155,7 +156,7 @@ func Test_prepareBatchHistogram(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
 	)
 	require.NoError(t, err)
-	batch := exp.prepareBatch(metrics)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	// there should be 4 (count, sum, min, max) + 20 (for each bucket) + 1 (for the inf bucket) = 25 samples
 	expectedSamples := []sample{
@@ -339,7 +340,7 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
 	)
 	require.NoError(t, err)
-	batch := exp.prepareBatch(metrics)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 
 	expectedSamples := []sample{
@@ -421,7 +422,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
 	)
 	require.NoError(t, err)
-	batch := exp.prepareBatch(metrics)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 
 	expectedSamples := []sample{
@@ -492,7 +493,7 @@ func Benchmark_prepareBatchGauge(b *testing.B) {
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
@@ -509,7 +510,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
@@ -526,7 +527,7 @@ func Benchmark_prepareBatchHistogram(b *testing.B) {
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
@@ -544,7 +545,7 @@ func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
@@ -561,6 +562,6 @@ func Benchmark_prepareBatchSummary(b *testing.B) {
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
