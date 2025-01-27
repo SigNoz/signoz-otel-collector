@@ -2,6 +2,7 @@ package clickhousemetricsexporterv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -1008,11 +1009,12 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		errC <- nil
 	}()
 
+	var errs []error
 	for i := 0; i < 4; i++ {
 		if err := <-errC; err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
