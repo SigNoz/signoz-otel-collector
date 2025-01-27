@@ -19,10 +19,10 @@ func TestMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountGaugeMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.GenerationConfig{
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
 		GaugeMetricsCount:   10,
 		GaugeDataPointCount: 10,
-	})
+	}))
 
 	meter := NewMetrics(zap.NewNop())
 
@@ -31,10 +31,10 @@ func TestMetrics_CountGaugeMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountSumMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.GenerationConfig{
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
 		SumMetricsCount:   10,
 		SumDataPointCount: 6,
-	})
+	}))
 
 	meter := NewMetrics(zap.NewNop())
 
@@ -43,11 +43,11 @@ func TestMetrics_CountSumMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountHistogramMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.GenerationConfig{
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
 		HistogramMetricsCount:   1,
 		HistogramDataPointCount: 6,
 		HistogramBucketCount:    20,
-	})
+	}))
 
 	meter := NewMetrics(zap.NewNop())
 
@@ -56,11 +56,11 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.GenerationConfig{
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
 		ExponentialHistogramMetricsCount:   1,
 		ExponentialHistogramDataPointCount: 6,
 		ExponentialHistogramBucketCount:    20,
-	})
+	}))
 
 	meter := NewMetrics(zap.NewNop())
 
@@ -70,11 +70,11 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountSummaryMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.GenerationConfig{
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
 		SummaryMetricsCount:   1,
 		SummaryDataPointCount: 6,
 		SummaryQuantileCount:  3,
-	})
+	}))
 
 	meter := NewMetrics(zap.NewNop())
 

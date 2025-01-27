@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
+	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -15,7 +16,7 @@ import (
 )
 
 func Test_prepareBatchGauge(t *testing.T) {
-	metrics := generateGaugeMetrics(1, 1, 1, 1, 1)
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -81,7 +82,7 @@ func Test_prepareBatchGauge(t *testing.T) {
 }
 
 func Test_prepareBatchSum(t *testing.T) {
-	metrics := generateSumMetrics(1, 1, 1, 1, 1)
+	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -147,7 +148,7 @@ func Test_prepareBatchSum(t *testing.T) {
 }
 
 func Test_prepareBatchHistogram(t *testing.T) {
-	metrics := generateHistogramMetrics(1, 1, 1, 1, 1)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -330,7 +331,7 @@ func Test_prepareBatchHistogram(t *testing.T) {
 }
 
 func Test_prepareBatchExponentialHistogram(t *testing.T) {
-	metrics := generateExponentialHistogramMetrics(2, 1, 1, 1, 1)
+	metrics := pmetricsgen.GenerateExponentialHistogramMetrics(2, 1, 1, 1, 1)
 	exp, err := NewClickHouseExporter(
 		WithEnableExpHist(true),
 		WithLogger(zap.NewNop()),
@@ -413,7 +414,7 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 }
 
 func Test_prepareBatchSummary(t *testing.T) {
-	metrics := generateSummaryMetrics(1, 2, 1, 1, 1)
+	metrics := pmetricsgen.GenerateSummaryMetrics(1, 2, 1, 1, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -481,7 +482,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 func Benchmark_prepareBatchGauge(b *testing.B) {
 	// 10k gauge metrics * 10 data points = 100k data point in total
 	// each with 30 total attributes
-	metrics := generateGaugeMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateGaugeMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -498,7 +499,7 @@ func Benchmark_prepareBatchGauge(b *testing.B) {
 func Benchmark_prepareBatchSum(b *testing.B) {
 	// 10k sum * 10 data points = 100k data point in total
 	// each with 30 total attributes
-	metrics := generateSumMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateSumMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -515,7 +516,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 func Benchmark_prepareBatchHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * 20 buckets = 200k samples in total
 	// each with 30 total attributes
-	metrics := generateHistogramMetrics(1000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -532,7 +533,7 @@ func Benchmark_prepareBatchHistogram(b *testing.B) {
 func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * (20 positive + 20 negative) buckets = 400k samples in total
 	// each with 30 total attributes
-	metrics := generateExponentialHistogramMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateExponentialHistogramMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -550,7 +551,7 @@ func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
 func Benchmark_prepareBatchSummary(b *testing.B) {
 	// 10k summary * 10 datapoints = 100k+ samples in total
 	// each with 30 total attributes
-	metrics := generateSummaryMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateSummaryMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
