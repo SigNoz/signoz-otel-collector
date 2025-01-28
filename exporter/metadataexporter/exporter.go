@@ -299,7 +299,7 @@ func (e *metadataExporter) periodicallyUpdateTagValueCountFromDB(ctx context.Con
 }
 
 func (e *metadataExporter) updateTagValueCountFromDB(ctx context.Context, p *updateParams) {
-	p.logger.Info("updating tag value count from DB", zap.String("signal", p.signalName))
+	p.logger.Debug("updating tag value count from DB", zap.String("signal", p.signalName))
 	rows, err := p.conn.Query(ctx, p.query)
 	if err != nil {
 		p.logger.Error("failed to query tag value counts", zap.String("signal", p.signalName), zap.Error(err))
@@ -325,7 +325,7 @@ func (e *metadataExporter) updateTagValueCountFromDB(ctx context.Context, p *upd
 	}
 
 	p.storeFunc(newMap)
-	p.logger.Info("updated tag value count from DB", zap.String("signal", p.signalName), zap.Int("countSize", len(newMap)))
+	p.logger.Debug("updated tag value count from DB", zap.String("signal", p.signalName), zap.Int("countSize", len(newMap)))
 }
 
 func (e *metadataExporter) storeLogTagValues(newValues map[string]tagValueCountFromDB) {
@@ -492,24 +492,24 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	resourcesLimitCheckStart := time.Now()
 	// check max resources limit
 	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
-		e.set.Logger.Info("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		e.set.Logger.Debug("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 		return 0, nil
 	}
 	resourcesLimitCheckDuration = time.Since(resourcesLimitCheckStart)
 
 	totalCardinalityLimitCheckStart := time.Now()
 	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
-		e.set.Logger.Info("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		e.set.Logger.Debug("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 		return 0, nil
 	}
 	totalCardinalityLimitCheckDuration = time.Since(totalCardinalityLimitCheckStart)
 
-	e.set.Logger.Info("resourcesLimitCheckDuration",
+	e.set.Logger.Debug("resourcesLimitCheckDuration",
 		zap.Int64("duration", resourcesLimitCheckDuration.Milliseconds()),
 		zap.String("datasource", ds.String()),
 		zap.Int("records", len(records)),
 	)
-	e.set.Logger.Info("totalCardinalityLimitCheckDuration",
+	e.set.Logger.Debug("totalCardinalityLimitCheckDuration",
 		zap.Int64("duration", totalCardinalityLimitCheckDuration.Milliseconds()),
 		zap.String("datasource", ds.String()),
 		zap.Int("records", len(records)),
@@ -530,13 +530,13 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		indexByFp[resourceFp] = append(indexByFp[resourceFp], i)
 	}
 
-	e.set.Logger.Info("resourceGroupsCount", zap.Int("count", len(recordGroups)), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+	e.set.Logger.Debug("resourceGroupsCount", zap.Int("count", len(recordGroups)), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	totalWrites := 0
 
 	exceeds, err := e.keyCache.CardinalityLimitExceededMulti(ctx, resourceFps, ds)
 	if err != nil {
-		e.set.Logger.Info("failed to check cardinality limit exceeded", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		e.set.Logger.Debug("failed to check cardinality limit exceeded", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 	}
 	for i, exceeds := range exceeds {
 		exceedsCardinality[resourceFps[i]] = exceeds
@@ -546,14 +546,14 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	for resourceFp, attrFps := range recordGroups {
 		// check cardinality limit
 		if exceedsCardinality[resourceFp] {
-			e.set.Logger.Info("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
+			e.set.Logger.Debug("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
 			continue
 		}
 
 		existenceStart := time.Now()
 		existence, err := e.keyCache.AttrsExistForResource(ctx, resourceFp, attrFps, ds)
 		if err != nil {
-			e.set.Logger.Info("failed to check attrs existence", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+			e.set.Logger.Debug("failed to check attrs existence", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 			continue
 		}
 		existsCheckDuration += time.Since(existenceStart)
@@ -590,21 +590,21 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 			addAttrsStart := time.Now()
 			err := e.keyCache.AddAttrsToResource(ctx, resourceFp, newAttrFps, ds)
 			if err != nil {
-				e.set.Logger.Info("failed to add to keyCache", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+				e.set.Logger.Debug("failed to add to keyCache", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 			}
 			addAttrsDuration += time.Since(addAttrsStart)
 		}
 	}
 
-	e.set.Logger.Info("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-	e.set.Logger.Info("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+	e.set.Logger.Debug("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+	e.set.Logger.Debug("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	stmtStart := time.Now()
 	if err := stmt.Send(); err != nil {
 		return totalWrites, err
 	}
 	stmtDuration := time.Since(stmtStart)
-	e.set.Logger.Info("stmtDuration",
+	e.set.Logger.Debug("stmtDuration",
 		zap.Int64("duration", stmtDuration.Milliseconds()),
 		zap.String("datasource", ds.String()),
 		zap.Int("records", len(records)),
@@ -712,7 +712,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 	}
 	skipped := totalSpans - written
-	e.set.Logger.Info("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skipped))
+	e.set.Logger.Debug("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skipped))
 	return nil
 }
 
@@ -809,7 +809,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 	}
 	skipped := totalDps - written
-	e.set.Logger.Info("pushed metrics attributes", zap.Int("total_dps", totalDps), zap.Int("skipped_dps", skipped))
+	e.set.Logger.Debug("pushed metrics attributes", zap.Int("total_dps", totalDps), zap.Int("skipped_dps", skipped))
 	return nil
 }
 
@@ -879,6 +879,6 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 	}
 	skipped := totalLogRecords - written
-	e.set.Logger.Info("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))
+	e.set.Logger.Debug("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))
 	return nil
 }
