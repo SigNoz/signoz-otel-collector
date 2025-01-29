@@ -546,7 +546,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	for resourceFp, attrFps := range recordGroups {
 		// check cardinality limit
 		if exceedsCardinality[resourceFp] {
-			e.set.Logger.Debug("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
+			e.set.Logger.Info("cardinality limit exceeded", zap.Uint64("resourceFp", resourceFp), zap.String("ds", ds.String()))
 			continue
 		}
 
