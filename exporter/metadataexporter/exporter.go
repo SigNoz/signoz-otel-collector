@@ -492,7 +492,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	resourcesLimitCheckStart := time.Now()
 	// check max resources limit
 	if e.keyCache.ResourcesLimitExceeded(ctx, ds) {
-		e.set.Logger.Debug("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		e.set.Logger.Info("resource limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 		return 0, nil
 	}
 	resourcesLimitCheckDuration = time.Since(resourcesLimitCheckStart)
