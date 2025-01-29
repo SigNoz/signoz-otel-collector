@@ -499,7 +499,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 
 	totalCardinalityLimitCheckStart := time.Now()
 	if e.keyCache.TotalCardinalityLimitExceeded(ctx, ds) {
-		e.set.Logger.Debug("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		e.set.Logger.Info("total cardinality limit exceeded", zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 		return 0, nil
 	}
 	totalCardinalityLimitCheckDuration = time.Since(totalCardinalityLimitCheckStart)
