@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/ch"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -17,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -169,7 +172,14 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV3, error) {
+func newStructuredSpanV3(
+	bucketStart uint64,
+	fingerprint string,
+	otelSpan ptrace.Span,
+	ServiceName string,
+	resource pcommon.Resource,
+	config storageConfig,
+) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -288,6 +298,8 @@ const (
 )
 
 func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
+	ctx, span := s.tracer.Start(ctx, "pushTraceDataV3")
+	defer span.End()
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -303,6 +315,10 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 		count := 0
 		size := 0
 		metrics := map[string]usage.Metric{}
+		var prepareStructuredSpanDuration time.Duration
+		var resourceJsonMarshalDuration time.Duration
+		var serializedStructuredSpanDuration time.Duration
+		preprocessStart := time.Now()
 		for i := 0; i < rss.Len(); i++ {
 			rs := rss.At(i)
 
@@ -314,11 +330,13 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 				stringMap[k] = v.AsString()
 				return true
 			})
+			resourceJsonMarshalStart := time.Now()
 			serializedRes, err := json.Marshal(stringMap)
 			if err != nil {
 				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
 			}
 			resourceJson := string(serializedRes)
+			resourceJsonMarshalDuration += time.Since(resourceJsonMarshalStart)
 
 			for j := 0; j < rs.ScopeSpans().Len(); j++ {
 				ils := rs.ScopeSpans().At(j)
@@ -338,27 +356,53 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
+					prepareStructuredSpanStart := time.Now()
 					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
 					if err != nil {
 						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}
+					prepareStructuredSpanDuration += time.Since(prepareStructuredSpanStart)
 					batchOfSpans = append(batchOfSpans, structuredSpan)
 
+					serializedStructuredSpanStart := time.Now()
 					serializedStructuredSpan, err := json.Marshal(structuredSpan)
 					if err != nil {
 						return fmt.Errorf("failed to marshal structured span: %w", err)
 					}
+					serializedStructuredSpanDuration += time.Since(serializedStructuredSpanStart)
 					size += len(serializedStructuredSpan)
 					count += 1
 				}
 			}
 		}
+		span.SetAttributes(
+			attribute.Int64("prepare_structured_span_duration", prepareStructuredSpanDuration.Milliseconds()),
+			attribute.Int64("resource_json_marshal_duration", resourceJsonMarshalDuration.Milliseconds()),
+			attribute.Int64("serialized_structured_span_duration", serializedStructuredSpanDuration.Milliseconds()),
+			attribute.Int64("preprocess_duration", time.Since(preprocessStart).Milliseconds()),
+			attribute.Int64("total_spans", int64(count)),
+			attribute.Int64("span_count", int64(td.SpanCount())),
+			attribute.Int64("total_spans_size", int64(size)),
+		)
 
 		if s.useNewSchema {
 			usage.AddMetric(metrics, "default", int64(count), int64(size))
 		}
 
-		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics)
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
+			"exporter":                            "clickhouse_traces_exporter",
+			"span_count":                          int64(td.SpanCount()),
+			"total_spans":                         int64(count),
+			"total_spans_size":                    int64(size),
+			"preprocess_duration":                 time.Since(preprocessStart).Milliseconds(),
+			"prepare_structured_span_duration":    prepareStructuredSpanDuration.Milliseconds(),
+			"resource_json_marshal_duration":      resourceJsonMarshalDuration.Milliseconds(),
+			"serialized_structured_span_duration": serializedStructuredSpanDuration.Milliseconds(),
+			"trace_id":                            span.SpanContext().TraceID().String(),
+			"span_id":                             span.SpanContext().SpanID().String(),
+		})
+
+		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics, span)
 		if err != nil {
 			return fmt.Errorf("error in writing spans to clickhouse: %w", err)
 		}

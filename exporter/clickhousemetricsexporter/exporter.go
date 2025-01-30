@@ -24,11 +24,14 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats/view"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
@@ -63,6 +66,7 @@ type PrwExporter struct {
 	metricNameToMeta map[string]base.MetricMeta
 	mux              *sync.Mutex
 	logger           *zap.Logger
+	tracer           trace.Tracer
 	enableExpHist    bool
 }
 
@@ -137,6 +141,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		metricNameToMeta: make(map[string]base.MetricMeta),
 		mux:              new(sync.Mutex),
 		logger:           set.Logger,
+		tracer:           set.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"),
 		enableExpHist:    cfg.EnableExpHist,
 	}, nil
 }
@@ -164,6 +169,8 @@ func (prwe *PrwExporter) Shutdown(context.Context) error {
 // TimeSeries, validates and handles each individual metric, adding the converted TimeSeries to the map, and finally
 // exports the map.
 func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	ctx, span := prwe.tracer.Start(ctx, "PushMetrics")
+	defer span.End()
 	prwe.wg.Add(1)
 	defer prwe.wg.Done()
 
@@ -176,6 +183,16 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 		tsMap := map[string]*prompb.TimeSeries{}
 		dropped := 0
 		var errs error
+		var gaugePointsDuration time.Duration
+		var sumPointsDuration time.Duration
+		var histogramPointsDuration time.Duration
+		var summaryPointsDuration time.Duration
+		var expHistPointsDuration time.Duration
+		var gaugePointsCount int
+		var sumPointsCount int
+		var histogramPointsCount int
+		var summaryPointsCount int
+		var expHistPointsCount int
 		resourceMetricsSlice := md.ResourceMetrics()
 		for i := 0; i < resourceMetricsSlice.Len(); i++ {
 			resourceMetrics := resourceMetricsSlice.At(i)
@@ -242,18 +259,25 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					// handle individual metric based on type
 					switch metricType {
 					case pmetric.MetricTypeGauge:
+						gaugePointsStart := time.Now()
 						dataPoints := metric.Gauge().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
+						gaugePointsDuration += time.Since(gaugePointsStart)
+						gaugePointsCount += dataPoints.Len()
 					case pmetric.MetricTypeSum:
+						sumPointsStart := time.Now()
 						dataPoints := metric.Sum().DataPoints()
 						if err := prwe.addNumberDataPointSlice(dataPoints, tsMap, resource, metric); err != nil {
 							dropped++
 							errs = multierr.Append(errs, err)
 						}
+						sumPointsDuration += time.Since(sumPointsStart)
+						sumPointsCount += dataPoints.Len()
 					case pmetric.MetricTypeHistogram:
+						histogramPointsStart := time.Now()
 						dataPoints := metric.Histogram().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
@@ -262,7 +286,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
+						histogramPointsDuration += time.Since(histogramPointsStart)
+						histogramPointsCount += dataPoints.Len()
 					case pmetric.MetricTypeSummary:
+						summaryPointsStart := time.Now()
 						dataPoints := metric.Summary().DataPoints()
 						if dataPoints.Len() == 0 {
 							dropped++
@@ -271,10 +298,14 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
+						summaryPointsDuration += time.Since(summaryPointsStart)
+						summaryPointsCount += dataPoints.Len()
 					case pmetric.MetricTypeExponentialHistogram:
+
 						if !prwe.enableExpHist {
 							continue
 						}
+						expHistPointsStart := time.Now()
 						// we don't support cumulative exponential histograms
 						if temporality == pmetric.AggregationTemporalityCumulative {
 							dropped++
@@ -291,6 +322,8 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						for x := 0; x < dataPoints.Len(); x++ {
 							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
+						expHistPointsDuration += time.Since(expHistPointsStart)
+						expHistPointsCount += dataPoints.Len()
 					default:
 						dropped++
 						name := metric.Name()
@@ -300,6 +333,18 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 				}
 			}
 		}
+		span.SetAttributes(
+			attribute.Int64("gauge_points_processing_duration", int64(gaugePointsDuration.Milliseconds())),
+			attribute.Int64("gauge_points_count", int64(gaugePointsCount)),
+			attribute.Int64("sum_points_processing_duration", int64(sumPointsDuration.Milliseconds())),
+			attribute.Int64("sum_points_count", int64(sumPointsCount)),
+			attribute.Int64("histogram_points_processing_duration", int64(histogramPointsDuration.Milliseconds())),
+			attribute.Int64("histogram_points_count", int64(histogramPointsCount)),
+			attribute.Int64("summary_points_processing_duration", int64(summaryPointsDuration.Milliseconds())),
+			attribute.Int64("summary_points_count", int64(summaryPointsCount)),
+			attribute.Int64("exp_hist_points_processing_duration", int64(expHistPointsDuration.Milliseconds())),
+			attribute.Int64("exp_hist_points_count", int64(expHistPointsCount)),
+		)
 
 		prwe.mux.Lock()
 		for k, v := range nameToMeta {
@@ -353,6 +398,8 @@ func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPo
 
 // export sends a Snappy-compressed WriteRequest containing TimeSeries to a remote write endpoint in order
 func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.TimeSeries, metricNameToMeta map[string]base.MetricMeta) []error {
+	ctx, span := prwe.tracer.Start(ctx, "export")
+	defer span.End()
 	var errs []error
 	// Calls the helper function to convert and batch the TsMap to the desired format
 	requests := batchTimeSeries(tsMap, maxBatchByteSize)
@@ -360,6 +407,7 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 		prwe.logger.Warn("empty batch, skipping")
 		return nil
 	}
+	span.SetAttributes(attribute.Int64("requests_count", int64(len(requests))))
 
 	input := make(chan *prompb.WriteRequest, len(requests))
 	for _, request := range requests {
@@ -378,6 +426,8 @@ func (prwe *PrwExporter) export(ctx context.Context, tsMap map[string]*prompb.Ti
 	for i := 0; i < concurrencyLimit; i++ {
 		go func() {
 			defer wg.Done()
+			ctx, span := prwe.tracer.Start(ctx, "export worker")
+			defer span.End()
 
 			for request := range input {
 				err := prwe.ch.Write(ctx, request, metricNameToMeta)

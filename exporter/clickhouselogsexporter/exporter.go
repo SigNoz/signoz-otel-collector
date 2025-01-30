@@ -29,6 +29,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/ch"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -45,6 +46,7 @@ import (
 	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -74,6 +76,7 @@ type clickhouseLogsExporter struct {
 	insertLogsSQLV2 string
 
 	logger *zap.Logger
+	tracer trace.Tracer
 	cfg    *Config
 
 	usageCollector *usage.UsageCollector
@@ -95,7 +98,8 @@ type clickhouseLogsExporter struct {
 }
 
 func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, error) {
-	logger := set.Logger
+	logger := set.Logger.With(zap.String("exporter", "clickhouse_logs"))
+	tracer := set.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")
 	meter := set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")
 
 	if err := cfg.Validate(); err != nil {
@@ -158,6 +162,7 @@ func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, e
 		insertLogsSQL:     insertLogsSQL,
 		insertLogsSQLV2:   insertLogsSQLV2,
 		logger:            logger,
+		tracer:            tracer,
 		cfg:               cfg,
 		usageCollector:    collector,
 		wg:                new(sync.WaitGroup),
@@ -318,6 +323,9 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
+	ctx, span := e.tracer.Start(ctx, "pushToClickhouse")
+	defer span.End()
+
 	resourcesSeen := map[int64]map[string]string{}
 
 	var insertLogsStmtV2 driver.Batch
@@ -355,6 +363,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
 	default:
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
+			"exporter":   "clickhouse_logs_exporter",
+			"logs_count": int64(ld.LogRecordCount()),
+			"trace_id":   span.SpanContext().TraceID().String(),
+			"span_id":    span.SpanContext().SpanID().String(),
+		})
 		start := time.Now()
 		chLen := 5
 		if !e.useNewSchema {
@@ -387,9 +401,15 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		metrics := map[string]usage.Metric{}
 
+		var resourceAttributesDuration time.Duration
+		var logAttributesDuration time.Duration
+		var addToTagStatementDuration time.Duration
+		var addToLogStatementDuration time.Duration
+
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
 			logs := ld.ResourceLogs().At(i)
 			res := logs.Resource()
+			resStart := time.Now()
 			resBytes, _ := json.Marshal(res.Attributes().AsRaw())
 
 			resources := attributesToSlice(res.Attributes(), true)
@@ -402,11 +422,14 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
 			}
 			resourceJson := string(serializedRes)
+			resourceAttributesDuration += time.Since(resStart)
 
+			addToTagStatementStart := time.Now()
 			err = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, resources, e.useNewSchema, shouldSkipKeys)
 			if err != nil {
 				return err
 			}
+			addToTagStatementDuration += time.Since(addToTagStatementStart)
 
 			// remove after sometime
 			resources = addTemporaryUnderscoreSupport(resources)
@@ -428,6 +451,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				for k := 0; k < rs.Len(); k++ {
 					r := rs.At(k)
 
+					logStart := time.Now()
 					// capturing the metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
 					attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
@@ -462,15 +486,16 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 					attributes := attributesToSlice(r.Attributes(), false)
 					attrsMap := attributesToMap(r.Attributes(), false)
+					logAttributesDuration += time.Since(logStart)
 
+					addToTagStatementStart = time.Now()
 					err = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attributes, e.useNewSchema, shouldSkipKeys)
 					if err != nil {
 						return err
 					}
+					addToTagStatementDuration += time.Since(addToTagStatementStart)
 
-					// remove after sometime
-					attributes = addTemporaryUnderscoreSupport(attributes)
-
+					insertLogsStart := time.Now()
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -494,9 +519,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					if err != nil {
 						return fmt.Errorf("StatementAppendLogsV2:%w", err)
 					}
-
+					addToLogStatementDuration += time.Since(insertLogsStart)
 					// old table
 					if !e.useNewSchema {
+						// remove after sometime
+						attributes = addTemporaryUnderscoreSupport(attributes)
 						err = statement.Append(
 							ts,
 							ots,
@@ -529,6 +556,29 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				}
 			}
 		}
+		var size int64
+		for _, v := range metrics {
+			size += v.Size
+		}
+		span.SetAttributes(
+			attribute.Int64("resource_attributes_processing_total_time", resourceAttributesDuration.Milliseconds()),
+			attribute.Int64("log_attributes_processing_total_time", logAttributesDuration.Milliseconds()),
+			attribute.Int64("add_to_tag_statement_total_time", addToTagStatementDuration.Milliseconds()),
+			attribute.Int64("add_to_log_statement_total_time", addToLogStatementDuration.Milliseconds()),
+			attribute.Int64("logs_count", int64(ld.LogRecordCount())),
+			attribute.Int64("logs_size", size),
+		)
+		ctx = context.WithValue(ctx, ch.LogCommentKey, map[string]interface{}{
+			"exporter":   "clickhouse_logs_exporter",
+			"logs_count": int64(ld.LogRecordCount()),
+			"resource_attributes_processing_total_time": resourceAttributesDuration.Milliseconds(),
+			"log_attributes_processing_total_time":      logAttributesDuration.Milliseconds(),
+			"add_to_tag_statement_total_time":           addToTagStatementDuration.Milliseconds(),
+			"add_to_log_statement_total_time":           addToLogStatementDuration.Milliseconds(),
+			"logs_size":                                 size,
+			"trace_id":                                  span.SpanContext().TraceID().String(),
+			"span_id":                                   span.SpanContext().SpanID().String(),
+		})
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
@@ -575,6 +625,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		// store the duration for send the data
 		for i := 0; i < chLen; i++ {
 			sendDuration := <-chDuration
+			span.SetAttributes(attribute.Int64("send_"+sendDuration.Name+"_time", sendDuration.duration.Milliseconds()))
 			e.durationHistogram.Record(
 				ctx,
 				float64(sendDuration.duration.Milliseconds()),
@@ -677,7 +728,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	resourceKeysStmt driver.Batch,
 	tagType utils.TagType,
 	attrs attributesToSliceResponse,
-	useNewSchema bool,
+	_ bool,
 	shouldSkipKeys map[string]shouldSkipKey,
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
@@ -983,7 +1034,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	if err := db.Ping(ctx); err != nil {
 		return nil, err
 	}
-	return db, nil
+	conn := ch.NewClickhouseConnWrapper(db, ch.ClickhouseQuerySettings{})
+	return conn, nil
 }
 
 func renderInsertLogsSQL(_ *Config) string {
