@@ -13,6 +13,12 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
 )
 
+const (
+	DefaultMaxResources              = 8192
+	DefaultMaxCardinalityPerResource = 2048
+	DefaultMaxTotalCardinality       = 3_000_000
+)
+
 // NewFactory creates Metadata exporter factory.
 func NewFactory() exporter.Factory {
 	f := &metadataExporterFactory{}
@@ -51,6 +57,27 @@ func createDefaultConfig() component.Config {
 				FetchInterval:           15 * time.Minute,
 			},
 		},
+		Cache: CacheConfig{
+			Provider: CacheProviderInMemory,
+			InMemory: InMemoryCacheConfig{},
+			Traces: CacheLimits{
+				MaxResources:              DefaultMaxResources,
+				MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+				MaxTotalCardinality:       DefaultMaxTotalCardinality,
+			},
+			Metrics: CacheLimits{
+				MaxResources:              DefaultMaxResources,
+				MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+				MaxTotalCardinality:       DefaultMaxTotalCardinality,
+			},
+			Logs: CacheLimits{
+				MaxResources:              DefaultMaxResources,
+				MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+				MaxTotalCardinality:       DefaultMaxTotalCardinality,
+			},
+			Debug: false,
+		},
+		Enabled: false,
 	}
 }
 

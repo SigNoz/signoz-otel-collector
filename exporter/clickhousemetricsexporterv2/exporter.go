@@ -2,6 +2,7 @@ package clickhousemetricsexporterv2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -15,7 +16,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.5.0"
+	"go.opentelemetry.io/otel/attribute"
+	metricapi "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 )
 
@@ -33,11 +38,13 @@ var (
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	meterScope        = "github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2"
 )
 
 type clickhouseMetricsExporter struct {
 	cfg           *Config
 	logger        *zap.Logger
+	meter         metricapi.Meter
 	cache         *ttlcache.Cache[string, bool]
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
@@ -47,6 +54,9 @@ type clickhouseMetricsExporter struct {
 	timeSeriesSQL string
 	expHistSQL    string
 	metadataSQL   string
+
+	processMetricsDuration metricapi.Float64Histogram
+	exportMetricsDuration  metricapi.Float64Histogram
 }
 
 // sample represents a single metric sample
@@ -127,6 +137,13 @@ func WithLogger(logger *zap.Logger) ExporterOption {
 	}
 }
 
+func WithMeter(meter metricapi.Meter) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.meter = meter
+		return nil
+	}
+}
+
 func WithEnableExpHist(enableExpHist bool) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
 		e.enableExpHist = enableExpHist
@@ -167,6 +184,7 @@ func defaultOptions() []ExporterOption {
 		WithCache(cache),
 		WithLogger(zap.NewNop()),
 		WithEnableExpHist(false),
+		WithMeter(noop.NewMeterProvider().Meter(meterScope)),
 	}
 }
 
@@ -186,6 +204,25 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 	chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
 	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
 	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
+
+	var err error
+	chExporter.processMetricsDuration, err = chExporter.meter.Float64Histogram(
+		"exporter_prepare_metrics_duration",
+		metricapi.WithDescription("Time taken (in millis) for exporter to prepare metrics"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	chExporter.exportMetricsDuration, err = chExporter.meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metricapi.WithDescription("Time taken to write data to ClickHouse"),
+		metricapi.WithUnit("ms"),
+		metricapi.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return chExporter, nil
 }
@@ -725,6 +762,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(batch *writeBatc
 
 func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch {
 	batch := &writeBatch{metaSeen: make(map[string]struct{})}
+	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
 		resAttrs := pcommon.NewMap()
@@ -758,6 +796,10 @@ func (c *clickhouseMetricsExporter) prepareBatch(md pmetric.Metrics) *writeBatch
 			}
 		}
 	}
+	c.processMetricsDuration.Record(
+		context.Background(),
+		float64(time.Since(start).Milliseconds()),
+	)
 	return batch
 }
 
@@ -768,8 +810,20 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *writeBatch) error {
-
 	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.TimeSeriesTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(timeSeries) == 0 {
 			return nil
 		}
@@ -808,11 +862,20 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeTimeSeries(ctx, batch.ts); err != nil {
-		return err
-	}
-
 	writeSamples := func(ctx context.Context, samples []sample) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.SamplesTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(samples) == 0 {
 			return nil
 		}
@@ -836,11 +899,20 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeSamples(ctx, batch.samples); err != nil {
-		return err
-	}
-
 	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.ExpHistTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(expHist) == 0 {
 			return nil
 		}
@@ -868,11 +940,20 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeExpHist(ctx, batch.expHist); err != nil {
-		return err
-	}
-
 	writeMetadata := func(ctx context.Context, metadata []metadata) error {
+		start := time.Now()
+
+		defer func() {
+			c.exportMetricsDuration.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metricapi.WithAttributes(
+					attribute.String("table", c.cfg.MetadataTable),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+				),
+			)
+		}()
+
 		if len(metadata) == 0 {
 			return nil
 		}
@@ -902,12 +983,38 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *write
 		return statement.Send()
 	}
 
-	if err := writeMetadata(ctx, batch.metadata); err != nil {
-		// we don't need to return an error here because the metadata is not critical to the operation of the exporter
-		// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
-		// if there were a generic error, it would have been returned in the other write functions
-		c.logger.Error("error writing metadata", zap.Error(err))
+	// Send all statements in parallel
+	errC := make(chan error, 4)
+
+	go func() {
+		errC <- writeTimeSeries(ctx, batch.ts)
+	}()
+
+	go func() {
+		errC <- writeSamples(ctx, batch.samples)
+	}()
+
+	go func() {
+		errC <- writeExpHist(ctx, batch.expHist)
+	}()
+
+	go func() {
+		if err := writeMetadata(ctx, batch.metadata); err != nil {
+			// we don't need to return an error here because the metadata is not critical to the operation of the exporter
+			// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
+			// if there were a generic error, it would have been returned in the other write functions
+			c.logger.Error("error writing metadata", zap.Error(err))
+		}
+
+		errC <- nil
+	}()
+
+	var errs []error
+	for i := 0; i < 4; i++ {
+		if err := <-errC; err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
