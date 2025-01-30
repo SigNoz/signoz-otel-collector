@@ -263,11 +263,15 @@ func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, er
 	return delTTL, nil
 }
 
-func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs) error {
+func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
+	// Create a deep copy of the logs to ensure safe modification
+	logsCopy := plog.NewLogs()
+	ld.CopyTo(logsCopy)
+
 	// get the TTL.
 	ttL, err := e.getLogsTTLSeconds(ctx)
 	if err != nil {
-		return err
+		return ld, err
 	}
 
 	// if logs contains timestamp before acceptedDateTime, it will be rejected
@@ -277,13 +281,13 @@ func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs
 		t := log.Timestamp().AsTime()
 		return t.Unix() < acceptedDateTime.Unix()
 	}
-	for i := 0; i < ld.ResourceLogs().Len(); i++ {
-		logs := ld.ResourceLogs().At(i)
+	for i := 0; i < logsCopy.ResourceLogs().Len(); i++ {
+		logs := logsCopy.ResourceLogs().At(i)
 		for j := 0; j < logs.ScopeLogs().Len(); j++ {
 			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
 		}
 	}
-	return nil
+	return logsCopy, nil
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -301,7 +305,8 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			}
 
 			// drop logs older than TTL
-			removeLogsError := e.removeOldLogs(ctx, ld)
+			var removeLogsError error
+			ld, removeLogsError = e.removeOldLogs(ctx, ld)
 			if removeLogsError != nil {
 				return fmt.Errorf("error while dropping old logs %v, after error %v", removeLogsError, err)
 			}
