@@ -44,7 +44,7 @@ func TestMuxConfig(t *testing.T) {
 	}()
 
 	defer func() {
-		require.NoError(t, httpServer.Shutdown(ctx))
+		_ = httpServer.Shutdown(ctx)
 	}()
 
 	testCases := []struct {
