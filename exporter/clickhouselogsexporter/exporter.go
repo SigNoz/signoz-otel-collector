@@ -264,7 +264,7 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", tableName, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
 	if err != nil {
-		e.logger.Error("error while fetching min accepted ts", zap.Error(err))
+		e.logger.Error("error while fetching ttl", zap.Error(err))
 		return
 	}
 	if len(dbResp) == 0 {
