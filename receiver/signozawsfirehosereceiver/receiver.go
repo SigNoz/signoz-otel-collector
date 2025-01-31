@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/config/configrouter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/receiver"
@@ -115,7 +116,11 @@ func (fmr *firehoseReceiver) Start(ctx context.Context, host component.Host) err
 	}
 
 	var err error
-	fmr.server, err = fmr.config.ServerConfig.ToServer(ctx, host, fmr.settings.TelemetrySettings, fmr)
+
+	router := configrouter.NewDefaultMuxConfig().ToMuxRouter(fmr.settings.Logger)
+	router.HandleFunc("/firehose/"+fmr.config.RecordType, fmr.ServeHTTP)
+
+	fmr.server, err = fmr.config.ServerConfig.ToServer(ctx, host, fmr.settings.TelemetrySettings, router)
 	if err != nil {
 		return err
 	}
