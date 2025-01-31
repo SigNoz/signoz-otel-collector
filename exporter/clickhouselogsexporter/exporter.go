@@ -57,7 +57,6 @@ const (
 	DISTRIBUTED_LOGS_ATTRIBUTE_KEYS      = "distributed_logs_attribute_keys"
 	DISTRIBUTED_LOGS_RESOURCE_KEYS       = "distributed_logs_resource_keys"
 	DISTRIBUTED_LOGS_RESOURCE_V2_SECONDS = 1800
-	RETENTION_CACHE_KEY                  = "logs_retention_seconds"
 )
 
 type shouldSkipKey struct {
@@ -95,7 +94,7 @@ type clickhouseLogsExporter struct {
 	fetchShouldSkipKeysTicker *time.Ticker
 
 	// used to drop logs older than the retention period.
-	minAcceptedTsCache                   *ttlcache.Cache[string, uint64]
+	minAcceptedTs                        atomic.Value
 	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
 }
 
@@ -157,31 +156,22 @@ func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, e
 	)
 	go rfCache.Start()
 
-	// retention cache is used to drop logs older than the retention period.
-	minAcceptedTsCache := ttlcache.New[string, uint64](
-		ttlcache.WithTTL[string, uint64](240*time.Minute),
-		ttlcache.WithCapacity[string, uint64](1),
-	)
-
-	go minAcceptedTsCache.Start()
-
 	return &clickhouseLogsExporter{
-		id:                 id,
-		db:                 client,
-		insertLogsSQL:      insertLogsSQL,
-		insertLogsSQLV2:    insertLogsSQLV2,
-		logger:             logger,
-		cfg:                cfg,
-		usageCollector:     collector,
-		wg:                 new(sync.WaitGroup),
-		closeChan:          make(chan struct{}),
-		useNewSchema:       cfg.UseNewSchema,
-		durationHistogram:  durationHistogram,
-		keysCache:          keysCache,
-		rfCache:            rfCache,
-		maxDistinctValues:  cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval:  cfg.AttributesLimits.FetchKeysInterval,
-		minAcceptedTsCache: minAcceptedTsCache,
+		id:                id,
+		db:                client,
+		insertLogsSQL:     insertLogsSQL,
+		insertLogsSQLV2:   insertLogsSQLV2,
+		logger:            logger,
+		cfg:               cfg,
+		usageCollector:    collector,
+		wg:                new(sync.WaitGroup),
+		closeChan:         make(chan struct{}),
+		useNewSchema:      cfg.UseNewSchema,
+		durationHistogram: durationHistogram,
+		keysCache:         keysCache,
+		rfCache:           rfCache,
+		maxDistinctValues: cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval: cfg.AttributesLimits.FetchKeysInterval,
 	}, nil
 }
 
@@ -284,7 +274,7 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	}
 
 	acceptedDateTime := time.Now().Add(-(time.Duration(delTTL) * time.Second))
-	e.minAcceptedTsCache.Set(RETENTION_CACHE_KEY, uint64(acceptedDateTime.UnixNano()), time.Duration(10*time.Minute))
+	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
 func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
@@ -319,10 +309,10 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
 	oldestAllowedTs := uint64(0)
-	oldestAllowedTsCache := e.minAcceptedTsCache.Get(RETENTION_CACHE_KEY)
-	if oldestAllowedTsCache != nil {
-		oldestAllowedTs = oldestAllowedTsCache.Value()
+	if e.minAcceptedTs.Load() != nil {
+		oldestAllowedTs = e.minAcceptedTs.Load().(uint64)
 	}
+
 	resourcesSeen := map[int64]map[string]string{}
 
 	var insertLogsStmtV2 driver.Batch
