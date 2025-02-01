@@ -40,7 +40,6 @@ func TestLoadConfig(t *testing.T) {
 				assert.NoError(t, err)
 				require.Equal(t, &Config{
 					RecordType: configType,
-					AccessKey:  "some_access_key",
 					ServerConfig: confighttp.ServerConfig{
 						Endpoint: "0.0.0.0:4433",
 						TLSSetting: &configtls.ServerConfig{
