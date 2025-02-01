@@ -118,7 +118,7 @@ func (fmr *firehoseReceiver) Start(ctx context.Context, host component.Host) err
 	var err error
 
 	router := configrouter.NewDefaultMuxConfig().ToMuxRouter(fmr.settings.Logger)
-	router.HandleFunc("/firehose/"+fmr.config.RecordType, fmr.ServeHTTP)
+	router.HandleFunc("/awsfirehose/"+fmr.config.RecordType, fmr.ServeHTTP)
 
 	fmr.server, err = fmr.config.ServerConfig.ToServer(ctx, host, fmr.settings.TelemetrySettings, router)
 	if err != nil {
