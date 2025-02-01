@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
 )
 
 const (
@@ -163,27 +164,27 @@ func (fmr *firehoseReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := r.Header.Get(headerFirehoseRequestID)
 	if requestID == "" {
 		fmr.settings.Logger.Error("Invalid Firehose request", zap.Error(errInHeaderMissingRequestID))
-		fmr.sendResponse(w, requestID, http.StatusBadRequest, errInHeaderMissingRequestID)
+		fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(errInHeaderMissingRequestID, codes.InvalidArgument))
 		return
 	}
 
 	body, err := fmr.getBody(r)
 	if err != nil {
-		fmr.sendResponse(w, requestID, http.StatusBadRequest, err)
+		fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(err, codes.InvalidArgument))
 		return
 	}
 
 	var fr firehoseRequest
 	if err = json.Unmarshal(body, &fr); err != nil {
-		fmr.sendResponse(w, requestID, http.StatusBadRequest, err)
+		fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(err, codes.InvalidArgument))
 		return
 	}
 
 	if fr.RequestID == "" {
-		fmr.sendResponse(w, requestID, http.StatusBadRequest, errInBodyMissingRequestID)
+		fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(errInBodyMissingRequestID, codes.InvalidArgument))
 		return
 	} else if fr.RequestID != requestID {
-		fmr.sendResponse(w, requestID, http.StatusBadRequest, errInBodyDiffRequestID)
+		fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(errInBodyDiffRequestID, codes.InvalidArgument))
 		return
 	}
 
@@ -193,12 +194,7 @@ func (fmr *firehoseReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			var decoded []byte
 			decoded, err = base64.StdEncoding.DecodeString(record.Data)
 			if err != nil {
-				fmr.sendResponse(
-					w,
-					requestID,
-					http.StatusBadRequest,
-					fmt.Errorf("unable to base64 decode the record at index %d: %w", index, err),
-				)
+				fmr.sendResponse(w, requestID, http.StatusBadRequest, configrouter.FromError(fmt.Errorf("unable to base64 decode the record at index %d: %w", index, err), codes.InvalidArgument))
 				return
 			}
 			records = append(records, decoded)
@@ -207,18 +203,12 @@ func (fmr *firehoseReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	commonAttributes, err := fmr.getCommonAttributes(r)
 	if err != nil {
-		fmr.settings.Logger.Error(
-			"Unable to get common attributes from request header. Will not attach attributes.",
-			zap.Error(err),
-		)
+		fmr.settings.Logger.Error("Unable to get common attributes from request header. Will not attach attributes.", zap.Error(err))
 	}
 
 	err = fmr.consumer.Consume(ctx, records, commonAttributes)
 	if err != nil {
-		fmr.settings.Logger.Error(
-			"Unable to consume records",
-			zap.Error(err),
-		)
+		fmr.settings.Logger.Error("Unable to consume records", zap.Error(err))
 		fmr.sendResponse(w, requestID, http.StatusInternalServerError, err)
 		return
 	}

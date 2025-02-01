@@ -22,8 +22,6 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/receiver/receivertest"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -138,7 +136,7 @@ func TestFirehoseRequest(t *testing.T) {
 		},
 		"WithFirehoseConsumerError": {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
-			consumer:       newNopFirehoseConsumer(status.New(codes.Internal, firehoseConsumerErr.Error()).Err()),
+			consumer:       newNopFirehoseConsumer(firehoseConsumerErr),
 			wantStatusCode: http.StatusInternalServerError,
 			wantErr:        firehoseConsumerErr,
 		},
