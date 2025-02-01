@@ -39,7 +39,7 @@ func recovery(logger *zap.Logger) func(http.Handler) http.Handler {
 					logger.Error("panic recovered", zap.Any("error", err))
 
 					newErr := status.Newf(codes.Internal, "something went wrong")
-					WriteError(w, newErr.Err(), http.StatusInternalServerError)
+					WriteError(w, FromStatus(newErr))
 				}
 			}()
 
@@ -52,7 +52,7 @@ func recovery(logger *zap.Logger) func(http.Handler) http.Handler {
 func methodNotAllowed() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		err := status.Newf(codes.Unimplemented, "%v method not allowed, supported: [POST]", req.Method)
-		WriteError(w, err.Err(), http.StatusMethodNotAllowed)
+		WriteError(w, FromStatus(err).WithCode(http.StatusMethodNotAllowed))
 	})
 }
 
@@ -60,6 +60,6 @@ func methodNotAllowed() http.Handler {
 func notFound() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		err := status.Newf(codes.NotFound, "%v path not found", req.URL.Path)
-		WriteError(w, err.Err(), http.StatusNotFound)
+		WriteError(w, FromStatus(err))
 	})
 }

@@ -3,48 +3,55 @@ package configrouter
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// Writes an error to the response writer.
-// If the error is a gRPC status, it will use the gRPC status code to determine the HTTP status code.
-func WriteError(w http.ResponseWriter, err error, statusCode int) {
-	var body []byte
-	if s, ok := status.FromError(err); ok {
-		body = bodyFromStatus(s)
-		statusCode = httpStatusCodeFromStatus(s, statusCode)
-	} else {
-		body = []byte(err.Error())
+func WriteSuccessb(w http.ResponseWriter, body any, statusCode int) {
+	if body == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		return
+	}
+
+	successb, err := json.Marshal(body)
+	if err != nil {
+		WriteError(w, FromStatus(status.New(codes.Internal, "failed to marshal body")))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(successb)))
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(successb)
+}
+
+// Writes an error with an input body
+func WriteErrorb(w http.ResponseWriter, err error, body any) {
+	if body == nil {
+		WriteError(w, err)
+		return
+	}
+
+	berr := Unwrapb(err)
+	errb, merr := json.Marshal(body)
+	if merr != nil {
+		WriteError(w, merr)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_, _ = w.Write(body)
+	w.Header().Set("Content-Length", strconv.Itoa(len(errb)))
+	w.WriteHeader(berr.c)
+	_, _ = w.Write(errb)
 }
 
-// Returns the response body from a gRPC status.
-func bodyFromStatus(s *status.Status) []byte {
-	body, merr := json.Marshal(s.Proto())
-	if merr != nil {
-		return []byte(`{"code": 13, "message": "failed to marshal error message"}`)
-	}
+// Writes an error to the response writer.
+func WriteError(w http.ResponseWriter, err error) {
+	berr := Unwrapb(err)
 
-	return body
-}
-
-// Returns the HTTP status code from a gRPC status code.
-func httpStatusCodeFromStatus(s *status.Status, statusCode int) int {
-	switch s.Code() {
-	// Retryable
-	case codes.Canceled, codes.DeadlineExceeded, codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
-		return http.StatusServiceUnavailable
-	// Retryable
-	case codes.ResourceExhausted:
-		return http.StatusTooManyRequests
-	// Return the statusCode received
-	default:
-		return statusCode
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(berr.c)
+	_, _ = w.Write(berr.b)
 }

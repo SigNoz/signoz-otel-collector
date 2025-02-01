@@ -15,7 +15,6 @@ receivers:
   signozawsfirehose:
     endpoint: 0.0.0.0:4433
     record_type: cwmetrics
-    access_key: "some_access_key"
     tls:
       cert_file: server.crt
       key_file: server.key

@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -25,7 +24,6 @@ import (
 
 const (
 	headerFirehoseRequestID        = "X-Amz-Firehose-Request-Id"
-	headerFirehoseAccessKey        = "X-Amz-Firehose-Access-Key"
 	headerFirehoseCommonAttributes = "X-Amz-Firehose-Common-Attributes"
 	headerContentType              = "Content-Type"
 	headerContentLength            = "Content-Length"
@@ -33,7 +31,6 @@ const (
 
 var (
 	errMissingHost              = errors.New("nil host")
-	errInvalidAccessKey         = errors.New("invalid firehose access key")
 	errInHeaderMissingRequestID = errors.New("missing request id in header")
 	errInBodyMissingRequestID   = errors.New("missing request id in body")
 	errInBodyDiffRequestID      = errors.New("different request id in body")
@@ -42,7 +39,7 @@ var (
 // The firehoseConsumer is responsible for using the unmarshaler and the consumer.
 type firehoseConsumer interface {
 	// Consume unmarshalls and consumes the records.
-	Consume(ctx context.Context, records [][]byte, commonAttributes map[string]string) (int, error)
+	Consume(ctx context.Context, records [][]byte, commonAttributes map[string]string) error
 }
 
 // firehoseReceiver
@@ -60,6 +57,8 @@ type firehoseReceiver struct {
 	// consumer is the firehoseConsumer to use to process/send
 	// the records in each request.
 	consumer firehoseConsumer
+	// for testing
+	address string
 }
 
 // The firehoseRequest is the format of the received request body.
@@ -130,6 +129,8 @@ func (fmr *firehoseReceiver) Start(ctx context.Context, host component.Host) err
 	if err != nil {
 		return err
 	}
+	fmr.address = listener.Addr().String()
+
 	fmr.shutdownWG.Add(1)
 	go func() {
 		defer fmr.shutdownWG.Done()
@@ -161,21 +162,8 @@ func (fmr *firehoseReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	requestID := r.Header.Get(headerFirehoseRequestID)
 	if requestID == "" {
-		fmr.settings.Logger.Error(
-			"Invalid Firehose request",
-			zap.Error(errInHeaderMissingRequestID),
-		)
+		fmr.settings.Logger.Error("Invalid Firehose request", zap.Error(errInHeaderMissingRequestID))
 		fmr.sendResponse(w, requestID, http.StatusBadRequest, errInHeaderMissingRequestID)
-		return
-	}
-	fmr.settings.Logger.Debug("Processing Firehose request", zap.String("RequestID", requestID))
-
-	if statusCode, err := fmr.validate(r); err != nil {
-		fmr.settings.Logger.Error(
-			"Invalid Firehose request",
-			zap.Error(err),
-		)
-		fmr.sendResponse(w, requestID, statusCode, err)
 		return
 	}
 
@@ -225,30 +213,17 @@ func (fmr *firehoseReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	statusCode, err := fmr.consumer.Consume(ctx, records, commonAttributes)
+	err = fmr.consumer.Consume(ctx, records, commonAttributes)
 	if err != nil {
 		fmr.settings.Logger.Error(
 			"Unable to consume records",
 			zap.Error(err),
 		)
-		fmr.sendResponse(w, requestID, statusCode, err)
+		fmr.sendResponse(w, requestID, http.StatusInternalServerError, err)
 		return
 	}
 
 	fmr.sendResponse(w, requestID, http.StatusOK, nil)
-}
-
-// validate checks the Firehose access key in the header against
-// the one passed into the Config
-func (fmr *firehoseReceiver) validate(r *http.Request) (int, error) {
-	if string(fmr.config.AccessKey) == "" {
-		// No access key is configured - accept all requests.
-		return http.StatusAccepted, nil
-	}
-	if accessKey := r.Header.Get(headerFirehoseAccessKey); accessKey == string(fmr.config.AccessKey) {
-		return http.StatusAccepted, nil
-	}
-	return http.StatusUnauthorized, errInvalidAccessKey
 }
 
 // getBody reads the body from the request as a slice of bytes.
@@ -288,11 +263,11 @@ func (fmr *firehoseReceiver) sendResponse(w http.ResponseWriter, requestID strin
 		Timestamp:    time.Now().UnixMilli(),
 		ErrorMessage: errorMessage,
 	}
-	payload, _ := json.Marshal(body)
-	w.Header().Set(headerContentType, "application/json")
-	w.Header().Set(headerContentLength, strconv.Itoa(len(payload)))
-	w.WriteHeader(statusCode)
-	if _, err = w.Write(payload); err != nil {
-		fmr.settings.Logger.Error("Failed to send response", zap.Error(err))
+
+	if err != nil {
+		configrouter.WriteErrorb(w, err, body)
+		return
 	}
+
+	configrouter.WriteSuccessb(w, body, statusCode)
 }
