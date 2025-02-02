@@ -5,11 +5,14 @@ package signozawsfirehosereceiver // import "github.com/SigNoz/signoz-otel-colle
 
 import (
 	"context"
-	"net/http"
 
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receiverhelper"
+	"google.golang.org/grpc/codes"
 
+	"github.com/SigNoz/signoz-otel-collector/config/configrouter"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/cwlog"
 )
@@ -25,6 +28,8 @@ type logsConsumer struct {
 	// unmarshaler is the configured LogsUnmarshaler
 	// to use when processing the records.
 	unmarshaler unmarshaler.LogsUnmarshaler
+	// obsreport
+	obsreport *receiverhelper.ObsReport
 }
 
 var _ firehoseConsumer = (*logsConsumer)(nil)
@@ -46,9 +51,26 @@ func newLogsReceiver(
 		return nil, errUnrecognizedRecordType
 	}
 
+	transport := "http"
+	if config.TLSSetting != nil {
+		transport = "https"
+	}
+
+	obsreport, err := receiverhelper.NewObsReport(
+		receiverhelper.ObsReportSettings{
+			ReceiverID:             set.ID,
+			Transport:              transport,
+			ReceiverCreateSettings: set,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	mc := &logsConsumer{
 		consumer:    nextConsumer,
 		unmarshaler: configuredUnmarshaler,
+		obsreport:   obsreport,
 	}
 
 	return &firehoseReceiver{
@@ -61,10 +83,10 @@ func newLogsReceiver(
 // Consume uses the configured unmarshaler to deserialize the records into a
 // single plog.Logs. It will send the final result
 // to the next consumer.
-func (mc *logsConsumer) Consume(ctx context.Context, records [][]byte, commonAttributes map[string]string) (int, error) {
+func (mc *logsConsumer) Consume(ctx context.Context, records [][]byte, commonAttributes map[string]string) error {
 	md, err := mc.unmarshaler.Unmarshal(records)
 	if err != nil {
-		return http.StatusBadRequest, err
+		return configrouter.FromError(err, codes.InvalidArgument)
 	}
 
 	if commonAttributes != nil {
@@ -78,9 +100,14 @@ func (mc *logsConsumer) Consume(ctx context.Context, records [][]byte, commonAtt
 		}
 	}
 
+	numLogs := md.LogRecordCount()
+
+	ctx = mc.obsreport.StartLogsOp(ctx)
 	err = mc.consumer.ConsumeLogs(ctx, md)
+	mc.obsreport.EndLogsOp(ctx, metadata.Type.String(), numLogs, err)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return configrouter.FromError(err, codes.Internal)
 	}
-	return http.StatusOK, nil
+
+	return nil
 }
