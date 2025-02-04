@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -29,8 +28,6 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/testdata"
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/textutils"
-	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 func TestNewTracesReceiver_version_err(t *testing.T) {
@@ -56,15 +53,15 @@ func TestNewTracesReceiver_encoding_err(t *testing.T) {
 func TestNewTracesReceiver_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
-		Authentication: kafka.Authentication{
-			TLS: &configtls.ClientConfig{
-				Config: configtls.Config{
-					CAFile: "/doesnotexist",
-				},
-			},
-		},
+		// Authentication: kafka.Authentication{
+		// 	TLS: &configtls.ClientConfig{
+		// 		Config: configtls.Config{
+		// 			CAFile: "/doesnotexist",
+		// 		},
+		// 	},
+		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
@@ -357,15 +354,15 @@ func TestNewMetricsReceiver_encoding_err(t *testing.T) {
 func TestNewMetricsExporter_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
-		Authentication: kafka.Authentication{
-			TLS: &configtls.ClientConfig{
-				Config: configtls.Config{
-					CAFile: "/doesnotexist",
-				},
-			},
-		},
+		// Authentication: kafka.Authentication{
+		// 	TLS: &configtls.ClientConfig{
+		// 		Config: configtls.Config{
+		// 			CAFile: "/doesnotexist",
+		// 		},
+		// 	},
+		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
@@ -656,15 +653,15 @@ func TestNewLogsReceiver_encoding_err(t *testing.T) {
 func TestNewLogsExporter_err_auth_type(t *testing.T) {
 	c := Config{
 		ProtocolVersion: "2.0.0",
-		Authentication: kafka.Authentication{
-			TLS: &configtls.ClientConfig{
-				Config: configtls.Config{
-					CAFile: "/doesnotexist",
-				},
-			},
-		},
+		// Authentication: kafka.Authentication{
+		// 	TLS: &configtls.ClientConfig{
+		// 		Config: configtls.Config{
+		// 			CAFile: "/doesnotexist",
+		// 		},
+		// 	},
+		// },
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}

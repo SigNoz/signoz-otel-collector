@@ -39,6 +39,7 @@ import (
 	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/testdata"
 )
 
@@ -332,6 +333,9 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 	testmap := make(map[string]*prompb.TimeSeries)
 	testmap["test"] = ts
 
+	testmetricnametometa := make(map[string]base.MetricMeta)
+	testmetricnametometa["test"] = base.MetricMeta{}
+
 	cfg := createDefaultConfig().(*Config)
 	cfg.HTTPClientSettings.Endpoint = endpoint.String()
 	cfg.RemoteWriteQueue.NumConsumers = 1
@@ -354,7 +358,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		return errs
 	}
 
-	errs = append(errs, prwe.export(context.Background(), testmap, prwe.metricNameToMeta)...)
+	errs = append(errs, prwe.export(context.Background(), testmap, testmetricnametometa)...)
 	return errs
 }
 

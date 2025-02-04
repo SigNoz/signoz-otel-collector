@@ -264,7 +264,7 @@ func Test_createLabelSet(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.ElementsMatch(t, tt.want, createAttributes(tt.resource, tt.orig, tt.externalLabels, tt.extras...))
+			assert.ElementsMatch(t, tt.want, createAttributes(tt.resource, tt.orig, tt.externalLabels, map[string]prompb.Label{}, tt.extras...))
 		})
 	}
 }

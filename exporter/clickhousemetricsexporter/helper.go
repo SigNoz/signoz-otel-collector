@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 )
 
 const (
@@ -164,9 +165,13 @@ func timeSeriesSignature(metric pmetric.Metric, labels *[]prompb.Label) string {
 // createAttributes creates a slice of Cortex Label with OTLP attributes and pairs of string values.
 // Unpaired string value is ignored. String pairs overwrites OTLP labels if collision happens, and the overwrite is
 // logged. Resultant label names are sanitized.
-func createAttributes(resource pcommon.Resource, attributes pcommon.Map, externalLabels map[string]string, extras ...string) []prompb.Label {
+func createAttributes(resource pcommon.Resource, attributes pcommon.Map, externalLabels map[string]string, resourceAsPromLabels map[string]prompb.Label, extras ...string) []prompb.Label {
 	// map ensures no duplicate label name
 	l := map[string]prompb.Label{}
+
+	for key, value := range resourceAsPromLabels {
+		l[key] = value
+	}
 
 	for key, value := range externalLabels {
 		// External labels have already been sanitized
@@ -318,10 +323,10 @@ func sanitizeRune(r rune) rune {
 // addSingleNumberDataPoint converts the metric value stored in pt to a Prometheus sample, and add the sample
 // to its corresponding time series in tsMap
 func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
-	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
+	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string, resourceAsPromLabels map[string]prompb.Label) {
 	// create parameters for addSample
 	name := getPromMetricName(metric, namespace)
-	labels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, name)
+	labels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, name)
 	sample := &prompb.Sample{
 		// convert ns to ms
 		Timestamp: convertTimeStamp(pt.Timestamp()),
@@ -341,7 +346,7 @@ func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resou
 // addSingleHistogramDataPoint converts pt to 2 + min(len(ExplicitBounds), len(BucketCount)) + 1 samples. It
 // ignore extra buckets if len(ExplicitBounds) > len(BucketCounts)
 func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
-	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
+	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string, resourceAsPromLabels map[string]prompb.Label) {
 	time := convertTimeStamp(pt.Timestamp())
 	// sum, count, and buckets of the histogram should append suffix to baseName
 	baseName := getPromMetricName(metric, namespace)
@@ -354,7 +359,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
 
-	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+sumStr)
+	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+sumStr)
 	addSample(tsMap, sum, sumlabels, metric)
 
 	// treat count as a sample in an individual TimeSeries
@@ -366,7 +371,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
 
-	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+countStr)
+	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+countStr)
 	addSample(tsMap, count, countlabels, metric)
 
 	// cumulative count for conversion to cumulative histogram
@@ -390,7 +395,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 			bucket.Value = math.Float64frombits(value.StaleNaN)
 		}
 		boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
-		labels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, boundStr)
+		labels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+bucketStr, leStr, boundStr)
 		sig := addSample(tsMap, bucket, labels, metric)
 
 		bucketBounds = append(bucketBounds, bucketBoundsData{sig: sig, bound: bound})
@@ -407,7 +412,7 @@ func addSingleHistogramDataPoint(pt pmetric.HistogramDataPoint, resource pcommon
 		}
 		infBucket.Value = float64(cumulativeCount)
 	}
-	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+bucketStr, leStr, pInfStr)
+	infLabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+bucketStr, leStr, pInfStr)
 	sig := addSample(tsMap, infBucket, infLabels, metric)
 
 	bucketBounds = append(bucketBounds, bucketBoundsData{sig: sig, bound: math.Inf(1)})
@@ -444,7 +449,7 @@ func getPromExemplars(pt pmetric.HistogramDataPoint) []prompb.Exemplar {
 
 // addSingleSummaryDataPoint converts pt to len(QuantileValues) + 2 samples.
 func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
-	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
+	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string, resourceAsPromLabels map[string]prompb.Label) {
 	time := convertTimeStamp(pt.Timestamp())
 	// sum and count of the summary should append suffix to baseName
 	baseName := getPromMetricName(metric, namespace)
@@ -456,7 +461,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 	if pt.Flags().NoRecordedValue() {
 		sum.Value = math.Float64frombits(value.StaleNaN)
 	}
-	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+sumStr)
+	sumlabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+sumStr)
 	addSample(tsMap, sum, sumlabels, metric)
 
 	// treat count as a sample in an individual TimeSeries
@@ -467,7 +472,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 	if pt.Flags().NoRecordedValue() {
 		count.Value = math.Float64frombits(value.StaleNaN)
 	}
-	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName+countStr)
+	countlabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName+countStr)
 	addSample(tsMap, count, countlabels, metric)
 
 	// process each percentile/quantile
@@ -481,7 +486,7 @@ func addSingleSummaryDataPoint(pt pmetric.SummaryDataPoint, resource pcommon.Res
 			quantile.Value = math.Float64frombits(value.StaleNaN)
 		}
 		percentileStr := strconv.FormatFloat(qt.Quantile(), 'f', -1, 64)
-		qtlabels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName, quantileStr, percentileStr)
+		qtlabels := createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName, quantileStr, percentileStr)
 		addSample(tsMap, quantile, qtlabels, metric)
 	}
 }
@@ -516,6 +521,7 @@ func addSingleExponentialHistogramDataPoint(
 	namespace string,
 	tsMap map[string]*prompb.TimeSeries,
 	externalLabels map[string]string,
+	resourceAsPromLabels map[string]prompb.Label,
 ) {
 	time := convertTimeStamp(pt.Timestamp())
 	baseName := getPromMetricName(metric, namespace)
@@ -549,7 +555,7 @@ func addSingleExponentialHistogramDataPoint(
 		NegativeCounts: []float64{float64(negativeOffset)},
 		ZeroCount:      &prompb.Histogram_ZeroCountInt{ZeroCountInt: pt.ZeroCount()},
 		Timestamp:      time,
-	}, createAttributes(resource, pt.Attributes(), externalLabels, nameStr, baseName), metric)
+	}, createAttributes(resource, pt.Attributes(), externalLabels, resourceAsPromLabels, nameStr, baseName), metric)
 }
 
 func orderBySampleTimestamp(tsArray []prompb.TimeSeries) []prompb.TimeSeries {
@@ -572,4 +578,76 @@ func convertTimeseriesToRequest(tsArray []prompb.TimeSeries) *prompb.WriteReques
 		// * https://github.com/open-telemetry/opentelemetry-collector/issues/2315
 		Timeseries: orderBySampleTimestamp(tsArray),
 	}
+}
+
+func addAttributesToNumberDataPoints(logger *zap.Logger, ps pmetric.NumberDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			addValue(logger, ps.At(i).Attributes(), k, v)
+		}
+		return true
+	})
+}
+
+func addAttributesToHistogramDataPoints(logger *zap.Logger, ps pmetric.HistogramDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			addValue(logger, ps.At(i).Attributes(), k, v)
+		}
+		return true
+	})
+}
+
+func addAttributesToSummaryDataPoints(logger *zap.Logger, ps pmetric.SummaryDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			addValue(logger, ps.At(i).Attributes(), k, v)
+		}
+		return true
+	})
+}
+
+func addAttributesToExponentialHistogramDataPoints(logger *zap.Logger, ps pmetric.ExponentialHistogramDataPointSlice, resource pcommon.Map) {
+	resource.Range(func(k string, v pcommon.Value) bool {
+		for i := 0; i < ps.Len(); i++ {
+			addValue(logger, ps.At(i).Attributes(), k, v)
+		}
+		return true
+	})
+}
+
+func addValue(logger *zap.Logger, attributes pcommon.Map, k string, v pcommon.Value) {
+	switch v.Type() {
+	case pcommon.ValueTypeBool:
+		attributes.PutBool(k, v.Bool())
+	case pcommon.ValueTypeDouble:
+		attributes.PutDouble(k, v.Double())
+	case pcommon.ValueTypeInt:
+		attributes.PutInt(k, v.Int())
+	case pcommon.ValueTypeStr:
+		attributes.PutStr(k, v.Str())
+	default:
+		logger.Info("encountered something else", zap.String("type", v.Type().String()), zap.String("value", v.AsString()))
+	}
+}
+
+func resourceAsPromLables(resource pcommon.Resource) map[string]prompb.Label {
+	ans := map[string]prompb.Label{}
+	resource.Attributes().Range(func(key string, value pcommon.Value) bool {
+		// if isUsefulResourceAttribute(key) {
+		// 	l[key] = prompb.Label{
+		// 		Name:  sanitize(key),
+		// 		Value: value.Str(), // TODO(jbd): Decide what to do with non-string attributes.
+		// 	}
+		// }
+
+		ans[key] = prompb.Label{
+			Name:  sanitize(key),
+			Value: value.Str(),
+		}
+
+		return true
+	})
+
+	return ans
 }

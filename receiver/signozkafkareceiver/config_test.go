@@ -11,12 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
-	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -39,18 +36,18 @@ func TestLoadConfig(t *testing.T) {
 				ClientID:      "otel-collector",
 				GroupID:       "otel-collector",
 				InitialOffset: "latest",
-				Authentication: kafka.Authentication{
-					TLS: &configtls.ClientConfig{
-						Config: configtls.Config{
-							CAFile:   "ca.pem",
-							CertFile: "cert.pem",
-							KeyFile:  "key.pem",
-						},
-					},
-				},
-				Metadata: kafkaexporter.Metadata{
+				// Authentication: kafka.Authentication{
+				// 	TLS: &configtls.ClientConfig{
+				// 		Config: configtls.Config{
+				// 			CAFile:   "ca.pem",
+				// 			CertFile: "cert.pem",
+				// 			KeyFile:  "key.pem",
+				// 		},
+				// 	},
+				// },
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},
@@ -79,18 +76,18 @@ func TestLoadConfig(t *testing.T) {
 				ClientID:      "otel-collector",
 				GroupID:       "otel-collector",
 				InitialOffset: "earliest",
-				Authentication: kafka.Authentication{
-					TLS: &configtls.ClientConfig{
-						Config: configtls.Config{
-							CAFile:   "ca.pem",
-							CertFile: "cert.pem",
-							KeyFile:  "key.pem",
-						},
-					},
-				},
-				Metadata: kafkaexporter.Metadata{
+				// Authentication: kafka.Authentication{
+				// 	TLS: &configtls.ClientConfig{
+				// 		Config: configtls.Config{
+				// 			CAFile:   "ca.pem",
+				// 			CertFile: "cert.pem",
+				// 			KeyFile:  "key.pem",
+				// 		},
+				// 	},
+				// },
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},

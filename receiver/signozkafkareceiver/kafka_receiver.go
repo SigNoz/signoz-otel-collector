@@ -20,8 +20,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-
-	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 )
 
 const (
@@ -108,9 +106,6 @@ func newTracesReceiver(config Config, set receiver.Settings, unmarshalers map[st
 			return nil, err
 		}
 		c.Version = version
-	}
-	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
-		return nil, err
 	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
@@ -222,9 +217,6 @@ func newMetricsReceiver(config Config, set receiver.Settings, unmarshalers map[s
 		}
 		c.Version = version
 	}
-	if err := kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
-		return nil, err
-	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
 		return nil, err
@@ -334,9 +326,6 @@ func newLogsReceiver(config Config, set receiver.Settings, unmarshalers map[stri
 			return nil, err
 		}
 		c.Version = version
-	}
-	if err = kafka.ConfigureAuthentication(config.Authentication, c); err != nil {
-		return nil, err
 	}
 	client, err := sarama.NewConsumerGroup(config.Brokers, config.GroupID, c)
 	if err != nil {
