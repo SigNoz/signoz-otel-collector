@@ -6,7 +6,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/gofuzz"
 )
 
-func NewLabels(name string, ms ...map[string]string) string {
+func NewLabelsAsJSONString(name string, ms ...map[string]string) string {
 	attrs := make(map[string]string)
 	for _, m := range ms {
 		for k, v := range m {

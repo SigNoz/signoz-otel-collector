@@ -49,7 +49,7 @@ func (f *Fingerprint) Attributes() Attributes {
 }
 
 func (f *Fingerprint) AttributesAsMap() map[string]string {
-	attrMap := make(map[string]string)
+	attrMap := make(map[string]string, len(f.attributes))
 	for k, v := range f.attributes {
 		attrMap[k] = v.Val
 	}

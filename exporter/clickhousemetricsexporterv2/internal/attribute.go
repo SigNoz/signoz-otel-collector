@@ -12,7 +12,7 @@ type Value struct {
 type Attributes map[string]Value
 
 func NewAttributesFromPcommonMap(attrs pcommon.Map) Attributes {
-	attrMap := make(map[string]Value)
+	attrMap := make(map[string]Value, attrs.Len())
 	attrs.Range(func(k string, v pcommon.Value) bool {
 		attrMap[k] = Value{
 			DataType: v.Type(),
