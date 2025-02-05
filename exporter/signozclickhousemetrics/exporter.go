@@ -1,4 +1,4 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2/internal"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -45,6 +45,7 @@ type clickhouseMetricsExporter struct {
 	logger        *zap.Logger
 	meter         metricapi.Meter
 	cache         *ttlcache.Cache[string, bool]
+	cacheRunning  bool
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
 	enableExpHist bool
@@ -162,12 +163,10 @@ func WithConfig(cfg *Config) ExporterOption {
 }
 
 func defaultOptions() []ExporterOption {
-
 	cache := ttlcache.New[string, bool](
 		ttlcache.WithTTL[string, bool](45*time.Minute),
 		ttlcache.WithDisableTouchOnHit[string, bool](),
 	)
-	go cache.Start()
 
 	return []ExporterOption{
 		WithCache(cache),
@@ -216,10 +215,15 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
+	go c.cache.Start()
+	c.cacheRunning = true
 	return nil
 }
 
 func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
+	if c.cacheRunning {
+		c.cache.Stop()
+	}
 	c.wg.Wait()
 	return c.conn.Close()
 }

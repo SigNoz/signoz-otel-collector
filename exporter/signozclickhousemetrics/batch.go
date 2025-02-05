@@ -1,7 +1,7 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2/internal"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
