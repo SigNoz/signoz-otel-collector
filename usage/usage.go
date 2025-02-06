@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
+	"go.opencensus.io/metric/metricproducer"
 )
 
 // Options provides options for LogExporter
@@ -66,21 +67,35 @@ func NewUsageCollector(exporterId uuid.UUID, db clickhouse.Conn, options Options
 func (e *UsageCollector) Start() error {
 	// start collector routine which
 	e.initReaderOnce.Do(func() {
-		e.ir, _ = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
+		var err error
+		e.ir, err = metricexport.NewIntervalReader(&metricexport.Reader{}, e)
+		if err != nil {
+			fmt.Println("Error starting usage collector", err)
+		}
 	})
 	e.ir.ReportingInterval = e.o.ReportingInterval
 	return e.ir.Start()
 }
 
 func (c *UsageCollector) Stop() error {
+
+	producers := metricproducer.GlobalManager().GetAll()
+	data := []*metricdata.Metric{}
+	for _, producer := range producers {
+		data = append(data, producer.Read()...)
+	}
+	fmt.Println("Stopping usage collector data", data)
+
 	c.ir.Stop()
 	c.ir.Flush()
 	return nil
 }
 
 func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdata.Metric) error {
+	fmt.Println("ExportMetrics", e.db, e.dbName, e.distributedTableName, metrics)
 	usages, err := e.usageParser(metrics, e.exporterID)
 	if err != nil {
+		fmt.Println("ExportMetrics parse error", err)
 		return err
 	}
 	time := time.Now()
@@ -88,16 +103,20 @@ func (e *UsageCollector) ExportMetrics(ctx context.Context, metrics []*metricdat
 		usage.TimeStamp = time
 		usageBytes, err := json.Marshal(usage)
 		if err != nil {
+			fmt.Println("ExportMetrics marshal error", err)
 			return err
 		}
 		encryptedData, err := Encrypt([]byte(e.exporterID.String())[:32], usageBytes)
 		if err != nil {
+			fmt.Println("ExportMetrics encrypt error", err)
 			return err
 		}
 
+		fmt.Println("ExportMetrics", tenant, CollectorID.String(), e.exporterID.String(), time, string(encryptedData))
 		// insert everything as a new row
 		err = e.db.Exec(ctx, fmt.Sprintf("insert into %s.%s values ($1, $2, $3, $4, $5)", e.dbName, e.distributedTableName), tenant, CollectorID.String(), e.exporterID.String(), time, string(encryptedData))
 		if err != nil {
+			fmt.Println("ExportMetrics insert error", err)
 			return err
 		}
 	}
