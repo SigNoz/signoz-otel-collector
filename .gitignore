@@ -20,7 +20,8 @@ vendor/
 ./config/default-config.yaml
 
 # build folder
-.build
+build
+
 *.rollback
 signoz-collector
 
