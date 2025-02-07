@@ -130,6 +130,8 @@ type Span struct {
 	ResponseStatusCode string             `json:"responseStatusCode,omitempty"`
 	Tenant             *string            `json:"-"`
 	SpanAttributes     []SpanAttribute    `json:"spanAttributes,omitempty"`
+	ServerAddress      string             `json:"serverAddress,omitempty"`
+	UrlPath            string             `json:"urlPath,omitempty"`
 }
 
 // TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
@@ -238,6 +240,8 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("errorGroupID", s.ErrorGroupID)
 	enc.AddObject("errorEvent", &s.ErrorEvent)
 	enc.AddObject("traceModel", &s.TraceModel)
+	enc.AddString("serverAddress", s.ServerAddress)
+	enc.AddString("urlPath", s.UrlPath)
 	enc.AddString("event", fmt.Sprintf("%v", s.Events))
 
 	return nil
