@@ -62,6 +62,8 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.ResponseStatusCode,
 			span.ExternalHttpUrl,
 			span.HttpUrl,
+			span.ServerAddress,
+			span.UrlPath,
 			span.ExternalHttpMethod,
 			span.HttpMethod,
 			span.HttpHost,

@@ -38,11 +38,19 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
+		} else if k == "http.target" || k == "url.path" {
+			span.UrlPath = v.Str()
+		} else if k == "net.peer.name" || k == "server.address" {
+			span.ServerAddress = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
 		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
 			span.HttpUrl = v.Str()
+		} else if k == "http.target" || k == "url.path" {
+			span.UrlPath = v.Str()
+		} else if k == "net.peer.name" || k == "server.address" {
+			span.ServerAddress = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
 		} else if k == "http.host" || k == "server.address" ||

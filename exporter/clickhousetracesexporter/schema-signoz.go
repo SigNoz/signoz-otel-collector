@@ -189,6 +189,8 @@ type SpanV3 struct {
 	DBOperation        string `json:"-"`
 	HasError           bool   `json:"-"`
 	IsRemote           string `json:"-"`
+	ServerAddress      string `json:"-"`
+	UrlPath            string `json:"-"`
 
 	// check if this is really required
 	Tenant *string `json:"-"`
