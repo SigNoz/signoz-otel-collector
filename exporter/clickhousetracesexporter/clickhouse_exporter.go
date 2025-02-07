@@ -189,6 +189,10 @@ func populateOtherDimensions(attributes pcommon.Map, span *Span) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
+		} else if k == "http.target" || k == "url.path" {
+			span.UrlPath = v.Str()
+		} else if k == "net.peer.name" || k == "server.address" {
+			span.ServerAddress = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
@@ -677,6 +681,20 @@ func extractSpanAttributesFromSpanIndex(span *Span) []SpanAttribute {
 		IsColumn:    true,
 		DataType:    "string",
 		StringValue: span.ResponseStatusCode,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "serverAddress",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.ServerAddress,
+	})
+	spanAttributes = append(spanAttributes, SpanAttribute{
+		Key:         "urlPath",
+		TagType:     "tag",
+		IsColumn:    true,
+		DataType:    "string",
+		StringValue: span.UrlPath,
 	})
 	return spanAttributes
 }

@@ -259,6 +259,8 @@ func (w *SpanWriter) writeIndexBatch(ctx context.Context, batchSpans []*Span) er
 			span.StatusMessage,
 			span.StatusCodeString,
 			span.SpanKind,
+			span.ServerAddress,
+			span.UrlPath,
 		)
 		if err != nil {
 			return fmt.Errorf("could not append span to batch: %w", err)
