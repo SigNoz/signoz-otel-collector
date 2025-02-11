@@ -95,6 +95,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		WriteTSToV4:          cfg.WriteTSToV4,
 		DisableV2:            cfg.DisableV2,
 		ExporterId:           id,
+		Settings:             set,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {

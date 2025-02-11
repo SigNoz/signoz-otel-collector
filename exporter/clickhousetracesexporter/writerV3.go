@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/jellydator/ttlcache/v3"
@@ -15,6 +16,8 @@ import (
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -76,11 +79,14 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 
 	err = statement.Send()
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.indexTableV3),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+			attribute.String("table", w.indexTableV3),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
@@ -126,11 +132,14 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 
 	err = statement.Send()
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.errorTable),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+			attribute.String("table", w.errorTable),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return err
 }
 
@@ -206,6 +215,11 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			v2Key := utils.MakeKeyForAttributeKeys(spanAttribute.Key, utils.TagType(spanAttribute.TagType), utils.TagDataType(spanAttribute.DataType))
 			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
 
+			if len(spanAttribute.StringValue) > common.MaxAttributeValueLength {
+				w.logger.Debug("attribute value length exceeds the limit", zap.String("key", spanAttribute.Key))
+				continue
+			}
+
 			if spanAttribute.DataType == "string" {
 
 				if _, ok := shouldSkipKeys[v2Key]; !ok {
@@ -250,12 +264,13 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 	tagStart := time.Now()
 	err = tagStatementV2.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-			tag.Upsert(tableKey, w.attributeTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagStart).Milliseconds())),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(tagStart).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+			attribute.String("table", w.attributeTable),
+		),
 	)
 	if err != nil {
 		return fmt.Errorf("could not write to span attributes table due to error: %w", err)
@@ -263,12 +278,13 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 	tagKeyStart := time.Now()
 	err = tagKeyStatement.Send()
-	stats.RecordWithTags(ctx,
-		[]tag.Mutator{
-			tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-			tag.Upsert(tableKey, w.attributeKeyTable),
-		},
-		writeLatencyMillis.M(int64(time.Since(tagKeyStart).Milliseconds())),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(tagKeyStart).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+			attribute.String("table", w.attributeKeyTable),
+		),
 	)
 	if err != nil {
 		return fmt.Errorf("could not write to span attributes key table due to error: %w", err)
@@ -371,11 +387,14 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 		return fmt.Errorf("couldn't send resource fingerprints :%w", err)
 	}
 
-	ctx, _ = tag.New(ctx,
-		tag.Upsert(exporterKey, pipeline.SignalTraces.String()),
-		tag.Upsert(tableKey, w.resourceTableV3),
+	w.durationHistogram.Record(
+		ctx,
+		float64(time.Since(start).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("exporter", pipeline.SignalTraces.String()),
+			attribute.String("table", w.resourceTableV3),
+		),
 	)
-	stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 	return nil
 }
 

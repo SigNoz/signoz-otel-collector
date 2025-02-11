@@ -1,47 +1,23 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
 	"context"
 	"errors"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-const (
-	// The value of "type" key in configuration.
-	typeStr = "clickhousemetricswritev2"
-)
-
-var (
-	writeLatencyMillis = stats.Int64("exporter_db_write_latency", "Time taken (in millis) for exporter to write batch", "ms")
-	exporterKey        = tag.MustNewKey("exporter")
-	tableKey           = tag.MustNewKey("table")
-)
-
 // NewFactory creates a new ClickHouse Metrics exporter.
 func NewFactory() exporter.Factory {
-
-	writeLatencyDistribution := view.Distribution(100, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 8000, 16000, 32000, 64000)
-	writeLatencyView := &view.View{
-		Name:        "exporter_db_write_latency",
-		Measure:     writeLatencyMillis,
-		Description: writeLatencyMillis.Description(),
-		TagKeys:     []tag.Key{exporterKey, tableKey},
-		Aggregation: writeLatencyDistribution,
-	}
-
-	view.Register(writeLatencyView)
 	return exporter.NewFactory(
-		component.MustNewType(typeStr),
+		internalmetadata.Type,
 		createDefaultConfig,
-		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
+		exporter.WithMetrics(createMetricsExporter, internalmetadata.MetricsStability))
 }
 
 func createMetricsExporter(ctx context.Context, set exporter.Settings,
@@ -66,6 +42,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithConfig(chCfg),
 		WithConn(conn),
 		WithLogger(set.Logger),
+		WithMeter(set.MeterProvider.Meter(meterScope)),
 		WithEnableExpHist(chCfg.EnableExpHist),
 	)
 	if err != nil {
