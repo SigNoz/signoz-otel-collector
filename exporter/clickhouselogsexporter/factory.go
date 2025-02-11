@@ -31,7 +31,6 @@ const (
 	primaryNamespace = "clickhouselogs"
 	archiveNamespace = "clickhouselogs-archive"
 	databaseName     = "signoz_logs"
-	tableName        = "logs"
 )
 
 // NewFactory creates a factory for Elastic exporter.

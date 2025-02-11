@@ -53,6 +53,7 @@ const (
 	DISTRIBUTED_TAG_ATTRIBUTES           = "distributed_tag_attributes"
 	DISTRIBUTED_TAG_ATTRIBUTES_V2        = "distributed_tag_attributes_v2"
 	DISTRIBUTED_LOGS_TABLE_V2            = "distributed_logs_v2"
+	LOGS_TABLE_V2                        = "logs_v2"
 	DISTRIBUTED_LOGS_RESOURCE_V2         = "distributed_logs_v2_resource"
 	DISTRIBUTED_LOGS_ATTRIBUTE_KEYS      = "distributed_logs_attribute_keys"
 	DISTRIBUTED_LOGS_RESOURCE_KEYS       = "distributed_logs_resource_keys"
@@ -251,7 +252,7 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	ctx := context.Background()
 	var delTTL uint64 = 0
 	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", tableName, databaseName)
+	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", DISTRIBUTED_LOGS_TABLE_V2, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
 	if err != nil {
 		e.logger.Error("error while fetching ttl", zap.Error(err))
