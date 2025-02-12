@@ -30,7 +30,6 @@ type AttributesLimits struct {
 
 // Config defines configuration for tracing exporter.
 type Config struct {
-	Options    `mapstructure:",squash"`
 	Datasource string `mapstructure:"datasource"`
 	// LowCardinalExceptionGrouping is a flag to enable exception grouping by serviceName + exceptionType. Default is false.
 	LowCardinalExceptionGrouping bool `mapstructure:"low_cardinal_exception_grouping"`

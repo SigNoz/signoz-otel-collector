@@ -17,8 +17,67 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
+
+func makeJaegerProtoReferences(
+	links ptrace.SpanLinkSlice,
+	parentSpanID pcommon.SpanID,
+	traceID pcommon.TraceID,
+) ([]OtelSpanRef, error) {
+
+	parentSpanIDSet := len([8]byte(parentSpanID)) != 0
+	if !parentSpanIDSet && links.Len() == 0 {
+		return nil, nil
+	}
+
+	refsCount := links.Len()
+	if parentSpanIDSet {
+		refsCount++
+	}
+
+	refs := make([]OtelSpanRef, 0, refsCount)
+
+	// Put parent span ID at the first place because usually backends look for it
+	// as the first CHILD_OF item in the model.SpanRef slice.
+	if parentSpanIDSet {
+
+		refs = append(refs, OtelSpanRef{
+			TraceId: utils.TraceIDToHexOrEmptyString(traceID),
+			SpanId:  utils.SpanIDToHexOrEmptyString(parentSpanID),
+			RefType: "CHILD_OF",
+		})
+	}
+
+	for i := 0; i < links.Len(); i++ {
+		link := links.At(i)
+
+		refs = append(refs, OtelSpanRef{
+			TraceId: utils.TraceIDToHexOrEmptyString(link.TraceID()),
+			SpanId:  utils.SpanIDToHexOrEmptyString(link.SpanID()),
+
+			// Since Jaeger RefType is not captured in internal data,
+			// use SpanRefType_FOLLOWS_FROM by default.
+			// SpanRefType_CHILD_OF supposed to be set only from parentSpanID.
+			RefType: "FOLLOWS_FROM",
+		})
+	}
+
+	return refs, nil
+}
+
+// ServiceNameForResource gets the service name for a specified Resource.
+// TODO: Find a better package for this function.
+func ServiceNameForResource(resource pcommon.Resource) string {
+
+	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
+	if !found {
+		return "<nil-service-name>"
+	}
+
+	return service.Str()
+}
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
@@ -283,11 +342,7 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 	return (int64(ts) / int64(bucketSize)) * int64(bucketSize)
 }
 
-const (
-	DISTRIBUTED_TRACES_RESOURCE_V3_SECONDS = 1800
-)
-
-func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
+func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -316,7 +371,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 			})
 			serializedRes, err := json.Marshal(stringMap)
 			if err != nil {
-				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
+				return fmt.Errorf("couldn't serialize trace resource JSON: %w", err)
 			}
 			resourceJson := string(serializedRes)
 
@@ -328,7 +383,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
 
-					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), DISTRIBUTED_TRACES_RESOURCE_V3_SECONDS)
+					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), distributedTracesResourceV2Seconds)
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
 						resourcesSeen[int64(lBucketStart)] = map[string]string{}
 					}
@@ -354,9 +409,7 @@ func (s *storage) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 			}
 		}
 
-		if s.useNewSchema {
-			usage.AddMetric(metrics, "default", int64(count), int64(size))
-		}
+		usage.AddMetric(metrics, "default", int64(count), int64(size))
 
 		err := s.Writer.WriteBatchOfSpansV3(ctx, batchOfSpans, metrics)
 		if err != nil {
