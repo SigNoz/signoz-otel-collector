@@ -114,7 +114,7 @@ func TestMetricBuilder(t *testing.T) {
 
 		expectedIncludedMetric := metrics[0]
 
-		for stat, expectedValue := range metrics[0].statValues() {
+		for stat, expectedValue := range expectedIncludedMetric.statValues() {
 			expectedName := otlpMetricName(
 				expectedIncludedMetric.Namespace, expectedIncludedMetric.MetricName, stat,
 			)

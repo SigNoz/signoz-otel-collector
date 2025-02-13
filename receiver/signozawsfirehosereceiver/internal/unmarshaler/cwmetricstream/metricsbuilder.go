@@ -99,7 +99,7 @@ type dataPointKey struct {
 }
 
 // The metricBuilder aggregates cwmetrics of the same name and unit
-// into 1 metric per stat with data points derived from cwmetric value
+// into 1 gauge per value stat
 type metricBuilder struct {
 	metricNamespace string
 	metricName      string
