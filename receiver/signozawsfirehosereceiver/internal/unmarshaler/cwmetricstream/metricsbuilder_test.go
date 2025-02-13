@@ -4,6 +4,7 @@
 package cwmetricstream
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -56,20 +57,25 @@ func TestMetricBuilder(t *testing.T) {
 		mb := newMetricBuilder(gots, metric.Namespace, metric.MetricName, metric.Unit)
 		mb.AddDataPoint(metric)
 		require.Equal(t, 4, gots.Len())
-		got := gots.At(0)
-		require.Equal(t, metric.MetricName, got.Name())
-		require.Equal(t, metric.Unit, got.Unit())
-		require.Equal(t, pmetric.MetricTypeSummary, got.Type())
-		gotDps := got.Summary().DataPoints()
-		require.Equal(t, 1, gotDps.Len())
-		gotDp := gotDps.At(0)
-		require.Equal(t, uint64(metric.Value.Count), gotDp.Count())
-		require.Equal(t, metric.Value.Sum, gotDp.Sum())
-		gotQv := gotDp.QuantileValues()
-		require.Equal(t, 2, gotQv.Len())
-		require.Equal(t, []float64{metric.Value.Min, metric.Value.Max}, []float64{gotQv.At(0).Value(), gotQv.At(1).Value()})
-		require.Equal(t, 1, gotDp.Attributes().Len())
+
+		for stat, expectedValue := range metric.statValues() {
+			expectedName := otlpMetricName(metric.Namespace, metric.MetricName, stat)
+			found := findMetricByName(t, gots, expectedName)
+			require.Equal(t, expectedName, found.Name())
+
+			require.Equal(t, metric.Unit, found.Unit())
+
+			require.Equal(t, pmetric.MetricTypeGauge, found.Type())
+
+			foundDps := found.Gauge().DataPoints()
+			require.Equal(t, 1, foundDps.Len())
+			foundDp := foundDps.At(0)
+			require.Equal(t, expectedValue, foundDp.DoubleValue())
+			require.Equal(t, 1, foundDp.Attributes().Len())
+		}
+
 	})
+
 	t.Run("WithTimestampCollision", func(t *testing.T) {
 		timestamp := time.Now().UnixMilli()
 		metrics := []cWMetric{
@@ -255,4 +261,21 @@ func TestToOtlpMetricName(t *testing.T) {
 			require.Equal(t, testCase.want, got)
 		})
 	}
+}
+
+// test helper
+func findMetricByName(t *testing.T, ms pmetric.MetricSlice, name string) pmetric.Metric {
+	matches := []pmetric.Metric{}
+	for i := 0; i < ms.Len(); i++ {
+		if ms.At(i).Name() == name {
+			matches = append(matches, ms.At(i))
+		}
+	}
+
+	require.Equal(
+		t, len(matches), 1,
+		fmt.Sprintf("expected metric with name %s not found", name),
+	)
+
+	return matches[0]
 }

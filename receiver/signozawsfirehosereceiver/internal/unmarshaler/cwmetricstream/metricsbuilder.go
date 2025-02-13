@@ -136,14 +136,7 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 	if _, ok := mb.seen[key]; !ok {
 		mb.seen[key] = true
 
-		statValues := map[string]float64{
-			"sum":   metric.Value.Sum,
-			"count": metric.Value.Count,
-			"min":   metric.Value.Min,
-			"max":   metric.Value.Max,
-		}
-
-		for stat, val := range statValues {
+		for stat, val := range metric.statValues() {
 			otlpMetric, exists := mb.metricByValueStat[stat]
 			if !exists {
 				otlpMetric = mb.resourceMetrics.AppendEmpty()
@@ -200,4 +193,14 @@ func otlpMetricName(metricNamespace, metricName, statName string) string {
 	}
 
 	return strings.Join(nameParts, "_")
+}
+
+// helper for iterating over stats in cwMetric
+func (m *cWMetric) statValues() map[string]float64 {
+	return map[string]float64{
+		"sum":   m.Value.Sum,
+		"count": m.Value.Count,
+		"min":   m.Value.Min,
+		"max":   m.Value.Max,
+	}
 }
