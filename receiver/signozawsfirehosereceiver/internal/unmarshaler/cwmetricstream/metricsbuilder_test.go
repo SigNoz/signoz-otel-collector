@@ -77,11 +77,15 @@ func TestMetricBuilder(t *testing.T) {
 	})
 
 	t.Run("WithTimestampCollision", func(t *testing.T) {
+		// all but the first cwMetric should get ignored
 		timestamp := time.Now().UnixMilli()
 		metrics := []cWMetric{
 			{
-				Timestamp: timestamp,
-				Value:     testCWMetricValue(),
+				Namespace:  "namespace",
+				MetricName: "name",
+				Unit:       "unit",
+				Timestamp:  timestamp,
+				Value:      testCWMetricValue(),
 				Dimensions: map[string]string{
 					"AccountId":  testAccountID,
 					"Region":     testRegion,
@@ -89,8 +93,11 @@ func TestMetricBuilder(t *testing.T) {
 				},
 			},
 			{
-				Timestamp: timestamp,
-				Value:     testCWMetricValue(),
+				Namespace:  "namespace",
+				MetricName: "name",
+				Unit:       "unit",
+				Timestamp:  timestamp,
+				Value:      testCWMetricValue(),
 				Dimensions: map[string]string{
 					"InstanceId": testInstanceID,
 					"AccountId":  testAccountID,
@@ -103,14 +110,27 @@ func TestMetricBuilder(t *testing.T) {
 		for _, metric := range metrics {
 			mb.AddDataPoint(metric)
 		}
-		require.Equal(t, 1, gots.Len())
-		got := gots.At(0)
-		gotDps := got.Summary().DataPoints()
-		require.Equal(t, 1, gotDps.Len())
-		gotDp := gotDps.At(0)
-		require.Equal(t, uint64(metrics[0].Value.Count), gotDp.Count())
-		require.Equal(t, metrics[0].Value.Sum, gotDp.Sum())
-		require.Equal(t, 3, gotDp.Attributes().Len())
+		require.Equal(t, 4, gots.Len())
+
+		expectedIncludedMetric := metrics[0]
+
+		for stat, expectedValue := range metrics[0].statValues() {
+			expectedName := otlpMetricName(
+				expectedIncludedMetric.Namespace, expectedIncludedMetric.MetricName, stat,
+			)
+			found := findMetricByName(t, gots, expectedName)
+			require.Equal(t, expectedName, found.Name())
+
+			require.Equal(t, expectedIncludedMetric.Unit, found.Unit())
+
+			require.Equal(t, pmetric.MetricTypeGauge, found.Type())
+
+			foundDps := found.Gauge().DataPoints()
+			require.Equal(t, 1, foundDps.Len())
+			foundDp := foundDps.At(0)
+			require.Equal(t, expectedValue, foundDp.DoubleValue())
+			require.Equal(t, 3, foundDp.Attributes().Len())
+		}
 	})
 }
 
