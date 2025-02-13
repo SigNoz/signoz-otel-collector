@@ -220,28 +220,38 @@ func TestToOtlpMetricName(t *testing.T) {
 	testCases := map[string]struct {
 		namespace string
 		name      string
+		stat      string
 		want      string
 	}{
 		"WithAWSNamespace": {
 			namespace: "AWS/EC2",
 			name:      "CPUUtilization",
-			want:      "aws_EC2_CPUUtilization",
+			stat:      "sum",
+			want:      "aws_EC2_CPUUtilization_sum",
 		},
 		"WithCustomNamespace": {
 			namespace: "EKS/NODE",
 			name:      "CPUUtilization",
-			want:      "aws_EKS_NODE_CPUUtilization",
+			stat:      "sum",
+			want:      "aws_EKS_NODE_CPUUtilization_sum",
 		},
 		"WithoutNamespace": {
 			namespace: "",
 			name:      "CPUUtilization",
-			want:      "aws_CPUUtilization",
+			stat:      "sum",
+			want:      "aws_CPUUtilization_sum",
+		},
+		"WithoutStat": {
+			namespace: "AWS/EC2",
+			name:      "CPUUtilization",
+			stat:      "",
+			want:      "aws_EC2_CPUUtilization",
 		},
 	}
 
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			got := otlpMetricName(testCase.namespace, testCase.name)
+			got := otlpMetricName(testCase.namespace, testCase.name, testCase.stat)
 			require.Equal(t, testCase.want, got)
 		})
 	}

@@ -101,8 +101,9 @@ type dataPointKey struct {
 // The metricBuilder aggregates cwmetrics of the same name and unit
 // into 1 metric per stat with data points derived from cwmetric value
 type metricBuilder struct {
-	otlpMetricName string
-	unit           string
+	metricNamespace string
+	metricName      string
+	unit            string
 
 	resourceMetrics   pmetric.MetricSlice
 	metricByValueStat map[string]pmetric.Metric
@@ -114,7 +115,8 @@ type metricBuilder struct {
 // newMetricBuilder creates a metricBuilder with the name and unit.
 func newMetricBuilder(rms pmetric.MetricSlice, namespace, name, unit string) *metricBuilder {
 	return &metricBuilder{
-		otlpMetricName:    otlpMetricName(namespace, name),
+		metricNamespace:   namespace,
+		metricName:        name,
 		unit:              unit,
 		resourceMetrics:   rms,
 		metricByValueStat: map[string]pmetric.Metric{},
@@ -145,7 +147,9 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 			otlpMetric, exists := mb.metricByValueStat[stat]
 			if !exists {
 				otlpMetric = mb.resourceMetrics.AppendEmpty()
-				otlpMetric.SetName(fmt.Sprintf("%s_%s", mb.otlpMetricName, stat))
+				otlpMetric.SetName(otlpMetricName(
+					mb.metricNamespace, mb.metricName, stat,
+				))
 				otlpMetric.SetUnit(mb.unit)
 				otlpMetric.SetEmptyGauge()
 
@@ -162,24 +166,6 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 	}
 }
 
-// toDataPoint converts a cWMetric into a pdata datapoint and attaches the
-// dimensions as attributes.
-// func (mb *metricBuilder) toDataPoint(dp pmetric.SummaryDataPoint, metric cWMetric) {
-// 	dp.SetCount(uint64(metric.Value.Count))
-// 	dp.SetSum(metric.Value.Sum)
-// 	qv := dp.QuantileValues()
-// 	min := qv.AppendEmpty()
-// 	min.SetQuantile(0)
-// 	min.SetValue(metric.Value.Min)
-// 	max := qv.AppendEmpty()
-// 	max.SetQuantile(1)
-// 	max.SetValue(metric.Value.Max)
-// 	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
-// 	for k, v := range metric.Dimensions {
-// 		dp.Attributes().PutStr(ToSemConvAttributeKey(k), v)
-// 	}
-// }
-
 // ToSemConvAttributeKey maps some common keys to semantic convention attributes.
 func ToSemConvAttributeKey(key string) string {
 	switch key {
@@ -191,7 +177,7 @@ func ToSemConvAttributeKey(key string) string {
 }
 
 // make metrics more easily searchable.
-func otlpMetricName(metricNamespace, metricName string) string {
+func otlpMetricName(metricNamespace, metricName, statName string) string {
 	// adding an aws_ prefix allows for quickly scoping down to aws metrics
 	nameParts := []string{conventions.AttributeCloudProviderAWS}
 
@@ -208,6 +194,10 @@ func otlpMetricName(metricNamespace, metricName string) string {
 	}
 
 	nameParts = append(nameParts, metricName)
+
+	if len(statName) > 0 {
+		nameParts = append(nameParts, statName)
+	}
 
 	return strings.Join(nameParts, "_")
 }
