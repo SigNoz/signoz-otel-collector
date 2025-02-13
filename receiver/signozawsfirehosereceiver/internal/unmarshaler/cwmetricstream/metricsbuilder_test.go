@@ -200,9 +200,12 @@ func TestResourceMetricsBuilder(t *testing.T) {
 		got := gots.ResourceMetrics().At(0)
 		require.Equal(t, 1, got.ScopeMetrics().Len())
 		gotMetrics := got.ScopeMetrics().At(0).Metrics()
-		require.Equal(t, 1, gotMetrics.Len())
-		gotDps := gotMetrics.At(0).Summary().DataPoints()
-		require.Equal(t, 2, gotDps.Len())
+		require.Equal(t, 4, gotMetrics.Len())
+
+		for i := 0; i < gotMetrics.Len(); i++ {
+			gotDps := gotMetrics.At(i).Gauge().DataPoints()
+			require.Equal(t, 2, gotDps.Len())
+		}
 	})
 }
 
