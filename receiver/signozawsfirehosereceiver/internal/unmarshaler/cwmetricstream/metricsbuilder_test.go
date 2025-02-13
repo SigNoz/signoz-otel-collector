@@ -53,9 +53,9 @@ func TestMetricBuilder(t *testing.T) {
 			Dimensions: map[string]string{"CustomDimension": "test"},
 		}
 		gots := pmetric.NewMetricSlice()
-		mb := newMetricBuilder(gots, metric.MetricName, metric.Unit)
+		mb := newMetricBuilder(gots, metric.Namespace, metric.MetricName, metric.Unit)
 		mb.AddDataPoint(metric)
-		require.Equal(t, 1, gots.Len())
+		require.Equal(t, 4, gots.Len())
 		got := gots.At(0)
 		require.Equal(t, metric.MetricName, got.Name())
 		require.Equal(t, metric.Unit, got.Unit())
@@ -93,7 +93,7 @@ func TestMetricBuilder(t *testing.T) {
 			},
 		}
 		gots := pmetric.NewMetricSlice()
-		mb := newMetricBuilder(gots, "name", "unit")
+		mb := newMetricBuilder(gots, "namespace", "name", "unit")
 		for _, metric := range metrics {
 			mb.AddDataPoint(metric)
 		}
@@ -169,6 +169,7 @@ func TestResourceMetricsBuilder(t *testing.T) {
 	t.Run("WithSameMetricDifferentDimensions", func(t *testing.T) {
 		metrics := []cWMetric{
 			{
+				Namespace:  "AWS/EC2",
 				MetricName: "name",
 				Unit:       "unit",
 				Timestamp:  time.Now().UnixMilli(),
@@ -176,6 +177,7 @@ func TestResourceMetricsBuilder(t *testing.T) {
 				Dimensions: map[string]string{},
 			},
 			{
+				Namespace:  "AWS/EC2",
 				MetricName: "name",
 				Unit:       "unit",
 				Timestamp:  time.Now().Add(time.Second * 3).UnixMilli(),

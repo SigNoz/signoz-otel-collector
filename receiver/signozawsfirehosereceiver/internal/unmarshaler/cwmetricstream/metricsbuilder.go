@@ -57,7 +57,7 @@ func newResourceMetricsBuilder(md pmetric.Metrics, attrs resourceAttributes) *re
 func (rmb *resourceMetricsBuilder) AddMetric(metric cWMetric) {
 	mb, ok := rmb.metricBuilders[metric.MetricName]
 	if !ok {
-		mb = newMetricBuilder(rmb.rms, metric.MetricName, metric.Unit)
+		mb = newMetricBuilder(rmb.rms, metric.Namespace, metric.MetricName, metric.Unit)
 		rmb.metricBuilders[metric.MetricName] = mb
 	}
 	mb.AddDataPoint(metric)
@@ -98,23 +98,27 @@ type dataPointKey struct {
 	dimensions string
 }
 
-// The metricBuilder aggregates metrics of the same name and unit
-// into data points.
+// The metricBuilder aggregates cwmetrics of the same name and unit
+// into 1 metric per stat with data points derived from cwmetric value
 type metricBuilder struct {
-	metric pmetric.Metric
+	otlpMetricName string
+	unit           string
+
+	resourceMetrics   pmetric.MetricSlice
+	metricByValueStat map[string]pmetric.Metric
 	// seen is the set of added data point keys.
+	// to ensure duplicate data points are not repeated
 	seen map[dataPointKey]bool
 }
 
 // newMetricBuilder creates a metricBuilder with the name and unit.
-func newMetricBuilder(rms pmetric.MetricSlice, name, unit string) *metricBuilder {
-	m := rms.AppendEmpty()
-	m.SetName(name)
-	m.SetUnit(unit)
-	m.SetEmptySummary()
+func newMetricBuilder(rms pmetric.MetricSlice, namespace, name, unit string) *metricBuilder {
 	return &metricBuilder{
-		metric: m,
-		seen:   make(map[dataPointKey]bool),
+		otlpMetricName:    otlpMetricName(namespace, name),
+		unit:              unit,
+		resourceMetrics:   rms,
+		metricByValueStat: map[string]pmetric.Metric{},
+		seen:              make(map[dataPointKey]bool),
 	}
 }
 
@@ -125,29 +129,56 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 		timestamp:  metric.Timestamp,
 		dimensions: fmt.Sprint(metric.Dimensions),
 	}
+
+	// only add if datapoint hasn't been seen already
 	if _, ok := mb.seen[key]; !ok {
-		mb.toDataPoint(mb.metric.Summary().DataPoints().AppendEmpty(), metric)
 		mb.seen[key] = true
+
+		statValues := map[string]float64{
+			"sum":   metric.Value.Sum,
+			"count": metric.Value.Count,
+			"min":   metric.Value.Min,
+			"max":   metric.Value.Max,
+		}
+
+		for stat, val := range statValues {
+			otlpMetric, exists := mb.metricByValueStat[stat]
+			if !exists {
+				otlpMetric = mb.resourceMetrics.AppendEmpty()
+				otlpMetric.SetName(fmt.Sprintf("%s_%s", mb.otlpMetricName, stat))
+				otlpMetric.SetUnit(mb.unit)
+				otlpMetric.SetEmptyGauge()
+
+				mb.metricByValueStat[stat] = otlpMetric
+			}
+
+			dp := otlpMetric.Gauge().DataPoints().AppendEmpty()
+			dp.SetDoubleValue(val)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
+			for k, v := range metric.Dimensions {
+				dp.Attributes().PutStr(ToSemConvAttributeKey(k), v)
+			}
+		}
 	}
 }
 
 // toDataPoint converts a cWMetric into a pdata datapoint and attaches the
 // dimensions as attributes.
-func (mb *metricBuilder) toDataPoint(dp pmetric.SummaryDataPoint, metric cWMetric) {
-	dp.SetCount(uint64(metric.Value.Count))
-	dp.SetSum(metric.Value.Sum)
-	qv := dp.QuantileValues()
-	min := qv.AppendEmpty()
-	min.SetQuantile(0)
-	min.SetValue(metric.Value.Min)
-	max := qv.AppendEmpty()
-	max.SetQuantile(1)
-	max.SetValue(metric.Value.Max)
-	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
-	for k, v := range metric.Dimensions {
-		dp.Attributes().PutStr(ToSemConvAttributeKey(k), v)
-	}
-}
+// func (mb *metricBuilder) toDataPoint(dp pmetric.SummaryDataPoint, metric cWMetric) {
+// 	dp.SetCount(uint64(metric.Value.Count))
+// 	dp.SetSum(metric.Value.Sum)
+// 	qv := dp.QuantileValues()
+// 	min := qv.AppendEmpty()
+// 	min.SetQuantile(0)
+// 	min.SetValue(metric.Value.Min)
+// 	max := qv.AppendEmpty()
+// 	max.SetQuantile(1)
+// 	max.SetValue(metric.Value.Max)
+// 	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
+// 	for k, v := range metric.Dimensions {
+// 		dp.Attributes().PutStr(ToSemConvAttributeKey(k), v)
+// 	}
+// }
 
 // ToSemConvAttributeKey maps some common keys to semantic convention attributes.
 func ToSemConvAttributeKey(key string) string {
@@ -157,4 +188,26 @@ func ToSemConvAttributeKey(key string) string {
 	default:
 		return key
 	}
+}
+
+// make metrics more easily searchable.
+func otlpMetricName(metricNamespace, metricName string) string {
+	// adding an aws_ prefix allows for quickly scoping down to aws metrics
+	nameParts := []string{conventions.AttributeCloudProviderAWS}
+
+	// including ns allows for distinguishing between metrics with same
+	// name across multiple namespaces/services
+	// For example, CPUUtilization is available for both EC2 and RDS
+	nsParts := strings.Split(metricNamespace, namespaceDelimiter)
+	for _, p := range nsParts {
+		// ignore "AWS" in namespaces like "AWS/EC2" to avoid having
+		// final names like aws_aws_ec2_CPUUtilization
+		if strings.ToLower(p) != conventions.AttributeCloudProviderAWS {
+			nameParts = append(nameParts, p)
+		}
+	}
+
+	nameParts = append(nameParts, metricName)
+
+	return strings.Join(nameParts, "_")
 }
