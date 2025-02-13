@@ -202,7 +202,7 @@ func otlpMetricName(metricNamespace, metricName string) string {
 	for _, p := range nsParts {
 		// ignore "AWS" in namespaces like "AWS/EC2" to avoid having
 		// final names like aws_aws_ec2_CPUUtilization
-		if strings.ToLower(p) != conventions.AttributeCloudProviderAWS {
+		if strings.ToLower(p) != conventions.AttributeCloudProviderAWS && len(p) > 0 {
 			nameParts = append(nameParts, p)
 		}
 	}

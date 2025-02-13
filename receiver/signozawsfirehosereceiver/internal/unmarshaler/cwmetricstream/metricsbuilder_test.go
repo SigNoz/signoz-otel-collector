@@ -215,3 +215,34 @@ func TestResourceMetricsBuilder(t *testing.T) {
 func testCWMetricValue() *cWMetricValue {
 	return &cWMetricValue{100, 0, float64(rand.Int63n(100)), float64(rand.Int63n(4))}
 }
+
+func TestToOtlpMetricName(t *testing.T) {
+	testCases := map[string]struct {
+		namespace string
+		name      string
+		want      string
+	}{
+		"WithAWSNamespace": {
+			namespace: "AWS/EC2",
+			name:      "CPUUtilization",
+			want:      "aws_EC2_CPUUtilization",
+		},
+		"WithCustomNamespace": {
+			namespace: "EKS/NODE",
+			name:      "CPUUtilization",
+			want:      "aws_EKS_NODE_CPUUtilization",
+		},
+		"WithoutNamespace": {
+			namespace: "",
+			name:      "CPUUtilization",
+			want:      "aws_CPUUtilization",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got := otlpMetricName(testCase.namespace, testCase.name)
+			require.Equal(t, testCase.want, got)
+		})
+	}
+}
