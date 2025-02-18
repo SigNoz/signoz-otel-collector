@@ -481,7 +481,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "time_series_v4",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -491,7 +491,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "distributed_time_series_v4",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -501,7 +501,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "time_series_v4_6hrs",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -511,7 +511,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "distributed_time_series_v4_6hrs",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -521,7 +521,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "time_series_v4_1day",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -531,7 +531,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "distributed_time_series_v4_1day",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -541,7 +541,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "time_series_v4_1week",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -551,7 +551,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 				Database: "signoz_metrics",
 				Table:    "distributed_time_series_v4_1week",
 				Column: Column{
-					Name:    "__dot_metrics",
+					Name:    "__normalized",
 					Type:    ColumnTypeBool,
 					Codec:   "ZSTD(1)",
 					Default: "false",
@@ -571,7 +571,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							fingerprint,
 							floor(unix_milli / 21600000) * 21600000 AS unix_milli,
 							labels,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4`,
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -588,7 +588,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							fingerprint,
 							floor(unix_milli / 86400000) * 86400000 AS unix_milli,
 							labels,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4_6hrs`,
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -605,7 +605,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							fingerprint,
 							floor(unix_milli / 604800000) * 604800000 AS unix_milli,
 							labels,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4_1day`,
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -625,7 +625,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							attrs,
 							scope_attrs,
 							resource_attrs,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4`,
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -645,7 +645,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							attrs,
 							scope_attrs,
 							resource_attrs,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4_6hrs`,
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -665,7 +665,7 @@ FROM signoz_metrics.time_series_v4_1day`,
 							attrs,
 							scope_attrs,
 							resource_attrs,
-							__dot_metrics
+							__normalized
 						FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
