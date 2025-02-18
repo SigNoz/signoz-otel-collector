@@ -1,6 +1,10 @@
 package internal
 
-import "go.opentelemetry.io/collector/pdata/pcommon"
+import (
+	"sort"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
+)
 
 type FingerprintType struct{ s string }
 
@@ -30,7 +34,14 @@ func NewFingerprint(typ FingerprintType, offset uint64, attrs pcommon.Map, extra
 
 	hash := offset
 
-	for k, v := range attributes {
+	sortedKeys := make([]string, 0, len(attributes))
+	for k := range attributes {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+
+	for _, k := range sortedKeys {
+		v := attributes[k]
 		hash = hashAdd(hash, k)
 		hash = hashAddByte(hash, separatorByte)
 		hash = hashAdd(hash, v.Val)
