@@ -257,7 +257,7 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -315,7 +315,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -375,7 +375,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value = dp.Max()
 		}
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -416,8 +416,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
 
 			fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), pointAttrs, map[string]string{
-				"le":            boundStr,
-				"__temporality": temporality.String(),
+				"le":              boundStr,
+				"__temporality__": temporality.String(),
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 
@@ -450,8 +450,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 		// add le=+Inf sample
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), pointAttrs, map[string]string{
-			"le":            "+Inf",
-			"__temporality": temporality.String(),
+			"le":              "+Inf",
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -522,7 +522,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			value = dp.Sum()
 		}
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -560,8 +560,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			quantileValue := quantile.Value()
 
 			fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-				"quantile":      quantileStr,
-				"__temporality": temporality.String(),
+				"quantile":        quantileStr,
+				"__temporality__": temporality.String(),
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 			batch.addSample(&sample{
@@ -642,7 +642,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value = dp.Max()
 		}
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -698,7 +698,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		}
 
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality": temporality.String(),
+			"__temporality__": temporality.String(),
 		})
 		batch.addExpHist(&exponentialHistogramSample{
 			env:         env,
