@@ -256,7 +256,9 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
@@ -312,7 +314,9 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			value = dp.DoubleValue()
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
@@ -370,7 +374,9 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		case maxSuffix:
 			value = dp.Max()
 		}
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
@@ -410,7 +416,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			boundStr := strconv.FormatFloat(bound, 'f', -1, 64)
 
 			fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), pointAttrs, map[string]string{
-				"le": boundStr,
+				"le":            boundStr,
+				"__temporality": temporality.String(),
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 
@@ -443,7 +450,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 		// add le=+Inf sample
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), pointAttrs, map[string]string{
-			"le": "+Inf",
+			"le":            "+Inf",
+			"__temporality": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -493,7 +501,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 	desc := metric.Description()
 	unit := metric.Unit()
 	typ := metric.Type()
-	temporality := pmetric.AggregationTemporalityUnspecified
+	// summaries are cumulative by default
+	temporality := pmetric.AggregationTemporalityCumulative
 	// monotonicity is assumed for summaries
 	isMonotonic := true
 
@@ -512,7 +521,9 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		case sumSuffix:
 			value = dp.Sum()
 		}
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
@@ -549,7 +560,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			quantileValue := quantile.Value()
 
 			fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-				"quantile": quantileStr,
+				"quantile":      quantileStr,
+				"__temporality": temporality.String(),
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 			batch.addSample(&sample{
@@ -629,7 +641,9 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		case maxSuffix:
 			value = dp.Max()
 		}
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
@@ -683,7 +697,9 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			ZeroCount:      float64(dp.ZeroCount()),
 		}
 
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{})
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality": temporality.String(),
+		})
 		batch.addExpHist(&exponentialHistogramSample{
 			env:         env,
 			temporality: temporality,
@@ -832,7 +848,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				ts.attrs,
 				ts.scopeAttrs,
 				ts.resourceAttrs,
-				true,
+				false,
 			)
 			if err != nil {
 				return err
