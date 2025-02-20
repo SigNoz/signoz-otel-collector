@@ -1,6 +1,8 @@
 package schemamigrator
 
-import "strings"
+import (
+	"strings"
+)
 
 type Projection struct {
 	Name  string
@@ -260,5 +262,121 @@ func (c ModifyQueryMaterializedViewOperation) ToSQL() string {
 	}
 	sql.WriteString(" MODIFY QUERY ")
 	sql.WriteString(c.Query)
+	return sql.String()
+}
+
+type TruncateTableOperation struct {
+	cluster  string
+	Database string
+	Table    string
+}
+
+func (d TruncateTableOperation) OnCluster(cluster string) Operation {
+	d.cluster = cluster
+	return &d
+}
+
+func (d TruncateTableOperation) WithReplication() Operation {
+	// no-op
+	return &d
+}
+
+func (d TruncateTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, d.Database, d.Table
+}
+
+func (d TruncateTableOperation) IsMutation() bool {
+	return true
+}
+
+func (d TruncateTableOperation) IsIdempotent() bool {
+	return true
+}
+
+func (d TruncateTableOperation) IsLightweight() bool {
+	return false
+}
+
+func (d TruncateTableOperation) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("TRUNCATE TABLE IF EXISTS ")
+	sql.WriteString(d.Database)
+	sql.WriteString(".")
+	sql.WriteString(d.Table)
+	if d.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(d.cluster)
+	}
+	return sql.String()
+}
+
+type AlterTableModifyTTL struct {
+	cluster string
+
+	Database string
+	Table    string
+	TTL      string
+	Settings TableSettings
+}
+
+// OnCluster is used to specify the cluster on which the operation should be performed.
+// This is useful when the operation is to be performed on a cluster setup.
+func (a AlterTableModifyTTL) OnCluster(cluster string) Operation {
+	a.cluster = cluster
+	return &a
+}
+
+func (a AlterTableModifyTTL) WithReplication() Operation {
+	// no-op
+	return &a
+}
+
+func (a AlterTableModifyTTL) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
+func (a AlterTableModifyTTL) IsMutation() bool {
+	if a.Settings != nil {
+		for _, setting := range a.Settings {
+			if setting.Name == "materialize_ttl_after_modify" && setting.Value == "0" {
+				// we are not considering this as a mutation
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (a AlterTableModifyTTL) IsIdempotent() bool {
+	return true
+}
+
+func (a AlterTableModifyTTL) IsLightweight() bool {
+	if a.Settings != nil {
+		for _, setting := range a.Settings {
+			if setting.Name == "materialize_ttl_after_modify" && setting.Value == "0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (a AlterTableModifyTTL) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("ALTER TABLE ")
+	sql.WriteString(a.Database)
+	sql.WriteString(".")
+	sql.WriteString(a.Table)
+	if a.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(a.cluster)
+	}
+	sql.WriteString(" MODIFY TTL ")
+	sql.WriteString(a.TTL)
+	if a.Settings != nil {
+		sql.WriteString(" SETTINGS ")
+		sql.WriteString(a.Settings.ToSQL())
+	}
 	return sql.String()
 }

@@ -131,4 +131,64 @@ ORDER BY name ASC`,
 		},
 		DownItems: []Operation{},
 	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_attribute_keys",
+				Column: Column{
+					Name:    "timestamp",
+					Type:    DateTimeColumnType{},
+					Default: "toDateTime(now())",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_resource_keys",
+				Column: Column{
+					Name:    "timestamp",
+					Type:    DateTimeColumnType{},
+					Default: "toDateTime(now())",
+				},
+			},
+			AlterTableModifyTTL{
+				Database: "signoz_logs",
+				Table:    "logs_attribute_keys",
+				TTL:      "timestamp + INTERVAL 15 DAY",
+				Settings: TableSettings{
+					{Name: "materialize_ttl_after_modify", Value: "0"},
+				},
+			},
+			AlterTableModifyTTL{
+				Database: "signoz_logs",
+				Table:    "logs_resource_keys",
+				TTL:      "timestamp + INTERVAL 15 DAY",
+				Settings: TableSettings{
+					{Name: "materialize_ttl_after_modify", Value: "0"},
+				},
+			},
+		},
+		DownItems: []Operation{},
+	},
+	{
+		MigrationID: 1003,
+		UpItems: []Operation{
+			AlterTableMaterializeColumn{
+				Database: "signoz_logs",
+				Table:    "logs_attribute_keys",
+				Column: Column{
+					Name: "timestamp",
+				},
+			},
+			AlterTableMaterializeColumn{
+				Database: "signoz_logs",
+				Table:    "logs_resource_keys",
+				Column: Column{
+					Name: "timestamp",
+				},
+			},
+		},
+		DownItems: []Operation{},
+	},
 }
