@@ -316,7 +316,11 @@ type AlterTableModifyTTL struct {
 	Database string
 	Table    string
 	TTL      string
-	Settings TableSettings
+	Settings ModifyTTLSettings
+}
+
+type ModifyTTLSettings struct {
+	MaterializeTTLAfterModify bool
 }
 
 // OnCluster is used to specify the cluster on which the operation should be performed.
@@ -336,14 +340,11 @@ func (a AlterTableModifyTTL) ShouldWaitForDistributionQueue() (bool, string, str
 }
 
 func (a AlterTableModifyTTL) IsMutation() bool {
-	if a.Settings != nil {
-		for _, setting := range a.Settings {
-			if setting.Name == "materialize_ttl_after_modify" && setting.Value == "0" {
-				// we are not considering this as a mutation
-				return false
-			}
-		}
+	if a.Settings.MaterializeTTLAfterModify {
+		// we are not considering this as a mutation
+		return false
 	}
+
 	return true
 }
 
@@ -352,12 +353,8 @@ func (a AlterTableModifyTTL) IsIdempotent() bool {
 }
 
 func (a AlterTableModifyTTL) IsLightweight() bool {
-	if a.Settings != nil {
-		for _, setting := range a.Settings {
-			if setting.Name == "materialize_ttl_after_modify" && setting.Value == "0" {
-				return true
-			}
-		}
+	if a.Settings.MaterializeTTLAfterModify {
+		return true
 	}
 	return false
 }
@@ -374,9 +371,9 @@ func (a AlterTableModifyTTL) ToSQL() string {
 	}
 	sql.WriteString(" MODIFY TTL ")
 	sql.WriteString(a.TTL)
-	if a.Settings != nil {
+	if a.Settings.MaterializeTTLAfterModify {
 		sql.WriteString(" SETTINGS ")
-		sql.WriteString(a.Settings.ToSQL())
+		sql.WriteString("materialize_ttl_after_modify = 0")
 	}
 	return sql.String()
 }

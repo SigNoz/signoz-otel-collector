@@ -156,16 +156,16 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_attribute_keys",
 				TTL:      "timestamp + INTERVAL 15 DAY",
-				Settings: TableSettings{
-					{Name: "materialize_ttl_after_modify", Value: "0"},
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: true,
 				},
 			},
 			AlterTableModifyTTL{
 				Database: "signoz_logs",
 				Table:    "logs_resource_keys",
 				TTL:      "timestamp + INTERVAL 15 DAY",
-				Settings: TableSettings{
-					{Name: "materialize_ttl_after_modify", Value: "0"},
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: true,
 				},
 			},
 		},
