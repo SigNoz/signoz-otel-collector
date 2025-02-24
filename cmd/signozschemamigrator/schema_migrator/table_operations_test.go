@@ -359,7 +359,7 @@ func TestAlterTableModifyTTL(t *testing.T) {
 				Table:    "table",
 				TTL:      "ts + INTERVAL 1 DAY",
 			},
-			want: "ALTER TABLE db.table MODIFY TTL ts + INTERVAL 1 DAY",
+			want: "ALTER TABLE db.table MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
 		},
 		{
 			name: "alter-table-modify-ttl-with-cluster",
@@ -369,7 +369,7 @@ func TestAlterTableModifyTTL(t *testing.T) {
 				TTL:      "ts + INTERVAL 1 DAY",
 				cluster:  "cluster",
 			},
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY TTL ts + INTERVAL 1 DAY",
+			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
 		},
 	}
 
