@@ -157,7 +157,7 @@ ORDER BY name ASC`,
 				Table:    "logs_attribute_keys",
 				TTL:      "timestamp + INTERVAL 15 DAY",
 				Settings: ModifyTTLSettings{
-					MaterializeTTLAfterModify: true,
+					MaterializeTTLAfterModify: false,
 				},
 			},
 			AlterTableModifyTTL{
@@ -165,7 +165,7 @@ ORDER BY name ASC`,
 				Table:    "logs_resource_keys",
 				TTL:      "timestamp + INTERVAL 15 DAY",
 				Settings: ModifyTTLSettings{
-					MaterializeTTLAfterModify: true,
+					MaterializeTTLAfterModify: false,
 				},
 			},
 		},

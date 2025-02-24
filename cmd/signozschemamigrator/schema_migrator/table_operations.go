@@ -340,7 +340,7 @@ func (a AlterTableModifyTTL) ShouldWaitForDistributionQueue() (bool, string, str
 }
 
 func (a AlterTableModifyTTL) IsMutation() bool {
-	if a.Settings.MaterializeTTLAfterModify {
+	if !a.Settings.MaterializeTTLAfterModify {
 		// we are not considering this as a mutation
 		return false
 	}
@@ -353,7 +353,7 @@ func (a AlterTableModifyTTL) IsIdempotent() bool {
 }
 
 func (a AlterTableModifyTTL) IsLightweight() bool {
-	if a.Settings.MaterializeTTLAfterModify {
+	if !a.Settings.MaterializeTTLAfterModify {
 		return true
 	}
 	return false
@@ -371,7 +371,7 @@ func (a AlterTableModifyTTL) ToSQL() string {
 	}
 	sql.WriteString(" MODIFY TTL ")
 	sql.WriteString(a.TTL)
-	if a.Settings.MaterializeTTLAfterModify {
+	if !a.Settings.MaterializeTTLAfterModify {
 		sql.WriteString(" SETTINGS ")
 		sql.WriteString("materialize_ttl_after_modify = 0")
 	}
