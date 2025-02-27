@@ -12,7 +12,7 @@ ARG USER_UID=10001
 USER ${USER_UID}
 
 # copy the binaries from the multi-stage build
-COPY .build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
+COPY build/${TARGETOS}-${TARGETARCH}/signoz-collector /signoz-collector
 
 # copy the config file
 COPY config/default-config.yaml /etc/otel/config.yaml
