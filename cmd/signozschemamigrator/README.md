@@ -177,20 +177,14 @@ To run all the down migrations, you can use the following command:
 go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --down=
 ```
 
-To run all the up & down migrations, you can use the following command:
-
-```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up= --down=
-```
-
 To run a specific migration, you can use the following command:
 
 ```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1 --down=1
+go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1
 ```
 
 To run more than one migration, you can use the following command:
 
 ```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1,2,3 --down=1,2,3
+go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1,2,3
 ```
