@@ -82,7 +82,7 @@ type Operation interface {
 }
 ```
 
-The migrator devides the operation into 2 phases based on the type of the operation:
+The migrator divides the operation into 2 phases based on the type of the operation:
 
 1. Synchronous operations: These operations are expected to complete quickly. They are executed in the foreground and block the migration.
 2. Asynchronous operations: These operations are expected to complete in the background. They are executed in the background and do not block the migration.
