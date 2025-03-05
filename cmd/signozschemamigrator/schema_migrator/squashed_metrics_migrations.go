@@ -1201,5 +1201,31 @@ FROM signoz_metrics.time_series_v4_1day;`,
 				},
 			},
 		},
+		{
+			MigrationID: 29,
+			UpItems: []Operation{
+				CreateTableOperation{
+					Database: "signoz_metrics",
+					Table:    "metrics_metadata",
+					Columns: []Column{
+						{Name: "metric_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+						{Name: "temporality", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+						{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+						{Name: "description", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+						{Name: "unit", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+						{Name: "created_at", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
+					},
+					Engine: MergeTree{
+						OrderBy: "(metric_name)",
+					},
+				},
+			},
+			DownItems: []Operation{
+				DropTableOperation{
+					Database: "signoz_metrics",
+					Table:    "distributed_time_series_v4_1week",
+				},
+			},
+		},
 	}
 )
