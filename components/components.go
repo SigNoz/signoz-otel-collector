@@ -1,12 +1,22 @@
 package components
 
 import (
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/otlpjsonconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alertmanagerexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awskinesisexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/cassandraexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/loadbalancingexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opencensusexporter"
@@ -145,6 +155,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zookeeperreceiver"
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/exporter/debugexporter"
 	"go.opentelemetry.io/collector/exporter/loggingexporter"
 	"go.opentelemetry.io/collector/exporter/otlpexporter"
 	"go.opentelemetry.io/collector/exporter/otlphttpexporter"
@@ -161,9 +172,9 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
@@ -175,16 +186,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/exceptionsconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/failoverconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/otlpjsonconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/googlecloudpubsubexporter"
 )
 
 func Components() (otelcol.Factories, error) {
@@ -320,8 +321,9 @@ func Components() (otelcol.Factories, error) {
 		cassandraexporter.NewFactory(),
 		clickhouselogsexporter.NewFactory(),
 		clickhousemetricsexporter.NewFactory(),
-		clickhousemetricsexporterv2.NewFactory(),
+		signozclickhousemetrics.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
+		debugexporter.NewFactory(),
 		fileexporter.NewFactory(),
 		googlecloudpubsubexporter.NewFactory(),
 		kafkaexporter.NewFactory(),

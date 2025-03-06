@@ -4,6 +4,7 @@
 package cwmetricstream
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -53,29 +54,38 @@ func TestMetricBuilder(t *testing.T) {
 			Dimensions: map[string]string{"CustomDimension": "test"},
 		}
 		gots := pmetric.NewMetricSlice()
-		mb := newMetricBuilder(gots, metric.MetricName, metric.Unit)
+		mb := newMetricBuilder(gots, metric.Namespace, metric.MetricName, metric.Unit)
 		mb.AddDataPoint(metric)
-		require.Equal(t, 1, gots.Len())
-		got := gots.At(0)
-		require.Equal(t, metric.MetricName, got.Name())
-		require.Equal(t, metric.Unit, got.Unit())
-		require.Equal(t, pmetric.MetricTypeSummary, got.Type())
-		gotDps := got.Summary().DataPoints()
-		require.Equal(t, 1, gotDps.Len())
-		gotDp := gotDps.At(0)
-		require.Equal(t, uint64(metric.Value.Count), gotDp.Count())
-		require.Equal(t, metric.Value.Sum, gotDp.Sum())
-		gotQv := gotDp.QuantileValues()
-		require.Equal(t, 2, gotQv.Len())
-		require.Equal(t, []float64{metric.Value.Min, metric.Value.Max}, []float64{gotQv.At(0).Value(), gotQv.At(1).Value()})
-		require.Equal(t, 1, gotDp.Attributes().Len())
+		require.Equal(t, 4, gots.Len())
+
+		for stat, expectedValue := range metric.statValues() {
+			expectedName := otlpMetricName(metric.Namespace, metric.MetricName, stat)
+			found := findMetricByName(t, gots, expectedName)
+			require.Equal(t, expectedName, found.Name())
+
+			require.Equal(t, metric.Unit, found.Unit())
+
+			require.Equal(t, pmetric.MetricTypeGauge, found.Type())
+
+			foundDps := found.Gauge().DataPoints()
+			require.Equal(t, 1, foundDps.Len())
+			foundDp := foundDps.At(0)
+			require.Equal(t, expectedValue, foundDp.DoubleValue())
+			require.Equal(t, 1, foundDp.Attributes().Len())
+		}
+
 	})
+
 	t.Run("WithTimestampCollision", func(t *testing.T) {
+		// all but the first cwMetric should get ignored
 		timestamp := time.Now().UnixMilli()
 		metrics := []cWMetric{
 			{
-				Timestamp: timestamp,
-				Value:     testCWMetricValue(),
+				Namespace:  "namespace",
+				MetricName: "name",
+				Unit:       "unit",
+				Timestamp:  timestamp,
+				Value:      testCWMetricValue(),
 				Dimensions: map[string]string{
 					"AccountId":  testAccountID,
 					"Region":     testRegion,
@@ -83,8 +93,11 @@ func TestMetricBuilder(t *testing.T) {
 				},
 			},
 			{
-				Timestamp: timestamp,
-				Value:     testCWMetricValue(),
+				Namespace:  "namespace",
+				MetricName: "name",
+				Unit:       "unit",
+				Timestamp:  timestamp,
+				Value:      testCWMetricValue(),
 				Dimensions: map[string]string{
 					"InstanceId": testInstanceID,
 					"AccountId":  testAccountID,
@@ -93,18 +106,31 @@ func TestMetricBuilder(t *testing.T) {
 			},
 		}
 		gots := pmetric.NewMetricSlice()
-		mb := newMetricBuilder(gots, "name", "unit")
+		mb := newMetricBuilder(gots, "namespace", "name", "unit")
 		for _, metric := range metrics {
 			mb.AddDataPoint(metric)
 		}
-		require.Equal(t, 1, gots.Len())
-		got := gots.At(0)
-		gotDps := got.Summary().DataPoints()
-		require.Equal(t, 1, gotDps.Len())
-		gotDp := gotDps.At(0)
-		require.Equal(t, uint64(metrics[0].Value.Count), gotDp.Count())
-		require.Equal(t, metrics[0].Value.Sum, gotDp.Sum())
-		require.Equal(t, 3, gotDp.Attributes().Len())
+		require.Equal(t, 4, gots.Len())
+
+		expectedIncludedMetric := metrics[0]
+
+		for stat, expectedValue := range expectedIncludedMetric.statValues() {
+			expectedName := otlpMetricName(
+				expectedIncludedMetric.Namespace, expectedIncludedMetric.MetricName, stat,
+			)
+			found := findMetricByName(t, gots, expectedName)
+			require.Equal(t, expectedName, found.Name())
+
+			require.Equal(t, expectedIncludedMetric.Unit, found.Unit())
+
+			require.Equal(t, pmetric.MetricTypeGauge, found.Type())
+
+			foundDps := found.Gauge().DataPoints()
+			require.Equal(t, 1, foundDps.Len())
+			foundDp := foundDps.At(0)
+			require.Equal(t, expectedValue, foundDp.DoubleValue())
+			require.Equal(t, 3, foundDp.Attributes().Len())
+		}
 	})
 }
 
@@ -169,6 +195,7 @@ func TestResourceMetricsBuilder(t *testing.T) {
 	t.Run("WithSameMetricDifferentDimensions", func(t *testing.T) {
 		metrics := []cWMetric{
 			{
+				Namespace:  "AWS/EC2",
 				MetricName: "name",
 				Unit:       "unit",
 				Timestamp:  time.Now().UnixMilli(),
@@ -176,6 +203,7 @@ func TestResourceMetricsBuilder(t *testing.T) {
 				Dimensions: map[string]string{},
 			},
 			{
+				Namespace:  "AWS/EC2",
 				MetricName: "name",
 				Unit:       "unit",
 				Timestamp:  time.Now().Add(time.Second * 3).UnixMilli(),
@@ -200,13 +228,74 @@ func TestResourceMetricsBuilder(t *testing.T) {
 		got := gots.ResourceMetrics().At(0)
 		require.Equal(t, 1, got.ScopeMetrics().Len())
 		gotMetrics := got.ScopeMetrics().At(0).Metrics()
-		require.Equal(t, 1, gotMetrics.Len())
-		gotDps := gotMetrics.At(0).Summary().DataPoints()
-		require.Equal(t, 2, gotDps.Len())
+		require.Equal(t, 4, gotMetrics.Len())
+
+		for i := 0; i < gotMetrics.Len(); i++ {
+			gotDps := gotMetrics.At(i).Gauge().DataPoints()
+			require.Equal(t, 2, gotDps.Len())
+		}
 	})
 }
 
 // testCWMetricValue is a convenience function for creating a test cWMetricValue
 func testCWMetricValue() *cWMetricValue {
 	return &cWMetricValue{100, 0, float64(rand.Int63n(100)), float64(rand.Int63n(4))}
+}
+
+func TestToOtlpMetricName(t *testing.T) {
+	testCases := map[string]struct {
+		namespace string
+		name      string
+		stat      string
+		want      string
+	}{
+		"WithAWSNamespace": {
+			namespace: "AWS/EC2",
+			name:      "CPUUtilization",
+			stat:      "sum",
+			want:      "aws_EC2_CPUUtilization_sum",
+		},
+		"WithCustomNamespace": {
+			namespace: "EKS/NODE",
+			name:      "CPUUtilization",
+			stat:      "sum",
+			want:      "aws_EKS_NODE_CPUUtilization_sum",
+		},
+		"WithoutNamespace": {
+			namespace: "",
+			name:      "CPUUtilization",
+			stat:      "sum",
+			want:      "aws_CPUUtilization_sum",
+		},
+		"WithoutStat": {
+			namespace: "AWS/EC2",
+			name:      "CPUUtilization",
+			stat:      "",
+			want:      "aws_EC2_CPUUtilization",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got := otlpMetricName(testCase.namespace, testCase.name, testCase.stat)
+			require.Equal(t, testCase.want, got)
+		})
+	}
+}
+
+// test helper
+func findMetricByName(t *testing.T, ms pmetric.MetricSlice, name string) pmetric.Metric {
+	matches := []pmetric.Metric{}
+	for i := 0; i < ms.Len(); i++ {
+		if ms.At(i).Name() == name {
+			matches = append(matches, ms.At(i))
+		}
+	}
+
+	require.Equal(
+		t, len(matches), 1,
+		fmt.Sprintf("expected metric with name %s not found", name),
+	)
+
+	return matches[0]
 }

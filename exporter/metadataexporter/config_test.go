@@ -51,6 +51,26 @@ func TestLoadConfig(t *testing.T) {
 						FetchInterval:           5 * time.Minute,
 					},
 				},
+				Cache: CacheConfig{
+					Provider: CacheProviderInMemory,
+					InMemory: InMemoryCacheConfig{},
+					Traces: CacheLimits{
+						MaxResources:              DefaultMaxResources,
+						MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+						MaxTotalCardinality:       DefaultMaxTotalCardinality,
+					},
+					Metrics: CacheLimits{
+						MaxResources:              DefaultMaxResources,
+						MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+						MaxTotalCardinality:       DefaultMaxTotalCardinality,
+					},
+					Logs: CacheLimits{
+						MaxResources:              DefaultMaxResources,
+						MaxCardinalityPerResource: DefaultMaxCardinalityPerResource,
+						MaxTotalCardinality:       DefaultMaxTotalCardinality,
+					},
+				},
+				Enabled: false,
 			},
 		},
 	}

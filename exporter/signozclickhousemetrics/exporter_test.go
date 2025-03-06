@@ -1,21 +1,30 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"testing"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
+	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
+	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 )
 
 func Test_prepareBatchGauge(t *testing.T) {
-	metrics := generateGaugeMetrics(1, 1, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{}
-	batch := exp.prepareBatch(metrics)
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	expectedSamples := []sample{
 		{
@@ -47,8 +56,8 @@ func Test_prepareBatchGauge(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"system.memory.usage0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"gauge.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
-			attrs:         map[string]string{"gauge.attr_0": "1"},
+			labels:        "{\"__name__\":\"system.memory.usage0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Unspecified\",\"gauge.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			attrs:         map[string]string{"__temporality__": "Unspecified", "gauge.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
 			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
 		},
@@ -74,9 +83,14 @@ func Test_prepareBatchGauge(t *testing.T) {
 }
 
 func Test_prepareBatchSum(t *testing.T) {
-	metrics := generateSumMetrics(1, 1, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{}
-	batch := exp.prepareBatch(metrics)
+	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	expectedSamples := []sample{
 		{
@@ -108,8 +122,8 @@ func Test_prepareBatchSum(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   true,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"system.cpu.time0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
-			attrs:         map[string]string{"sum.attr_0": "1"},
+			labels:        "{\"__name__\":\"system.cpu.time0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
+			attrs:         map[string]string{"__temporality__": "Cumulative", "sum.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
 			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
 		},
@@ -135,9 +149,14 @@ func Test_prepareBatchSum(t *testing.T) {
 }
 
 func Test_prepareBatchHistogram(t *testing.T) {
-	metrics := generateHistogramMetrics(1, 1, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{}
-	batch := exp.prepareBatch(metrics)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	// there should be 4 (count, sum, min, max) + 20 (for each bucket) + 1 (for the inf bucket) = 25 samples
 	expectedSamples := []sample{
@@ -217,8 +236,8 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeHistogram,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
-			attrs:         map[string]string{"histogram.attr_0": "1"},
+			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			attrs:         map[string]string{"__temporality__": "Cumulative", "histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
 			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
 		},
@@ -313,9 +332,15 @@ func Test_prepareBatchHistogram(t *testing.T) {
 }
 
 func Test_prepareBatchExponentialHistogram(t *testing.T) {
-	metrics := generateExponentialHistogramMetrics(2, 1, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{enableExpHist: true, logger: zap.NewNop()}
-	batch := exp.prepareBatch(metrics)
+	metrics := pmetricsgen.GenerateExponentialHistogramMetrics(2, 1, 1, 1, 1)
+	exp, err := NewClickHouseExporter(
+		WithEnableExpHist(true),
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 
 	expectedSamples := []sample{
@@ -390,50 +415,55 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 }
 
 func Test_prepareBatchSummary(t *testing.T) {
-	metrics := generateSummaryMetrics(1, 2, 1, 1, 1)
-	exp := &clickhouseMetricsExporter{}
-	batch := exp.prepareBatch(metrics)
+	metrics := pmetricsgen.GenerateSummaryMetrics(1, 2, 1, 1, 1)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 
 	expectedSamples := []sample{
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.count",
 			unixMilli:   1727286182000,
 			value:       0,
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.sum",
 			unixMilli:   1727286182000,
 			value:       0,
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286182000,
 			value:       0,
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.count",
 			unixMilli:   1727286183000,
 			value:       1,
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.sum",
 			unixMilli:   1727286183000,
 			value:       1,
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityUnspecified,
+			temporality: pmetric.AggregationTemporalityCumulative,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286183000,
 			value:       1,
@@ -453,59 +483,85 @@ func Test_prepareBatchSummary(t *testing.T) {
 func Benchmark_prepareBatchGauge(b *testing.B) {
 	// 10k gauge metrics * 10 data points = 100k data point in total
 	// each with 30 total attributes
-	metrics := generateGaugeMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateGaugeMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{}
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
 func Benchmark_prepareBatchSum(b *testing.B) {
 	// 10k sum * 10 data points = 100k data point in total
 	// each with 30 total attributes
-	metrics := generateSumMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateSumMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{}
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
 func Benchmark_prepareBatchHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * 20 buckets = 200k samples in total
 	// each with 30 total attributes
-	metrics := generateHistogramMetrics(1000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{}
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
 func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * (20 positive + 20 negative) buckets = 400k samples in total
 	// each with 30 total attributes
-	metrics := generateExponentialHistogramMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateExponentialHistogramMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{enableExpHist: true, logger: zap.NewNop()}
+	exp, err := NewClickHouseExporter(
+		WithEnableExpHist(true),
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }
 
 func Benchmark_prepareBatchSummary(b *testing.B) {
 	// 10k summary * 10 datapoints = 100k+ samples in total
 	// each with 30 total attributes
-	metrics := generateSummaryMetrics(10000, 10, 10, 10, 10)
+	metrics := pmetricsgen.GenerateSummaryMetrics(10000, 10, 10, 10, 10)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp := &clickhouseMetricsExporter{}
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
-		exp.prepareBatch(metrics)
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }

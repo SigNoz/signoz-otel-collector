@@ -30,18 +30,17 @@ const (
 )
 
 type nopFirehoseConsumer struct {
-	statusCode int
-	err        error
+	err error
 }
 
 var _ firehoseConsumer = (*nopFirehoseConsumer)(nil)
 
-func newNopFirehoseConsumer(statusCode int, err error) *nopFirehoseConsumer {
-	return &nopFirehoseConsumer{statusCode, err}
+func newNopFirehoseConsumer(err error) *nopFirehoseConsumer {
+	return &nopFirehoseConsumer{err}
 }
 
-func (nfc *nopFirehoseConsumer) Consume(context.Context, [][]byte, map[string]string) (int, error) {
-	return nfc.statusCode, nfc.err
+func (nfc *nopFirehoseConsumer) Consume(context.Context, [][]byte, map[string]string) error {
+	return nfc.err
 }
 
 func TestStart(t *testing.T) {
@@ -90,11 +89,9 @@ func TestStart(t *testing.T) {
 }
 
 func TestFirehoseRequest(t *testing.T) {
-	defaultConsumer := newNopFirehoseConsumer(http.StatusOK, nil)
+	defaultConsumer := newNopFirehoseConsumer(nil)
 	firehoseConsumerErr := errors.New("firehose consumer error")
-	cfg := &Config{
-		AccessKey: testFirehoseAccessKey,
-	}
+	cfg := &Config{}
 	var noRecords []firehoseRecord
 	testCases := map[string]struct {
 		headers          map[string]string
@@ -111,22 +108,6 @@ func TestFirehoseRequest(t *testing.T) {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
 			wantStatusCode: http.StatusBadRequest,
 			wantErr:        errInHeaderMissingRequestID,
-		},
-		"WithDifferentAccessKey": {
-			headers: map[string]string{
-				headerFirehoseAccessKey: "test",
-			},
-			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
-			wantStatusCode: http.StatusUnauthorized,
-			wantErr:        errInvalidAccessKey,
-		},
-		"WithNoAccessKey": {
-			headers: map[string]string{
-				headerFirehoseAccessKey: "",
-			},
-			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
-			wantStatusCode: http.StatusUnauthorized,
-			wantErr:        errInvalidAccessKey,
 		},
 		"WithoutRequestId/Body": {
 			headers: map[string]string{
@@ -155,7 +136,7 @@ func TestFirehoseRequest(t *testing.T) {
 		},
 		"WithFirehoseConsumerError": {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
-			consumer:       newNopFirehoseConsumer(http.StatusInternalServerError, firehoseConsumerErr),
+			consumer:       newNopFirehoseConsumer(firehoseConsumerErr),
 			wantStatusCode: http.StatusInternalServerError,
 			wantErr:        firehoseConsumerErr,
 		},
@@ -193,7 +174,6 @@ func TestFirehoseRequest(t *testing.T) {
 			request.Header.Set(headerContentType, "application/json")
 			request.Header.Set(headerContentLength, strconv.Itoa(requestBody.Len()))
 			request.Header.Set(headerFirehoseRequestID, testFirehoseRequestID)
-			request.Header.Set(headerFirehoseAccessKey, testFirehoseAccessKey)
 			if testCase.headers != nil {
 				for k, v := range testCase.headers {
 					request.Header.Set(k, v)
