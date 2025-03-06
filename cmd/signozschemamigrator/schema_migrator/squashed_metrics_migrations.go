@@ -1206,7 +1206,7 @@ FROM signoz_metrics.time_series_v4_1day;`,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_metrics",
-					Table:    "metrics_metadata",
+					Table:    "updated_metadata",
 					Columns: []Column{
 						{Name: "metric_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "temporality", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -1218,12 +1218,6 @@ FROM signoz_metrics.time_series_v4_1day;`,
 					Engine: MergeTree{
 						OrderBy: "(metric_name)",
 					},
-				},
-			},
-			DownItems: []Operation{
-				DropTableOperation{
-					Database: "signoz_metrics",
-					Table:    "distributed_time_series_v4_1week",
 				},
 			},
 		},
