@@ -27,16 +27,18 @@ func TestUnmarshal(t *testing.T) {
 		wantErr            error
 	}{
 		"WithMultipleRecords": {
-			filename:           "multiple_records",
-			wantResourceCount:  6,
-			wantMetricCount:    33,
-			wantDatapointCount: 127,
+			filename:          "multiple_records",
+			wantResourceCount: 6,
+			// each cwMetric gets converted into 1 gauge per stat value
+			// and there are 4 stat values right now
+			wantMetricCount:    33 * 4,
+			wantDatapointCount: 127 * 4,
 		},
 		"WithSingleRecord": {
 			filename:           "single_record",
 			wantResourceCount:  1,
-			wantMetricCount:    1,
-			wantDatapointCount: 1,
+			wantMetricCount:    1 * 4,
+			wantDatapointCount: 1 * 4,
 		},
 		"WithInvalidRecords": {
 			filename: "invalid_records",
@@ -45,8 +47,8 @@ func TestUnmarshal(t *testing.T) {
 		"WithSomeInvalidRecords": {
 			filename:           "some_invalid_records",
 			wantResourceCount:  5,
-			wantMetricCount:    35,
-			wantDatapointCount: 88,
+			wantMetricCount:    35 * 4,
+			wantDatapointCount: 88 * 4,
 		},
 	}
 	for name, testCase := range testCases {
@@ -73,7 +75,7 @@ func TestUnmarshal(t *testing.T) {
 					gotMetricCount += ilm.Metrics().Len()
 					for j := 0; j < ilm.Metrics().Len(); j++ {
 						metric := ilm.Metrics().At(j)
-						gotDatapointCount += metric.Summary().DataPoints().Len()
+						gotDatapointCount += metric.Gauge().DataPoints().Len()
 					}
 				}
 				require.Equal(t, testCase.wantMetricCount, gotMetricCount)

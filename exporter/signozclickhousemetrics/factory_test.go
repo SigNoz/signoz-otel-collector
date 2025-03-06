@@ -1,4 +1,4 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
 	"testing"

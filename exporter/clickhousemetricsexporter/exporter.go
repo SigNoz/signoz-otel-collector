@@ -95,6 +95,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		WriteTSToV4:          cfg.WriteTSToV4,
 		DisableV2:            cfg.DisableV2,
 		ExporterId:           id,
+		Settings:             set,
 	}
 	ch, err := NewClickHouse(params)
 	if err != nil {
@@ -202,7 +203,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					case pmetric.MetricTypeExponentialHistogram:
 						temporality = metric.ExponentialHistogram().AggregationTemporality()
 					case pmetric.MetricTypeSummary:
-						temporality = pmetric.AggregationTemporalityUnspecified
+						temporality = pmetric.AggregationTemporalityCumulative
 					default:
 					}
 					metricName := getPromMetricName(metric, prwe.namespace)

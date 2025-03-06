@@ -1,0 +1,17 @@
+type: signozclickhousemetrics
+
+status:
+  class: exporter
+  stability:
+    beta:
+      - metrics
+  distributions:
+    - signoz
+
+tests:
+  config:
+  skip_lifecycle: false
+  skip_shutdown: false
+  expect_consumer_error: true
+  goleak:
+    skip: false

@@ -449,12 +449,12 @@ func TestAlterTableMaterializeColumn(t *testing.T) {
 		{
 			name: "materialize-column",
 			op:   AlterTableMaterializeColumn{Database: "db", Table: "table", Column: Column{Name: "col"}},
-			want: "ALTER TABLE db.table MATERIALIZE COLUMN IF EXISTS col",
+			want: "ALTER TABLE db.table MATERIALIZE COLUMN col",
 		},
 		{
 			name: "materialize-column-with-cluster",
 			op:   AlterTableMaterializeColumn{Database: "db", Table: "table", Column: Column{Name: "col"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MATERIALIZE COLUMN IF EXISTS col",
+			want: "ALTER TABLE db.table ON CLUSTER cluster MATERIALIZE COLUMN col",
 		},
 	}
 
