@@ -252,7 +252,7 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	ctx := context.Background()
 	var delTTL uint64 = 0
 	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", DISTRIBUTED_LOGS_TABLE_V2, databaseName)
+	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", LOGS_TABLE_V2, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
 	if err != nil {
 		e.logger.Error("error while fetching ttl", zap.Error(err))
