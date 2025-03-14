@@ -34,8 +34,8 @@ test:
 
 .PHONY: build
 build:
-	go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-otel-collector ./cmd/signozotelcollector
-	go build -tags timetzdata -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator ./cmd/signozschemamigrator
+	go build -o .build/${GOOS}-${GOARCH}/signoz-otel-collector ./cmd/signozotelcollector
+	go build -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator ./cmd/signozschemamigrator
 
 .PHONY: amd64
 amd64:
