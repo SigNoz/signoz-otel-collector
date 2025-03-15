@@ -15,7 +15,7 @@ USER ${USER_UID}
 COPY .build/${TARGETOS}-${TARGETARCH}/signoz-otel-collector /signoz-otel-collector
 
 # copy the config file
-COPY config/default-config.yaml /etc/otel/config.yaml
+COPY conf/default.yaml /etc/otel/config.yaml
 
 # expose OTLP ports for the collector
 EXPOSE 4317 4318
