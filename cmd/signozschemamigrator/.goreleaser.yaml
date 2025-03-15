@@ -36,6 +36,6 @@ archives:
         dst: conf
 
 release:
-  name_template: "v{{ .Version }}"
+  name_template: "{{ .Tag }}"
   draft: false
   prerelease: auto
