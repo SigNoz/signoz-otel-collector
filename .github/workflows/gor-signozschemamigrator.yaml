@@ -68,7 +68,7 @@ jobs:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
   release:
     runs-on: ubuntu-latest
-    needs: build
+    needs: prepare
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
