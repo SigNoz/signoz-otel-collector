@@ -1,5 +1,5 @@
-# use a minimal alpine image
-FROM alpine:3.17
+# use a minimal debian image
+FROM debian:bookworm-slim
 
 # define arguments and default values
 ARG TARGETOS TARGETARCH
