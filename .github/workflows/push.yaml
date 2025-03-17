@@ -28,15 +28,12 @@ jobs:
         shell: bash
         run: |
           GH_REF=${{ github.ref }}
-
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             PREFIX="refs/tags/"
-
             echo "GH_IS_TAG=true" >> $GITHUB_ENV
             echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
             PREFIX="refs/heads/"
-
             echo "GH_IS_TAG=false" >> $GITHUB_ENV
             echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
@@ -52,13 +49,13 @@ jobs:
       - name: build-and-push-docker-image
         run: make build-and-push-signoz-collector
       - name: set-docker-tag-env-without-v-prefix
-        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        if: env.GH_IS_TAG == 'true'
         run: |
           tag="${{ env.GH_TAG }}"
           tag="${tag:1}"
           echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
       - name: build-and-push-docker-image-without-v-prefix
-        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        if: env.GH_IS_TAG == 'true'
         run: make build-and-push-signoz-collector
   image-build-and-push-schema-migrator:
     runs-on: ubuntu-latest
@@ -80,15 +77,12 @@ jobs:
         shell: bash
         run: |
           GH_REF=${{ github.ref }}
-
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             PREFIX="refs/tags/"
-
             echo "GH_IS_TAG=true" >> $GITHUB_ENV
             echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
             PREFIX="refs/heads/"
-
             echo "GH_IS_TAG=false" >> $GITHUB_ENV
             echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
@@ -105,11 +99,11 @@ jobs:
       - name: build-and-push-docker-image
         run: make build-and-push-signoz-schema-migrator
       - name: set-docker-tag-env-without-v-prefix
-        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        if: env.GH_IS_TAG == 'true'
         run: |
           tag="${{ env.GH_TAG }}"
           tag="${tag:1}"
           echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
       - name: build-and-push-docker-image-without-v-prefix
-        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        if: env.GH_IS_TAG == 'true'
         run: make build-and-push-signoz-schema-migrator
