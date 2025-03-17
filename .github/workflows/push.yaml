@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - develop
     tags:
       - v*
 
@@ -12,86 +11,105 @@ jobs:
   image-build-and-push-signoz-collector:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: checkout
         uses: actions/checkout@v3
-      - name: Set up QEMU
+      - name: docker-qemu
         uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
+      - name: docker-buildx
         uses: docker/setup-buildx-action@v2
         with:
           version: latest
-      - name: Login to DockerHub
+      - name: docker-login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: benjlevesque/short-sha@v2.2
-        id: short-sha
-      - name: Get branch name
-        id: branch-name
-        uses: tj-actions/branch-names@v7.0.7
-      - name: Set docker tag environment
+      - name: github-ref-info
+        shell: bash
         run: |
-          if [ '${{ steps.branch-name.outputs.is_tag }}' == 'true' ]; then
-            echo "DOCKER_TAG=${{ steps.branch-name.outputs.tag }}" >> $GITHUB_ENV
+          GH_REF=${{ github.ref }}
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            PREFIX="refs/tags/"
+
+            echo "GH_IS_TAG=true" >> $GITHUB_ENV
+            echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
-            echo "DOCKER_TAG=${{ steps.branch-name.outputs.current_branch }}" >> $GITHUB_ENV
+            PREFIX="refs/heads/"
+
+            echo "GH_IS_TAG=false" >> $GITHUB_ENV
+            echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
-      - name: Build artifacts for arm64/amd64
-        run: make build-all
-      - name: Build and push docker image
-        run: make build-and-push-signoz-collector
-      - name: Set docker tag environment without v prefix
+      - name: set-docker-tag-env
         run: |
-          if [ '${{ steps.branch-name.outputs.is_tag }}' == 'true' ]; then
-            tag="${{ steps.branch-name.outputs.tag }}"
-            tag="${tag:1}"
-            echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
+          if [ '${{ env.GH_IS_TAG }}' == 'true' ]; then
+            echo "DOCKER_TAG=${{ env.GH_TAG }}" >> $GITHUB_ENV
+          else
+            echo "DOCKER_TAG=${{ env.GH_BRANCH_NAME }}" >> $GITHUB_ENV
           fi
-      - name: Build artifacts for arm64/amd64
+      - name: build-artifacts
         run: make build-all
-      - name: Build and push docker image without v prefix
+      - name: build-and-push-docker-image
+        run: make build-and-push-signoz-collector
+      - name: set-docker-tag-env-without-v-prefix
+        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        run: |
+          tag="${{ env.GH_TAG }}"
+          tag="${tag:1}"
+          echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
+      - name: build-and-push-docker-image-without-v-prefix
+        if: "'${{ env.GH_IS_TAG }}' == 'true'"
         run: make build-and-push-signoz-collector
   image-build-and-push-schema-migrator:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: checkout
         uses: actions/checkout@v3
-      - name: Set up QEMU
+      - name: docker-qemu
         uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
+      - name: docker-buildx
         uses: docker/setup-buildx-action@v2
         with:
           version: latest
-      - name: Login to DockerHub
+      - name: docker-login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: benjlevesque/short-sha@v2.2
-        id: short-sha
-      - name: Get branch name
-        id: branch-name
-        uses: tj-actions/branch-names@v7.0.7
-      - name: Set docker tag environment
+      - name: github-ref-info
+        shell: bash
         run: |
-          if [ '${{ steps.branch-name.outputs.is_tag }}' == 'true' ]; then
-            echo "DOCKER_TAG=${{ steps.branch-name.outputs.tag }}" >> $GITHUB_ENV
+          GH_REF=${{ github.ref }}
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            PREFIX="refs/tags/"
+
+            echo "GH_IS_TAG=true" >> $GITHUB_ENV
+            echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
-            echo "DOCKER_TAG=${{ steps.branch-name.outputs.current_branch }}" >> $GITHUB_ENV
+            PREFIX="refs/heads/"
+
+            echo "GH_IS_TAG=false" >> $GITHUB_ENV
+            echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
-      - name: Build artifacts for arm64/amd64
+      - name: build-artifacts
         run: make build-all
-      - name: Build and push docker image
-        run: make build-and-push-signoz-schema-migrator
-      - name: Set docker tag environment without v prefix
+      - name: set-docker-tag-env
+        shell: bash
         run: |
-          if [ '${{ steps.branch-name.outputs.is_tag }}' == 'true' ]; then
-            tag="${{ steps.branch-name.outputs.tag }}"
-            tag="${tag:1}"
-            echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
+          if [[ "${{ env.GH_IS_TAG }}" == "true" ]]; then
+            echo "DOCKER_TAG=${{ env.GH_TAG }}" >> $GITHUB_ENV
+          else
+            echo "DOCKER_TAG=${{ env.GH_BRANCH_NAME }}" >> $GITHUB_ENV
           fi
-      - name: Build artifacts for arm64/amd64
-        run: make build-all
-      - name: Build and push docker image without v prefix
+      - name: build-and-push-docker-image
+        run: make build-and-push-signoz-schema-migrator
+      - name: set-docker-tag-env-without-v-prefix
+        if: "'${{ env.GH_IS_TAG }}' == 'true'"
+        run: |
+          tag="${{ env.GH_TAG }}"
+          tag="${tag:1}"
+          echo "DOCKER_TAG=$tag" >> $GITHUB_ENV
+      - name: build-and-push-docker-image-without-v-prefix
+        if: "'${{ env.GH_IS_TAG }}' == 'true'"
         run: make build-and-push-signoz-schema-migrator

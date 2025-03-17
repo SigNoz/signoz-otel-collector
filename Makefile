@@ -43,14 +43,14 @@ amd64:
 
 .PHONY: arm64
 arm64:
-	make CC=aarch64-linux-gnu-gcc GOARCH=arm64 build
+	make GOARCH=arm64 build
 
 .PHONY: build-all
 build-all: amd64 arm64
 
 .PHONY: run
 run:
-	go run cmd/signozcollector/* --config ${CONFIG_FILE}
+	go run cmd/signozotelcollector/main.go --config ${CONFIG_FILE}
 
 .PHONY: fmt
 fmt:

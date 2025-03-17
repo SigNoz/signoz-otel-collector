@@ -1,8 +1,8 @@
-# use a minimal alpine image
-FROM alpine:3
+# use a minimal debian image
+FROM debian:bookworm-slim
 
 # add ca-certificates in case you need them
-RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # define arguments and default values
 ARG TARGETOS TARGETARCH
