@@ -27,21 +27,18 @@ jobs:
       - name: github-ref-info
         shell: bash
         run: |
-          local is_tag
-          local prefix
-
-          local gh_ref=${{ github.ref }}
+          GH_REF=${{ github.ref }}
 
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            prefix="refs/tags/"
+            PREFIX="refs/tags/"
 
             echo "GH_IS_TAG=true" >> $GITHUB_ENV
-            echo "GH_TAG=${gh_ref#$prefix}" >> $GITHUB_ENV
+            echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
-            prefix="refs/heads/"
+            PREFIX="refs/heads/"
 
             echo "GH_IS_TAG=false" >> $GITHUB_ENV
-            echo "GH_BRANCH_NAME=${gh_ref#$prefix}" >> $GITHUB_ENV
+            echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
       - name: set-docker-tag-env
         run: |
@@ -82,21 +79,18 @@ jobs:
       - name: github-ref-info
         shell: bash
         run: |
-          local is_tag
-          local prefix
-
-          local gh_ref=${{ github.ref }}
+          GH_REF=${{ github.ref }}
 
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            prefix="refs/tags/"
+            PREFIX="refs/tags/"
 
             echo "GH_IS_TAG=true" >> $GITHUB_ENV
-            echo "GH_TAG=${gh_ref#$prefix}" >> $GITHUB_ENV
+            echo "GH_TAG=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           else
-            prefix="refs/heads/"
+            PREFIX="refs/heads/"
 
             echo "GH_IS_TAG=false" >> $GITHUB_ENV
-            echo "GH_BRANCH_NAME=${gh_ref#$prefix}" >> $GITHUB_ENV
+            echo "GH_BRANCH_NAME=${GH_REF#$PREFIX}" >> $GITHUB_ENV
           fi
       - name: build-artifacts
         run: make build-all
