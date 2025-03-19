@@ -68,11 +68,14 @@ func AddMetric(metrics map[string]Metric, tenant string, count int64, size int64
 }
 
 func GetTenantNameFromResource(resource pcommon.Resource) string {
-	tenant, found := resource.Attributes().Get("tenant")
-	if !found {
-		return "default"
-	}
-	return tenant.AsString()
+	// Note: using default now since we don't want to rely on the resource attribute of tenant
+	// TODO(Nitya): think this when otel collector needs to be multi-tenant
+	// tenant, found := resource.Attributes().Get("tenant")
+	// if !found {
+	// 	return "default"
+	// }
+	// return tenant.AsString()
+	return "default"
 }
 
 func GetIndexOfLabel(labelKeys []metricdata.LabelKey, key string) int {
