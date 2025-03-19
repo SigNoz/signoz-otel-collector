@@ -1201,44 +1201,5 @@ FROM signoz_metrics.time_series_v4_1day;`,
 				},
 			},
 		},
-		{
-			MigrationID: 29,
-			UpItems: []Operation{
-				CreateTableOperation{
-					Database: "signoz_metrics",
-					Table:    "updated_metadata",
-					Columns: []Column{
-						{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
-						{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "created_at", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
-					},
-					Engine: MergeTree{
-						OrderBy: "(metric_name)",
-					},
-				},
-				CreateTableOperation{
-					Database: "signoz_metrics",
-					Table:    "distributed_updated_metadata",
-					Columns: []Column{
-						{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
-						{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "created_at", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
-					},
-					Engine: Distributed{
-						Database:    "signoz_metrics",
-						Table:       "updated_metadata",
-						ShardingKey: "cityHash64(metric_name)",
-					},
-				},
-			},
-		},
 	}
 )
