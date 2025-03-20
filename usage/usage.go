@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
-	"go.opencensus.io/metric/metricproducer"
 	"go.uber.org/zap"
 )
 
@@ -88,14 +87,6 @@ func (e *UsageCollector) Start() error {
 }
 
 func (c *UsageCollector) Stop() error {
-
-	producers := metricproducer.GlobalManager().GetAll()
-	data := []*metricdata.Metric{}
-	for _, producer := range producers {
-		data = append(data, producer.Read()...)
-	}
-	c.logger.Info("Stopping usage collector data", zap.Any("data", data))
-
 	c.ir.Stop()
 	c.ir.Flush()
 	return nil
