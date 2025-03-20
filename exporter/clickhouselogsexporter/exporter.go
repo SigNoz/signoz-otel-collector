@@ -58,6 +58,46 @@ const (
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedLogsResourceV2Seconds = 1800
+	// language=ClickHouse SQL
+	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
+		ts_bucket_start,
+		resource_fingerprint,
+		timestamp,
+		observed_timestamp,
+		id,
+		trace_id,
+		span_id,
+		trace_flags,
+		severity_text,
+		severity_number,
+		body,
+		attributes_string,
+		attributes_number,
+		attributes_bool,
+		resources_string,
+		scope_name,
+		scope_version,
+		scope_string
+		) VALUES (
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?
+			)`
 )
 
 type shouldSkipKey struct {
