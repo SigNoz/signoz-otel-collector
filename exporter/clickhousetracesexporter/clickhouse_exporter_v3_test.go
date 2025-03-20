@@ -15,6 +15,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -474,7 +475,7 @@ func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseTracesExporter
 	}
 	writerOpts = append(writerOpts, WithExporterID(id))
 
-	exporter, err := newExporter(&Config{}, exporter.Settings{}, writerOpts, exporterOpts)
+	exporter, err := newExporter(&Config{}, exporter.Settings{TelemetrySettings: component.TelemetrySettings{Logger: zap.NewNop()}}, writerOpts, exporterOpts)
 	if err != nil {
 		t.Fatalf("failed to create exporter: %v", err)
 	}
