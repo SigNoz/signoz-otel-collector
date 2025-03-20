@@ -7,6 +7,7 @@ toolchain go1.22.8
 require (
 	github.com/ClickHouse/ch-go v0.63.1
 	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/IBM/sarama v1.43.3
 	github.com/Shopify/sarama v1.38.1
 	github.com/apache/thrift v0.21.0
@@ -194,6 +195,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
+	github.com/srikanthccv/ClickHouse-go-mock v0.10.0
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/gjson v1.14.2
 	github.com/tilinna/clock v1.1.0
