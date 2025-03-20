@@ -4,6 +4,8 @@
 package cwlog // import "github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/cwlog"
 
 import (
+	"math"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
@@ -44,7 +46,24 @@ func newResourceLogsBuilder(logs plog.Logs, attrs resourceAttributes) *resourceL
 func (rlb *resourceLogsBuilder) AddLog(log cWLog) {
 	for _, event := range log.LogEvents {
 		logLine := rlb.rls.AppendEmpty()
-		logLine.SetTimestamp(pcommon.Timestamp(event.Timestamp))
+
+		logLine.SetTimestamp(pcommon.Timestamp(toEpochNano(event.Timestamp)))
+
 		logLine.Body().SetStr(event.Message)
 	}
+}
+
+// convert `epoch` of any precision to nanos
+func toEpochNano(epoch int64) uint64 {
+	epochCopy := epoch
+	count := 0
+	if epoch == 0 {
+		count = 1
+	} else {
+		for epoch != 0 {
+			epoch /= 10
+			count++
+		}
+	}
+	return uint64(epochCopy) * uint64(math.Pow(10, float64(19-count)))
 }

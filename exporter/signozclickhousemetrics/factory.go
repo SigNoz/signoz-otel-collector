@@ -1,28 +1,23 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
 	"context"
 	"errors"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-const (
-	// The value of "type" key in configuration.
-	typeStr = "clickhousemetricswritev2"
-)
-
 // NewFactory creates a new ClickHouse Metrics exporter.
 func NewFactory() exporter.Factory {
-
 	return exporter.NewFactory(
-		component.MustNewType(typeStr),
+		internalmetadata.Type,
 		createDefaultConfig,
-		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
+		exporter.WithMetrics(createMetricsExporter, internalmetadata.MetricsStability))
 }
 
 func createMetricsExporter(ctx context.Context, set exporter.Settings,

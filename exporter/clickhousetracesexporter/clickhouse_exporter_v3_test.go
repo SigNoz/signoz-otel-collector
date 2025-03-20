@@ -432,7 +432,7 @@ func eventually(t *testing.T, f func() bool) {
 
 func testWriterOptions() []WriterOption {
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
-	keysCache := ttlcache.New[string, struct{}](
+	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
 	)

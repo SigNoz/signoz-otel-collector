@@ -203,7 +203,7 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 					case pmetric.MetricTypeExponentialHistogram:
 						temporality = metric.ExponentialHistogram().AggregationTemporality()
 					case pmetric.MetricTypeSummary:
-						temporality = pmetric.AggregationTemporalityUnspecified
+						temporality = pmetric.AggregationTemporalityCumulative
 					default:
 					}
 					metricName := getPromMetricName(metric, prwe.namespace)
