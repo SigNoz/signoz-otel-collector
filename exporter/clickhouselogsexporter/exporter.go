@@ -187,14 +187,14 @@ func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host)
 
 func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 	query := fmt.Sprintf(`
-		SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
+		SELECT tag_key, tag_type, tag_data_type, uniq(string_value) as string_count, uniq(number_value) as number_count
 		FROM %s.%s
 		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
 		GROUP BY tag_key, tag_type, tag_data_type
 		HAVING string_count > %d OR number_count > %d
 		SETTINGS max_threads = 2`, databaseName, distributedTagAttributesV2, e.maxDistinctValues, e.maxDistinctValues)
 
-	e.logger.Info("fetching should skip keys", zap.String("query", query))
+	e.logger.Debug("fetching should skip keys", zap.String("query", query))
 
 	keys := []shouldSkipKey{}
 
@@ -454,6 +454,17 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					if err != nil {
 						return fmt.Errorf("StatementAppendLogsV2:%w", err)
 					}
+
+					// log fields
+					logFields := attributeMap{
+						StringData: map[string]string{
+							"severity_text": r.SeverityText(),
+						},
+						NumberData: map[string]float64{
+							"severity_number": float64(r.SeverityNumber()),
+						},
+					}
+					e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, logFields, shouldSkipKeys)
 				}
 			}
 		}
