@@ -470,7 +470,7 @@ func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseTracesExporter
 	writerOpts = append(writerOpts, WithClickHouseClient(mock))
 	id := uuid.New()
 	exporterOpts := []TraceExporterOption{
-		WithNewUsageCollector(id, mock),
+		WithNewUsageCollector(id, mock, zap.NewNop()),
 	}
 	writerOpts = append(writerOpts, WithExporterID(id))
 

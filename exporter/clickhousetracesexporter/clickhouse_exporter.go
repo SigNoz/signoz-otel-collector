@@ -16,7 +16,6 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"fmt"
 
 	"sync"
 
@@ -25,6 +24,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.uber.org/zap"
 )
 
 const (
@@ -111,6 +111,7 @@ type clickhouseTracesExporter struct {
 	config         storageConfig
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
+	logger         *zap.Logger
 }
 
 type storageConfig struct {
@@ -118,7 +119,7 @@ type storageConfig struct {
 }
 
 // Crete new exporter.
-func newExporter(cfg *Config, _ exporter.Settings, writerOpts []WriterOption, exporterOpts []TraceExporterOption) (*clickhouseTracesExporter, error) {
+func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOption, exporterOpts []TraceExporterOption) (*clickhouseTracesExporter, error) {
 
 	if err := view.Register(SpansCountView, SpansCountBytesView); err != nil {
 		return nil, err
@@ -133,6 +134,7 @@ func newExporter(cfg *Config, _ exporter.Settings, writerOpts []WriterOption, ex
 		},
 		wg:        new(sync.WaitGroup),
 		closeChan: make(chan struct{}),
+		logger:    settings.Logger,
 	}
 
 	for _, opt := range exporterOpts {
@@ -152,10 +154,10 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 	s.wg.Wait()
 
 	if s.usageCollector != nil {
-		fmt.Println("Stopping usage collector")
+		s.logger.Info("Stopping usage collector")
 		err := s.usageCollector.Stop()
 		if err != nil {
-			fmt.Println("Error stopping usage collector", err)
+			s.logger.Error("Error stopping usage collector", zap.Error(err))
 		}
 	}
 	s.Writer.Close()

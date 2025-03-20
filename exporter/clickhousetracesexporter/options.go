@@ -42,7 +42,7 @@ func WithLogger(logger *zap.Logger) WriterOption {
 	}
 }
 
-func WithNewUsageCollector(id uuid.UUID, db driver.Conn) TraceExporterOption {
+func WithNewUsageCollector(id uuid.UUID, db driver.Conn, logger *zap.Logger) TraceExporterOption {
 	return func(e *clickhouseTracesExporter) {
 		e.usageCollector = usage.NewUsageCollector(
 			id,
@@ -52,10 +52,11 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn) TraceExporterOption {
 			},
 			"signoz_traces",
 			UsageExporter,
+			logger,
 		)
 		err := e.usageCollector.Start()
 		if err != nil {
-			fmt.Println("Error starting usage collector", err)
+			e.logger.Error("Error starting usage collector", zap.Error(err))
 		}
 		e.id = id
 	}

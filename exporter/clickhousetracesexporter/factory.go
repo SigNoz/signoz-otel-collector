@@ -98,7 +98,7 @@ func createTracesExporter(
 	}
 
 	exporterOpts := []TraceExporterOption{
-		WithNewUsageCollector(id, client),
+		WithNewUsageCollector(id, client, params.Logger),
 	}
 
 	exporter, err := newExporter(c, params, writerOpts, exporterOpts)

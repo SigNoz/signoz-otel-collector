@@ -123,6 +123,7 @@ func newExporter(set exporter.Settings, cfg *Config) (*clickhouseLogsExporter, e
 		},
 		"signoz_logs",
 		UsageExporter,
+		logger,
 	)
 
 	collector.Start()
