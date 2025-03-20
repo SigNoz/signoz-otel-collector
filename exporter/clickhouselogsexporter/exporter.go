@@ -49,52 +49,15 @@ import (
 )
 
 const (
+	distributedLogsTable             = "distributed_logs"
+	distributedTagAttributes         = "distributed_tag_attributes"
 	distributedTagAttributesV2       = "distributed_tag_attributes_v2"
 	distributedLogsTableV2           = "distributed_logs_v2"
+	logsTableV2                      = "logs_v2"
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedLogsResourceV2Seconds = 1800
-	// language=ClickHouse SQL
-	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
-		ts_bucket_start,
-		resource_fingerprint,
-		timestamp,
-		observed_timestamp,
-		id,
-		trace_id,
-		span_id,
-		trace_flags,
-		severity_text,
-		severity_number,
-		body,
-		attributes_string,
-		attributes_number,
-		attributes_bool,
-		resources_string,
-		scope_name,
-		scope_version,
-		scope_string
-		) VALUES (
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?
-			)`
 )
 
 type shouldSkipKey struct {
@@ -138,6 +101,10 @@ type clickhouseLogsExporter struct {
 	maxDistinctValues         int
 	fetchKeysInterval         time.Duration
 	fetchShouldSkipKeysTicker *time.Ticker
+
+	// used to drop logs older than the retention period.
+	minAcceptedTs                        atomic.Value
+	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -166,9 +133,14 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeysTicker = time.NewTicker(e.fetchKeysInterval)
+	e.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
 	go func() {
 		e.doFetchShouldSkipKeys() // Immediate first fetch
 		e.fetchShouldSkipKeys()   // Start ticker routine
+	}()
+	go func() {
+		e.updateMinAcceptedTs()
+		e.fetchShouldUpdateMinAcceptedTs()
 	}()
 	return nil
 }
@@ -225,82 +197,63 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (e *clickhouseLogsExporter) getLogsTTLSeconds(ctx context.Context) (int, error) {
-	type DBResponseTTL struct {
-		EngineFull string `ch:"engine_full"`
-	}
+type DBResponseTTL struct {
+	EngineFull string `ch:"engine_full"`
+}
 
-	var delTTL int = -1
+func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
+	e.logger.Info("fetching min accepted ts")
 
+	ctx := context.Background()
+	var delTTL uint64 = 0
 	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", tableName, databaseName)
+	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", logsTableV2, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
 	if err != nil {
-		return delTTL, err
+		e.logger.Error("error while fetching ttl", zap.Error(err))
+		return
 	}
 	if len(dbResp) == 0 {
-		return delTTL, fmt.Errorf("ttl not found")
+		e.logger.Error("ttl not found")
+		return
 	}
 
 	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
-
 	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
 	if len(m) > 1 {
 		seconds_int, err := strconv.Atoi(m[1])
 		if err != nil {
-			return delTTL, nil
+			e.logger.Error("error while converting ttl to int", zap.Error(err))
+			return
 		}
-		delTTL = seconds_int
+		delTTL = uint64(seconds_int)
 	}
 
-	return delTTL, nil
+	acceptedDateTime := time.Now().Add(-(time.Duration(delTTL) * time.Second))
+	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
-func (e *clickhouseLogsExporter) removeOldLogs(ctx context.Context, ld plog.Logs) error {
-	// get the TTL.
-	ttL, err := e.getLogsTTLSeconds(ctx)
-	if err != nil {
-		return err
+func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
+	for range e.fetchShouldUpdateMinAcceptedTsTicker.C {
+		e.updateMinAcceptedTs()
 	}
-
-	// if logs contains timestamp before acceptedDateTime, it will be rejected
-	acceptedDateTime := time.Now().Add(-(time.Duration(ttL) * time.Second))
-
-	removeLog := func(log plog.LogRecord) bool {
-		t := log.Timestamp().AsTime()
-		return t.Unix() < acceptedDateTime.Unix()
-	}
-	for i := 0; i < ld.ResourceLogs().Len(); i++ {
-		logs := ld.ResourceLogs().At(i)
-		for j := 0; j < logs.ScopeLogs().Len(); j++ {
-			logs.ScopeLogs().At(j).LogRecords().RemoveIf(removeLog)
-		}
-	}
-	return nil
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	for i := 0; i <= 1; i++ {
-		err := e.pushToClickhouse(ctx, ld)
-		if err != nil {
-			// StatementSend:code: 252, message: Too many partitions for single INSERT block
-			// iterating twice since we want to try once after removing the old data
-			if i == 1 || !strings.Contains(err.Error(), "code: 252") {
-				// TODO(nitya): after returning it will be retried, ideally it should be pushed to DLQ
-				return err
-			}
-
-			// drop logs older than TTL
-			removeLogsError := e.removeOldLogs(ctx, ld)
-			if removeLogsError != nil {
-				return fmt.Errorf("error while dropping old logs %v, after error %v", removeLogsError, err)
-			}
-		} else {
-			break
+	err := e.pushToClickhouse(ctx, ld)
+	if err != nil {
+		// we try to remove logs older than the retention period
+		// but if we get too many partitions for single INSERT block, we will drop the data
+		// StatementSend:code: 252, message: Too many partitions for single INSERT block
+		if strings.Contains(err.Error(), "code: 252") {
+			e.logger.Warn("too many partitions for single INSERT block, dropping the batch")
+			return nil
 		}
+
+		return err
 	}
 
 	return nil
@@ -311,6 +264,11 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
+	oldestAllowedTs := uint64(0)
+	if e.minAcceptedTs.Load() != nil {
+		oldestAllowedTs = e.minAcceptedTs.Load().(uint64)
+	}
+
 	resourcesSeen := map[int64]map[string]string{}
 
 	var insertLogsStmtV2 driver.Batch
@@ -402,6 +360,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 					if ts == 0 {
 						ts = ots
+					}
+
+					if ts < oldestAllowedTs {
+						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
+						continue
 					}
 
 					// generate the id from timestamp

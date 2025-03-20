@@ -1,4 +1,4 @@
-package clickhousemetricsexporterv2
+package signozclickhousemetrics
 
 import (
 	"errors"
@@ -18,11 +18,11 @@ type Config struct {
 
 	EnableExpHist bool `mapstructure:"enable_exp_hist"`
 
-	Database        string
-	SamplesTable    string
-	TimeSeriesTable string
-	ExpHistTable    string
-	MetadataTable   string
+	Database        string `mapstructure:"database"`
+	SamplesTable    string `mapstructure:"samples_table"`
+	TimeSeriesTable string `mapstructure:"time_series_table"`
+	ExpHistTable    string `mapstructure:"exp_hist_table"`
+	MetadataTable   string `mapstructure:"metadata_table"`
 }
 
 var _ component.Config = (*Config)(nil)

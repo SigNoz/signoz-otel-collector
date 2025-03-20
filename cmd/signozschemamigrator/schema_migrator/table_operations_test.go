@@ -313,3 +313,69 @@ func TestCreateWithCluster(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateTable(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "truncate-table",
+			op: TruncateTableOperation{
+				Database: "db",
+				Table:    "table",
+			},
+			want: "TRUNCATE TABLE IF EXISTS db.table",
+		},
+		{
+			name: "truncate-table-with-cluster",
+			op: TruncateTableOperation{
+				Database: "db",
+				Table:    "table",
+				cluster:  "cluster",
+			},
+			want: "TRUNCATE TABLE IF EXISTS db.table ON CLUSTER cluster",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
+
+func TestAlterTableModifyTTL(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "alter-table-modify-ttl",
+			op: AlterTableModifyTTL{
+				Database: "db",
+				Table:    "table",
+				TTL:      "ts + INTERVAL 1 DAY",
+			},
+			want: "ALTER TABLE db.table MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
+		},
+		{
+			name: "alter-table-modify-ttl-with-cluster",
+			op: AlterTableModifyTTL{
+				Database: "db",
+				Table:    "table",
+				TTL:      "ts + INTERVAL 1 DAY",
+				cluster:  "cluster",
+			},
+			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}

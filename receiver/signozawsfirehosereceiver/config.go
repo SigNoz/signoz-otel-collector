@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/configopaque"
 )
 
 type Config struct {
@@ -18,10 +17,6 @@ type Config struct {
 	// RecordType is the key used to determine which unmarshaler to use
 	// when receiving the requests.
 	RecordType string `mapstructure:"record_type"`
-	// AccessKey is checked against the one received with each request.
-	// This can be set when creating or updating the Firehose delivery
-	// stream.
-	AccessKey configopaque.String `mapstructure:"access_key"`
 }
 
 // Validate checks that the endpoint and record type exist and

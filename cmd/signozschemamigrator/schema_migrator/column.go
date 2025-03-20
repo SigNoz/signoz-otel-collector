@@ -240,14 +240,15 @@ func (a AggregateFunction) String() string {
 // Settings is the settings of the column.
 // Comment is the comment of the column.
 type Column struct {
-	Name     string
-	Type     ColumnType
-	Codec    string
-	Alias    string
-	Default  string
-	TTL      string
-	Settings ColumnSettings
-	Comment  string
+	Name         string
+	Type         ColumnType
+	Codec        string
+	Alias        string
+	Default      string
+	Materialized string
+	TTL          string
+	Settings     ColumnSettings
+	Comment      string
 }
 
 func (c Column) ToSQL() string {
@@ -262,6 +263,10 @@ func (c Column) ToSQL() string {
 	if c.Default != "" {
 		sql.WriteString(" DEFAULT ")
 		sql.WriteString(c.Default)
+	}
+	if c.Materialized != "" {
+		sql.WriteString(" MATERIALIZED ")
+		sql.WriteString(c.Materialized)
 	}
 	if c.Codec != "" {
 		sql.WriteString(" CODEC(")

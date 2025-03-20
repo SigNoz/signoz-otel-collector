@@ -433,7 +433,7 @@ func (a AlterTableMaterializeColumn) ToSQL() string {
 		sql.WriteString(" ON CLUSTER ")
 		sql.WriteString(a.cluster)
 	}
-	sql.WriteString(" MATERIALIZE COLUMN IF EXISTS ")
+	sql.WriteString(" MATERIALIZE COLUMN ")
 	sql.WriteString(a.Column.Name)
 	if a.Partition != "" {
 		sql.WriteString(" IN PARTITION ")
