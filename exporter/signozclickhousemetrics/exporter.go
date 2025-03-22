@@ -363,38 +363,46 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		sampleTyp := typ
+		sampleTemporality := temporality
 		var value float64
 		switch suffix {
 		case countSuffix:
 			value = float64(dp.Count())
+			sampleTyp = pmetric.MetricTypeSum
 		case sumSuffix:
 			value = dp.Sum()
+			sampleTyp = pmetric.MetricTypeSum
 		case minSuffix:
 			value = dp.Min()
+			sampleTyp = pmetric.MetricTypeGauge
+			sampleTemporality = pmetric.AggregationTemporalityUnspecified
 		case maxSuffix:
 			value = dp.Max()
+			sampleTyp = pmetric.MetricTypeGauge
+			sampleTemporality = pmetric.AggregationTemporalityUnspecified
 		}
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality__": temporality.String(),
+			"__temporality__": sampleTemporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
 			env:         env,
-			temporality: temporality,
+			temporality: sampleTemporality,
 			metricName:  name + suffix,
 			fingerprint: fingerprint.HashWithName(name + suffix),
 			unixMilli:   unixMilli,
 			value:       value,
 		})
-		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+		batch.addMetadata(name, desc, unit, typ, sampleTemporality, isMonotonic, fingerprint)
 
 		batch.addTs(&ts{
 			env:           env,
-			temporality:   temporality,
+			temporality:   sampleTemporality,
 			metricName:    name + suffix,
 			description:   desc,
 			unit:          unit,
-			typ:           typ,
+			typ:           sampleTyp,
 			isMonotonic:   isMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
 			unixMilli:     unixMilli,
