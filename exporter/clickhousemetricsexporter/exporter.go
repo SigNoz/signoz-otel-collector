@@ -110,6 +110,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		},
 		"signoz_metrics",
 		UsageExporter,
+		set.Logger,
 	)
 	if err != nil {
 		log.Fatalf("Error creating usage collector for metrics: %v", err)
