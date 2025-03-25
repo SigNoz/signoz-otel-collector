@@ -36,6 +36,7 @@ const (
 	TagTypeResource  TagType = "resource"
 
 	TagTypeSpanField TagType = "spanfield"
+	TagTypeLogField  TagType = "logfield"
 )
 
 func (t TagType) String() string {
