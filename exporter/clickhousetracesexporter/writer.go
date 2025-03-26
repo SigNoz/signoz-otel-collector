@@ -371,52 +371,17 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		// name, kind, kind_string, status_code_string, status_code
 		if _, ok := mapOfSpanFields[span.Name]; !ok {
 			mapOfSpanFields[span.Name] = struct{}{}
-			err = tagStatementV2.Append(
-				unixMilli,
-				"name",
-				utils.TagTypeSpanField,
-				utils.TagDataTypeString,
-				span.Name,
-				nil,
-			)
+			tagStatementV2.Append(unixMilli, "name", utils.TagTypeSpanField, utils.TagDataTypeString, span.Name, nil)
 		}
 		if _, ok := mapOfSpanFields[span.SpanKind]; !ok {
 			mapOfSpanFields[span.SpanKind] = struct{}{}
-			_ = tagStatementV2.Append(
-				unixMilli,
-				"kind_string",
-				utils.TagTypeSpanField,
-				utils.TagDataTypeString,
-				span.SpanKind,
-				nil,
-			)
-			_ = tagStatementV2.Append(
-				unixMilli,
-				"kind",
-				utils.TagTypeSpanField,
-				utils.TagDataTypeNumber,
-				nil,
-				float64(span.Kind),
-			)
+			tagStatementV2.Append(unixMilli, "kind_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.SpanKind, nil)
+			tagStatementV2.Append(unixMilli, "kind", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.Kind))
 		}
 		if _, ok := mapOfSpanFields[span.StatusCodeString]; !ok {
 			mapOfSpanFields[span.StatusCodeString] = struct{}{}
-			_ = tagStatementV2.Append(
-				unixMilli,
-				"status_code_string",
-				utils.TagTypeSpanField,
-				utils.TagDataTypeString,
-				span.StatusCodeString,
-				nil,
-			)
-			_ = tagStatementV2.Append(
-				unixMilli,
-				"status_code",
-				utils.TagTypeSpanField,
-				utils.TagDataTypeNumber,
-				nil,
-				float64(span.StatusCode),
-			)
+			tagStatementV2.Append(unixMilli, "status_code_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.StatusCodeString, nil)
+			tagStatementV2.Append(unixMilli, "status_code", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.StatusCode))
 		}
 	}
 
