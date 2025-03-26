@@ -688,6 +688,11 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					spanAttrs[attrKey] = v.AsRaw()
 					return true
 				})
+				spanAttrs["name"] = span.Name()
+				spanAttrs["kind"] = span.Kind()
+				spanAttrs["kind_string"] = span.Kind().String()
+				spanAttrs["status_code"] = float64(span.Status().Code())
+				spanAttrs["status_code_string"] = span.Status().Code().String()
 
 				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
 				filteredSpanAttrs := e.filterAttrs(ctx, flattenedSpanAttrs, pipeline.SignalTraces.String())
