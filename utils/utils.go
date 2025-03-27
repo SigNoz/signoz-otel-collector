@@ -35,7 +35,8 @@ const (
 	TagTypeScope     TagType = "scope"
 	TagTypeResource  TagType = "resource"
 
-	TagTypeLogField TagType = "logfield"
+	TagTypeSpanField TagType = "spanfield"
+	TagTypeLogField  TagType = "logfield"
 )
 
 func (t TagType) String() string {

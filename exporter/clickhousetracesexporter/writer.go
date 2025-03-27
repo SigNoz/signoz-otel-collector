@@ -278,7 +278,11 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	// create map of span attributes of key, tagType, dataType, isColumn and value to avoid duplicates in batch
 	mapOfSpanAttributeValues := make(map[string]struct{})
 
+	mapOfSpanFields := make(map[string]struct{})
+
 	for _, span := range batchSpans {
+		unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
+
 		for _, spanAttribute := range span.SpanAttributes {
 
 			// form a map key of span attribute key, tagType, dataType, isColumn and value
@@ -316,7 +320,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			// add mapOfSpanAttributeKey to map
 			mapOfSpanAttributeKeys[mapOfSpanAttributeKey] = struct{}{}
 			v2Key := utils.MakeKeyForAttributeKeys(spanAttribute.Key, utils.TagType(spanAttribute.TagType), utils.TagDataType(spanAttribute.DataType))
-			unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
 
 			if len(spanAttribute.StringValue) > common.MaxAttributeValueLength {
 				w.logger.Debug("attribute value length exceeds the limit", zap.String("key", spanAttribute.Key))
@@ -362,6 +365,23 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			if err != nil {
 				return fmt.Errorf("could not append span to tag Statement batch due to error: %w", err)
 			}
+		}
+
+		// span fields
+		// name, kind, kind_string, status_code_string, status_code
+		if _, ok := mapOfSpanFields[span.Name]; !ok {
+			mapOfSpanFields[span.Name] = struct{}{}
+			tagStatementV2.Append(unixMilli, "name", utils.TagTypeSpanField, utils.TagDataTypeString, span.Name, nil)
+		}
+		if _, ok := mapOfSpanFields[span.SpanKind]; !ok {
+			mapOfSpanFields[span.SpanKind] = struct{}{}
+			tagStatementV2.Append(unixMilli, "kind_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.SpanKind, nil)
+			tagStatementV2.Append(unixMilli, "kind", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.Kind))
+		}
+		if _, ok := mapOfSpanFields[span.StatusCodeString]; !ok {
+			mapOfSpanFields[span.StatusCodeString] = struct{}{}
+			tagStatementV2.Append(unixMilli, "status_code_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.StatusCodeString, nil)
+			tagStatementV2.Append(unixMilli, "status_code", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.StatusCode))
 		}
 	}
 
