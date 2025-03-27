@@ -34,7 +34,7 @@ func ParseAgentManagerConfig(configLocation string) (*AgentManagerConfig, error)
 		config.ID = ulid.MustNew(ulid.Now(), nil).String()
 	}
 	if config.OrgID == "" {
-		return nil, fmt.Errorf("org_id is required")
+		config.OrgID = "SIGNOZ##DEFAULT##ORG##ID"
 	}
 
 	return &config, nil
