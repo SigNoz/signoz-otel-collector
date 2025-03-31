@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/collector/pipeline"
 	"math"
 	"strconv"
 	"strings"
@@ -836,7 +837,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.TimeSeriesTable),
-					attribute.String("exporter", exporterName),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter.name", exporterName),
 				),
 			)
 		}()
@@ -889,7 +891,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.SamplesTable),
-					attribute.String("exporter", exporterName),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter.name", exporterName),
 				),
 			)
 		}()
@@ -926,7 +929,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.ExpHistTable),
-					attribute.String("exporter", exporterName),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter.name", exporterName),
 				),
 			)
 		}()
@@ -967,7 +971,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.MetadataTable),
-					attribute.String("exporter", exporterName),
+					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter.name", exporterName),
 				),
 			)
 		}()
