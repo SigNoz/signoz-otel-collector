@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/collector/pipeline"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/collector/pipeline"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
