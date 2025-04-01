@@ -18,11 +18,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go.opentelemetry.io/collector/consumer"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/collector/consumer"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
