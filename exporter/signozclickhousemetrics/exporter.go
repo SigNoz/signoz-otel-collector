@@ -10,14 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/collector/pipeline"
-
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	semconv "go.opentelemetry.io/collector/semconv/v1.5.0"
@@ -59,6 +58,7 @@ type clickhouseMetricsExporter struct {
 
 	processMetricsDuration metricapi.Float64Histogram
 	exportMetricsDuration  metricapi.Float64Histogram
+	settings               exporter.Settings
 }
 
 // sample represents a single metric sample
@@ -160,6 +160,13 @@ func WithConn(conn clickhouse.Conn) ExporterOption {
 func WithConfig(cfg *Config) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
 		e.cfg = cfg
+		return nil
+	}
+}
+
+func WithSettings(settings exporter.Settings) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.settings = settings
 		return nil
 	}
 }
@@ -816,7 +823,7 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 		ctx,
 		float64(time.Since(start).Milliseconds()),
 		metricapi.WithAttributes(
-			attribute.String("exporter", exporterName),
+			attribute.String("exporter", c.settings.ID.String()),
 		),
 	)
 	return batch
@@ -838,8 +845,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.TimeSeriesTable),
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("exporter.name", exporterName),
+					attribute.String("exporter", c.settings.ID.String()),
 				),
 			)
 		}()
@@ -892,8 +898,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.SamplesTable),
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("exporter.name", exporterName),
+					attribute.String("exporter", c.settings.ID.String()),
 				),
 			)
 		}()
@@ -930,8 +935,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.ExpHistTable),
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("exporter.name", exporterName),
+					attribute.String("exporter", c.settings.ID.String()),
 				),
 			)
 		}()
@@ -972,8 +976,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				float64(time.Since(start).Milliseconds()),
 				metricapi.WithAttributes(
 					attribute.String("table", c.cfg.MetadataTable),
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
-					attribute.String("exporter.name", exporterName),
+					attribute.String("exporter", c.settings.ID.String()),
 				),
 			)
 		}()
