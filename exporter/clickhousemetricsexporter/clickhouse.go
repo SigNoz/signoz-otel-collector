@@ -409,9 +409,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 							collectUsage = false
 							break
 						}
-						if val.Name == "tenant" {
-							tenant = val.Value
-						}
 					}
 
 					if collectUsage {
