@@ -478,10 +478,10 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 		p.logCardinalityInfo()
 		p.logger.Error("Failed to build metrics", zap.Error(err))
 	}
-
-	for _, consumer := range p.metricsConsumer {
+	exporterNames := strings.Split(p.config.MetricsExporter, ",")
+	for i, consumer := range p.metricsConsumer {
 		if err := consumer.ConsumeMetrics(ctx, m); err != nil {
-			p.logger.Error("Failed ConsumeMetrics for exporter", zap.String("exporter", p.config.MetricsExporter), zap.Error(err))
+			p.logger.Error("Failed ConsumeMetrics for exporter", zap.String("exporter", exporterNames[i]), zap.Error(err))
 		}
 	}
 }

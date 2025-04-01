@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"go.opentelemetry.io/collector/consumer"
 	"regexp"
 	"strings"
 	"testing"
@@ -461,10 +462,12 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 		excludePatternRegex[pattern.Name] = regexp.MustCompile(pattern.Pattern)
 	}
 
+	mexpArr := []consumer.Metrics{}
+	mexpArr = append(mexpArr, mexp)
 	return &processorImp{
 		logger:          logger,
 		config:          Config{AggregationTemporality: temporality},
-		metricsConsumer: mexp,
+		metricsConsumer: mexpArr,
 		tracesConsumer:  tcon,
 
 		startTimestamp:         pcommon.NewTimestampFromTime(time.Now()),
