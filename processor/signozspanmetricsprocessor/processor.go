@@ -83,7 +83,7 @@ type processorImp struct {
 	instanceID string
 	config     Config
 
-	metricsConsumer consumer.Metrics
+	metricsConsumer []consumer.Metrics
 	tracesConsumer  consumer.Traces
 
 	// Additional dimensions to add to metrics.
@@ -386,7 +386,10 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	exporters := ge.GetExporters()
 
 	availableMetricsExporters := make([]string, 0, len(exporters[pipeline.SignalMetrics]))
-
+	exporterNames := strings.Split(p.config.MetricsExporter, ",")
+	for i := range exporterNames {
+		exporterNames[i] = strings.TrimSpace(exporterNames[i])
+	}
 	// The available list of exporters come from any configured metrics pipelines' exporters.
 	for k, exp := range exporters[pipeline.SignalMetrics] {
 		metricsExp, ok := exp.(exporter.Metrics)
@@ -400,13 +403,14 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 			zap.String("signozspanmetrics-exporter", p.config.MetricsExporter),
 			zap.Any("available-exporters", availableMetricsExporters),
 		)
-		if k.String() == p.config.MetricsExporter {
-			p.metricsConsumer = metricsExp
-			p.logger.Info("Found exporter", zap.String("signozspanmetrics-exporter", p.config.MetricsExporter))
-			break
+		for _, name := range exporterNames {
+			if k.String() == name {
+				p.metricsConsumer = append(p.metricsConsumer, metricsExp)
+				p.logger.Info("Found exporter", zap.String("signozspanmetrics-exporter", name))
+			}
 		}
 	}
-	if p.metricsConsumer == nil {
+	if len(p.metricsConsumer) == 0 {
 		return fmt.Errorf("failed to find metrics exporter: '%s'; please configure metrics_exporter from one of: %+v",
 			p.config.MetricsExporter, availableMetricsExporters)
 	}
@@ -474,10 +478,11 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 		p.logCardinalityInfo()
 		p.logger.Error("Failed to build metrics", zap.Error(err))
 	}
-
-	if err := p.metricsConsumer.ConsumeMetrics(ctx, m); err != nil {
-		p.logger.Error("Failed ConsumeMetrics", zap.Error(err))
-		return
+	exporterNames := strings.Split(p.config.MetricsExporter, ",")
+	for i, consumer := range p.metricsConsumer {
+		if err := consumer.ConsumeMetrics(ctx, m); err != nil {
+			p.logger.Error("Failed ConsumeMetrics for exporter", zap.String("exporter", exporterNames[i]), zap.Error(err))
+		}
 	}
 }
 
