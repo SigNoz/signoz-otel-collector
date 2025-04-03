@@ -27,6 +27,7 @@ jobs:
     with:
       PRIMUS_REF: dockerhub
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
+      GO_BUILD_FLAGS: ""
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
@@ -39,6 +40,7 @@ jobs:
       PRIMUS_REF: dockerhub
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
+      GO_BUILD_FLAGS: ""
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
