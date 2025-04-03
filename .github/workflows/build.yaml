@@ -9,6 +9,8 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    outputs:
+      docker-providers: ${{ steps.set-docker-providers.outputs.providers }}
     steps:
       - name: set-docker-providers
         id: set-docker-providers
@@ -28,7 +30,7 @@ jobs:
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: ${{ steps.set-docker-providers.outputs.providers }}
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker-providers }}
   signoz-schema-migrator:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@feat/new-build
     secrets: inherit
@@ -40,4 +42,4 @@ jobs:
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: ${{ steps.set-docker-providers.outputs.providers }}
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker-providers }}
