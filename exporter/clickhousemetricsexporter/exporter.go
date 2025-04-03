@@ -261,6 +261,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
+							if math.IsNaN(dataPoints.At(x).Min()) || math.IsNaN(dataPoints.At(x).Max()) || math.IsNaN(dataPoints.At(x).Sum()) {
+								prwe.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", metricName))
+								continue
+							}
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeSummary:
@@ -270,6 +274,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
+							if math.IsNaN(dataPoints.At(x).Sum()) {
+								prwe.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", metricName))
+								continue
+							}
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
@@ -290,6 +298,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						}
 
 						for x := 0; x < dataPoints.Len(); x++ {
+							if math.IsNaN(dataPoints.At(x).Sum()) || math.IsNaN(dataPoints.At(x).Min()) || math.IsNaN(dataPoints.At(x).Max()) {
+								prwe.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", metricName))
+								continue
+							}
 							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					default:
@@ -347,7 +359,13 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 
 func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
 	for x := 0; x < dataPoints.Len(); x++ {
-		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		err := addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		if err != nil {
+			if errors.Is(err, ErrNaNDetected) {
+				prwe.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", metric.Name()))
+			}
+			prwe.logger.Warn("Failed to add data point", zap.String("metric_name", metric.Name()), zap.Error(err))
+		}
 	}
 	return nil
 }
