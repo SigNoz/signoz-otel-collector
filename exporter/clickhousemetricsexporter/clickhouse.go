@@ -34,7 +34,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/exporter"
-	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -85,6 +84,7 @@ type clickHouse struct {
 	exporterID uuid.UUID
 
 	durationHistogram metric.Float64Histogram
+	settings          exporter.Settings
 }
 
 type ClickHouseParams struct {
@@ -162,6 +162,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		disableV2:         params.DisableV2,
 		exporterID:        params.ExporterId,
 		durationHistogram: durationHistogram,
+		settings:          params.Settings,
 	}
 
 	go func() {
@@ -322,7 +323,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE),
 			),
 		)
@@ -365,7 +366,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_SAMPLES_TABLE),
 			),
 		)
@@ -408,9 +409,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 							collectUsage = false
 							break
 						}
-						if val.Name == "tenant" {
-							tenant = val.Value
-						}
 					}
 
 					if collectUsage {
@@ -425,7 +423,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				ctx,
 				float64(time.Since(start).Milliseconds()),
 				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter", ch.settings.ID.String()),
 					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
 				),
 			)
@@ -483,7 +481,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				ctx,
 				float64(time.Since(start).Milliseconds()),
 				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter", ch.settings.ID.String()),
 					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
 				),
 			)
@@ -575,7 +573,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
 			),
 		)

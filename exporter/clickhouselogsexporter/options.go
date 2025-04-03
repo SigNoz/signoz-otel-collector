@@ -35,6 +35,7 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn) LogExporterOption {
 			},
 			"signoz_logs",
 			UsageExporter,
+			e.logger,
 		)
 		e.usageCollector.Start()
 		e.id = id
