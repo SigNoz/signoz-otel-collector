@@ -1,0 +1,19 @@
+ARG DEBIAN_SHA="pass-a-valid-docker-sha-otherwise-this-will-fail"
+
+FROM debian@sha256:${DEBIAN_SHA}
+LABEL maintainer="signoz"
+
+ARG OS="linux"
+ARG ARCH
+ARG USER_UID=10001
+
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+USER ${USER_UID}
+
+COPY ./target/${OS}-${ARCH}/signoz-schema-migrator /signoz-schema-migrator
+
+ENTRYPOINT [ "/signoz-schema-migrator" ]
+CMD ["--dsn", "tcp://localhost:9000"]
