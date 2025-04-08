@@ -36,6 +36,7 @@ type serverClient struct {
 	configManager         *agentConfigManager
 	managerConfig         AgentManagerConfig
 	instanceId            ulid.ULID
+	orgId                 string
 	receivedInitialConfig bool
 	mux                   sync.Mutex
 }
@@ -65,6 +66,7 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 		configManager: configManager,
 		managerConfig: *args.Config,
 		mux:           sync.Mutex{},
+		orgId:         args.Config.OrgID,
 	}
 	svrClient.createInstanceId()
 
@@ -101,6 +103,7 @@ func (s *serverClient) createAgentDescription() *protobufs.AgentDescription {
 		IdentifyingAttributes: []*protobufs.KeyValue{
 			keyVal("service.name", "signoz-otel-collector"),
 			keyVal("service.version", constants.Version),
+			keyVal("orgId", s.orgId),
 		},
 		NonIdentifyingAttributes: []*protobufs.KeyValue{
 			keyVal("os.family", runtime.GOOS),
