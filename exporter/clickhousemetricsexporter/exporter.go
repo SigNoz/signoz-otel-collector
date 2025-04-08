@@ -274,10 +274,25 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
+							skip := false
+							quantiles := dataPoints.At(x).QuantileValues()
+							for j := 0; j < quantiles.Len(); j++ {
+								q := quantiles.At(j)
+								if math.IsNaN(q.Value()) {
+									prwe.logger.Warn("NaN detected in quantile value, skipping entire data point", zap.String("metric_name", metricName))
+									skip = true
+									break
+								}
+							}
 							if math.IsNaN(dataPoints.At(x).Sum()) {
 								prwe.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", metricName))
+								skip = true
+							}
+
+							if skip {
 								continue
 							}
+
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:

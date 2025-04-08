@@ -626,12 +626,26 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
 		dp := metric.Summary().DataPoints().At(i)
-		// for summary metrics, we need to create three samples
-		// 1. count
-		// 2. sum
-		// 3. quantiles
+
+		skip := false
+
 		if math.IsNaN(dp.Sum()) {
 			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			skip = true
+		}
+
+		// Check for NaN in quantiles
+		quantiles := dp.QuantileValues()
+		for j := 0; j < quantiles.Len(); j++ {
+			q := quantiles.At(j)
+			if math.IsNaN(q.Value()) {
+				c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+				skip = true
+				break
+			}
+		}
+
+		if skip {
 			continue
 		}
 		addSample(b, dp, countSuffix)
