@@ -263,6 +263,10 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		case pmetric.NumberDataPointValueTypeDouble:
 			value = dp.DoubleValue()
 		}
+		if math.IsNaN(value) {
+			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			continue
+		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
@@ -321,6 +325,10 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			value = float64(dp.IntValue())
 		case pmetric.NumberDataPointValueTypeDouble:
 			value = dp.DoubleValue()
+		}
+		if math.IsNaN(value) {
+			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			continue
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
@@ -505,6 +513,11 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		// 3. min
 		// 4. max
 		// 5. bucket counts
+		// Check if any of the key float fields are NaN.
+		if math.IsNaN(dp.Sum()) || math.IsNaN(dp.Min()) || math.IsNaN(dp.Max()) {
+			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			continue
+		}
 		addSample(b, dp, countSuffix)
 		addSample(b, dp, sumSuffix)
 		addSample(b, dp, minSuffix)
@@ -613,10 +626,28 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
 		dp := metric.Summary().DataPoints().At(i)
-		// for summary metrics, we need to create three samples
-		// 1. count
-		// 2. sum
-		// 3. quantiles
+
+		skip := false
+
+		if math.IsNaN(dp.Sum()) {
+			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			skip = true
+		}
+
+		// Check for NaN in quantiles
+		quantiles := dp.QuantileValues()
+		for j := 0; j < quantiles.Len(); j++ {
+			q := quantiles.At(j)
+			if math.IsNaN(q.Value()) {
+				c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+				skip = true
+				break
+			}
+		}
+
+		if skip {
+			continue
+		}
 		addSample(b, dp, countSuffix)
 		addSample(b, dp, sumSuffix)
 		addQuantileSample(b, dp, quantilesSuffix)
@@ -767,6 +798,10 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		// 3. min
 		// 4. max
 		// 5. ddsketch
+		if math.IsNaN(dp.Sum()) || math.IsNaN(dp.Min()) || math.IsNaN(dp.Max()) {
+			c.logger.Warn("NaN detected in data point, skipping entire data point", zap.String("metric_name", name))
+			continue
+		}
 		addSample(b, dp, countSuffix)
 		addSample(b, dp, sumSuffix)
 		addSample(b, dp, minSuffix)

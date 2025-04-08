@@ -15,6 +15,7 @@
 package clickhousemetricsexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter"
 
 import (
+	"errors"
 	"log"
 	"math"
 	"sort"
@@ -41,6 +42,8 @@ const (
 	pInfStr     = "+Inf"
 	keyStr      = "key"
 )
+
+var ErrNaNDetected = errors.New("NaN detected")
 
 type bucketBoundsData struct {
 	sig   string
@@ -317,8 +320,7 @@ func sanitizeRune(r rune) rune {
 
 // addSingleNumberDataPoint converts the metric value stored in pt to a Prometheus sample, and add the sample
 // to its corresponding time series in tsMap
-func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string,
-	tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) {
+func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resource, metric pmetric.Metric, namespace string, tsMap map[string]*prompb.TimeSeries, externalLabels map[string]string) error {
 	// create parameters for addSample
 	name := getPromMetricName(metric, namespace)
 	labels := createAttributes(resource, pt.Attributes(), externalLabels, nameStr, name)
@@ -332,10 +334,14 @@ func addSingleNumberDataPoint(pt pmetric.NumberDataPoint, resource pcommon.Resou
 	case pmetric.NumberDataPointValueTypeDouble:
 		sample.Value = pt.DoubleValue()
 	}
+	if math.IsNaN(sample.Value) {
+		return ErrNaNDetected
+	}
 	if pt.Flags().NoRecordedValue() {
 		sample.Value = math.Float64frombits(value.StaleNaN)
 	}
 	addSample(tsMap, sample, labels, metric)
+	return nil
 }
 
 // addSingleHistogramDataPoint converts pt to 2 + min(len(ExplicitBounds), len(BucketCount)) + 1 samples. It
