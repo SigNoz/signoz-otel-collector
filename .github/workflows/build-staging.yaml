@@ -7,6 +7,14 @@ on:
       - main
       - feat/staging
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  PRIMUS_HOME: .primus
+  MAKE: make --no-print-directory --makefile=.primus/src/make/main.mk
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -34,8 +42,6 @@ jobs:
       - name: build-info
         id: build-info
         run: |
-          echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
-
           staging_label="${{ github.event.label.name }}"
           if [[ "${staging_label}" == "staging:"* ]]; then
               deployment=${staging_label#"staging:"}
@@ -45,6 +51,8 @@ jobs:
               echo "error: not able to determine deployment. Please make sure the workflow is triggered by a PR labeled with 'staging:<deployment>' or by a push to 'main'"
               exit 1
           fi
+
+          echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
           echo "deployment=${deployment}" >> $GITHUB_OUTPUT
   signoz-otel-collector:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
