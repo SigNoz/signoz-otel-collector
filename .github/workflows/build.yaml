@@ -1,8 +1,6 @@
 name: build
 on:
   push:
-    branches:
-      - main
     tags:
       - v*
 
@@ -10,12 +8,33 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      docker-providers: ${{ steps.set-docker-providers.outputs.providers }}
+      docker_providers: ${{ steps.set-docker-providers.outputs.providers }}
+      version: ${{ steps.build-info.outputs.version }}
     steps:
+      - name: self-checkout
+        uses: actions/checkout@v4
+      - id: token
+        name: github-token-gen
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.NP_PRIMUS_APP_ID }}
+          private-key: ${{ secrets.NP_PRIMUS_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: primus-checkout
+        uses: actions/checkout@v4
+        with:
+          repository: signoz/primus
+          ref: main
+          path: .primus
+          token: ${{ steps.token.outputs.token }}
+      - name: build-info
+        id: build-info
+        run: |
+          echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
       - name: set-docker-providers
         id: set-docker-providers
         run: |
-          if [[ ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ || ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-rc.[0-9]+$ ]]; then
+          if [[ ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ || ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
             echo "providers=dockerhub gcp" >> $GITHUB_OUTPUT
           else
             echo "providers=gcp" >> $GITHUB_OUTPUT
@@ -31,7 +50,7 @@ jobs:
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker-providers }}
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
   signoz-schema-migrator:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
     secrets: inherit
@@ -44,4 +63,4 @@ jobs:
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker-providers }}
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
