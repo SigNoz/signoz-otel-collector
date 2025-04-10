@@ -14,7 +14,6 @@ jobs:
     outputs:
       version: ${{ steps.build-info.outputs.version }}
       deployment: ${{ steps.build-info.outputs.deployment }}
-      charts_repository: ${{ steps.build-info.outputs.charts_repository }}
     steps:
       - name: self-checkout
         uses: actions/checkout@v4
@@ -36,7 +35,6 @@ jobs:
         id: build-info
         run: |
           echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
-          echo "charts_repository=${{ secrets.NP_CHARTS_SAAS_REPOSITORY }}" >> $GITHUB_OUTPUT
 
           staging_label="${{ github.event.label.name }}"
           if [[ "${staging_label}" == "staging:"* ]]; then
@@ -82,6 +80,6 @@ jobs:
       PRIMUS_REF: main
       GITHUB_ENVIRONMENT: staging
       GITHUB_SILENT: true
-      GITHUB_REPOSITORY_NAME: ${{ needs.prepare.outputs.charts_repository }}
+      GITHUB_REPOSITORY_NAME: charts-saas-v3-staging
       GITHUB_EVENT_NAME: releaser
       GITHUB_EVENT_PAYLOAD: '{"deployment": "staging", "otelcol_version": "${{ needs.prepare.outputs.version }}"}'
