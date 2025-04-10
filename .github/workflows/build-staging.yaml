@@ -1,0 +1,87 @@
+name: build
+on:
+  pull_request:
+    types: [labeled]
+  push:
+    branches:
+      - main
+      - feat/staging
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    if: ${{ contains(github.event.label.name, 'staging:') || github.event.ref == 'refs/heads/main' || github.event.ref == 'refs/heads/feat/staging' }}
+    outputs:
+      version: ${{ steps.build-info.outputs.version }}
+      deployment: ${{ steps.build-info.outputs.deployment }}
+      charts_repository: ${{ steps.build-info.outputs.charts_repository }}
+    steps:
+      - name: self-checkout
+        uses: actions/checkout@v4
+      - id: token
+        name: github-token-gen
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.NP_PRIMUS_APP_ID }}
+          private-key: ${{ secrets.NP_PRIMUS_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - name: primus-checkout
+        uses: actions/checkout@v4
+        with:
+          repository: signoz/primus
+          ref: main
+          path: .primus
+          token: ${{ steps.token.outputs.token }}
+      - name: build-info
+        id: build-info
+        run: |
+          echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
+          echo "charts_repository=${{ secrets.NP_CHARTS_SAAS_REPOSITORY }}" >> $GITHUB_OUTPUT
+
+          staging_label="${{ github.event.label.name }}"
+          if [[ "${staging_label}" == "staging:"* ]]; then
+              deployment=${staging_label#"staging:"}
+          elif [[ "${{ github.event.ref }}" == "refs/heads/main" || "${{ github.event.ref }}" == "refs/heads/feat/staging" ]]; then
+              deployment="staging"
+          else
+              echo "error: not able to determine deployment. Please make sure the workflow is triggered by a PR labeled with 'staging:<deployment>' or by a push to 'main'"
+              exit 1
+          fi
+          echo "deployment=${deployment}" >> $GITHUB_OUTPUT
+  signoz-otel-collector:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    needs: prepare
+    with:
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/signozotelcollector
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
+      DOCKER_MANIFEST: true
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
+  signoz-schema-migrator:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    needs: prepare
+    with:
+      PRIMUS_REF: main
+      GO_NAME: signoz-schema-migrator
+      GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile.multi-arch
+      DOCKER_MANIFEST: true
+      DOCKER_PROVIDERS: gcp
+  staging:
+    if: ${{ github.event.ref == 'refs/heads/main' || github.event.ref == 'refs/heads/feat/staging' }}
+    uses: signoz/primus.workflows/.github/workflows/github-trigger.yaml@main
+    secrets: inherit
+    needs: [prepare, signoz-otel-collector, signoz-schema-migrator]
+    with:
+      PRIMUS_REF: main
+      GITHUB_ENVIRONMENT: staging
+      GITHUB_SILENT: true
+      GITHUB_REPOSITORY_NAME: ${{ needs.prepare.outputs.charts_repository }}
+      GITHUB_EVENT_NAME: releaser
+      GITHUB_EVENT_PAYLOAD: '{"deployment": "staging", "otelcol_version": "${{ needs.prepare.outputs.version }}"}'
