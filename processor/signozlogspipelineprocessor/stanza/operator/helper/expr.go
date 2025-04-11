@@ -39,8 +39,10 @@ var envPool = sync.Pool{
 					return "array"
 				case reflect.Bool:
 					return "bool"
-				case reflect.Int, reflect.Int64, reflect.Float64:
-					return "number"
+				case reflect.Int, reflect.Int64:
+					return "int"
+				case reflect.Float64:
+					return "float"
 				default:
 					return fmt.Sprintf("Unhandled Type[%T]", v)
 				}
