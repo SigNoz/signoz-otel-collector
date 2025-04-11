@@ -22,7 +22,6 @@ var envPool = sync.Pool{
 			"os_env_func": os.Getenv,
 			"typeOf": func(v any) string { // custom function to detect type in expressions
 				t := reflect.TypeOf(v)
-
 				if t == nil {
 					return "nil"
 				}
