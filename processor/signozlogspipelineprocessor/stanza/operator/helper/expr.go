@@ -4,7 +4,9 @@
 package signozstanzahelper
 
 import (
+	"fmt"
 	"os"
+	"reflect"
 	"sync"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
@@ -18,6 +20,31 @@ var envPool = sync.Pool{
 	New: func() any {
 		return map[string]any{
 			"os_env_func": os.Getenv,
+			"typeOf": func(v any) string { // custom function to detect type in expressions
+				t := reflect.TypeOf(v)
+
+				if t == nil {
+					return "nil"
+				}
+
+				switch t.Kind() {
+				case reflect.String:
+					return "string"
+				case reflect.Map:
+					if t.Key().Kind() == reflect.String {
+						return "map[string]any"
+					}
+					return "map"
+				case reflect.Slice, reflect.Array:
+					return "array"
+				case reflect.Bool:
+					return "bool"
+				case reflect.Int, reflect.Int64, reflect.Float64:
+					return "number"
+				default:
+					return fmt.Sprintf("Unhandled Type[%T]", v)
+				}
+			},
 		}
 	},
 }
