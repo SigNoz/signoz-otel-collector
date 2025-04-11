@@ -32,6 +32,8 @@ func (p *Parser) parse(value any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+	case map[string]any:
+		return m, nil
 	default:
 		return nil, fmt.Errorf("type %T cannot be parsed as JSON", value)
 	}
