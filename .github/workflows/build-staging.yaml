@@ -51,7 +51,6 @@ jobs:
               echo "error: not able to determine deployment. Please make sure the workflow is triggered by a PR labeled with 'staging:<deployment>' or by a push to 'main'"
               exit 1
           fi
-
           echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
           echo "deployment=${deployment}" >> $GITHUB_OUTPUT
   signoz-otel-collector:
