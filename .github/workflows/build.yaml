@@ -9,28 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker_providers: ${{ steps.set-docker-providers.outputs.providers }}
-      version: ${{ steps.build-info.outputs.version }}
     steps:
-      - name: self-checkout
-        uses: actions/checkout@v4
-      - id: token
-        name: github-token-gen
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.PRIMUS_APP_ID }}
-          private-key: ${{ secrets.PRIMUS_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-      - name: primus-checkout
-        uses: actions/checkout@v4
-        with:
-          repository: signoz/primus
-          ref: main
-          path: .primus
-          token: ${{ steps.token.outputs.token }}
-      - name: build-info
-        id: build-info
-        run: |
-          echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
       - name: set-docker-providers
         id: set-docker-providers
         run: |
