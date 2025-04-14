@@ -64,7 +64,7 @@ jobs:
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
       DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
       DOCKER_MANIFEST: true
-      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
+      DOCKER_PROVIDERS: gcp
   signoz-schema-migrator:
     uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
     secrets: inherit
