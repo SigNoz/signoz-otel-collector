@@ -118,13 +118,37 @@ func TestParser(t *testing.T) {
 					},
 					"superkey3": []string{"val1", "val2"},
 				},
-				// Note: body is not strigified by parser but the exporter when saving in clickhouse
+				// Note: body is not stringified by parser but the exporter when saving in clickhouse
 				Body: map[string]any{
 					"superkey": "superval",
 					"superkey2": map[string]any{
 						"nestedkey1": "nestedval",
 					},
 					"superkey3": []string{"val1", "val2"},
+				},
+			},
+		},
+		{
+			"recieved_map_string",
+			func(_ *Config) {},
+			&entry.Entry{
+				Body: map[string]string{
+					"superkey":  "superval",
+					"superkey2": "superval2",
+					"superkey3": "superval3",
+				},
+			},
+			&entry.Entry{
+				Attributes: map[string]any{
+					"superkey":  "superval",
+					"superkey2": "superval2",
+					"superkey3": "superval3",
+				},
+				// Note: body is not strigified by parser but the exporter when saving in clickhouse
+				Body: map[string]string{
+					"superkey":  "superval",
+					"superkey2": "superval2",
+					"superkey3": "superval3",
 				},
 			},
 		},

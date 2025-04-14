@@ -25,7 +25,7 @@ func (p *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 
 // parse will parse a value as JSON.
 func (p *Parser) parse(value any) (any, error) {
-	var parsedValue map[string]any
+	parsedValue := make(map[string]any)
 	switch m := value.(type) {
 	case string:
 		err := p.json.UnmarshalFromString(m, &parsedValue)
@@ -34,6 +34,10 @@ func (p *Parser) parse(value any) (any, error) {
 		}
 	case map[string]any:
 		return m, nil
+	case map[string]string:
+		for key, val := range m {
+			parsedValue[key] = val
+		}
 	default:
 		return nil, fmt.Errorf("type %T cannot be parsed as JSON", value)
 	}
