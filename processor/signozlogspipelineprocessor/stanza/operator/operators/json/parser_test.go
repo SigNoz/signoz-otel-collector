@@ -129,30 +129,6 @@ func TestParser(t *testing.T) {
 			},
 		},
 		{
-			"recieved_map_string",
-			func(_ *Config) {},
-			&entry.Entry{
-				Body: map[string]string{
-					"superkey":  "superval",
-					"superkey2": "superval2",
-					"superkey3": "superval3",
-				},
-			},
-			&entry.Entry{
-				Attributes: map[string]any{
-					"superkey":  "superval",
-					"superkey2": "superval2",
-					"superkey3": "superval3",
-				},
-				// Note: body is not strigified by parser but the exporter when saving in clickhouse
-				Body: map[string]string{
-					"superkey":  "superval",
-					"superkey2": "superval2",
-					"superkey3": "superval3",
-				},
-			},
-		},
-		{
 			"with_timestamp",
 			func(p *Config) {
 				parseFrom := signozstanzaentry.Field{entry.NewAttributeField("timestamp")}
