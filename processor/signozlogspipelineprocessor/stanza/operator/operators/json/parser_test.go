@@ -99,7 +99,7 @@ func TestParser(t *testing.T) {
 			},
 		},
 		{
-			"recieved_map",
+			"received_map",
 			func(_ *Config) {},
 			&entry.Entry{
 				Body: map[string]any{
