@@ -43,6 +43,12 @@ const (
 	keyStr      = "key"
 )
 
+// Defined as a bitfield so that to store  multiple boolean flags
+const (
+	FLAG_NONE              = 0
+	FLAG_NO_RECORDED_VALUE = 1 << 0
+)
+
 var ErrNaNDetected = errors.New("NaN detected")
 
 type bucketBoundsData struct {

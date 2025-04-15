@@ -18,6 +18,7 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/model/value"
 	"math"
 	"runtime/pprof"
 	"strings"
@@ -389,6 +390,11 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				fingerprint := fingerprints[i]
 				for _, s := range ts.Samples {
 					metricName := fingerprintToName[fingerprint][nameLabel]
+					flags := 0
+					if s.Value == math.Float64frombits(value.StaleNaN) {
+						s.Value = 0
+						flags = FLAG_NO_RECORDED_VALUE
+					}
 					err = statement.Append(
 						fingerprintToName[fingerprint][envLabel],
 						metricNameToMeta[metricName].Temporality.String(),
@@ -396,6 +402,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 						fingerprint,
 						s.Timestamp,
 						s.Value,
+						flags,
 					)
 					if err != nil {
 						return err
