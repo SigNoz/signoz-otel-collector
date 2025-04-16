@@ -1,7 +1,6 @@
 package pmetricsgen
 
 import (
-	"github.com/prometheus/prometheus/model/value"
 	"math"
 	"math/rand/v2"
 	"strconv"
@@ -9,6 +8,8 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/prometheus/prometheus/model/value"
 )
 
 func Generate(opts ...GenerationOption) pmetric.Metrics {

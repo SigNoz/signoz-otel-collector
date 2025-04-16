@@ -18,7 +18,6 @@ package clickhousemetricsexporter
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/prometheus/model/value"
 	"math"
 	"runtime/pprof"
 	"strings"
@@ -43,6 +42,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
 )
 
