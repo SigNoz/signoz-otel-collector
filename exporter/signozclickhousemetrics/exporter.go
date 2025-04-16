@@ -528,9 +528,15 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			continue
 		}
 		addSample(b, dp, countSuffix)
-		addSample(b, dp, sumSuffix)
-		addSample(b, dp, minSuffix)
-		addSample(b, dp, maxSuffix)
+		if dp.HasSum() {
+			addSample(b, dp, sumSuffix)
+		}
+		if dp.HasMin() {
+			addSample(b, dp, minSuffix)
+		}
+		if dp.HasMax() {
+			addSample(b, dp, maxSuffix)
+		}
 		addBucketSample(b, dp, bucketSuffix)
 	}
 }
@@ -816,9 +822,15 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			continue
 		}
 		addSample(b, dp, countSuffix)
-		addSample(b, dp, sumSuffix)
-		addSample(b, dp, minSuffix)
-		addSample(b, dp, maxSuffix)
+		if dp.HasSum() {
+			addSample(b, dp, sumSuffix)
+		}
+		if dp.HasMin() {
+			addSample(b, dp, minSuffix)
+		}
+		if dp.HasMax() {
+			addSample(b, dp, maxSuffix)
+		}
 		addDDSketchSample(b, dp)
 	}
 
