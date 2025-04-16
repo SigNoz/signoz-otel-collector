@@ -736,46 +736,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 			AlterTableAddColumn{
 				Database: "signoz_metrics",
-				Table:    "samples_v4_agg_30m",
-				Column: Column{
-					Name:    "flags",
-					Type:    ColumnTypeUInt32,
-					Codec:   "ZSTD(1)",
-					Default: "0",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_metrics",
-				Table:    "distributed_samples_v4_agg_30m",
-				Column: Column{
-					Name:    "flags",
-					Type:    ColumnTypeUInt32,
-					Codec:   "ZSTD(1)",
-					Default: "0",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_metrics",
-				Table:    "samples_v4_agg_5m",
-				Column: Column{
-					Name:    "flags",
-					Type:    ColumnTypeUInt32,
-					Codec:   "ZSTD(1)",
-					Default: "0",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_metrics",
-				Table:    "distributed_samples_v4_agg_5m",
-				Column: Column{
-					Name:    "flags",
-					Type:    ColumnTypeUInt32,
-					Codec:   "ZSTD(1)",
-					Default: "0",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_metrics",
 				Table:    "exp_hist",
 				Column: Column{
 					Name:    "flags",
@@ -807,13 +767,9 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							min(value) as min,
 							max(value) as max,
 							sum(value) as sum,
-							count(*) as count,
-							any(flags) AS flags
-						FROM (
-						  SELECT *
-						  FROM signoz_metrics.samples_v4
-						  WHERE bitAnd(flags, 1) = 0
-						) AS filtered
+							count(*) as count
+						FROM signoz_metrics.samples_v4
+						WHERE bitAnd(flags, 1) = 0
 						GROUP BY
 							env,
 							temporality,
@@ -834,13 +790,9 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						  min(min) AS min,
 						  max(max) AS max,
 						  sum(sum) AS sum,
-						  sum(count) AS count,
-						  any(flags) AS flags
-						FROM (
-						  SELECT *
-						  FROM signoz_metrics.samples_v4_agg_5m
-						  WHERE bitAnd(flags, 1) = 0
-						) AS filtered
+						  sum(count) AS count
+						FROM signoz_metrics.samples_v4_agg_5m
+						WHERE bitAnd(flags, 1) = 0
 						GROUP BY
 						  env,
 						  temporality,
