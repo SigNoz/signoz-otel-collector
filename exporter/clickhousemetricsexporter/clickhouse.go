@@ -381,7 +381,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if ch.writeTSToV4 {
 		metrics := map[string]usage.Metric{}
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
@@ -556,6 +556,19 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				flags := 0
+				if min == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					min = 0
+				}
+				if max == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					max = 0
+				}
+				if sum == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					sum = 0
+				}
 				err = statement.Append(
 					fingerprintToName[fingerprint][envLabel],
 					meta.Temporality.String(),
@@ -567,6 +580,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					min,
 					max,
 					sketch,
+					flags,
 				)
 				if err != nil {
 					return err
