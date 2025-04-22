@@ -390,7 +390,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				fingerprint := fingerprints[i]
 				for _, s := range ts.Samples {
 					metricName := fingerprintToName[fingerprint][nameLabel]
-					flags := 0
+					var flags uint32
+					flags = 0
 					if s.Value == math.Float64frombits(value.StaleNaN) {
 						s.Value = 0
 						flags = FLAG_NO_RECORDED_VALUE
@@ -556,7 +557,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
-				flags := 0
+				var flags uint32
+				flags = 0
 				if min == math.Float64frombits(value.StaleNaN) {
 					flags = FLAG_NO_RECORDED_VALUE
 					min = 0
