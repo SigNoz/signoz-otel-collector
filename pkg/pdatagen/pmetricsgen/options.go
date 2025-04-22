@@ -14,6 +14,15 @@ type Count struct {
 	SummaryMetricsCount                int
 	SummaryDataPointCount              int
 	SummaryQuantileCount               int
+	SummaryNanValuesCount              int
+	SummaryNoRecordCount               int
+	ExponentialHistogramNanValuesCount int
+	ExponentialHistogramNoRecordCount  int
+	HistogramNanValuesCount            int
+	HistogramNoRecordCount             int
+	GaugeNanValuesCount                int
+	GaugeNoRecordCount                 int
+	SumNoRecordCount                   int
 }
 
 type generationOptions struct {
