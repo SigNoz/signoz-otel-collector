@@ -83,7 +83,7 @@ func Test_prepareBatchGauge(t *testing.T) {
 }
 
 func Test_prepareBatchSum(t *testing.T) {
-	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 0)
+	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 0, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -500,7 +500,7 @@ func Benchmark_prepareBatchGauge(b *testing.B) {
 func Benchmark_prepareBatchSum(b *testing.B) {
 	// 10k sum * 10 data points = 100k data point in total
 	// each with 30 total attributes
-	metrics := pmetricsgen.GenerateSumMetrics(10000, 10, 10, 10, 10, 0)
+	metrics := pmetricsgen.GenerateSumMetrics(10000, 10, 10, 10, 10, 0, 0)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -815,7 +815,7 @@ func Test_prepareBatchHistogramWithNan(t *testing.T) {
 }
 
 func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
-	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 1)
+	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 1, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -880,6 +880,19 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 		assert.Equal(t, ts.scopeAttrs, currentTs.scopeAttrs)
 		assert.Equal(t, ts.resourceAttrs, currentTs.resourceAttrs)
 	}
+}
+
+func Test_prepareBatchSumWithNan(t *testing.T) {
+	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 0, 1)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+	)
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
+	assert.Equal(t, 0, len(batch.samples))
+
 }
 
 func Test_prepareBatchSummaryWithNan(t *testing.T) {
