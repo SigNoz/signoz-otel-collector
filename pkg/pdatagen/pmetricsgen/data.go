@@ -147,7 +147,7 @@ func copyMetricsToScope(source pmetric.Metrics, targetScope *pmetric.ScopeMetric
 // the point attributes will be named as gauge.attr0, gauge.attr1, etc.
 // the scope attributes will be named as scope.attr0, scope.attr1, etc.
 // the resource attributes will be named as resource.attr0, resource.attr1, etc.
-func GenerateGaugeMetrics(numMetrics, numValidDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
+func GenerateGaugeMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
 
@@ -160,7 +160,7 @@ func GenerateGaugeMetrics(numMetrics, numValidDataPoints, numPointAttributes, nu
 		m.SetDescription("memory usage of the host")
 
 		dpSlice := m.SetEmptyGauge().DataPoints()
-		validDataPoints := numValidDataPoints - numNanValues - numNoRecordedValues
+		validDataPoints := totalNumDataPoints - numNanValues - numNoRecordedValues
 
 		// Add normal data points
 		addDataPoints(dpSlice, i, validDataPoints, numPointAttributes, baseTimestamp, "gauge.attr_", false, false)
@@ -214,7 +214,7 @@ func addDataPoints(dpSlice pmetric.NumberDataPointSlice, metricIndex, count, num
 // the sum metrics will be monotonic or not based on the index of the metric
 // for even metrics i.e system.cpu.time0, system.cpu.time2, etc will be monotonic
 // for odd metrics i.e system.cpu.time1, system.cpu.time3, etc will be not monotonic
-func GenerateSumMetrics(numMetrics, numValidDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNoRecordedValue int, numNanValue int) pmetric.Metrics {
+func GenerateSumMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNoRecordedValue int, numNanValue int) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
 
@@ -240,7 +240,7 @@ func GenerateSumMetrics(numMetrics, numValidDataPoints, numPointAttributes, numS
 		}
 
 		dpSlice := sum.DataPoints()
-		validPoints := numValidDataPoints - numNoRecordedValue
+		validPoints := totalNumDataPoints - numNoRecordedValue - numNanValue
 
 		// Add normal data points
 		addDataPoints(dpSlice, i, validPoints, numPointAttributes, baseTimestamp, "sum.attr_", false, false)
@@ -269,7 +269,7 @@ func GenerateSumMetrics(numMetrics, numValidDataPoints, numPointAttributes, numS
 // the default number of buckets is 20
 // the default bucket counts are `1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1`
 // the default explicit bounds are `0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19`
-func GenerateHistogramMetrics(numMetrics, numValidDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
+func GenerateHistogramMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
 
@@ -289,7 +289,7 @@ func GenerateHistogramMetrics(numMetrics, numValidDataPoints, numPointAttributes
 		}
 
 		dpSlice := histogram.DataPoints()
-		validDataPoints := numValidDataPoints - numNanValues - numNoRecordedValues
+		validDataPoints := totalNumDataPoints - numNanValues - numNoRecordedValues
 
 		// Define these once
 		explicitBounds := []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
@@ -348,7 +348,7 @@ func addHistogramDataPoints(dpSlice pmetric.HistogramDataPointSlice, count, numP
 // for even metrics i.e http.server.duration0, http.server.duration2, etc will be cumulative
 // for odd metrics i.e http.server.duration1, http.server.duration3, etc will be delta
 func GenerateExponentialHistogramMetrics(
-	numMetrics, numValidDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes, numBucketCount int, numNanValues int, numNoRecordedValues int,
+	numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes, numBucketCount int, numNanValues int, numNoRecordedValues int,
 ) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
@@ -370,7 +370,7 @@ func GenerateExponentialHistogramMetrics(
 		}
 
 		dpSlice := expHistogram.DataPoints()
-		validDataPoints := numValidDataPoints - numNanValues - numNoRecordedValues
+		validDataPoints := totalNumDataPoints - numNanValues - numNoRecordedValues
 
 		// Add normal data points
 		addExpHistogramDataPoints(dpSlice, validDataPoints, numPointAttributes, baseTimestamp, "exponential.histogram.attr_", false, fixedPattern, numBucketCount, 1.0)
@@ -428,7 +428,7 @@ func addExpHistogramDataPoints(dpSlice pmetric.ExponentialHistogramDataPointSlic
 // the point attributes will be named as summary.attr0, summary.attr1, etc.
 // the scope attributes will be named as scope.attr0, scope.attr1, etc.
 // the resource attributes will be named as resource.attr0, resource.attr1, etc.
-func GenerateSummaryMetrics(numMetrics, numValidDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes, numQuantileCount int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
+func GenerateSummaryMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes, numQuantileCount int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
 
@@ -441,7 +441,7 @@ func GenerateSummaryMetrics(numMetrics, numValidDataPoints, numPointAttributes, 
 		m.SetDescription("This is a summary metrics")
 
 		dpSlice := m.SetEmptySummary().DataPoints()
-		validDataPoints := numValidDataPoints - numNanValues - numNoRecordedValues
+		validDataPoints := totalNumDataPoints - numNanValues - numNoRecordedValues
 
 		// Add normal data points
 		addSummaryDataPoints(dpSlice, validDataPoints, numPointAttributes, baseTimestamp, "summary.attr_", false, numQuantileCount, false)
