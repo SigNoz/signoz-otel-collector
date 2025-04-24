@@ -42,6 +42,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -380,7 +381,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if ch.writeTSToV4 {
 		metrics := map[string]usage.Metric{}
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
@@ -389,6 +390,12 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				fingerprint := fingerprints[i]
 				for _, s := range ts.Samples {
 					metricName := fingerprintToName[fingerprint][nameLabel]
+					var flags uint32
+					flags = 0
+					if s.Value == math.Float64frombits(value.StaleNaN) {
+						s.Value = 0
+						flags = FLAG_NO_RECORDED_VALUE
+					}
 					err = statement.Append(
 						fingerprintToName[fingerprint][envLabel],
 						metricNameToMeta[metricName].Temporality.String(),
@@ -396,6 +403,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 						fingerprint,
 						s.Timestamp,
 						s.Value,
+						flags,
 					)
 					if err != nil {
 						return err
@@ -500,7 +508,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}
 
 	err = func() error {
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -549,6 +557,20 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				var flags uint32
+				flags = 0
+				if min == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					min = 0
+				}
+				if max == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					max = 0
+				}
+				if sum == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					sum = 0
+				}
 				err = statement.Append(
 					fingerprintToName[fingerprint][envLabel],
 					meta.Temporality.String(),
@@ -560,6 +582,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					min,
 					max,
 					sketch,
+					flags,
 				)
 				if err != nil {
 					return err
