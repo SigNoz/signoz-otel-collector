@@ -792,7 +792,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							sum(sum) AS sum,
 							sum(count) AS count
 						FROM signoz_metrics.samples_v4_agg_5m
-						WHERE bitAnd(flags, 1) = 0
 						GROUP BY
 							env,
 							temporality,
