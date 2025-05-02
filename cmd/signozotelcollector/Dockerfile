@@ -2,7 +2,7 @@
 FROM debian:bookworm-slim
 
 # add ca-certificates in case you need them
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 # define arguments and default values
 ARG TARGETOS TARGETARCH
