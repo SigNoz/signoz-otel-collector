@@ -44,6 +44,7 @@ import (
 )
 
 const maxBatchByteSize = 128000000
+const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
 // PrwExporter converts OTLP metrics to Prometheus remote write TimeSeries and sends them to a remote endpoint.
 type PrwExporter struct {
@@ -110,6 +111,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		},
 		"signoz_metrics",
 		UsageExporter,
+		set.Logger,
 	)
 	if err != nil {
 		log.Fatalf("Error creating usage collector for metrics: %v", err)
@@ -260,6 +262,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped histogram metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
+							if math.IsNaN(dataPoints.At(x).Min()) || math.IsNaN(dataPoints.At(x).Max()) || math.IsNaN(dataPoints.At(x).Sum()) {
+								prwe.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", metricName))
+								continue
+							}
 							addSingleHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeSummary:
@@ -269,6 +275,25 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 							prwe.logger.Debug("Dropped summary metric with no data points", zap.String("name", metric.Name()))
 						}
 						for x := 0; x < dataPoints.Len(); x++ {
+							skip := false
+							quantiles := dataPoints.At(x).QuantileValues()
+							for j := 0; j < quantiles.Len(); j++ {
+								q := quantiles.At(j)
+								if math.IsNaN(q.Value()) {
+									prwe.logger.Warn("NaN detected in quantile value, skipping entire data point", zap.String("metric_name", metricName))
+									skip = true
+									break
+								}
+							}
+							if math.IsNaN(dataPoints.At(x).Sum()) {
+								prwe.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", metricName))
+								skip = true
+							}
+
+							if skip {
+								continue
+							}
+
 							addSingleSummaryDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					case pmetric.MetricTypeExponentialHistogram:
@@ -289,6 +314,10 @@ func (prwe *PrwExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) er
 						}
 
 						for x := 0; x < dataPoints.Len(); x++ {
+							if math.IsNaN(dataPoints.At(x).Sum()) || math.IsNaN(dataPoints.At(x).Min()) || math.IsNaN(dataPoints.At(x).Max()) {
+								prwe.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", metricName))
+								continue
+							}
 							addSingleExponentialHistogramDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
 						}
 					default:
@@ -346,7 +375,13 @@ func validateAndSanitizeExternalLabels(externalLabels map[string]string) (map[st
 
 func (prwe *PrwExporter) addNumberDataPointSlice(dataPoints pmetric.NumberDataPointSlice, tsMap map[string]*prompb.TimeSeries, resource pcommon.Resource, metric pmetric.Metric) error {
 	for x := 0; x < dataPoints.Len(); x++ {
-		addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		err := addSingleNumberDataPoint(dataPoints.At(x), resource, metric, prwe.namespace, tsMap, prwe.externalLabels)
+		if err != nil {
+			if errors.Is(err, ErrNaNDetected) {
+				prwe.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", metric.Name()))
+			}
+			prwe.logger.Warn("Failed to add data point", zap.String("metric_name", metric.Name()), zap.Error(err))
+		}
 	}
 	return nil
 }

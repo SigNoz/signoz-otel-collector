@@ -1,0 +1,45 @@
+name: build
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      docker_providers: ${{ steps.set-docker-providers.outputs.providers }}
+    steps:
+      - name: set-docker-providers
+        id: set-docker-providers
+        run: |
+          if [[ ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ || ${{ github.event.ref }} =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "providers=dockerhub gcp" >> $GITHUB_OUTPUT
+          else
+            echo "providers=gcp" >> $GITHUB_OUTPUT
+          fi
+  signoz-otel-collector:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    needs: prepare
+    with:
+      PRIMUS_REF: main
+      GO_BUILD_CONTEXT: ./cmd/signozotelcollector
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozotelcollector/Dockerfile.multi-arch
+      DOCKER_MANIFEST: true
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
+  signoz-schema-migrator:
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    secrets: inherit
+    needs: prepare
+    with:
+      PRIMUS_REF: main
+      GO_NAME: signoz-schema-migrator
+      GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
+      GO_BUILD_FLAGS: ""
+      DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
+      DOCKER_DOCKERFILE_PATH: ./cmd/signozschemamigrator/Dockerfile.multi-arch
+      DOCKER_MANIFEST: true
+      DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}

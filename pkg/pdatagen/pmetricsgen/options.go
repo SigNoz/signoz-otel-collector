@@ -1,19 +1,34 @@
 package pmetricsgen
 
 type Count struct {
-	GaugeMetricsCount                  int
-	GaugeDataPointCount                int
-	SumMetricsCount                    int
-	SumDataPointCount                  int
-	HistogramMetricsCount              int
-	HistogramDataPointCount            int
-	HistogramBucketCount               int
-	ExponentialHistogramMetricsCount   int
-	ExponentialHistogramDataPointCount int
-	ExponentialHistogramBucketCount    int
-	SummaryMetricsCount                int
-	SummaryDataPointCount              int
-	SummaryQuantileCount               int
+	GaugeMetricsCount                       int
+	GaugeDataPointCount                     int
+	GaugeNanValuesCount                     int
+	GaugeNoRecordCount                      int
+	GaugePointAttributeCount                int
+	SumMetricsCount                         int
+	SumDataPointCount                       int
+	SumNoRecordCount                        int
+	SumNanValuesCount                       int
+	SumPointAttributeCount                  int
+	HistogramMetricsCount                   int
+	HistogramDataPointCount                 int
+	HistogramBucketCount                    int
+	HistogramNanValuesCount                 int
+	HistogramNoRecordCount                  int
+	HistogramPointAttributeCount            int
+	ExponentialHistogramMetricsCount        int
+	ExponentialHistogramDataPointCount      int
+	ExponentialHistogramBucketCount         int
+	ExponentialHistogramNanValuesCount      int
+	ExponentialHistogramNoRecordCount       int
+	ExponentialHistogramPointAttributeCount int
+	SummaryMetricsCount                     int
+	SummaryDataPointCount                   int
+	SummaryQuantileCount                    int
+	SummaryNanValuesCount                   int
+	SummaryNoRecordCount                    int
+	SummaryPointAttributeCount              int
 }
 
 type generationOptions struct {
