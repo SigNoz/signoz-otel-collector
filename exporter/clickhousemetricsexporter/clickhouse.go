@@ -31,15 +31,18 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/sirupsen/logrus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/collector/exporter"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -61,7 +64,7 @@ const (
 // clickHouse implements storage interface for the ClickHouse.
 type clickHouse struct {
 	conn                 clickhouse.Conn
-	l                    *logrus.Entry
+	l                    *zap.Logger
 	database             string
 	maxTimeSeriesInQuery int
 
@@ -80,6 +83,9 @@ type clickHouse struct {
 	mWrittenTimeSeries prometheus.Counter
 
 	exporterID uuid.UUID
+
+	durationHistogram metric.Float64Histogram
+	settings          exporter.Settings
 }
 
 type ClickHouseParams struct {
@@ -92,10 +98,13 @@ type ClickHouseParams struct {
 	WriteTSToV4          bool
 	DisableV2            bool
 	ExporterId           uuid.UUID
+	Settings             exporter.Settings
 }
 
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
-	l := logrus.WithField("component", "clickhouse")
+
+	logger := params.Settings.Logger
+	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
@@ -124,9 +133,19 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 	)
 	go cache.Start()
 
+	durationHistogram, err := meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	ch := &clickHouse{
 		conn:                 conn,
-		l:                    l,
+		l:                    logger,
 		database:             options.Auth.Database,
 		maxTimeSeriesInQuery: params.MaxTimeSeriesInQuery,
 		cache:                cache,
@@ -139,10 +158,12 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 			Name:      "written_time_series",
 			Help:      "Number of written time series.",
 		}),
-		watcherInterval: params.WatcherInterval,
-		writeTSToV4:     params.WriteTSToV4,
-		disableV2:       params.DisableV2,
-		exporterID:      params.ExporterId,
+		watcherInterval:   params.WatcherInterval,
+		writeTSToV4:       params.WriteTSToV4,
+		disableV2:         params.DisableV2,
+		exporterID:        params.ExporterId,
+		durationHistogram: durationHistogram,
+		settings:          params.Settings,
 	}
 
 	go func() {
@@ -176,7 +197,7 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 
 			ch.timeSeriesRW.Lock()
 			if ch.prevShardCount != shardCount {
-				ch.l.Infof("Shard count changed from %d to %d. Resetting time series map.", ch.prevShardCount, shardCount)
+				ch.l.Info("Shard count changed. Resetting time series map.", zap.Uint64("prev", ch.prevShardCount), zap.Uint64("current", shardCount))
 				ch.timeSeries = make(map[uint64]struct{})
 			}
 			ch.prevShardCount = shardCount
@@ -184,12 +205,12 @@ func (ch *clickHouse) shardCountWatcher(ctx context.Context) {
 			return nil
 		}()
 		if err != nil {
-			ch.l.Error(err)
+			ch.l.Error("error getting shard count", zap.Error(err))
 		}
 
 		select {
 		case <-ctx.Done():
-			ch.l.Warn(ctx.Err())
+			ch.l.Warn("shard count watcher stopped", zap.Error(ctx.Err()))
 			return
 		case <-ticker.C:
 		}
@@ -254,7 +275,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		fingerprintToName[f][envLabel] = env
 	}
 	if len(fingerprints) != len(timeSeries) {
-		ch.l.Debugf("got %d fingerprints, but only %d of them were unique time series", len(fingerprints), len(timeSeries))
+		ch.l.Debug("got fingerprints, but only unique time series", zap.Int("fingerprints", len(fingerprints)), zap.Int("time series", len(timeSeries)))
 	}
 
 	// find new time series
@@ -299,11 +320,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
-			tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", ch.settings.ID.String()),
+				attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 
@@ -339,11 +363,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		}
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
-			tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", ch.settings.ID.String()),
+				attribute.String("table", DISTRIBUTED_SAMPLES_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 	if err != nil {
@@ -354,7 +381,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if ch.writeTSToV4 {
 		metrics := map[string]usage.Metric{}
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
@@ -363,6 +390,12 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				fingerprint := fingerprints[i]
 				for _, s := range ts.Samples {
 					metricName := fingerprintToName[fingerprint][nameLabel]
+					var flags uint32
+					flags = 0
+					if s.Value == math.Float64frombits(value.StaleNaN) {
+						s.Value = 0
+						flags = FLAG_NO_RECORDED_VALUE
+					}
 					err = statement.Append(
 						fingerprintToName[fingerprint][envLabel],
 						metricNameToMeta[metricName].Temporality.String(),
@@ -370,6 +403,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 						fingerprint,
 						s.Timestamp,
 						s.Value,
+						flags,
 					)
 					if err != nil {
 						return err
@@ -383,9 +417,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 							collectUsage = false
 							break
 						}
-						if val.Name == "tenant" {
-							tenant = val.Value
-						}
 					}
 
 					if collectUsage {
@@ -396,11 +427,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			start := time.Now()
 			err = statement.Send()
-			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
-				tag.Upsert(tableKey, DISTRIBUTED_SAMPLES_TABLE_V4),
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", ch.settings.ID.String()),
+					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
+				),
 			)
-			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 			return err
 		}()
 
@@ -451,11 +485,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			start := time.Now()
 			err = statement.Send()
-			ctx, _ = tag.New(ctx,
-				tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
-				tag.Upsert(tableKey, DISTRIBUTED_TIME_SERIES_TABLE_V4),
+			ch.durationHistogram.Record(
+				ctx,
+				float64(time.Since(start).Milliseconds()),
+				metric.WithAttributes(
+					attribute.String("exporter", ch.settings.ID.String()),
+					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
+				),
 			)
-			stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 			return err
 		}()
 
@@ -467,11 +504,11 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	n := len(newTimeSeries)
 	if n != 0 {
 		ch.mWrittenTimeSeries.Add(float64(n))
-		ch.l.Debugf("Wrote %d new time series.", n)
+		ch.l.Debug("wrote new time series", zap.Int("count", n))
 	}
 
 	err = func() error {
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -520,6 +557,20 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				var flags uint32
+				flags = 0
+				if min == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					min = 0
+				}
+				if max == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					max = 0
+				}
+				if sum == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					sum = 0
+				}
 				err = statement.Append(
 					fingerprintToName[fingerprint][envLabel],
 					meta.Temporality.String(),
@@ -531,6 +582,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					min,
 					max,
 					sketch,
+					flags,
 				)
 				if err != nil {
 					return err
@@ -540,11 +592,14 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 		start := time.Now()
 		err = statement.Send()
-		ctx, _ = tag.New(ctx,
-			tag.Upsert(exporterKey, pipeline.SignalMetrics.String()),
-			tag.Upsert(tableKey, DISTRIBUTED_EXP_HIST_TABLE),
+		ch.durationHistogram.Record(
+			ctx,
+			float64(time.Since(start).Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("exporter", ch.settings.ID.String()),
+				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
+			),
 		)
-		stats.Record(ctx, writeLatencyMillis.M(int64(time.Since(start).Milliseconds())))
 		return err
 	}()
 	if err != nil {

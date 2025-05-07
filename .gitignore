@@ -18,8 +18,13 @@ vendor/
 .DS_Store
 .idea
 ./config/default-config.yaml
+.config
 
 # build folder
 .build
 *.rollback
 signoz-collector
+
+# tmp
+tmp/
+**/tmp/**
