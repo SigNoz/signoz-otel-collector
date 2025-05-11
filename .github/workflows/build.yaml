@@ -24,6 +24,7 @@ jobs:
     needs: prepare
     with:
       PRIMUS_REF: main
+      GO_VERSION: 1.23
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
       GO_BUILD_FLAGS: ""
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
@@ -36,6 +37,7 @@ jobs:
     needs: prepare
     with:
       PRIMUS_REF: main
+      GO_VERSION: 1.23
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
       GO_BUILD_FLAGS: ""
