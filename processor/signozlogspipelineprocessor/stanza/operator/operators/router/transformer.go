@@ -9,6 +9,7 @@ import (
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -36,6 +37,14 @@ type Route struct {
 // CanProcess will always return true for a router operator
 func (t *Transformer) CanProcess() bool {
 	return true
+}
+
+func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	var errs error
+	for i := range entries {
+		errs = multierr.Append(errs, t.Process(ctx, entries[i]))
+	}
+	return errs
 }
 
 // Process will route incoming entries based on matching expressions

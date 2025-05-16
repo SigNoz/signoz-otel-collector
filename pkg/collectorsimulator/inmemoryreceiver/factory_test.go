@@ -21,7 +21,7 @@ func TestCreateLogsReceiver(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 
-	te, err := factory.CreateLogsReceiver(
+	te, err := factory.CreateLogs(
 		context.Background(), receiver.Settings{}, cfg, consumertest.NewNop(),
 	)
 	assert.NoError(t, err)

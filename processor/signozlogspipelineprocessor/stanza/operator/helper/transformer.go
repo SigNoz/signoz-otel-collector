@@ -9,6 +9,7 @@ import (
 
 	"github.com/expr-lang/expr/vm"
 	"go.opentelemetry.io/collector/component"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -79,6 +80,14 @@ func (t *TransformerOperator) CanProcess() bool {
 	return true
 }
 
+func (t *TransformerOperator) ProcessBatchWith(ctx context.Context, entries []*entry.Entry, process ProcessFunction) error {
+	var errs error
+	for i := range entries {
+		errs = multierr.Append(errs, process(ctx, entries[i]))
+	}
+	return errs
+}
+
 // ProcessWith will process an entry with a transform function.
 func (t *TransformerOperator) ProcessWith(ctx context.Context, entry *entry.Entry, transform TransformFunction) error {
 	// Short circuit if the "if" condition does not match
@@ -126,6 +135,9 @@ func (t *TransformerOperator) Skip(_ context.Context, entry *entry.Entry) (bool,
 
 	return !matches.(bool), nil
 }
+
+// ProcessFunction is a function that processes an entry.
+type ProcessFunction = func(context.Context, *entry.Entry) error
 
 // TransformFunction is function that transforms an entry.
 type TransformFunction = func(*entry.Entry) error

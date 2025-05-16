@@ -56,7 +56,7 @@ func skip_Test_NewPRWExporter(t *testing.T) {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopSettings()
+	set := exportertest.NewNopSettings(Type)
 	set.BuildInfo = buildInfo
 
 	tests := []struct {
@@ -147,7 +147,7 @@ func skip_Test_Start(t *testing.T) {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopSettings()
+	set := exportertest.NewNopSettings(Type)
 	set.BuildInfo = buildInfo
 	tests := []struct {
 		name                 string
@@ -340,7 +340,7 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 		Description: "OpenTelemetry Collector",
 		Version:     "1.0",
 	}
-	set := exportertest.NewNopSettings()
+	set := exportertest.NewNopSettings(Type)
 	set.BuildInfo = buildInfo
 	// after this, instantiate a CortexExporter with the current HTTP client and endpoint set to passed in endpoint
 	prwe, err := NewPrwExporter(cfg, set)
@@ -634,7 +634,7 @@ func temp_dis_Test_PushMetrics(t *testing.T) {
 				Description: "OpenTelemetry Collector",
 				Version:     "1.0",
 			}
-			set := exportertest.NewNopSettings()
+			set := exportertest.NewNopSettings(Type)
 			set.BuildInfo = buildInfo
 			prwe, nErr := NewPrwExporter(cfg, set)
 			require.NoError(t, nErr)

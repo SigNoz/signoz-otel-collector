@@ -49,7 +49,7 @@ func TestCreateProcessor(t *testing.T) {
 		},
 	}
 
-	tp, err := factory.CreateLogsProcessor(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	tp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.NoError(t, err)
 	assert.NotNil(t, tp)
 }
@@ -67,6 +67,6 @@ func TestInvalidOperators(t *testing.T) {
 		},
 	}
 
-	_, err := factory.CreateLogsProcessor(context.Background(), processortest.NewNopSettings(), cfg, nil)
+	_, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, nil)
 	assert.Error(t, err)
 }

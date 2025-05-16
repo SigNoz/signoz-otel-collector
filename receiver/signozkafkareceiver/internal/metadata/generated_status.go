@@ -6,8 +6,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+var (
+	Type             = component.MustNewType("signozkafkareceiver")
+)
+
 const (
-	Type             = "signozkafkareceiver"
 	MetricsStability = component.StabilityLevelBeta
 	LogsStability    = component.StabilityLevelBeta
 	TracesStability  = component.StabilityLevelBeta

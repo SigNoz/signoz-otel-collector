@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/exporter"
 )
 
@@ -18,7 +19,7 @@ func createDefaultConfig() component.Config {
 func createLogsExporter(
 	_ context.Context, _ exporter.Settings, config component.Config,
 ) (exporter.Logs, error) {
-	if err := component.ValidateConfig(config); err != nil {
+	if err := xconfmap.Validate(config); err != nil {
 		return nil, errors.Wrap(err, "invalid inmemory exporter config")
 	}
 	return &InMemoryExporter{

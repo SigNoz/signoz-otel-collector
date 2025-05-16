@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.uber.org/multierr"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
@@ -128,7 +129,7 @@ func TestLoadConfig(t *testing.T) {
 			assert.NoError(t, sub.Unmarshal(cfg))
 
 			if tt.expected == nil {
-				err = component.ValidateConfig(cfg)
+				err = xconfmap.Validate(cfg)
 				assert.Error(t, err)
 
 				if tt.errorLen > 0 {
@@ -137,7 +138,7 @@ func TestLoadConfig(t *testing.T) {
 
 				return
 			}
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

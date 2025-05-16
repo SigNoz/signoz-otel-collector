@@ -13,10 +13,10 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -31,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
 				Topic:         "spans",
 				Encoding:      "otlp_proto",
@@ -48,9 +48,9 @@ func TestLoadConfig(t *testing.T) {
 						},
 					},
 				},
-				Metadata: kafkaexporter.Metadata{
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},
@@ -71,7 +71,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "logs"),
+			id: component.NewIDWithName(metadata.Type, "logs"),
 			expected: &Config{
 				Topic:         "logs",
 				Encoding:      "direct",
@@ -88,9 +88,9 @@ func TestLoadConfig(t *testing.T) {
 						},
 					},
 				},
-				Metadata: kafkaexporter.Metadata{
+				Metadata: Metadata{
 					Full: true,
-					Retry: kafkaexporter.MetadataRetry{
+					Retry: MetadataRetry{
 						Max:     10,
 						Backoff: time.Second * 5,
 					},
@@ -112,7 +112,7 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

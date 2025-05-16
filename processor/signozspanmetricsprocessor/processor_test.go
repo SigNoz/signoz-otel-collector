@@ -125,8 +125,8 @@ func TestProcessorStart(t *testing.T) {
 			cfg := factory.CreateDefaultConfig().(*Config)
 			cfg.MetricsExporter = tc.metricsExporter
 
-			procCreationParams := processortest.NewNopSettings()
-			traceProcessor, err := factory.CreateTracesProcessor(context.Background(), procCreationParams, cfg, consumertest.NewNop())
+			procCreationParams := processortest.NewNopSettings(factory.Type())
+			traceProcessor, err := factory.CreateTraces(context.Background(), procCreationParams, cfg, consumertest.NewNop())
 			require.NoError(t, err)
 
 			// Test
@@ -747,10 +747,10 @@ func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Tr
 			Endpoint: "example.com:1234",
 		},
 	}
-	expCreationParams := exportertest.NewNopSettings()
-	mexp, err := otlpExpFactory.CreateMetricsExporter(context.Background(), expCreationParams, otlpConfig)
+	expCreationParams := exportertest.NewNopSettings(otlpExpFactory.Type())
+	mexp, err := otlpExpFactory.CreateMetrics(context.Background(), expCreationParams, otlpConfig)
 	require.NoError(t, err)
-	texp, err := otlpExpFactory.CreateTracesExporter(context.Background(), expCreationParams, otlpConfig)
+	texp, err := otlpExpFactory.CreateTraces(context.Background(), expCreationParams, otlpConfig)
 	require.NoError(t, err)
 	otlpID := component.NewID(component.MustNewType("otlp"))
 	return otlpID, mexp, texp

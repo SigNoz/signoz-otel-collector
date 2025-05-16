@@ -33,11 +33,15 @@ const (
 	typeStr = "clickhousemetricswrite"
 )
 
+var (
+	Type = component.MustNewType(typeStr)
+)
+
 // NewFactory creates a new Prometheus Remote Write exporter.
 func NewFactory() exporter.Factory {
 
 	return exporter.NewFactory(
-		component.MustNewType(typeStr),
+		Type,
 		createDefaultConfig,
 		exporter.WithMetrics(createMetricsExporter, component.StabilityLevelUndefined))
 }
@@ -61,16 +65,16 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	// order for each timeseries. If we shard the incoming metrics
 	// without considering this limitation, we experience
 	// "out of order samples" errors.
-	exporter, err := exporterhelper.NewMetricsExporter(
+	exporter, err := exporterhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,
 		prwe.PushMetrics,
 		exporterhelper.WithTimeout(prwCfg.TimeoutConfig),
-		exporterhelper.WithQueue(exporterhelper.QueueConfig{
+		exporterhelper.WithQueue(exporterhelper.QueueBatchConfig{
 			Enabled:      prwCfg.RemoteWriteQueue.Enabled,
 			NumConsumers: 1,
-			QueueSize:    prwCfg.RemoteWriteQueue.QueueSize,
+			QueueSize:    int64(prwCfg.RemoteWriteQueue.QueueSize),
 		}),
 		exporterhelper.WithRetry(prwCfg.BackOffConfig),
 		exporterhelper.WithStart(prwe.Start),

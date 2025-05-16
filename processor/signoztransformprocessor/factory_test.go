@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -41,7 +42,7 @@ func TestFactory_CreateDefaultConfig(t *testing.T) {
 func TestFactoryCreateProcessor_Empty(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
-	err := component.ValidateConfig(cfg)
+	err := xconfmap.Validate(cfg)
 	assert.NoError(t, err)
 }
 
@@ -55,7 +56,7 @@ func TestFactoryCreateTracesProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }
@@ -74,7 +75,7 @@ func TestFactoryCreateTracesProcessor(t *testing.T) {
 			},
 		},
 	}
-	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.NotNil(t, tp)
 	assert.NoError(t, err)
 
@@ -104,7 +105,7 @@ func TestFactoryCreateMetricsProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }
@@ -123,7 +124,7 @@ func TestFactoryCreateMetricsProcessor(t *testing.T) {
 			},
 		},
 	}
-	metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.NotNil(t, metricsProcessor)
 	assert.NoError(t, err)
 
@@ -156,7 +157,7 @@ func TestFactoryCreateLogsProcessor(t *testing.T) {
 			},
 		},
 	}
-	lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.NotNil(t, lp)
 	assert.NoError(t, err)
 
@@ -185,7 +186,7 @@ func TestFactoryCreateLogsProcessor_InvalidActions(t *testing.T) {
 			Statements: []string{`set(123`},
 		},
 	}
-	ap, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
+	ap, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), cfg, consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, ap)
 }

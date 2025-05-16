@@ -12,6 +12,7 @@ GOTEST=go test -v $(RACE)
 GOFMT=gofmt
 FMT_LOG=.fmt.log
 IMPORT_LOG=.import.log
+OTEL_VERSION ?= v0.125.0
 
 CLICKHOUSE_HOST ?= localhost
 CLICKHOUSE_PORT ?= 9000
@@ -103,3 +104,12 @@ install-ci: install-tools
 
 .PHONY: test-ci
 test-ci: lint
+
+.PHONY: update-otel-contrib
+update-otel-contrib:
+	@echo "Updating all github.com/open-telemetry/opentelemetry-collector-contrib/* dependencies to $(OTEL_VERSION)"
+	@grep 'github.com/open-telemetry/opentelemetry-collector-contrib/' go.mod | \
+		awk '{print $$1}' | \
+		sort -u | \
+		xargs -L1 -I{} go get {}@$(OTEL_VERSION)
+	@go mod tidy

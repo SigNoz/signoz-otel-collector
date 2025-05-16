@@ -93,7 +93,7 @@ func createMetricsReceiver(
 	return newMetricsReceiver(cfg.(*Config), set, defaultMetricsUnmarshalers(set.Logger), nextConsumer)
 }
 
-// createMetricsReceiver implements the CreateMetricsReceiver function type.
+// createMetricsReceiver implements the CreateMetrics function type.
 func createLogsReceiver(
 	_ context.Context,
 	set receiver.Settings,

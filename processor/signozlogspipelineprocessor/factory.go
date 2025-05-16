@@ -52,7 +52,7 @@ func createLogsProcessor(
 		return nil, fmt.Errorf("couldn't build \"signozlogspipeline\" processor %w", err)
 	}
 
-	return processorhelper.NewLogsProcessor(
+	return processorhelper.NewLogs(
 		ctx,
 		set,
 		cfg,

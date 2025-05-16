@@ -20,7 +20,7 @@ func TestCreateLogsExporter(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 
-	te, err := factory.CreateLogsExporter(
+	te, err := factory.CreateLogs(
 		context.Background(), exporter.Settings{}, cfg,
 	)
 	assert.NoError(t, err)
