@@ -427,7 +427,6 @@ func CoreComponents() (
 	errs = multierr.Append(errs, err)
 
 	exporters, err := otelcol.MakeFactoryMap(
-		debugexporter.NewFactory(),
 		otlpexporter.NewFactory(),
 		otlphttpexporter.NewFactory(),
 	)
