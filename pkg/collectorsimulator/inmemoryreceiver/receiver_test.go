@@ -60,7 +60,7 @@ func makeTestLogReceiver(receiverId string) (receiver.Logs, error) {
 
 	confmap.NewFromStringMap(map[string]any{"id": receiverId}).Unmarshal(&cfg)
 
-	return factory.CreateLogsReceiver(
+	return factory.CreateLogs(
 		context.Background(), receiver.Settings{}, cfg, consumertest.NewNop(),
 	)
 }

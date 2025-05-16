@@ -74,7 +74,7 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 	}
 	svrClient.configManager.Set(dynamicConfig)
 
-	svrClient.opampClient = client.NewWebSocket(clientLogger.Sugar())
+	svrClient.opampClient = client.NewWebSocket(NewWrappedLogger(clientLogger.Sugar()))
 
 	return svrClient, nil
 }
@@ -119,27 +119,39 @@ func (s *serverClient) Start(ctx context.Context) error {
 		return err
 	}
 
+	instanceID := func(s string) types.InstanceUid {
+		var arr [16]byte
+		n := len(s)
+		if n > 16 {
+			n = 16
+		}
+		for i := 0; i < n; i++ {
+			arr[i] = s[i]
+		}
+		return arr
+	}(s.instanceId.String())
+
 	settings := types.StartSettings{
 		OpAMPServerURL: s.managerConfig.ServerEndpoint,
-		InstanceUid:    s.instanceId.String(),
-		Callbacks: types.CallbacksStruct{
-			OnConnectFunc: func() {
+		InstanceUid:    instanceID,
+		Callbacks: types.Callbacks{
+			OnConnect: func(ctx context.Context) {
 				s.logger.Info("Connected to the server.")
 			},
-			OnConnectFailedFunc: func(err error) {
+			OnConnectFailed: func(ctx context.Context, err error) {
 				s.logger.Error("Failed to connect to the server: %v", zap.Error(err))
 			},
-			OnErrorFunc: func(err *protobufs.ServerErrorResponse) {
+			OnError: func(ctx context.Context, err *protobufs.ServerErrorResponse) {
 				s.logger.Error("Server returned an error response: %v", zap.String("", err.ErrorMessage))
 			},
-			GetEffectiveConfigFunc: func(ctx context.Context) (*protobufs.EffectiveConfig, error) {
+			GetEffectiveConfig: func(ctx context.Context) (*protobufs.EffectiveConfig, error) {
 				cfg, err := s.configManager.CreateEffectiveConfigMsg()
 				if err != nil {
 					return nil, err
 				}
 				return cfg, nil
 			},
-			OnMessageFunc: s.onMessageFuncHandler,
+			OnMessage: s.onMessageFuncHandler,
 		},
 		Capabilities: protobufs.AgentCapabilities_AgentCapabilities_ReportsStatus |
 			protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig |
@@ -148,7 +160,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 			protobufs.AgentCapabilities_AgentCapabilities_ReportsHealth,
 	}
 
-	err := s.opampClient.SetHealth(&protobufs.AgentHealth{Healthy: false})
+	err := s.opampClient.SetHealth(&protobufs.ComponentHealth{Healthy: false})
 	if err != nil {
 		return err
 	}

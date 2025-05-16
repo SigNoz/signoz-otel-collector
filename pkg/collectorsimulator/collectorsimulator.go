@@ -13,10 +13,8 @@ import (
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
-	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor"
-	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/service"
 )
 
@@ -47,11 +45,11 @@ func NewCollectorSimulator(
 	configGenerator ConfigGenerator,
 ) (simulator *CollectorSimulator, cleanupFn func(), err error) {
 	// Put together collector component factories for use in the simulation
-	receiverFactories, err := receiver.MakeFactoryMap(inmemoryreceiver.NewFactory())
+	receiverFactories, err := otelcol.MakeFactoryMap(inmemoryreceiver.NewFactory())
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create receiver factories: %w", err)
 	}
-	exporterFactories, err := exporter.MakeFactoryMap(inmemoryexporter.NewFactory())
+	exporterFactories, err := otelcol.MakeFactoryMap(inmemoryexporter.NewFactory())
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not create processor factories: %w", err)
 	}

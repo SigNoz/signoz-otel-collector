@@ -58,13 +58,13 @@ func TestNewProcessor(t *testing.T) {
 			// Prepare
 			factory := NewFactory()
 
-			creationParams := processortest.NewNopSettings()
+			creationParams := processortest.NewNopSettings(factory.Type())
 			cfg := factory.CreateDefaultConfig().(*Config)
 			cfg.LatencyHistogramBuckets = tc.latencyHistogramBuckets
 			cfg.Dimensions = tc.dimensions
 
 			// Test
-			traceProcessor, err := factory.CreateTracesProcessor(context.Background(), creationParams, cfg, consumertest.NewNop())
+			traceProcessor, err := factory.CreateTraces(context.Background(), creationParams, cfg, consumertest.NewNop())
 			smp := traceProcessor.(*processorImp)
 
 			// Verify

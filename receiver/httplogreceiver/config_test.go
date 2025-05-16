@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -24,11 +25,11 @@ func TestLoadConfig(t *testing.T) {
 		expected component.Config
 	}{
 		{
-			id:       component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id:       component.NewIDWithName(metadata.Type, ""),
 			expected: createDefaultConfig(),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "endpoint"),
+			id: component.NewIDWithName(metadata.Type, "endpoint"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: "localhost:54321",
@@ -36,7 +37,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "withtls"),
+			id: component.NewIDWithName(metadata.Type, "withtls"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
@@ -50,7 +51,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "heroku"),
+			id: component.NewIDWithName(metadata.Type, "heroku"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
@@ -59,7 +60,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "google"),
+			id: component.NewIDWithName(metadata.Type, "google"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
@@ -68,7 +69,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "json"),
+			id: component.NewIDWithName(metadata.Type, "json"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
@@ -87,7 +88,7 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

@@ -352,7 +352,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		metrics := map[string]usage.Metric{}
 
-		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		for i := range ld.ResourceLogs().Len() {
 			logs := ld.ResourceLogs().At(i)
 			res := logs.Resource()
 			resBytes, _ := json.Marshal(res.Attributes().AsRaw())

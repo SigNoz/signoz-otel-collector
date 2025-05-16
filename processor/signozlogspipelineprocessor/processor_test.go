@@ -408,7 +408,7 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 	testSink := new(consumertest.LogsSink)
 	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopSettings(),
+		processortest.NewNopSettings(factory.Type()),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -703,7 +703,7 @@ func validateProcessorBehavior(
 	testSink := new(consumertest.LogsSink)
 	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopSettings(),
+		processortest.NewNopSettings(factory.Type()),
 		config, testSink,
 	)
 	require.NoError(err)

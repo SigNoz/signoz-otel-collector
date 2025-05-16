@@ -112,6 +112,10 @@ type Parser struct {
 	exclude            map[string]struct{}
 }
 
+func (p *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	return p.ProcessBatchWith(ctx, entries, p.Process)
+}
+
 // Process will parse an entry for grok.
 func (r *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 	return r.ParserOperator.ProcessWith(ctx, entry, r.parse)

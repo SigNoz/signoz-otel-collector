@@ -38,7 +38,7 @@ func TestComponentLifecycle(t *testing.T) {
 		{
 			name: "metrics",
 			createFn: func(ctx context.Context, set exporter.Settings, cfg component.Config) (component.Component, error) {
-				return factory.CreateMetricsExporter(ctx, set, cfg)
+				return factory.CreateMetrics(ctx, set, cfg)
 			},
 		},
 	}
@@ -52,13 +52,13 @@ func TestComponentLifecycle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name+"-shutdown", func(t *testing.T) {
-			c, err := tt.createFn(context.Background(), exportertest.NewNopSettings(), cfg)
+			c, err := tt.createFn(context.Background(), exportertest.NewNopSettings(factory.Type()), cfg)
 			require.NoError(t, err)
 			err = c.Shutdown(context.Background())
 			require.NoError(t, err)
 		})
 		t.Run(tt.name+"-lifecycle", func(t *testing.T) {
-			c, err := tt.createFn(context.Background(), exportertest.NewNopSettings(), cfg)
+			c, err := tt.createFn(context.Background(), exportertest.NewNopSettings(factory.Type()), cfg)
 			require.NoError(t, err)
 			host := componenttest.NewNopHost()
 			err = c.Start(context.Background(), host)

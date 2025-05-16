@@ -15,6 +15,10 @@ type Parser struct {
 	signozstanzahelper.TimeParser
 }
 
+func (p *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	return p.ProcessBatchWith(ctx, entries, p.Process)
+}
+
 // Process will parse time from an entry.
 func (p *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 	return p.ProcessWith(ctx, entry, p.TimeParser.Parse)
