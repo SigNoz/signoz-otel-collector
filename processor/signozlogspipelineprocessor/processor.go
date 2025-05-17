@@ -128,8 +128,6 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	//
 	// So by this point, `entries` contains processed logs
 	plog := convertEntriesToPlogs(entries)
-
-	mismatch := false
 	for idx := range plog.ResourceLogs().Len() {
 		resourceLog := plog.ResourceLogs().At(idx)
 		resourceTags := resourceLog.Resource().Attributes().AsRaw()
@@ -153,16 +151,11 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 					}
 
 					if attribute != resourceTag {
-						mismatch = true
 						p.telemetrySettings.Logger.Warn("attribute_mismatch_plogs")
 					}
 				}
 			}
 		}
-	}
-
-	if mismatch {
-		p.telemetrySettings.Logger.Warn("attribute_mismatch_plogs_full")
 	}
 
 	return plog, nil
