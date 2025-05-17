@@ -98,11 +98,73 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 		}
 	}
 
+	keys := map[string]string{
+		"body":      "copy.body",
+		"namespace": "k8s.namespace.name",
+		"container": "k8s.container.name",
+		"pod":       "k8s.pod.name",
+	}
+
+	for _, entry := range entries {
+		for key, movedKey := range keys {
+			attribute, found := entry.Attributes[key]
+			if !found {
+				continue
+			}
+
+			resourceTag, found := entry.Resource[movedKey]
+			if !found {
+				continue
+			}
+
+			if attribute != resourceTag {
+				p.telemetrySettings.Logger.Warn("attribute_mismatch_entries", zap.Any("entry", entry))
+			}
+		}
+	}
+
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
 	//
 	// So by this point, `entries` contains processed logs
 	plog := convertEntriesToPlogs(entries)
+
+	mismatch := false
+	for idx := range plog.ResourceLogs().Len() {
+		resourceLog := plog.ResourceLogs().At(idx)
+		resourceTags := resourceLog.Resource().Attributes().AsRaw()
+
+		for jdx := range resourceLog.ScopeLogs().Len() {
+			scopeLogs := resourceLog.ScopeLogs().At(jdx)
+
+			for ldx := range scopeLogs.LogRecords().Len() {
+				log := scopeLogs.LogRecords().At(ldx)
+				attributes := log.Attributes().AsRaw()
+
+				for key, movedKey := range keys {
+					attribute, found := attributes[key]
+					if !found {
+						continue
+					}
+
+					resourceTag, found := resourceTags[movedKey]
+					if !found {
+						continue
+					}
+
+					if attribute != resourceTag {
+						mismatch = true
+						p.telemetrySettings.Logger.Warn("attribute_mismatch_plogs")
+					}
+				}
+			}
+		}
+	}
+
+	if mismatch {
+		p.telemetrySettings.Logger.Warn("attribute_mismatch_plogs_full")
+	}
+
 	return plog, nil
 }
 
