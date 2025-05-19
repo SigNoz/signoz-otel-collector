@@ -174,6 +174,7 @@ func plogToEntries(src plog.Logs) []*entry.Entry {
 				record := scopeLogs.LogRecords().At(lrIdx)
 				entry := entry.Entry{}
 				entry.ScopeName = scopeLogs.Scope().Name()
+				// each entry has separate reference for Resource Tags since these're used in processor, Resource tags can be transformed based on user's pipelines
 				entry.Resource = resourceLogs.Resource().Attributes().AsRaw()
 				convertFrom(record, &entry)
 				result = append(result, &entry)
