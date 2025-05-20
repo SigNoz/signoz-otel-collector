@@ -111,7 +111,6 @@ func plogToEntries(src plog.Logs) []*entry.Entry {
 	result := []*entry.Entry{}
 	for rlIdx := 0; rlIdx < src.ResourceLogs().Len(); rlIdx++ {
 		resourceLogs := src.ResourceLogs().At(rlIdx)
-		resourceAttribs := resourceLogs.Resource().Attributes().AsRaw()
 
 		for slIdx := 0; slIdx < resourceLogs.ScopeLogs().Len(); slIdx++ {
 			scopeLogs := resourceLogs.ScopeLogs().At(slIdx)
@@ -120,10 +119,10 @@ func plogToEntries(src plog.Logs) []*entry.Entry {
 				record := scopeLogs.LogRecords().At(lrIdx)
 				entry := entry.Entry{}
 				entry.ScopeName = scopeLogs.Scope().Name()
-				entry.Resource = resourceAttribs
+				// each entry has separate reference for Resource Tags since these're used in processor, Resource tags can be transformed based on user's pipelines
+				entry.Resource = resourceLogs.Resource().Attributes().AsRaw()
 				convertFrom(record, &entry)
 				result = append(result, &entry)
-
 			}
 		}
 	}
