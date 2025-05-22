@@ -717,6 +717,7 @@ require (
 replace (
 	github.com/ClickHouse/ch-go v0.63.1 => github.com/SigNoz/ch-go v0.63.1-dd-sketch
 	github.com/ClickHouse/clickhouse-go/v2 v2.30.0 => github.com/SigNoz/clickhouse-go/v2 v2.30.0-dd-sketch
+	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
 	// using 0.23.0 as there is an issue with 0.24.0 stats that results in
