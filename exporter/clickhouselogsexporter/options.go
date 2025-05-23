@@ -46,6 +46,7 @@ func WithMeter(meter metric.Meter) LogExporterOption {
 	return func(e *clickhouseLogsExporter) {
 		durationHistogram, err := meter.Float64Histogram(
 			"exporter_db_write_latency",
+			metric.WithDescription("Time taken to write data to ClickHouse"),
 			metric.WithUnit("ms"),
 			metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
 		)

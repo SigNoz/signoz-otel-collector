@@ -34,7 +34,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/exporter"
-	"go.opentelemetry.io/collector/pipeline"
 	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -43,6 +42,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/base"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/timeseries"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -85,6 +85,7 @@ type clickHouse struct {
 	exporterID uuid.UUID
 
 	durationHistogram metric.Float64Histogram
+	settings          exporter.Settings
 }
 
 type ClickHouseParams struct {
@@ -162,6 +163,7 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		disableV2:         params.DisableV2,
 		exporterID:        params.ExporterId,
 		durationHistogram: durationHistogram,
+		settings:          params.Settings,
 	}
 
 	go func() {
@@ -322,7 +324,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE),
 			),
 		)
@@ -365,7 +367,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_SAMPLES_TABLE),
 			),
 		)
@@ -379,7 +381,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	if ch.writeTSToV4 {
 		metrics := map[string]usage.Metric{}
 		err = func() error {
-			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
+			statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_SAMPLES_TABLE_V4), driver.WithReleaseConnection())
 			if err != nil {
 				return err
 			}
@@ -388,6 +390,12 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				fingerprint := fingerprints[i]
 				for _, s := range ts.Samples {
 					metricName := fingerprintToName[fingerprint][nameLabel]
+					var flags uint32
+					flags = 0
+					if s.Value == math.Float64frombits(value.StaleNaN) {
+						s.Value = 0
+						flags = FLAG_NO_RECORDED_VALUE
+					}
 					err = statement.Append(
 						fingerprintToName[fingerprint][envLabel],
 						metricNameToMeta[metricName].Temporality.String(),
@@ -395,6 +403,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 						fingerprint,
 						s.Timestamp,
 						s.Value,
+						flags,
 					)
 					if err != nil {
 						return err
@@ -407,9 +416,6 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 						if val.Name == nameLabel && (strings.HasPrefix(val.Value, "signoz_") || strings.HasPrefix(val.Value, "chi_") || strings.HasPrefix(val.Value, "otelcol_")) {
 							collectUsage = false
 							break
-						}
-						if val.Name == "tenant" {
-							tenant = val.Value
 						}
 					}
 
@@ -425,7 +431,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				ctx,
 				float64(time.Since(start).Milliseconds()),
 				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter", ch.settings.ID.String()),
 					attribute.String("table", DISTRIBUTED_SAMPLES_TABLE_V4),
 				),
 			)
@@ -483,7 +489,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				ctx,
 				float64(time.Since(start).Milliseconds()),
 				metric.WithAttributes(
-					attribute.String("exporter", pipeline.SignalMetrics.String()),
+					attribute.String("exporter", ch.settings.ID.String()),
 					attribute.String("table", DISTRIBUTED_TIME_SERIES_TABLE_V4),
 				),
 			)
@@ -502,7 +508,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 	}
 
 	err = func() error {
-		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
+		statement, err := ch.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ch.database, DISTRIBUTED_EXP_HIST_TABLE), driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
@@ -551,6 +557,20 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				}
 
 				meta := metricNameToMeta[fingerprintToName[fingerprint][nameLabel]]
+				var flags uint32
+				flags = 0
+				if min == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					min = 0
+				}
+				if max == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					max = 0
+				}
+				if sum == math.Float64frombits(value.StaleNaN) {
+					flags = FLAG_NO_RECORDED_VALUE
+					sum = 0
+				}
 				err = statement.Append(
 					fingerprintToName[fingerprint][envLabel],
 					meta.Temporality.String(),
@@ -562,6 +582,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 					min,
 					max,
 					sketch,
+					flags,
 				)
 				if err != nil {
 					return err
@@ -575,7 +596,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			ctx,
 			float64(time.Since(start).Milliseconds()),
 			metric.WithAttributes(
-				attribute.String("exporter", pipeline.SignalMetrics.String()),
+				attribute.String("exporter", ch.settings.ID.String()),
 				attribute.String("table", DISTRIBUTED_EXP_HIST_TABLE),
 			),
 		)
