@@ -1,5 +1,7 @@
 package schemamigrator
 
+import "github.com/SigNoz/signoz-otel-collector/constants"
+
 var MetricsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
@@ -800,6 +802,349 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							unix_milli;`,
 			},
 		},
+	},
+	{
+		MigrationID: 1004,
+		UpItems: []Operation{
+			// Drop existing tables and materialized views
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_6hrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1day",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1week",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week_mv",
+			},
+			// Create new tables with AggregatingMergeTree
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4",
+				Columns: []Column{
+					{Name: "env", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'", Codec: "ZSTD(1)"},
+					{Name: "temporality", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'Unspecified'", Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Indexes: []Index{
+					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree{
+						PartitionBy: "toDate(unix_milli / 1000)",
+						OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
+						TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_metrics",
+					Table:       "time_series_v4",
+					ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				Columns: []Column{
+					{Name: "env", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'", Codec: "ZSTD(1)"},
+					{Name: "temporality", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'Unspecified'", Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Indexes: []Index{
+					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree{
+						PartitionBy: "toDate(unix_milli / 1000)",
+						OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
+						TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_6hrs",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_metrics",
+					Table:       "time_series_v4_6hrs",
+					ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				Columns: []Column{
+					{Name: "env", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'", Codec: "ZSTD(1)"},
+					{Name: "temporality", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'Unspecified'", Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Indexes: []Index{
+					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree{
+						PartitionBy: "toDate(unix_milli / 1000)",
+						OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
+						TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1day",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_metrics",
+					Table:       "time_series_v4_1day",
+					ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				Columns: []Column{
+					{Name: "env", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'", Codec: "ZSTD(1)"},
+					{Name: "temporality", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'Unspecified'", Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeInt64}}, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Indexes: []Index{
+					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree{
+						PartitionBy: "toDate(unix_milli / 1000)",
+						OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
+						TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4_1week",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_metrics",
+					Table:       "time_series_v4_1week",
+					ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
+				},
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_metrics",
+				ViewName:  "time_series_v4_6hrs_mv",
+				DestTable: "time_series_v4_6hrs",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Query: `SELECT
+                env,
+                temporality,
+                metric_name,
+                description,
+                unit,
+                type,
+                is_monotonic,
+                fingerprint,
+                floor(unix_milli / 21600000) * 21600000 AS unix_milli,
+                labels
+            FROM signoz_metrics.time_series_v4`,
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_metrics",
+				ViewName:  "time_series_v4_1day_mv",
+				DestTable: "time_series_v4_1day",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Query: `SELECT
+                env,
+                temporality,
+                metric_name,
+                description,
+                unit,
+                type,
+                is_monotonic,
+                fingerprint,
+                floor(unix_milli / 86400000) * 86400000 AS unix_milli,
+                labels
+            FROM signoz_metrics.time_series_v4`,
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_metrics",
+				ViewName:  "time_series_v4_1week_mv",
+				DestTable: "time_series_v4_1week",
+				Columns: []Column{
+					{Name: "env", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'default'"},
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+					{Name: "description", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "''", Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
+					{Name: "fingerprint", Type: ColumnTypeUInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "unix_milli", Type: ColumnTypeInt64, Default: "0", Codec: "Delta(8), ZSTD(1)"},
+					{Name: "labels", Type: ColumnTypeString, Default: "''", Codec: "ZSTD(5)"},
+				},
+				Query: `SELECT
+                env,
+                temporality,
+                metric_name,
+                description,
+                unit,
+                type,
+                is_monotonic,
+                fingerprint,
+                floor(unix_milli / 604800000) * 604800000 AS unix_milli,
+                labels
+            FROM signoz_metrics.time_series_v4_1day`,
+			},
+		},
+		IsNecessary: constants.GetOrDefaultEnv("AGGREGATING_MERGE_TREE", "false") == "true",
 	},
 	// no need for down items, and there is a default value for the column
 	// so it's a safe migration without any down migration
