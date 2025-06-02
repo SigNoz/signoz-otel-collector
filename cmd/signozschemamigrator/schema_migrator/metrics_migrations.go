@@ -1146,6 +1146,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 		},
 		IsNecessary: constants.GetOrDefaultEnv("AGGREGATING_MERGE_TREE", "false") == "true",
 	},
-	// no need for down items, and there is a default value for the column
+	// no need for down items, and there is a env variable based test migration
 	// so it's a safe migration without any down migration
 }
