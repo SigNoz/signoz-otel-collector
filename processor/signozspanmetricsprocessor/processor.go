@@ -1175,11 +1175,14 @@ func concatDimensionValue(dest *bytes.Buffer, value string, prefixSep bool) {
 func (p *processorImp) buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
 	spanName := span.Name()
 	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
-		p.logger.Warn("Too many services to track, using overflow service name", zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
+		p.logger.Warn("Too many services to track, using overflow service name",
+			zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
 		serviceName = overflowServiceName
 	}
 	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
-		p.logger.Warn("Too many operations to track, using overflow operation name", zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService))
+		p.logger.Warn("Too many operations to track, using overflow operation name",
+			zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService),
+			zap.String("serviceName", serviceName))
 		spanName = overflowOperation
 	}
 	concatDimensionValue(dest, serviceName, false)
