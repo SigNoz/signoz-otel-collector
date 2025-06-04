@@ -90,7 +90,11 @@ func newTracesReceiver(config Config, set receiver.Settings, unmarshalers map[st
 	sarama.Logger = zap.NewStdLog(set.Logger)
 
 	c := sarama.NewConfig()
-	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	var err error
+	c, err = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	if err != nil {
+		return nil, err
+	}
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -203,7 +207,11 @@ func newMetricsReceiver(config Config, set receiver.Settings, unmarshalers map[s
 	sarama.Logger = zap.NewStdLog(set.Logger)
 
 	c := sarama.NewConfig()
-	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	var err error
+	c, err = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	if err != nil {
+		return nil, err
+	}
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -311,7 +319,11 @@ func newLogsReceiver(config Config, set receiver.Settings, unmarshalers map[stri
 	sarama.Logger = zap.NewStdLog(set.Logger)
 
 	c := sarama.NewConfig()
-	c = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	var err error
+	c, err = setSaramaConsumerConfig(c, &config.SaramaConsumerConfig)
+	if err != nil {
+		return nil, err
+	}
 	c.ClientID = config.ClientID
 	c.Metadata.Full = config.Metadata.Full
 	c.Metadata.Retry.Max = config.Metadata.Retry.Max
@@ -866,7 +878,7 @@ func toSaramaInitialOffset(initialOffset string) (int64, error) {
 	}
 }
 
-func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) *sarama.Config {
+func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) (*sarama.Config, error) {
 	if c.ConsumerFetchMinBytes != 0 {
 		sc.Consumer.Fetch.Min = c.ConsumerFetchMinBytes
 	}
@@ -891,5 +903,20 @@ func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) *sarama
 	if c.MessagesChannelSize != 0 {
 		sc.ChannelBufferSize = c.MessagesChannelSize
 	}
-	return sc
+	if c.GroupRebalanceStrategy != "" {
+		switch c.GroupRebalanceStrategy {
+		case "sticky":
+			sc.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategySticky()
+		case "roundrobin":
+			sc.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
+		case "range":
+			sc.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRange()
+		default:
+			return nil, fmt.Errorf("invalid group rebalance strategy: %s", c.GroupRebalanceStrategy)
+		}
+	}
+	if c.GroupHeartbeatInterval != 0 {
+		sc.Consumer.Group.Heartbeat.Interval = c.GroupHeartbeatInterval
+	}
+	return sc, nil
 }
