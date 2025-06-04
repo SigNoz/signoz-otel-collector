@@ -41,6 +41,8 @@ type SaramaConsumerConfig struct {
 	MaxProcessingTime   time.Duration `mapstructure:"max_processing_time"`
 	GroupSessionTimeout time.Duration `mapstructure:"consumer_group_session_timeout"`
 	MessagesChannelSize int           `mapstructure:"messages_channel_size"`
+	GroupRebalanceStrategy string `mapstructure:"group_rebalance_strategy"`
+	GroupHeartbeatInterval time.Duration `mapstructure:"group_heartbeat_interval"`
 }
 
 // Config defines configuration for Kafka receiver.
