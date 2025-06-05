@@ -3,6 +3,8 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+	"github.com/jellydator/ttlcache/v3"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"go.opentelemetry.io/collector/component"
@@ -38,6 +40,10 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	if err != nil {
 		return nil, err
 	}
+	cache := ttlcache.New(
+		ttlcache.WithTTL[string, bool](45*time.Minute),
+		ttlcache.WithDisableTouchOnHit[string, bool](),
+	)
 
 	chExporter, err := NewClickHouseExporter(
 		WithConfig(chCfg),
@@ -46,6 +52,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithMeter(set.MeterProvider.Meter(internalmetadata.ScopeName)),
 		WithEnableExpHist(chCfg.EnableExpHist),
 		WithSettings(set),
+		WithCache(cache, chCfg.DisableTtlCache),
 	)
 	if err != nil {
 		return nil, err
@@ -82,5 +89,6 @@ func createDefaultConfig() component.Config {
 		TimeSeriesTable:  "distributed_time_series_v4",
 		ExpHistTable:     "distributed_exp_hist",
 		MetadataTable:    "distributed_metadata",
+		DisableTtlCache:  false,
 	}
 }

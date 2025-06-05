@@ -23,6 +23,7 @@ type Config struct {
 	TimeSeriesTable string `mapstructure:"time_series_table"`
 	ExpHistTable    string `mapstructure:"exp_hist_table"`
 	MetadataTable   string `mapstructure:"metadata_table"`
+	DisableTtlCache bool   `mapstructure:"disable_ttl_cache"`
 }
 
 var _ component.Config = (*Config)(nil)

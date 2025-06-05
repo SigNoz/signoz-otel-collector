@@ -61,6 +61,7 @@ type clickhouseMetricsExporter struct {
 	processMetricsDuration metricapi.Float64Histogram
 	exportMetricsDuration  metricapi.Float64Histogram
 	settings               exporter.Settings
+	disableTtlCache        bool
 }
 
 // sample represents a single metric sample
@@ -147,9 +148,14 @@ func WithEnableExpHist(enableExpHist bool) ExporterOption {
 	}
 }
 
-func WithCache(cache *ttlcache.Cache[string, bool]) ExporterOption {
+func WithCache(cache *ttlcache.Cache[string, bool], enabled bool) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
-		e.cache = cache
+		e.disableTtlCache = enabled
+		if e.disableTtlCache {
+			e.cache = nil
+		} else {
+			e.cache = cache
+		}
 		return nil
 	}
 }
@@ -176,13 +182,8 @@ func WithSettings(settings exporter.Settings) ExporterOption {
 }
 
 func defaultOptions() []ExporterOption {
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, bool](45*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-	)
 
 	return []ExporterOption{
-		WithCache(cache),
 		WithLogger(zap.NewNop()),
 		WithEnableExpHist(false),
 		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
@@ -228,8 +229,10 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
-	go c.cache.Start()
-	c.cacheRunning = true
+	if c.cache != nil {
+		go c.cache.Start()
+		c.cacheRunning = true
+	}
 	return nil
 }
 
@@ -949,9 +952,11 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		for _, ts := range timeSeries {
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
-			if item := c.cache.Get(cacheKey); item != nil {
-				if value := item.Value(); value {
-					continue
+			if c.cache != nil {
+				if item := c.cache.Get(cacheKey); item != nil {
+					if value := item.Value(); value {
+						continue
+					}
 				}
 			}
 			err = statement.Append(
@@ -973,7 +978,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
-			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
+			if c.cache != nil {
+				c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
+			}
 		}
 		return statement.Send()
 	}
