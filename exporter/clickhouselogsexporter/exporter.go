@@ -569,6 +569,9 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	tagType utils.TagType,
 	datatype utils.TagDataType,
 ) {
+	if len(key) > 256 {
+		return
+	}
 	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
 	// skip if the key is already present
 	if item := e.keysCache.Get(cacheKey); item != nil {
@@ -601,7 +604,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for attrKey, attrVal := range attrs.StringData {
-
+		if len(attrKey) > 256 {
+			continue
+		}
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -627,6 +632,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	}
 
 	for numKey, numVal := range attrs.NumberData {
+		if len(numKey) > 256 {
+			continue
+		}
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
@@ -646,6 +654,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		}
 	}
 	for boolKey := range attrs.BoolData {
+		if len(boolKey) > 256 {
+			continue
+		}
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
