@@ -806,6 +806,84 @@ var MetricsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1004,
 		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week_mv_separate_attrs",
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_6hrs_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 21600000) * 21600000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_1day_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 86400000) * 86400000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4_6hrs`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_1week_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 604800000) * 604800000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4_1day`,
+			},
+		},
+		IsNecessary: constants.GetOrDefaultEnv("DROP_TABLES_ALLOWED", "false") == "true",
+	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
 			// Drop existing tables and materialized views
 			DropTableOperation{
 				Database: "signoz_metrics",
@@ -870,7 +948,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt32}}, Default: "false", Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
 					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -905,7 +982,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
 					Database:    "signoz_metrics",
@@ -931,7 +1007,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt32}}, Default: "false", Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
 					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -966,7 +1041,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
 					Database:    "signoz_metrics",
@@ -992,7 +1066,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt32}}, Default: "false", Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
 					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -1027,7 +1100,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
 					Database:    "signoz_metrics",
@@ -1053,7 +1125,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeString, ValueType: ColumnTypeString}}}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeUInt32}}, Default: "false", Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
 					{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -1088,7 +1159,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
 					Database:    "signoz_metrics",
@@ -1115,7 +1185,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
                 env,
@@ -1131,8 +1200,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
                 attrs,
                 scope_attrs,
                 resource_attrs,
-                __normalized,
-                flags
+                __normalized
             FROM signoz_metrics.time_series_v4`,
 			},
 			CreateMaterializedViewOperation{
@@ -1154,7 +1222,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
                 env,
@@ -1170,8 +1237,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
                 attrs,
                 scope_attrs,
                 resource_attrs,
-                __normalized,
-                flags
+                __normalized
             FROM signoz_metrics.time_series_v4`,
 			},
 			CreateMaterializedViewOperation{
@@ -1193,7 +1259,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "scope_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "resource_attrs", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "__normalized", Type: ColumnTypeBool, Default: "true", Codec: "ZSTD(1)"},
-					{Name: "flags", Type: ColumnTypeUInt32, Default: "0", Codec: "ZSTD(1)"},
 				},
 				Query: `SELECT
                 env,
@@ -1209,8 +1274,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
                 attrs,
                 scope_attrs,
                 resource_attrs,
-                __normalized,
-                flags
+                __normalized
             FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
