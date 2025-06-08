@@ -879,7 +879,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
-		IsNecessary: constants.GetOrDefaultEnv("DROP_TABLES_ALLOWED", "false") == "true",
+		IsNecessary: constants.GetOrDefaultEnv("DROP_UNUSED_MVS_METRICS", "false") == "true",
 	},
 	{
 		MigrationID: 1005,
