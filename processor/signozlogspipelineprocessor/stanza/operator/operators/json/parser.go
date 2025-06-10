@@ -5,7 +5,9 @@ package json
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
@@ -76,9 +78,15 @@ func (p *Parser) flatten(parent string, value any, destination map[string]any, d
 			destination[parent] = mapped
 			return
 		}
-		for k, v := range mapped {
-			newKey := generateKey(parent, k)
-			p.flatten(newKey, v, destination, depth+1)
+		// Sorting keys to have a consistent behavior when paths are not enabled and keys repeat at different levels
+		keys := []string{}
+		for key := range maps.Keys(mapped) {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		for _, key := range keys {
+			newKey := generateKey(parent, key)
+			p.flatten(newKey, mapped[key], destination, depth+1)
 		}
 	default:
 		destination[parent] = value

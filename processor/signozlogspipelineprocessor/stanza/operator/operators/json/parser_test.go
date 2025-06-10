@@ -4,7 +4,6 @@ package json
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -274,9 +273,9 @@ func TestParser(t *testing.T) {
 				Body: testJSONPayload,
 			},
 			&entry.Entry{
-				Attributes: map[string]interface{}{
+				Attributes: map[string]any{
 					"_p":                         "F",
-					"docker":                     []interface{}{"container_1", "container_8"},
+					"docker":                     []any{"container_1", "container_8"},
 					"kubernetes.container_hash":  "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent@sha256:13bc6a5d47f0fc196e969159676dcb52a1eadbe5097b952a1b53bc449c525ed2",
 					"kubernetes.container_image": "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent:v1.0.2-eksbuild.4",
 					"kubernetes.container_name":  "aws-network-flow-monitor-agent",
@@ -292,9 +291,9 @@ func TestParser(t *testing.T) {
 					"log_processed.timestamp":    1.748426199363e+12,
 					"stream":                     "stdout",
 					"valorant.game.is_game":      "false",
-					"valorant.game.metadata": map[string]interface{}{
+					"valorant.game.metadata": map[string]any{
 						"installation_path": "C://games/installed/valorant",
-						"vanguard": map[string]interface{}{
+						"vanguard": map[string]any{
 							"hash_check_status":  "success",
 							"malformed_hardware": false,
 							"running":            true,
@@ -320,9 +319,9 @@ func TestParser(t *testing.T) {
 				Body: testJSONPayload,
 			},
 			&entry.Entry{
-				Attributes: map[string]interface{}{
+				Attributes: map[string]any{
 					"flattened._p":                                                 "F",
-					"flattened.docker":                                             []interface{}{"container_1", "container_8"},
+					"flattened.docker":                                             []any{"container_1", "container_8"},
 					"flattened.kubernetes.container_hash":                          "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent@sha256:13bc6a5d47f0fc196e969159676dcb52a1eadbe5097b952a1b53bc449c525ed2",
 					"flattened.kubernetes.container_image":                         "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent:v1.0.2-eksbuild.4",
 					"flattened.kubernetes.container_name":                          "aws-network-flow-monitor-agent",
@@ -361,20 +360,21 @@ func TestParser(t *testing.T) {
 				Body: testJSONPayload,
 			},
 			&entry.Entry{
-				Attributes: map[string]interface{}{
-					"_p":                "F",
-					"container_hash":    "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent@sha256:13bc6a5d47f0fc196e969159676dcb52a1eadbe5097b952a1b53bc449c525ed2",
-					"container_image":   "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent:v1.0.2-eksbuild.4",
-					"container_name":    "aws-network-flow-monitor-agent",
-					"docker":            []interface{}{"container_1", "container_8"},
-					"docker_id":         "257e614a0a24c811d9d56b2ae6245b8ae29a1cd3023f3f8a550164108f1fd128",
-					"hash_check_status": "success", "host": "ip-172-31-29-49.ap-south-1.compute.internal",
+				Attributes: map[string]any{
+					"_p":                 "F",
+					"container_hash":     "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent@sha256:13bc6a5d47f0fc196e969159676dcb52a1eadbe5097b952a1b53bc449c525ed2",
+					"container_image":    "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent:v1.0.2-eksbuild.4",
+					"container_name":     "aws-network-flow-monitor-agent",
+					"docker":             []any{"container_1", "container_8"},
+					"docker_id":          "257e614a0a24c811d9d56b2ae6245b8ae29a1cd3023f3f8a550164108f1fd128",
+					"hash_check_status":  "success",
+					"host":               "ip-172-31-29-49.ap-south-1.compute.internal",
 					"installation_path":  "C://games/installed/valorant",
 					"is_game":            "false",
 					"level":              "INFO",
 					"log":                "{\"level\":\"INFO\",\"target\":\"amzn_nfm::events::event_provider_ebpf\"}",
 					"malformed_hardware": false,
-					"message":            "Under log_processed",
+					"message":            "under valorant 3",
 					"namespace_name":     "amazon-network-flow-monitor",
 					"pod_id":             "c514f9a4-0412-4dd7-a4cb-7ff51d9ddee9",
 					"pod_name":           "aws-network-flow-monitor-agent-qdrt2",
@@ -383,7 +383,7 @@ func TestParser(t *testing.T) {
 					"target":             "amzn_nfm::events::event_provider_ebpf",
 					"timestamp":          1.748426199363e+12,
 					"uninstall":          true,
-					"version":            "patch_v1.100.0",
+					"version":            "v0.0.1",
 				},
 				Body: testJSONPayload,
 			},
@@ -412,16 +412,4 @@ func TestParser(t *testing.T) {
 			fake.ExpectEntry(t, tc.expect)
 		})
 	}
-}
-
-func TestRandom(t *testing.T) {
-	parser := newTestParser(t)
-	parser.enableFlattening = true
-	parser.enablePaths = true
-	parser.maxFlatteningDepth = 2
-
-	result, err := parser.parse(testJSONPayload)
-	fmt.Printf("%#v\n", result)
-	// json.NewEncoder(os.Stdout).Encode(result)
-	panic(err)
 }
