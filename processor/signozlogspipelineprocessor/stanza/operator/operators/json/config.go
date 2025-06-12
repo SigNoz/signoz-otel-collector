@@ -34,10 +34,10 @@ func NewConfigWithID(operatorID string) *Config {
 // Config is the configuration of a JSON parser operator.
 type Config struct {
 	signozstanzahelper.ParserConfig `mapstructure:",squash"`
-	EnableFlattening                bool   `yaml:"enable_flattening"`
-	MaxFlatteningDepth              int    `yaml:"max_flattening_depth"`
-	EnablePaths                     bool   `yaml:"enable_paths"`
-	PathPrefix                      string `yaml:"path_prefix"`
+	EnableFlattening                bool   `mapstructure:"enable_flattening"`
+	MaxFlatteningDepth              int    `mapstructure:"max_flattening_depth"`
+	EnablePaths                     bool   `mapstructure:"enable_paths"`
+	PathPrefix                      string `mapstructure:"path_prefix"`
 }
 
 // Build will build a JSON parser operator.
