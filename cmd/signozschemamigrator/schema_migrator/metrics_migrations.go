@@ -877,7 +877,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
-		IsNecessary: true,
 	},
 	// no need for down items, and there is a default value for the column
 	// so it's a safe migration without any down migration
