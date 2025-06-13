@@ -462,7 +462,9 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure v1.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/sys/mountinfo v0.7.1 // indirect
+	github.com/moby/go-archive v0.1.0 // indirect
+	github.com/moby/sys/atomicwriter v0.1.0 // indirect
+	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/mongodb-forks/digest v1.1.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/mrunalp/fileutils v0.5.1 // indirect
@@ -612,6 +614,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	gotest.tools/v3 v3.5.2 // indirect
 	k8s.io/api v0.31.1 // indirect
 	k8s.io/apimachinery v0.31.1 // indirect
 	k8s.io/client-go v0.31.1 // indirect
@@ -718,8 +721,8 @@ require (
 )
 
 replace (
-	github.com/ClickHouse/ch-go v0.63.1 => github.com/SigNoz/ch-go v0.66.0-dd-sketch-test
-	github.com/ClickHouse/clickhouse-go/v2 v2.30.0 => github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch-test
+	github.com/ClickHouse/ch-go v0.66.0 => github.com/SigNoz/ch-go v0.66.0-dd-sketch-test
+	github.com/ClickHouse/clickhouse-go/v2 v2.36.0 => github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch-test
 	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
