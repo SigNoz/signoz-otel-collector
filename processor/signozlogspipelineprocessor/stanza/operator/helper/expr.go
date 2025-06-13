@@ -60,6 +60,10 @@ func GetExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool) map[string]any {
 	env["timestamp"] = e.Timestamp
 	env["severity_text"] = e.SeverityText
 	env["severity_number"] = int(e.Severity)
+	env["trace_id"] = e.TraceID
+	env["span_id"] = e.SpanID
+	env["trace_flags"] = e.TraceFlags
+	env["scope_name"] = e.ScopeName
 
 	if forExprWithBodyFieldRef {
 		env["body_map"] = signozstanzaentry.ParseBodyJson(e)
