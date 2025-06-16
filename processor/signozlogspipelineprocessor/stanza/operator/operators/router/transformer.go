@@ -64,8 +64,6 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 				_ = output.Process(ctx, entry)
 			}
 			break
-		} else {
-			t.Logger().Info("failed to match entry against", zap.Any("entry", entry), zap.String("operator", route.OutputOperators[0].Type()))
 		}
 	}
 
