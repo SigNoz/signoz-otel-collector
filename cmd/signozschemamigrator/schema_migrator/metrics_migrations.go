@@ -804,18 +804,6 @@ var MetricsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1004,
 		UpItems: []Operation{
-			DropTableOperation{
-				Database: "signoz_metrics",
-				Table:    "time_series_v4_6hrs_mv_separate_attrs",
-			},
-			DropTableOperation{
-				Database: "signoz_metrics",
-				Table:    "time_series_v4_1day_mv_separate_attrs",
-			},
-			DropTableOperation{
-				Database: "signoz_metrics",
-				Table:    "time_series_v4_1week_mv_separate_attrs",
-			},
 			ModifyQueryMaterializedViewOperation{
 				Database: "signoz_metrics",
 				ViewName: "time_series_v4_6hrs_mv",
@@ -878,6 +866,21 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
-	// no need for down items, and there is a default value for the column
-	// so it's a safe migration without any down migration
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week_mv_separate_attrs",
+			},
+		},
+	},
 }
