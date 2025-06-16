@@ -80,7 +80,7 @@ jobs:
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: gcp
   staging:
-    if: ${{ github.event.ref == 'refs/heads/main' }}
+    if: ${{ contains(github.event.label.name, 'staging:') || github.event.ref == 'refs/heads/main' }}
     uses: signoz/primus.workflows/.github/workflows/github-trigger.yaml@main
     secrets: inherit
     needs: [prepare, signoz-otel-collector, signoz-schema-migrator]
