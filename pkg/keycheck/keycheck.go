@@ -32,11 +32,6 @@ func IsRandomKey(key string) bool {
 		return false
 	}
 
-	// Long mixed case strings without digits are likely random
-	if length > 15 && hasUpperLowerDigit(key) {
-		return true
-	}
-
 	// Use a single loop to check all segments
 	start := 0
 	for i := 0; i <= len(key); i++ {
