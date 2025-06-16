@@ -33,7 +33,7 @@ func IsRandomKey(key string) bool {
 	}
 
 	// Long mixed case strings without digits are likely random
-	if length > 15 && hasUpperLowerDigit(key) == false && hasUpperLower(key) {
+	if length > 15 && hasUpperLowerDigit(key) {
 		return true
 	}
 
@@ -99,6 +99,8 @@ func containsVowels(s string) bool {
 	return false
 }
 
+// The function hasUpperLowerDigit is sufficient for checking if a string has both upper and lower case letters, as well as digits.
+// Therefore, the hasUpperLower function is redundant and can be removed.
 func hasUpperLowerDigit(s string) bool {
 	var hasUpper, hasLower, hasDigit bool
 	for _, r := range s {
@@ -112,18 +114,4 @@ func hasUpperLowerDigit(s string) bool {
 		}
 	}
 	return hasUpper && hasLower && hasDigit
-}
-
-// hasUpperLower checks if a string has both upper and lower case letters
-func hasUpperLower(s string) bool {
-	var hasUpper, hasLower bool
-	for _, r := range s {
-		switch {
-		case unicode.IsUpper(r):
-			hasUpper = true
-		case unicode.IsLower(r):
-			hasLower = true
-		}
-	}
-	return hasUpper && hasLower
 }
