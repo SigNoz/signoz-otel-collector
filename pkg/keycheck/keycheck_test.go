@@ -24,8 +24,13 @@ func Test_IsRandomKey(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "Long String Without Vowels",
+			name: "Long String Without Vowels < 30",
 			key:  "bcdfghjklmnpqrstvwxyz",
+			want: false,
+		},
+		{
+			name: "Long String Without Vowels > 30",
+			key:  "bcdfghjklmnpqrstvwxyzbcdfghjklmnpqrstvwxyzbcdfghjklmnpqrstvwxyz",
 			want: true,
 		},
 		{
@@ -46,7 +51,7 @@ func Test_IsRandomKey(t *testing.T) {
 		{
 			name: "Mixed Case without Digits",
 			key:  "Abcdefghijklmnop",
-			want: true,
+			want: false,
 		},
 		{
 			name: "Empty String",
@@ -61,11 +66,6 @@ func Test_IsRandomKey(t *testing.T) {
 		{
 			name: "String with Only Digits",
 			key:  "1234567890123456",
-			want: true,
-		},
-		{
-			name: "String with Upper and Lower but No Digits",
-			key:  "Abcdefghijklmnop",
 			want: true,
 		},
 		{
