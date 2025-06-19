@@ -25,6 +25,8 @@ import (
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -32,7 +34,7 @@ func TestLoadConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	factory := NewFactory()
-	factories.Exporters[component.MustNewType(typeStr)] = factory
+	factories.Exporters[metadata.Type] = factory
 	cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", "config.yaml"), factories)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
@@ -41,10 +43,10 @@ func TestLoadConfig(t *testing.T) {
 
 	defaultCfg := factory.CreateDefaultConfig()
 	defaultCfg.(*Config).DSN = "tcp://127.0.0.1:9000/?dial_timeout=5s"
-	r0 := cfg.Exporters[component.NewID(component.MustNewType(typeStr))]
+	r0 := cfg.Exporters[component.NewID(metadata.Type)]
 	assert.Equal(t, r0, defaultCfg)
 
-	r1 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "full")].(*Config)
+	r1 := cfg.Exporters[component.NewIDWithName(metadata.Type, "full")].(*Config)
 	assert.Equal(t, r1, &Config{
 		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
 		TimeoutConfig: exporterhelper.TimeoutConfig{
@@ -70,6 +72,6 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true
-	r2 := cfg.Exporters[component.NewIDWithName(component.MustNewType(typeStr), "new_schema")]
+	r2 := cfg.Exporters[component.NewIDWithName(metadata.Type, "new_schema")]
 	assert.Equal(t, r2, defaultCfg)
 }

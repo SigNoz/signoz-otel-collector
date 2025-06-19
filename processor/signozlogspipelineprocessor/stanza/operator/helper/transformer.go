@@ -9,6 +9,7 @@ import (
 
 	"github.com/expr-lang/expr/vm"
 	"go.opentelemetry.io/collector/component"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -77,6 +78,17 @@ type TransformerOperator struct {
 // CanProcess will always return true for a transformer operator.
 func (t *TransformerOperator) CanProcess() bool {
 	return true
+}
+
+// ProcessFunction is a function that processes an entry.
+type ProcessFunction = func(context.Context, *entry.Entry) error
+
+func (t *TransformerOperator) ProcessBatchWith(ctx context.Context, entries []*entry.Entry, process ProcessFunction) error {
+	var errs error
+	for i := range entries {
+		errs = multierr.Append(errs, process(ctx, entries[i]))
+	}
+	return errs
 }
 
 // ProcessWith will process an entry with a transform function.

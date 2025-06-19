@@ -25,7 +25,7 @@ func TestLoadConfig(t *testing.T) {
 		expected component.Config
 	}{
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
 				TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
 				BackOffConfig: configretry.NewDefaultBackOffConfig(),

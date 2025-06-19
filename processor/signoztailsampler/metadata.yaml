@@ -1,0 +1,6 @@
+type: signoz_tail_sampling
+
+status:
+  class: processor
+  stability:
+    beta: [traces, metrics, logs]

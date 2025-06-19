@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/unmarshalertest"
 )
@@ -61,7 +62,7 @@ func TestNewLogsReceiver(t *testing.T) {
 			cfg.RecordType = testCase.recordType
 			got, err := newLogsReceiver(
 				cfg,
-				receivertest.NewNopSettings(),
+				receivertest.NewNopSettings(metadata.Type),
 				defaultLogsUnmarshalers(zap.NewNop()),
 				testCase.consumer,
 			)
@@ -85,7 +86,7 @@ func TestLogsReceiverWithSuccess(t *testing.T) {
 
 	receiver, err := newLogsReceiver(
 		cfg,
-		receivertest.NewNopSettings(),
+		receivertest.NewNopSettings(metadata.Type),
 		map[string]unmarshaler.LogsUnmarshaler{"test": unmarshalertest.NewWithLogs(plogsgen.Generate(plogsgen.WithLogRecordCount(10)))},
 		sink,
 	)
@@ -131,7 +132,7 @@ func TestLogsReceiverWithError(t *testing.T) {
 
 	receiver, err := newLogsReceiver(
 		cfg,
-		receivertest.NewNopSettings(),
+		receivertest.NewNopSettings(metadata.Type),
 		map[string]unmarshaler.LogsUnmarshaler{"test": unmarshalertest.NewErrLogs(testErr)},
 		consumertest.NewErr(testErr),
 	)

@@ -117,6 +117,10 @@ func (r *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 	return r.ParserOperator.ProcessWith(ctx, entry, r.parse)
 }
 
+func (r *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	return r.ProcessBatchWith(ctx, entries, r.Process)
+}
+
 // parse will parse a value using the supplied grok.
 func (r *Parser) parse(value interface{}) (interface{}, error) {
 	var raw string

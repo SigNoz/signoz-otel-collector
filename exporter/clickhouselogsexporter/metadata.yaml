@@ -1,0 +1,5 @@
+type: clickhouselogsexporter
+status:
+  class: exporter
+  stability:
+    stable: [logs]

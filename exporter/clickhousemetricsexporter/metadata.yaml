@@ -1,0 +1,5 @@
+type: clickhousemetricswrite
+status:
+  class: exporter
+  stability:
+    stable: [metrics]

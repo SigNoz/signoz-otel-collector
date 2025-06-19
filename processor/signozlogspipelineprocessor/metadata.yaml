@@ -1,0 +1,6 @@
+type: signozlogspipeline
+
+status:
+  class: processor
+  stability:
+    beta: [logs]

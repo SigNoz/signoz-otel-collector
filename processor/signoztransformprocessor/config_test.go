@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.uber.org/multierr"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
@@ -26,7 +27,7 @@ func TestLoadConfig(t *testing.T) {
 		errorLen int
 	}{
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
 				ErrorMode: ottl.PropagateError,
 				TraceStatements: []common.ContextStatements{
@@ -77,7 +78,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "ignore_errors"),
+			id: component.NewIDWithName(metadata.Type, "ignore_errors"),
 			expected: &Config{
 				ErrorMode: ottl.IgnoreError,
 				TraceStatements: []common.ContextStatements{
@@ -93,25 +94,25 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_trace"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_trace"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_trace"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_trace"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_metric"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_metric"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_metric"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_metric"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_log"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_log"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_log"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_log"),
 		},
 		{
-			id:       component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_multi_signal"),
+			id:       component.NewIDWithName(metadata.Type, "bad_syntax_multi_signal"),
 			errorLen: 3,
 		},
 	}
@@ -128,7 +129,7 @@ func TestLoadConfig(t *testing.T) {
 			assert.NoError(t, sub.Unmarshal(cfg))
 
 			if tt.expected == nil {
-				err = component.ValidateConfig(cfg)
+				err = xconfmap.Validate(cfg)
 				assert.Error(t, err)
 
 				if tt.errorLen > 0 {
@@ -137,14 +138,14 @@ func TestLoadConfig(t *testing.T) {
 
 				return
 			}
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
 }
 
 func Test_UnknownContextID(t *testing.T) {
-	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_context")
+	id := component.NewIDWithName(metadata.Type, "unknown_context")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)
@@ -158,7 +159,7 @@ func Test_UnknownContextID(t *testing.T) {
 }
 
 func Test_UnknownErrorMode(t *testing.T) {
-	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_error_mode")
+	id := component.NewIDWithName(metadata.Type, "unknown_error_mode")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)

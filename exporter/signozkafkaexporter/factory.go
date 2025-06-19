@@ -80,7 +80,7 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 		o(f)
 	}
 	return exporter.NewFactory(
-		component.MustNewType(metadata.Type),
+		metadata.Type,
 		createDefaultConfig,
 		exporter.WithTraces(f.createTracesExporter, metadata.TracesStability),
 		exporter.WithMetrics(f.createMetricsExporter, metadata.MetricsStability),
@@ -135,7 +135,7 @@ func (f *kafkaExporterFactory) createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		set,
 		&oCfg,
@@ -165,7 +165,7 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		set,
 		&oCfg,
@@ -195,7 +195,7 @@ func (f *kafkaExporterFactory) createLogsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		&oCfg,

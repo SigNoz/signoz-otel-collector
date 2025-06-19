@@ -6,8 +6,12 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+var (
+	Type      = component.MustNewType("kafka")
+	ScopeName = "github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
+)
+
 const (
-	Type             = "signozkafkareceiver"
 	MetricsStability = component.StabilityLevelBeta
 	LogsStability    = component.StabilityLevelBeta
 	TracesStability  = component.StabilityLevelBeta

@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -41,7 +42,7 @@ func skip_Test_createMetricsExporter(t *testing.T) {
 	invalidConfig := createDefaultConfig().(*Config)
 	invalidConfig.HTTPClientSettings = confighttp.ClientConfig{}
 	invalidTLSConfig := createDefaultConfig().(*Config)
-	invalidTLSConfig.HTTPClientSettings.TLSSetting = configtls.ClientConfig{
+	invalidTLSConfig.HTTPClientSettings.TLS = configtls.ClientConfig{
 		Config: configtls.Config{
 			CAFile:   "non-existent file",
 			CertFile: "",
@@ -59,25 +60,25 @@ func skip_Test_createMetricsExporter(t *testing.T) {
 	}{
 		{"success_case",
 			createDefaultConfig(),
-			exportertest.NewNopSettings(),
+			exportertest.NewNopSettings(metadata.Type),
 			false,
 			false,
 		},
 		{"fail_case",
 			nil,
-			exportertest.NewNopSettings(),
+			exportertest.NewNopSettings(metadata.Type),
 			true,
 			false,
 		},
 		{"invalid_config_case",
 			invalidConfig,
-			exportertest.NewNopSettings(),
+			exportertest.NewNopSettings(metadata.Type),
 			true,
 			false,
 		},
 		{"invalid_tls_config_case",
 			invalidTLSConfig,
-			exportertest.NewNopSettings(),
+			exportertest.NewNopSettings(metadata.Type),
 			false,
 			true,
 		},

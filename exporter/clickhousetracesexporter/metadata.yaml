@@ -1,0 +1,5 @@
+type: clickhousetraces
+status:
+  class: exporter
+  stability:
+    stable: [traces]

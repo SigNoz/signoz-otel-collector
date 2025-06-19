@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
+
+	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver/internal/metadata"
 )
 
 const (
@@ -16,7 +18,7 @@ const (
 
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		component.MustNewType("clickhousesystemtablesreceiver"),
+		metadata.Type,
 		createDefaultConfig,
 		receiver.WithLogs(createLogsReceiver, component.StabilityLevelAlpha),
 	)
