@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest/plogtest"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -408,7 +409,7 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 	testSink := new(consumertest.LogsSink)
 	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopSettings(component.MustNewType("signozlogspipeline")),
+		processortest.NewNopSettings(metadata.Type),
 		config, testSink,
 	)
 	require.NoError(err)
@@ -703,7 +704,7 @@ func validateProcessorBehavior(
 	testSink := new(consumertest.LogsSink)
 	proc, err := factory.CreateLogs(
 		context.Background(),
-		processortest.NewNopSettings(component.MustNewType("signozlogspipeline")),
+		processortest.NewNopSettings(metadata.Type),
 		config, testSink,
 	)
 	require.NoError(err)
