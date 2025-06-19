@@ -11,7 +11,6 @@ const (
 	MaxKeyLength    = 256 // Keys longer than this are considered random
 	ShortKeyLength  = 15  // Keys shorter than this with only lowercase are considered meaningful
 	MediumKeyLength = 25  // Keys shorter than this with underscores/hyphens are considered meaningful
-	LongKeyLength   = 30  // Keys longer than this without vowels are considered random
 	LetterThreshold = 0.7 // Threshold for considering a string as mostly letters
 )
 
@@ -29,8 +28,6 @@ var (
 // - Hex strings
 // - Base64 encoded strings
 // - Timestamps
-// - Long strings without vowels
-// - Long strings with mixed case and digits
 func IsRandomKey(key string) bool {
 	length := len(key)
 
@@ -84,10 +81,6 @@ func isRandomSegment(segment string) bool {
 		return true
 	case timestampRegex.MatchString(segment):
 		return true
-	case len(segment) > LongKeyLength && !containsVowels(segment):
-		return true
-	case len(segment) > LongKeyLength && hasUpperLowerDigit(segment):
-		return true
 	}
 	return false
 }
@@ -119,33 +112,6 @@ func isAlphaLower(s string) bool {
 		}
 	}
 	return true
-}
-
-// containsVowels checks if a string contains any vowels
-func containsVowels(s string) bool {
-	for _, r := range s {
-		switch unicode.ToLower(r) {
-		case 'a', 'e', 'i', 'o', 'u':
-			return true
-		}
-	}
-	return false
-}
-
-// hasUpperLowerDigit checks if a string has both upper and lower case letters, as well as digits
-func hasUpperLowerDigit(s string) bool {
-	var hasUpper, hasLower, hasDigit bool
-	for _, r := range s {
-		switch {
-		case unicode.IsUpper(r):
-			hasUpper = true
-		case unicode.IsLower(r):
-			hasLower = true
-		case unicode.IsDigit(r):
-			hasDigit = true
-		}
-	}
-	return hasUpper && hasLower && hasDigit
 }
 
 // containsNonAlpha checks if a string contains any non-alphabetic characters

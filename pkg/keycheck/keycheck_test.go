@@ -24,14 +24,9 @@ func Test_IsRandomKey(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "Long String Without Vowels < 30",
+			name: "Long String Without Vowels",
 			key:  "bcdfghjklmnpqrstvwxyz",
 			want: false,
-		},
-		{
-			name: "Long String Without Vowels > 30",
-			key:  "bcdfghjklmnpqrstvwxyzbcdfghjklmnpqrstvwxyzbcdfghjklmnpqrstvwxyz",
-			want: true,
 		},
 		{
 			name: "Mixed Case with Digits",
