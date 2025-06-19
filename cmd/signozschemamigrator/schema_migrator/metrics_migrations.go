@@ -801,6 +801,86 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
-	// no need for down items, and there is a default value for the column
-	// so it's a safe migration without any down migration
+	{
+		MigrationID: 1004,
+		UpItems: []Operation{
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_6hrs_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 21600000) * 21600000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_1day_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 86400000) * 86400000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4_6hrs`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "time_series_v4_1week_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							description,
+							unit,
+							type,
+							is_monotonic,
+							fingerprint,
+							floor(unix_milli / 604800000) * 604800000 AS unix_milli,
+							labels,
+							attrs,
+							scope_attrs,
+							resource_attrs,
+							__normalized
+						FROM signoz_metrics.time_series_v4_1day`,
+			},
+		},
+	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day_mv_separate_attrs",
+			},
+			DropTableOperation{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week_mv_separate_attrs",
+			},
+		},
+	},
 }
