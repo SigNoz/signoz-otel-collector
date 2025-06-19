@@ -12,6 +12,7 @@ import (
 type AgentManagerConfig struct {
 	ServerEndpoint string `yaml:"server_endpoint"`
 	ID             string `yaml:"id,omitempty"`
+	OrgID          string `yaml:"org_id,omitempty"`
 }
 
 func ParseAgentManagerConfig(configLocation string) (*AgentManagerConfig, error) {
@@ -31,6 +32,9 @@ func ParseAgentManagerConfig(configLocation string) (*AgentManagerConfig, error)
 	if config.ID == "" {
 		// generate ulid if not provided
 		config.ID = ulid.MustNew(ulid.Now(), nil).String()
+	}
+	if config.OrgID == "" {
+		config.OrgID = "SIGNOZ##DEFAULT##ORG##ID"
 	}
 
 	return &config, nil
