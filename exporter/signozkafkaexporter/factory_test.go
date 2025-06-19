@@ -10,13 +10,14 @@ import (
 	"testing"
 
 	"github.com/Shopify/sarama"
-	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
 )
 
 // data is a simple means of allowing
@@ -193,9 +194,9 @@ func TestCreateLogExporter(t *testing.T) {
 			t.Parallel()
 
 			f := NewFactory(WithLogsMarshalers(tc.marshalers...))
-			exporter, err := f.CreateLogsExporter(
+			exporter, err := f.CreateLogs(
 				context.Background(),
-				exportertest.NewNopSettings(),
+				exportertest.NewNopSettings(metadata.Type),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -267,9 +268,9 @@ func TestCreateTraceExporter(t *testing.T) {
 			t.Parallel()
 
 			f := NewFactory(WithTracesMarshalers(tc.marshalers...))
-			exporter, err := f.CreateTracesExporter(
+			exporter, err := f.CreateTraces(
 				context.Background(),
-				exportertest.NewNopSettings(),
+				exportertest.NewNopSettings(metadata.Type),
 				tc.conf,
 			)
 			if tc.err != nil {

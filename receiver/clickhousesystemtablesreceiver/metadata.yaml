@@ -1,7 +1,7 @@
 type: signozclickhousemetrics
 
 status:
-  class: exporter
+  class: receiver
   stability:
     beta:
       - logs
