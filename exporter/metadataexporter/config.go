@@ -63,9 +63,9 @@ type CacheConfig struct {
 
 // Config defines configuration for Metadata exporter.
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
-	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
-	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`   // squash ensures fields are correctly decoded in embedded struct.
+	QueueBatchConfig             exporterhelper.QueueConfig `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig  `mapstructure:"retry_on_failure"`
 
 	DSN string `mapstructure:"dsn"`
 

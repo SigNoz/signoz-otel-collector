@@ -33,10 +33,10 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		DSN:           "tcp://localhost:9000",
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		DSN:              "tcp://localhost:9000",
 		MaxDistinctValues: MaxDistinctValuesConfig{
 			Traces: LimitsConfig{
 				MaxKeys:                 4096,
@@ -101,7 +101,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 		exp.PushTraces,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
@@ -123,7 +123,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 		exp.PushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
@@ -145,7 +145,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 		exp.PushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }

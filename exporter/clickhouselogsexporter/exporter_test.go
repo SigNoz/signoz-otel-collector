@@ -24,7 +24,7 @@ func eventually(t *testing.T, f func() bool) {
 
 func testOptions() []LogExporterOption {
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
-	keysCache := ttlcache.New[string, struct{}](
+	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
 	)
@@ -33,7 +33,7 @@ func testOptions() []LogExporterOption {
 	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
 	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
 	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-	rfCache := ttlcache.New[string, struct{}](
+	rfCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](distributedLogsResourceV2Seconds*time.Second),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 		ttlcache.WithCapacity[string, struct{}](100000),

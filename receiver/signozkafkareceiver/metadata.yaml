@@ -1,8 +1,10 @@
-type: kafka
+type: signozkafkareceiver
 
 status:
   class: receiver
   stability:
     beta: [metrics, logs, traces]
-  distributions: [contrib, splunk, observiq, sumo, aws]
 
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true

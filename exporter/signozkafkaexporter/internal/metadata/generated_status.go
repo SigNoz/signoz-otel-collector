@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	Type      = component.MustNewType("kafka")
+	Type      = component.MustNewType("signozkafkaexporter")
 	ScopeName = "github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 )
 

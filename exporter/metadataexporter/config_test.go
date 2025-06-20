@@ -28,10 +28,10 @@ func TestLoadConfig(t *testing.T) {
 		{
 			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
-				TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-				BackOffConfig: configretry.NewDefaultBackOffConfig(),
-				QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-				DSN:           "tcp://localhost:9000",
+				TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+				BackOffConfig:    configretry.NewDefaultBackOffConfig(),
+				QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+				DSN:              "tcp://localhost:9000",
 				MaxDistinctValues: MaxDistinctValuesConfig{
 					Traces: LimitsConfig{
 						MaxKeys:                 100,

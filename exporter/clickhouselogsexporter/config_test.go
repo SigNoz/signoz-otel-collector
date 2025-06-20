@@ -15,7 +15,7 @@
 package clickhouselogsexporter
 
 import (
-	"path/filepath"
+	"path"
 	"testing"
 	"time"
 
@@ -31,11 +31,11 @@ import (
 
 func TestLoadConfig(t *testing.T) {
 	factories, err := otelcoltest.NopFactories()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	factory := NewFactory()
 	factories.Exporters[metadata.Type] = factory
-	cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", "config.yaml"), factories)
+	cfg, err := otelcoltest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
@@ -60,8 +60,9 @@ func TestLoadConfig(t *testing.T) {
 			RandomizationFactor: 0.7,
 			Multiplier:          1.3,
 		},
-		QueueConfig: exporterhelper.QueueConfig{
+		QueueBatchConfig: exporterhelper.QueueBatchConfig{
 			Enabled:      true,
+			Sizer:        exporterhelper.RequestSizerTypeRequests,
 			NumConsumers: 10,
 			QueueSize:    100,
 		},

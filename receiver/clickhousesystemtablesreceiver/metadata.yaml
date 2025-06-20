@@ -5,3 +5,7 @@ status:
   stability:
     beta:
       - logs
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true

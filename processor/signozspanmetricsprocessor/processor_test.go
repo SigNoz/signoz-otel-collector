@@ -748,7 +748,7 @@ func newOTLPExporters(t *testing.T) (component.ID, exporter.Metrics, exporter.Tr
 			Endpoint: "example.com:1234",
 		},
 	}
-	expCreationParams := exportertest.NewNopSettings(genmetadata.Type)
+	expCreationParams := exportertest.NewNopSettings(component.MustNewType("otlp"))
 	mexp, err := otlpExpFactory.CreateMetrics(context.Background(), expCreationParams, otlpConfig)
 	require.NoError(t, err)
 	texp, err := otlpExpFactory.CreateTraces(context.Background(), expCreationParams, otlpConfig)

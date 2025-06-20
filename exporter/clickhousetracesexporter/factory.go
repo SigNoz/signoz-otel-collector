@@ -32,9 +32,9 @@ import (
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
@@ -47,7 +47,7 @@ func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
-		exporter.WithTraces(createTracesExporter, component.StabilityLevelUndefined),
+		exporter.WithTraces(createTracesExporter, metadata.TracesStability),
 	)
 }
 
@@ -110,7 +110,7 @@ func createTracesExporter(
 		exporter.pushTraceData,
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
-		exporterhelper.WithQueue(c.QueueConfig),
+		exporterhelper.WithQueue(c.QueueBatchConfig),
 		exporterhelper.WithRetry(c.BackOffConfig))
 }
 
@@ -120,7 +120,7 @@ func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, err
 		return nil, err
 	}
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxIdleConnections := cfg.QueueConfig.NumConsumers + 1
+	maxIdleConnections := cfg.QueueBatchConfig.NumConsumers + 1
 	if options.MaxIdleConns < maxIdleConnections {
 		options.MaxIdleConns = maxIdleConnections
 		options.MaxOpenConns = maxIdleConnections + 5

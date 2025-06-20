@@ -197,7 +197,7 @@ func Components() (otelcol.Factories, error) {
 	for _, ext := range factories.Extensions {
 		extensions = append(extensions, ext)
 	}
-	factories.Extensions, err = otelcol.MakeFactoryMap[extension.Factory](extensions...)
+	factories.Extensions, err = otelcol.MakeFactoryMap(extensions...)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -306,7 +306,7 @@ func Components() (otelcol.Factories, error) {
 	for _, rcv := range factories.Receivers {
 		receivers = append(receivers, rcv)
 	}
-	factories.Receivers, err = otelcol.MakeFactoryMap[receiver.Factory](receivers...)
+	factories.Receivers, err = otelcol.MakeFactoryMap(receivers...)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -339,7 +339,7 @@ func Components() (otelcol.Factories, error) {
 	for _, exp := range factories.Exporters {
 		exporters = append(exporters, exp)
 	}
-	factories.Exporters, err = otelcol.MakeFactoryMap[exporter.Factory](exporters...)
+	factories.Exporters, err = otelcol.MakeFactoryMap(exporters...)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -372,7 +372,7 @@ func Components() (otelcol.Factories, error) {
 	for _, pr := range factories.Processors {
 		processors = append(processors, pr)
 	}
-	factories.Processors, err = otelcol.MakeFactoryMap[processor.Factory](processors...)
+	factories.Processors, err = otelcol.MakeFactoryMap(processors...)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -388,7 +388,7 @@ func Components() (otelcol.Factories, error) {
 		spanmetricsconnector.NewFactory(),
 		sumconnector.NewFactory(),
 	}
-	factories.Connectors, err = otelcol.MakeFactoryMap[connector.Factory](connectors...)
+	factories.Connectors, err = otelcol.MakeFactoryMap(connectors...)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -402,7 +402,7 @@ func CoreComponents() (
 ) {
 	var errs error
 
-	extensions, err := otelcol.MakeFactoryMap[extension.Factory](
+	extensions, err := otelcol.MakeFactoryMap(
 		basicauthextension.NewFactory(),
 		bearertokenauthextension.NewFactory(),
 		dockerobserver.NewFactory(),
@@ -421,12 +421,12 @@ func CoreComponents() (
 	)
 	errs = multierr.Append(errs, err)
 
-	receivers, err := otelcol.MakeFactoryMap[receiver.Factory](
+	receivers, err := otelcol.MakeFactoryMap(
 		otlpreceiver.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)
 
-	exporters, err := otelcol.MakeFactoryMap[exporter.Factory](
+	exporters, err := otelcol.MakeFactoryMap(
 		otlpexporter.NewFactory(),
 		otlphttpexporter.NewFactory(),
 	)

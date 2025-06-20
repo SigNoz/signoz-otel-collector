@@ -45,15 +45,13 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
-		DSN:          "tcp://127.0.0.1:9000",
-		UseNewSchema: true,
 	}
 }
 
@@ -113,7 +111,7 @@ func createLogsExporter(
 		exporterhelper.WithStart(exporter.Start),
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
-		exporterhelper.WithQueue(c.QueueConfig),
+		exporterhelper.WithQueue(c.QueueBatchConfig),
 		exporterhelper.WithRetry(c.BackOffConfig),
 	)
 }

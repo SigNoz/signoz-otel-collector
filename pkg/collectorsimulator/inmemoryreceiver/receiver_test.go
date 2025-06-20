@@ -6,10 +6,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
 func TestReceiverLifecycle(t *testing.T) {
@@ -61,6 +63,6 @@ func makeTestLogReceiver(receiverId string) (receiver.Logs, error) {
 	confmap.NewFromStringMap(map[string]any{"id": receiverId}).Unmarshal(&cfg)
 
 	return factory.CreateLogs(
-		context.Background(), receiver.Settings{}, cfg, consumertest.NewNop(),
+		context.Background(), receivertest.NewNopSettings(component.MustNewType("memory")), cfg, consumertest.NewNop(),
 	)
 }

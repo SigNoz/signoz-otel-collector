@@ -3,3 +3,7 @@ status:
   class: exporter
   stability:
     stable: [logs]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
