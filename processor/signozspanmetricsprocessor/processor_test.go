@@ -139,6 +139,9 @@ func TestProcessorStart(t *testing.T) {
 				assert.EqualError(t, err, tc.wantErrorMsg)
 			} else {
 				assert.NoError(t, err)
+
+				shutdownErr := smp.Shutdown(context.Background())
+				assert.NoError(t, shutdownErr)
 			}
 		})
 	}

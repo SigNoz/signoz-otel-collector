@@ -97,9 +97,9 @@ func createDefaultConfig() component.Config {
 		// using an empty topic to track when it has not been set by user, default is based on traces or metrics.
 		Topic:    "",
 		Encoding: defaultEncoding,
-		Metadata: Metadata{
+		Metadata: MetadataConfig{
 			Full: defaultMetadataFull,
-			Retry: MetadataRetry{
+			Retry: MetadataRetryConfig{
 				Max:     defaultMetadataRetryMax,
 				Backoff: defaultMetadataRetryBackoff,
 			},

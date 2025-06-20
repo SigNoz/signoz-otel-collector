@@ -260,14 +260,29 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 	return nil
 }
 
-func (e *metadataExporter) Shutdown(_ context.Context) error {
+func (e *metadataExporter) Shutdown(ctx context.Context) error {
 	e.set.Logger.Info("shutting down metadata exporter")
-	e.tracesTracker.Close()
-	e.metricsTracker.Close()
-	e.logsTracker.Close()
+
 	e.logTagValueCountCtxCancel()
 	e.tracesTagValueCountCtxCancel()
 	e.metricsTagValueCountCtxCancel()
+
+	e.tracesTracker.Close()
+	e.metricsTracker.Close()
+	e.logsTracker.Close()
+
+	if e.keyCache != nil {
+		if err := e.keyCache.Close(ctx); err != nil {
+			e.set.Logger.Error("failed to close key cache", zap.Error(err))
+		}
+	}
+
+	if e.conn != nil {
+		if err := e.conn.Close(); err != nil {
+			e.set.Logger.Error("failed to close clickhouse connection", zap.Error(err))
+		}
+	}
+
 	return nil
 }
 

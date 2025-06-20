@@ -94,7 +94,7 @@ func TestNewExporter_err_auth_type(t *testing.T) {
 			},
 		},
 		Encoding: defaultEncoding,
-		Metadata: Metadata{
+		Metadata: MetadataConfig{
 			Full: false,
 		},
 		Producer: Producer{

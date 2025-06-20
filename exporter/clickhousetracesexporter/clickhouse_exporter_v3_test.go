@@ -502,7 +502,10 @@ func TestExporterInit(t *testing.T) {
 
 	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
 
-	setupTestExporter(t, mock)
+	exporter := setupTestExporter(t, mock)
+
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil

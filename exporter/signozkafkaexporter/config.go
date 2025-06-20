@@ -31,7 +31,7 @@ type Config struct {
 
 	// Metadata is the namespace for metadata management properties used by the
 	// Client, and shared by the Producer/Consumer.
-	Metadata Metadata `mapstructure:"metadata"`
+	Metadata MetadataConfig `mapstructure:"metadata"`
 
 	// Producer is the namespaces for producer properties used only by the Producer
 	Producer Producer `mapstructure:"producer"`
@@ -40,18 +40,21 @@ type Config struct {
 	Authentication Authentication `mapstructure:"auth"`
 }
 
-// Metadata defines configuration for retrieving metadata from the broker.
-type Metadata struct {
+type MetadataConfig struct {
 	// Whether to maintain a full set of metadata for all topics, or just
 	// the minimal set that has been necessary so far. The full set is simpler
 	// and usually more convenient, but can take up a substantial amount of
 	// memory if you have many topics and partitions. Defaults to true.
 	Full bool `mapstructure:"full"`
 
+	// RefreshInterval controls the frequency at which cluster metadata is
+	// refreshed. Defaults to 10 minutes.
+	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
+
 	// Retry configuration for metadata.
 	// This configuration is useful to avoid race conditions when broker
 	// is starting at the same time as collector.
-	Retry MetadataRetry `mapstructure:"retry"`
+	Retry MetadataRetryConfig `mapstructure:"retry"`
 }
 
 // Producer defines configuration for producer
@@ -78,8 +81,8 @@ type Producer struct {
 	FlushMaxMessages int `mapstructure:"flush_max_messages"`
 }
 
-// MetadataRetry defines retry configuration for Metadata.
-type MetadataRetry struct {
+// MetadataRetryConfig defines retry configuration for Metadata.
+type MetadataRetryConfig struct {
 	// The total number of times to retry a metadata request when the
 	// cluster is in the middle of a leader election or at startup (default 3).
 	Max int `mapstructure:"max"`

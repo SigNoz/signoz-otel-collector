@@ -61,9 +61,9 @@ func TestLoadConfig(t *testing.T) {
 						Password: "pass",
 					},
 				},
-				Metadata: Metadata{
+				Metadata: MetadataConfig{
 					Full: false,
-					Retry: MetadataRetry{
+					Retry: MetadataRetryConfig{
 						Max:     15,
 						Backoff: defaultMetadataRetryBackoff,
 					},

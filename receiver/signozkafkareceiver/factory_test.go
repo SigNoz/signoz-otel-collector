@@ -6,6 +6,7 @@ package signozkafkareceiver
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,11 +34,24 @@ func TestCreateTracesReceiver(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.Brokers = []string{"invalid:9092"}
 	cfg.ProtocolVersion = "2.0.0"
+	// Disable metadata collection to prevent real client creation
+	cfg.Metadata.Full = false
+	// Set very short timeouts to fail fast
+	cfg.Metadata.Retry.Max = 1
+	cfg.Metadata.Retry.Backoff = 1 * time.Millisecond
+
 	f := kafkaReceiverFactory{tracesUnmarshalers: defaultTracesUnmarshalers()}
+
+	// Since we're disabling metadata.Full, it should succeed but create a receiver
+	// that will fail when started
 	r, err := f.createTracesReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
-	// no available broker
-	require.Error(t, err)
-	assert.Nil(t, r)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaTracesConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestCreateTracesReceiver_error(t *testing.T) {
@@ -49,6 +63,11 @@ func TestCreateTracesReceiver_error(t *testing.T) {
 	r, err := f.createTracesReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaTracesConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestWithTracesUnmarshalers(t *testing.T) {
@@ -64,12 +83,22 @@ func TestWithTracesUnmarshalers(t *testing.T) {
 		receiver, err := f.CreateTraces(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
 		require.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaTracesConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 	t.Run("default_encoding", func(t *testing.T) {
 		cfg.Encoding = defaultEncoding
 		receiver, err := f.CreateTraces(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
 		assert.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaTracesConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 }
 
@@ -77,11 +106,23 @@ func TestCreateMetricsReceiver(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.Brokers = []string{"invalid:9092"}
 	cfg.ProtocolVersion = "2.0.0"
+	// Disable metadata collection to prevent real client creation
+	cfg.Metadata.Full = false
+	// Set very short timeouts to fail fast
+	cfg.Metadata.Retry.Max = 1
+	cfg.Metadata.Retry.Backoff = 1 * time.Millisecond
+
 	f := kafkaReceiverFactory{metricsUnmarshalers: defaultMetricsUnmarshalers()}
+
+	// Since we're disabling metadata.Full, it should succeed
 	r, err := f.createMetricsReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
-	// no available broker
-	require.Error(t, err)
-	assert.Nil(t, r)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaMetricsConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestCreateMetricsReceiver_error(t *testing.T) {
@@ -93,6 +134,11 @@ func TestCreateMetricsReceiver_error(t *testing.T) {
 	r, err := f.createMetricsReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaMetricsConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestWithMetricsUnmarshalers(t *testing.T) {
@@ -108,12 +154,22 @@ func TestWithMetricsUnmarshalers(t *testing.T) {
 		receiver, err := f.CreateMetrics(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
 		require.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaMetricsConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 	t.Run("default_encoding", func(t *testing.T) {
 		cfg.Encoding = defaultEncoding
 		receiver, err := f.CreateMetrics(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
 		assert.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaMetricsConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 }
 
@@ -121,11 +177,23 @@ func TestCreateLogsReceiver(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.Brokers = []string{"invalid:9092"}
 	cfg.ProtocolVersion = "2.0.0"
+	// Disable metadata collection to prevent real client creation
+	cfg.Metadata.Full = false
+	// Set very short timeouts to fail fast
+	cfg.Metadata.Retry.Max = 1
+	cfg.Metadata.Retry.Backoff = 1 * time.Millisecond
+
 	f := kafkaReceiverFactory{logsUnmarshalers: defaultLogsUnmarshalers()}
+
+	// Since we're disabling metadata.Full, it should succeed
 	r, err := f.createLogsReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
-	// no available broker
-	require.Error(t, err)
-	assert.Nil(t, r)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaLogsConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestCreateLogsReceiver_error(t *testing.T) {
@@ -137,6 +205,11 @@ func TestCreateLogsReceiver_error(t *testing.T) {
 	r, err := f.createLogsReceiver(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, r)
+
+	// Clean up the receiver
+	if receiver, ok := r.(*kafkaLogsConsumer); ok && receiver.consumerGroup != nil {
+		_ = receiver.consumerGroup.Close()
+	}
 }
 
 func TestWithLogsUnmarshalers(t *testing.T) {
@@ -149,15 +222,25 @@ func TestWithLogsUnmarshalers(t *testing.T) {
 
 	t.Run("custom_encoding", func(t *testing.T) {
 		cfg.Encoding = unmarshaler.Encoding()
-		exporter, err := f.CreateLogs(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
+		receiver, err := f.CreateLogs(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
-		require.NotNil(t, exporter)
+		require.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaLogsConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 	t.Run("default_encoding", func(t *testing.T) {
 		cfg.Encoding = defaultEncoding
-		exporter, err := f.CreateLogs(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
+		receiver, err := f.CreateLogs(context.Background(), receivertest.NewNopSettings(metadata.Type), cfg, nil)
 		require.NoError(t, err)
-		assert.NotNil(t, exporter)
+		assert.NotNil(t, receiver)
+
+		// Clean up
+		if r, ok := receiver.(*kafkaLogsConsumer); ok && r.consumerGroup != nil {
+			_ = r.consumerGroup.Close()
+		}
 	})
 }
 

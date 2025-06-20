@@ -72,6 +72,7 @@ type SpanWriter struct {
 
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
+	done                      chan struct{}
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -84,6 +85,7 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 		attributeKeyTable: defaultAttributeKeyTable,
 		indexTableV3:      defaultIndexTableV3,
 		resourceTableV3:   defaultResourceTableV3,
+		done:              make(chan struct{}),
 	}
 	for _, option := range options {
 		option(writer)
@@ -127,8 +129,13 @@ func (e *SpanWriter) doFetchShouldSkipKeys() {
 }
 
 func (e *SpanWriter) fetchShouldSkipKeys() {
-	for range e.fetchShouldSkipKeysTicker.C {
-		e.doFetchShouldSkipKeys()
+	for {
+		select {
+		case <-e.done:
+			return
+		case <-e.fetchShouldSkipKeysTicker.C:
+			e.doFetchShouldSkipKeys()
+		}
 	}
 }
 
@@ -533,8 +540,22 @@ func stringToBool(s string) bool {
 	return strings.ToLower(s) == "true"
 }
 
+func (w *SpanWriter) Stop() {
+	if w.fetchShouldSkipKeysTicker != nil {
+		w.fetchShouldSkipKeysTicker.Stop()
+	}
+	if w.keysCache != nil {
+		w.keysCache.Stop()
+	}
+	if w.rfCache != nil {
+		w.rfCache.Stop()
+	}
+	close(w.done)
+}
+
 // Close closes the writer
 func (w *SpanWriter) Close() error {
+	w.Stop()
 	if w.db != nil {
 		return w.db.Close()
 	}

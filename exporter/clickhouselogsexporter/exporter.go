@@ -175,11 +175,16 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeysTicker = time.NewTicker(e.fetchKeysInterval)
 	e.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
+
+	e.wg.Add(2)
+
 	go func() {
+		defer e.wg.Done()
 		e.doFetchShouldSkipKeys() // Immediate first fetch
 		e.fetchShouldSkipKeys()   // Start ticker routine
 	}()
 	go func() {
+		defer e.wg.Done()
 		e.updateMinAcceptedTs()
 		e.fetchShouldUpdateMinAcceptedTs()
 	}()
@@ -214,8 +219,13 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 }
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
-	for range e.fetchShouldSkipKeysTicker.C {
-		e.doFetchShouldSkipKeys()
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-e.fetchShouldSkipKeysTicker.C:
+			e.doFetchShouldSkipKeys()
+		}
 	}
 }
 
@@ -226,10 +236,21 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	if e.fetchShouldSkipKeysTicker != nil {
 		e.fetchShouldSkipKeysTicker.Stop()
 	}
+	if e.fetchShouldUpdateMinAcceptedTsTicker != nil {
+		e.fetchShouldUpdateMinAcceptedTsTicker.Stop()
+	}
 	if e.usageCollector != nil {
 		// TODO: handle error
 		_ = e.usageCollector.Stop()
 	}
+
+	if e.keysCache != nil {
+		e.keysCache.Stop()
+	}
+	if e.rfCache != nil {
+		e.rfCache.Stop()
+	}
+
 	if e.db != nil {
 		err := e.db.Close()
 		if err != nil {
@@ -276,8 +297,13 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 }
 
 func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
-	for range e.fetchShouldUpdateMinAcceptedTsTicker.C {
-		e.updateMinAcceptedTs()
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-e.fetchShouldUpdateMinAcceptedTsTicker.C:
+			e.updateMinAcceptedTs()
+		}
 	}
 }
 

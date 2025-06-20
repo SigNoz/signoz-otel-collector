@@ -92,9 +92,13 @@ func TestExporterInit(t *testing.T) {
 	rows := cmock.NewRows(cols, [][]interface{}{{"key1", "string", "string", 2, 1}, {"key2", "number", "number", 1, 2}})
 
 	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
+	mock.ExpectClose()
 
 	exporter := setupTestExporter(t, mock)
 	err = exporter.Start(context.Background(), nil)
+	assert.Nil(t, err)
+
+	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
 
 	eventually(t, func() bool {
