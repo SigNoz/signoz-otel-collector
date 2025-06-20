@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
 )
 
 func eventually(t *testing.T, f func() bool) {
@@ -42,7 +44,7 @@ func testOptions() []LogExporterOption {
 
 	return []LogExporterOption{
 		WithLogger(zap.NewNop()),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")),
+		WithMeter(noop.NewMeterProvider().Meter(metadata.ScopeName)),
 		WithKeysCache(keysCache),
 		WithRFCache(rfCache),
 	}

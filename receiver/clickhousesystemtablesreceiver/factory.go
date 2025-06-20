@@ -20,7 +20,7 @@ func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
-		receiver.WithLogs(createLogsReceiver, component.StabilityLevelAlpha),
+		receiver.WithLogs(createLogsReceiver, metadata.LogsStability),
 	)
 }
 

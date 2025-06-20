@@ -21,7 +21,7 @@ func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
-		processor.WithLogs(createLogsProcessor, component.StabilityLevelDevelopment))
+		processor.WithLogs(createLogsProcessor, metadata.LogsStability))
 }
 
 // Note: This isn't a valid configuration (no operators would lead to no work being done)

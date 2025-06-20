@@ -88,7 +88,7 @@ func createLogsExporter(
 	)
 	go rfCache.Start()
 
-	meter := set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")
+	meter := set.MeterProvider.Meter(metadata.ScopeName)
 	opts := []LogExporterOption{
 		WithClickHouseClient(client),
 		WithLogger(set.Logger),

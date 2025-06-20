@@ -44,6 +44,8 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/internal/metadata"
 )
 
 const (
@@ -104,7 +106,7 @@ type ClickHouseParams struct {
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	logger := params.Settings.Logger
-	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
+	meter := params.Settings.MeterProvider.Meter(metadata.ScopeName)
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
