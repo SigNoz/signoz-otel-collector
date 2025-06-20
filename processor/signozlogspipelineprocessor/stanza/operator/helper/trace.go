@@ -55,21 +55,21 @@ func (t *TraceParser) Validate() error {
 		t.TraceID = &TraceIDConfig{}
 	}
 	if t.TraceID.ParseFrom == nil {
-		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("trace_id")}
+		field := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("trace_id")}
 		t.TraceID.ParseFrom = &field
 	}
 	if t.SpanID == nil {
 		t.SpanID = &SpanIDConfig{}
 	}
 	if t.SpanID.ParseFrom == nil {
-		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("span_id")}
+		field := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("span_id")}
 		t.SpanID.ParseFrom = &field
 	}
 	if t.TraceFlags == nil {
 		t.TraceFlags = &TraceFlagsConfig{}
 	}
 	if t.TraceFlags.ParseFrom == nil {
-		field := signozstanzaentry.Field{signozstanzaentry.NewBodyField("trace_flags")}
+		field := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("trace_flags")}
 		t.TraceFlags.ParseFrom = &field
 	}
 	return nil

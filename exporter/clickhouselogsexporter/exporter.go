@@ -227,7 +227,8 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 		e.fetchShouldSkipKeysTicker.Stop()
 	}
 	if e.usageCollector != nil {
-		e.usageCollector.Stop()
+		// TODO: handle error
+		_ = e.usageCollector.Stop()
 	}
 	if e.db != nil {
 		err := e.db.Close()
@@ -465,7 +466,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 							"severity_number": float64(r.SeverityNumber()),
 						},
 					}
-					e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, logFields, shouldSkipKeys)
+					// TODO: handle error
+					_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, logFields, shouldSkipKeys)
 				}
 			}
 		}
@@ -487,7 +489,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
 					continue
 				}
-				insertResourcesStmtV2.Append(
+				// TODO: handle error
+				_ = insertResourcesStmtV2.Append(
 					resourceLabels,
 					fingerprint,
 					bucketTs,
@@ -534,7 +537,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			zap.String("cost", duration.String()))
 
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+			// TODO: handle error
+			_ = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 		}
 
 		return err
@@ -582,12 +586,14 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 
 	switch tagType {
 	case utils.TagTypeResource:
-		resourceKeysStmt.Append(
+		// TODO: handle error
+		_ = resourceKeysStmt.Append(
 			key,
 			datatype,
 		)
 	case utils.TagTypeAttribute:
-		attributeKeysStmt.Append(
+		// TODO: handle error
+		_ = attributeKeysStmt.Append(
 			key,
 			datatype,
 		)

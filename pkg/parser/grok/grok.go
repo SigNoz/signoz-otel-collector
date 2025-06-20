@@ -69,13 +69,13 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	exclude := make(map[string]struct{})
 	includeKeysPresent := false
 	excludeKeysPresent := false
-	if c.Include != nil && len(c.Include) > 0 {
+	if len(c.Include) > 0 {
 		includeKeysPresent = true
 		for _, k := range c.Include {
 			include[k] = struct{}{}
 		}
 	}
-	if c.Exclude != nil && len(c.Exclude) > 0 {
+	if len(c.Exclude) > 0 {
 		excludeKeysPresent = true
 		for _, k := range c.Exclude {
 			exclude[k] = struct{}{}

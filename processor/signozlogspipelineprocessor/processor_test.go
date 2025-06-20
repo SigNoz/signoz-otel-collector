@@ -744,7 +744,7 @@ func makePlog(body string, attributes map[string]any) plog.Logs {
 	ld := plog.NewLogs()
 	lr := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
 	lr.Body().SetStr(body)
-	lr.Attributes().FromRaw(attributes)
+	_ = lr.Attributes().FromRaw(attributes)
 
 	lr.SetObservedTimestamp(pcommon.NewTimestampFromTime(time.Unix(500, 0)))
 

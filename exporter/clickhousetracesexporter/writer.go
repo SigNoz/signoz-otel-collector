@@ -329,7 +329,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			if spanAttribute.DataType == "string" {
 
 				if _, ok := shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle error
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -341,7 +342,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 			} else if spanAttribute.DataType == "float64" {
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle error
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -352,7 +354,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 				}
 			} else if spanAttribute.DataType == "bool" {
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle erroe
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -496,7 +499,8 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 				w.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
 				continue
 			}
-			insertResourcesStmtV3.Append(
+			// TODO: handle error
+			_ = insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,

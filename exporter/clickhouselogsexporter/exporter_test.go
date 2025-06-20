@@ -137,7 +137,8 @@ func TestExporterPushLogsData(t *testing.T) {
 		t.Fatalf("failed to push logs data: %v", err)
 	}
 
-	exporter.Shutdown(context.Background())
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil

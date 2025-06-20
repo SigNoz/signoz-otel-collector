@@ -572,7 +572,8 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		}
 
 		for _, nr := range newRecords {
-			stmt.Append(
+			// TODO: handle error
+			_ = stmt.Append(
 				nr.roundedSixHrsUnixMilli,
 				ds,
 				nr.resourceFingerprint,

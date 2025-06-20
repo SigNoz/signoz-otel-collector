@@ -211,7 +211,6 @@ require (
 	go.opentelemetry.io/collector/config/configtelemetry v0.128.0
 	go.opentelemetry.io/collector/config/configtls v1.34.0
 	go.opentelemetry.io/collector/confmap v1.34.0
-	go.opentelemetry.io/collector/confmap/converter/expandconverter v0.113.0
 	go.opentelemetry.io/collector/confmap/provider/envprovider v1.34.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.34.0
 	go.opentelemetry.io/collector/confmap/xconfmap v0.128.0

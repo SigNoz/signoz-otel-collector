@@ -99,14 +99,17 @@ func (t *TransformerOperator) ProcessWith(ctx context.Context, entry *entry.Entr
 		return t.HandleEntryError(ctx, entry, err)
 	}
 	if skip {
-		t.Write(ctx, entry)
+		// TODO: handle error
+		_ = t.Write(ctx, entry)
 		return nil
 	}
 
 	if err := transform(entry); err != nil {
 		return t.HandleEntryError(ctx, entry, err)
 	}
-	t.Write(ctx, entry)
+
+	// TODO: handle error
+	_ = t.Write(ctx, entry)
 	return nil
 }
 

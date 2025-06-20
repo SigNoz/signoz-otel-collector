@@ -546,7 +546,8 @@ func TestExporterPushTracesData(t *testing.T) {
 		t.Fatalf("failed to push traces data: %v", err)
 	}
 
-	exporter.Shutdown(context.Background())
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		t.Log("ExpectationsWereMet", mock.ExpectationsWereMet())
