@@ -3,13 +3,15 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
-
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"time"
 )
 
 // NewFactory creates a new ClickHouse Metrics exporter.
@@ -38,6 +40,18 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		return nil, err
 	}
 
+	id := uuid.New()
+	collector := usage.NewUsageCollector(
+		id,
+		conn,
+		usage.Options{
+			ReportingInterval: 5 * time.Minute,
+		},
+		"signoz_metrics",
+		UsageExporter,
+		set.Logger,
+	)
+
 	chExporter, err := NewClickHouseExporter(
 		WithConfig(chCfg),
 		WithConn(conn),
@@ -45,6 +59,8 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithMeter(set.MeterProvider.Meter(meterScope)),
 		WithEnableExpHist(chCfg.EnableExpHist),
 		WithSettings(set),
+		WithUsageCollector(collector),
+		WithExporterId(id),
 	)
 	if err != nil {
 		return nil, err
