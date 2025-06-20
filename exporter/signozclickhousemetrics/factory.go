@@ -43,7 +43,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithConfig(chCfg),
 		WithConn(conn),
 		WithLogger(set.Logger),
-		WithMeter(set.MeterProvider.Meter(meterScope)),
+		WithMeter(set.MeterProvider.Meter(internalmetadata.ScopeName)),
 		WithEnableExpHist(chCfg.EnableExpHist),
 		WithSettings(set),
 	)

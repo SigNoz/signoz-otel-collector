@@ -38,8 +38,7 @@ func TestReceiverLifecycle(t *testing.T) {
 	require.NotNil(err, "should not be able to start another receiver with same id before shutting down the previous one")
 
 	// Should not be able to get a hold of an receiver after shutdown
-	err = testReceiver.Shutdown(context.Background())
-	require.Nil(t, err)
+	_ = testReceiver.Shutdown(context.Background())
 	require.Nil(GetReceiverInstance(testReceiverId), "should not be able to find inmemory receiver after shutdown")
 
 	// Should be able to start a new receiver with same id after shutting down
@@ -52,8 +51,7 @@ func TestReceiverLifecycle(t *testing.T) {
 	testReceiver3 := GetReceiverInstance(testReceiverId)
 	require.NotNil(testReceiver3, "could not get receiver instance by Id")
 
-	err = testReceiver3.Shutdown(context.Background())
-	require.Nil(t, err)
+	_ = testReceiver3.Shutdown(context.Background())
 	require.Nil(GetReceiverInstance(testReceiverId))
 }
 

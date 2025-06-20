@@ -121,7 +121,8 @@ func (t *TransformerOperator) HandleEntryError(ctx context.Context, entry *entry
 		t.Logger().Error("Failed to process entry", zap.Any("error", err), zap.Any("action", t.OnError))
 	}
 	if t.OnError == SendOnError || t.OnError == SendOnErrorQuiet {
-		t.Write(ctx, entry)
+		// TODO: handle error
+		_ = t.Write(ctx, entry)
 	}
 	return err
 }

@@ -94,7 +94,8 @@ func TestExporterInit(t *testing.T) {
 	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
 
 	exporter := setupTestExporter(t, mock)
-	exporter.Start(context.Background(), nil)
+	err = exporter.Start(context.Background(), nil)
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil
@@ -127,6 +128,7 @@ func TestExporterPushLogsData(t *testing.T) {
 
 	// make sure usage is inserted on shutdown
 	mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+	mock.ExpectClose()
 
 	exporter := setupTestExporter(t, mock)
 

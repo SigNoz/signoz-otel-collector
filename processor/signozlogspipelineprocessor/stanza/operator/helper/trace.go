@@ -14,9 +14,9 @@ import (
 
 // NewTraceParser creates a new trace parser with default values
 func NewTraceParser() TraceParser {
-	traceID := signozstanzaentry.Field{entry.NewBodyField("trace_id")}
-	spanID := signozstanzaentry.Field{entry.NewBodyField("span_id")}
-	traceFlags := signozstanzaentry.Field{entry.NewBodyField("trace_flags")}
+	traceID := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("trace_id")}
+	spanID := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("span_id")}
+	traceFlags := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("trace_flags")}
 	return TraceParser{
 		TraceID: &TraceIDConfig{
 			ParseFrom: &traceID,

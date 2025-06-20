@@ -16,7 +16,8 @@ type Transformer struct {
 
 // Process will forward the entry to the next output without any alterations.
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
-	t.Write(ctx, entry)
+	// TODO: handle error
+	_ = t.Write(ctx, entry)
 	return nil
 }
 
