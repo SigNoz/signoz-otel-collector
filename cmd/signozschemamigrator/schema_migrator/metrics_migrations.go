@@ -886,7 +886,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 		},
 	},
 	{
-		MigrationID: 1005,
+		MigrationID: 1006,
 		UpItems: []Operation{
 			// Drop existing tables and materialized views
 			DropTableOperation{
