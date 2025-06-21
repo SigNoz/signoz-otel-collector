@@ -362,21 +362,25 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		if err != nil {
 			return fmt.Errorf("PrepareTagBatchV2:%w", err)
 		}
+		defer tagStatementV2.Close()
 
 		attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
 		}
+		defer attributeKeysStmt.Close()
 
 		resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
 		}
+		defer resourceKeysStmt.Close()
 
 		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareBatchV2:%w", err)
 		}
+		defer insertLogsStmtV2.Close()
 
 		metrics := map[string]usage.Metric{}
 
@@ -506,6 +510,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		if err != nil {
 			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 		}
+		defer insertResourcesStmtV2.Close()
 
 		for bucketTs, resources := range resourcesSeen {
 			for resourceLabels, fingerprint := range resources {

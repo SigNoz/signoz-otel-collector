@@ -300,6 +300,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -347,6 +349,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
 
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
@@ -387,6 +390,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			defer statement.Close()
 
 			for i, ts := range data.Timeseries {
 				fingerprint := fingerprints[i]
@@ -456,6 +460,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			defer statement.Close()
+
 			// timestamp in milliseconds with nearest hour precision
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
@@ -515,6 +521,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
 
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]

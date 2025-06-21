@@ -152,6 +152,8 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
+	defer statement.Close()
+
 	for _, span := range batchSpans {
 		err = statement.Append(
 			span.TsBucketStart,
@@ -221,6 +223,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for error table: %w", err)
 	}
+	defer statement.Close()
 
 	for _, span := range batchSpans {
 		for _, errorEvent := range span.ErrorEvents {
@@ -275,10 +278,14 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
 	}
+	defer tagKeyStatement.Close()
+
 	tagStatementV2, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTableV2), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes table v2 due to error: %w", err)
 	}
+	defer tagStatementV2.Close()
+
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
 	mapOfSpanAttributeKeys := make(map[string]struct{})
 
@@ -501,6 +508,7 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 	if err != nil {
 		return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 	}
+	defer insertResourcesStmtV3.Close()
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {

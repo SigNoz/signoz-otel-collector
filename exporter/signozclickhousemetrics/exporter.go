@@ -917,6 +917,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, ts := range timeSeries {
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
@@ -970,6 +972,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, sample := range samples {
 			err = statement.Append(
 				sample.env,
@@ -1008,6 +1012,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, expHist := range expHist {
 			err = statement.Append(
 				expHist.env,
@@ -1050,6 +1056,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, meta := range metadata {
 			err = statement.Append(
 				meta.metricName,

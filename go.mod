@@ -3,8 +3,8 @@ module github.com/SigNoz/signoz-otel-collector
 go 1.23.0
 
 require (
-	github.com/ClickHouse/ch-go v0.63.1
-	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
+	github.com/ClickHouse/ch-go v0.66.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/IBM/sarama v1.45.2
 	github.com/Shopify/sarama v1.38.1
@@ -15,7 +15,6 @@ require (
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
-	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
@@ -193,7 +192,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
-	github.com/srikanthccv/ClickHouse-go-mock v0.10.0
+	github.com/srikanthccv/ClickHouse-go-mock v0.12.0
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/gjson v1.14.2
 	github.com/tilinna/clock v1.1.0
@@ -224,9 +223,9 @@ require (
 	go.opentelemetry.io/collector/exporter/otlpexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/otlphttpexporter v0.128.0
 	go.opentelemetry.io/collector/extension v1.34.0
-	go.opentelemetry.io/collector/extension/experimental/storage v0.117.0
 	go.opentelemetry.io/collector/extension/extensioncapabilities v0.128.0
 	go.opentelemetry.io/collector/extension/extensiontest v0.128.0
+	go.opentelemetry.io/collector/extension/xextension v0.128.0
 	go.opentelemetry.io/collector/extension/zpagesextension v0.128.0
 	go.opentelemetry.io/collector/featuregate v1.34.0
 	go.opentelemetry.io/collector/otelcol v0.128.0
@@ -249,7 +248,7 @@ require (
 	go.uber.org/goleak v1.3.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/text v0.25.0
+	golang.org/x/text v0.26.0
 	google.golang.org/grpc v1.72.2
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0
@@ -430,6 +429,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/cadvisor v0.52.1 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
@@ -634,7 +634,6 @@ require (
 	go.opentelemetry.io/collector/exporter/xexporter v0.128.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionauth v1.34.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.128.0 // indirect
-	go.opentelemetry.io/collector/extension/xextension v0.128.0 // indirect
 	go.opentelemetry.io/collector/filter v0.128.0 // indirect
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.128.0 // indirect
 	go.opentelemetry.io/collector/internal/memorylimiter v0.128.0 // indirect
@@ -669,7 +668,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac // indirect
-	golang.org/x/mod v0.24.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
@@ -701,7 +700,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.8.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/docker/docker v28.1.1+incompatible // indirect
+	github.com/docker/docker v28.2.2+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
@@ -771,9 +770,9 @@ require (
 	go.opentelemetry.io/otel/metric v1.36.0
 	go.opentelemetry.io/otel/sdk v1.36.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
@@ -783,8 +782,8 @@ require (
 )
 
 replace (
-	github.com/ClickHouse/ch-go v0.63.1 => github.com/SigNoz/ch-go v0.63.1-dd-sketch
-	github.com/ClickHouse/clickhouse-go/v2 v2.30.0 => github.com/SigNoz/clickhouse-go/v2 v2.30.0-dd-sketch
+	github.com/ClickHouse/ch-go v0.66.0 => github.com/SigNoz/ch-go v0.66.0-dd-sketch
+	github.com/ClickHouse/clickhouse-go/v2 v2.36.0 => github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch
 	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
