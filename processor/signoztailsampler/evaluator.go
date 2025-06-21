@@ -13,8 +13,6 @@ import (
 type defaultEvaluator struct {
 	name string
 
-	priority int
-
 	// in case probalistic sampling to be done when filter matches
 	sampler sampling.PolicyEvaluator
 
@@ -30,7 +28,6 @@ type defaultEvaluator struct {
 	// if any of subpolicy filters match, the sampling method associated with that
 	// sub-policy will be applied. and no further processing will be performed.
 	subEvaluators []sampling.PolicyEvaluator
-	logger        *zap.Logger
 }
 
 func NewDefaultEvaluator(logger *zap.Logger, policyCfg BasePolicy, subpolicies []BasePolicy) sampling.PolicyEvaluator {

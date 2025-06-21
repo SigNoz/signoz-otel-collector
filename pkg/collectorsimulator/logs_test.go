@@ -8,8 +8,8 @@ import (
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/logstransformprocessor"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.opentelemetry.io/collector/processor"
 )
 
 type ProcessorConfig struct {
@@ -71,7 +71,7 @@ func TestLogsProcessingSimulation(t *testing.T) {
 		Config: testLogstransformConf2,
 	}
 
-	processorFactories, err := processor.MakeFactoryMap(
+	processorFactories, err := otelcol.MakeFactoryMap(
 		logstransformprocessor.NewFactory(),
 	)
 	require.Nil(err, "could not create processors factory map")

@@ -24,7 +24,7 @@ var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		component.MustNewType(metadata.Type),
+		metadata.Type,
 		createDefaultConfig,
 		processor.WithLogs(createLogsProcessor, metadata.LogsStability),
 		processor.WithTraces(createTracesProcessor, metadata.TracesStability),
@@ -53,7 +53,7 @@ func createLogsProcessor(
 	if err != nil {
 		return nil, fmt.Errorf("invalid config for \"transform\" processor %w", err)
 	}
-	return processorhelper.NewLogsProcessor(
+	return processorhelper.NewLogs(
 		ctx,
 		set,
 		cfg,
@@ -74,7 +74,7 @@ func createTracesProcessor(
 	if err != nil {
 		return nil, fmt.Errorf("invalid config for \"transform\" processor %w", err)
 	}
-	return processorhelper.NewTracesProcessor(
+	return processorhelper.NewTraces(
 		ctx,
 		set,
 		cfg,
@@ -95,7 +95,7 @@ func createMetricsProcessor(
 	if err != nil {
 		return nil, fmt.Errorf("invalid config for \"transform\" processor %w", err)
 	}
-	return processorhelper.NewMetricsProcessor(
+	return processorhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,

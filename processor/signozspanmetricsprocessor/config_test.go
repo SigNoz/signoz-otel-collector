@@ -30,6 +30,8 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/metadata"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -95,7 +97,7 @@ func TestLoadConfig(t *testing.T) {
 			factories.Receivers[component.MustNewType("otlp")] = otlpreceiver.NewFactory()
 			factories.Receivers[component.MustNewType("jaeger")] = jaegerreceiver.NewFactory()
 
-			factories.Processors[component.MustNewType(typeStr)] = NewFactory()
+			factories.Processors[metadata.Type] = NewFactory()
 			factories.Processors[component.MustNewType("batch")] = batchprocessor.NewFactory()
 
 			factories.Exporters[component.MustNewType("otlp")] = otlpexporter.NewFactory()
@@ -118,7 +120,7 @@ func TestLoadConfig(t *testing.T) {
 					MaxServicesToTrack:             tc.wantMaxServicesToTrack,
 					MaxOperationsToTrackPerService: tc.wantMaxOperationsToTrackPerService,
 				},
-				cfg.Processors[component.NewID(component.MustNewType(typeStr))],
+				cfg.Processors[component.NewID(metadata.Type)],
 			)
 		})
 	}

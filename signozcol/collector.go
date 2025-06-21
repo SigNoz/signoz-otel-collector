@@ -10,7 +10,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/components"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
-	"go.opentelemetry.io/collector/confmap/converter/expandconverter"
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 
@@ -200,9 +199,8 @@ func newOtelColSettings(configPaths []string, version string, desc string, loggi
 	fmp := fileprovider.NewFactory()
 	configProviderSettings := otelcol.ConfigProviderSettings{
 		ResolverSettings: confmap.ResolverSettings{
-			URIs:               configPaths,
-			ProviderFactories:  []confmap.ProviderFactory{envp, fmp},
-			ConverterFactories: []confmap.ConverterFactory{expandconverter.NewFactory()},
+			URIs:              configPaths,
+			ProviderFactories: []confmap.ProviderFactory{envp, fmp},
 		},
 	}
 

@@ -127,6 +127,7 @@ type processorImp struct {
 	ticker  *clock.Ticker
 	done    chan struct{}
 	started bool
+	wg      sync.WaitGroup
 
 	shutdownOnce sync.Once
 
@@ -417,7 +418,9 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	p.logger.Info("Started signozspanmetricsprocessor")
 
 	p.started = true
+	p.wg.Add(1)
 	go func() {
+		defer p.wg.Done()
 		for {
 			select {
 			case <-p.done:
@@ -438,10 +441,11 @@ func (p *processorImp) Shutdown(ctx context.Context) error {
 		if p.started {
 			p.logger.Info("Stopping ticker")
 			p.ticker.Stop()
-			p.done <- struct{}{}
+			close(p.done)
 			p.started = false
 		}
 	})
+	p.wg.Wait()
 	return nil
 }
 

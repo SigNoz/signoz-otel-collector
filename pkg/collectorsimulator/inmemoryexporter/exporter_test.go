@@ -6,9 +6,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/exporter/exportertest"
 )
 
 func TestExporterLifecycle(t *testing.T) {
@@ -35,7 +37,8 @@ func TestExporterLifecycle(t *testing.T) {
 	require.NotNil(err, "should not be able to start another exporter with same id before shutting down the previous one")
 
 	// Should not be able to get a hold of an exporter after shutdown
-	testExporter.Shutdown(context.Background())
+	err = testExporter.Shutdown(context.Background())
+	require.Nil(err)
 	require.Nil(GetExporterInstance(testExporterId), "should not be able to find exporter instance after shutdown")
 
 	// Should be able to start a new exporter with same id after shutting down
@@ -48,7 +51,8 @@ func TestExporterLifecycle(t *testing.T) {
 	testExporter3 := GetExporterInstance(testExporterId)
 	require.NotNil(testExporter3, "could not get exporter instance by Id")
 
-	testExporter3.Shutdown(context.Background())
+	err = testExporter3.Shutdown(context.Background())
+	require.Nil(err)
 	require.Nil(GetExporterInstance(testExporterId))
 }
 
@@ -56,9 +60,9 @@ func makeTestExporter(exporterId string) (exporter.Logs, error) {
 	factory := NewFactory()
 
 	cfg := factory.CreateDefaultConfig()
-	confmap.NewFromStringMap(map[string]any{"id": exporterId}).Unmarshal(&cfg)
+	_ = confmap.NewFromStringMap(map[string]any{"id": exporterId}).Unmarshal(&cfg)
 
-	return factory.CreateLogsExporter(
-		context.Background(), exporter.Settings{}, cfg,
+	return factory.CreateLogs(
+		context.Background(), exportertest.NewNopSettings(component.MustNewType("memory")), cfg,
 	)
 }

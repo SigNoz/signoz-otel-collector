@@ -23,7 +23,7 @@ const (
 func NewFactory() exporter.Factory {
 	f := &metadataExporterFactory{}
 	return exporter.NewFactory(
-		component.MustNewType(metadata.Type),
+		metadata.Type,
 		createDefaultConfig,
 		exporter.WithTraces(f.createTracesExporter, metadata.TracesStability),
 		exporter.WithMetrics(f.createMetricsExporter, metadata.MetricsStability),
@@ -33,10 +33,10 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		DSN:           "tcp://localhost:9000",
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		DSN:              "tcp://localhost:9000",
 		MaxDistinctValues: MaxDistinctValuesConfig{
 			Traces: LimitsConfig{
 				MaxKeys:                 4096,
@@ -94,14 +94,14 @@ func (f *metadataExporterFactory) createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		set,
 		&oCfg,
 		exp.PushTraces,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
@@ -116,14 +116,14 @@ func (f *metadataExporterFactory) createMetricsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		set,
 		&oCfg,
 		exp.PushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }
@@ -138,14 +138,14 @@ func (f *metadataExporterFactory) createLogsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		&oCfg,
 		exp.PushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
 		exporterhelper.WithShutdown(exp.Shutdown))
 }

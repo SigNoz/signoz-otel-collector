@@ -39,8 +39,8 @@ const contentTypeProtobuf = "application/x-protobuf"
 func StartMockServer(t *testing.T) *MockServer {
 	srv := &MockServer{
 		t:                t,
-		expectedHandlers: make(chan receivedMessageHandler, 0),
-		expectedComplete: make(chan struct{}, 0),
+		expectedHandlers: make(chan receivedMessageHandler),
+		expectedComplete: make(chan struct{}),
 	}
 
 	m := http.NewServeMux()

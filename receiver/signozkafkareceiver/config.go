@@ -9,7 +9,6 @@ import (
 	"go.opentelemetry.io/collector/component"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 )
 
 type AutoCommit struct {
@@ -63,7 +62,7 @@ type Config struct {
 
 	// Metadata is the namespace for metadata management properties used by the
 	// Client, and shared by the Producer/Consumer.
-	Metadata kafkaexporter.Metadata `mapstructure:"metadata"`
+	Metadata Metadata `mapstructure:"metadata"`
 
 	Authentication kafka.Authentication `mapstructure:"auth"`
 
@@ -74,6 +73,34 @@ type Config struct {
 	MessageMarking MessageMarking `mapstructure:"message_marking"`
 
 	SaramaConsumerConfig SaramaConsumerConfig `mapstructure:"sarama_consumer_config"`
+}
+
+// Metadata defines configuration for retrieving metadata from the broker.
+//
+// Note: directly imported due to upstream shifted into internal
+type Metadata struct {
+	// Whether to maintain a full set of metadata for all topics, or just
+	// the minimal set that has been necessary so far. The full set is simpler
+	// and usually more convenient, but can take up a substantial amount of
+	// memory if you have many topics and partitions. Defaults to true.
+	Full bool `mapstructure:"full"`
+
+	// Retry configuration for metadata.
+	// This configuration is useful to avoid race conditions when broker
+	// is starting at the same time as collector.
+	Retry MetadataRetry `mapstructure:"retry"`
+}
+
+// MetadataRetry defines retry configuration for Metadata.
+//
+// Note: directly imported due to upstream shifted into internal
+type MetadataRetry struct {
+	// The total number of times to retry a metadata request when the
+	// cluster is in the middle of a leader election or at startup (default 3).
+	Max int `mapstructure:"max"`
+	// How long to wait for leader election to occur before retrying
+	// (default 250ms). Similar to the JVM's `retry.backoff.ms`.
+	Backoff time.Duration `mapstructure:"backoff"`
 }
 
 const (

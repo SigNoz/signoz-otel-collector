@@ -245,3 +245,16 @@ func (c *InMemoryKeyCache) Debug(ctx context.Context) {
 	dump("METRICS", c.metricsCache)
 	dump("LOGS", c.logsCache)
 }
+
+func (c *InMemoryKeyCache) Close(ctx context.Context) error {
+	if c.tracesCache != nil {
+		c.tracesCache.Stop()
+	}
+	if c.metricsCache != nil {
+		c.metricsCache.Stop()
+	}
+	if c.logsCache != nil {
+		c.logsCache.Stop()
+	}
+	return nil
+}

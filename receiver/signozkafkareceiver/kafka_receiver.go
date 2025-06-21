@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
 )
 
 const (
@@ -139,7 +140,7 @@ func (c *kafkaTracesConsumer) Start(_ context.Context, host component.Host) erro
 	if err != nil {
 		return err
 	}
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	if err != nil {
 		return err
 	}
@@ -252,7 +253,7 @@ func (c *kafkaMetricsConsumer) Start(_ context.Context, host component.Host) err
 		return err
 	}
 
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	if err != nil {
 		return err
 	}
@@ -392,7 +393,7 @@ func (c *kafkaLogsConsumer) Start(_ context.Context, host component.Host) error 
 		return err
 	}
 
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	if err != nil {
 		return err
 	}

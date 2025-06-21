@@ -44,6 +44,8 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/internal/metadata"
 )
 
 const (
@@ -104,7 +106,7 @@ type ClickHouseParams struct {
 func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 
 	logger := params.Settings.Logger
-	meter := params.Settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter")
+	meter := params.Settings.MeterProvider.Meter(metadata.ScopeName)
 
 	options, err := clickhouse.ParseDSN(params.DSN)
 
@@ -298,6 +300,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		timestamp := model.Now().Time().UnixMilli()
 		for fingerprint, labels := range newTimeSeries {
 			encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -345,6 +349,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
 
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]
@@ -385,6 +390,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			defer statement.Close()
 
 			for i, ts := range data.Timeseries {
 				fingerprint := fingerprints[i]
@@ -442,7 +448,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			return err
 		}
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+			// TODO: handle error
+			_ = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, ch.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
 	}
 
@@ -453,6 +460,8 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 			if err != nil {
 				return err
 			}
+			defer statement.Close()
+
 			// timestamp in milliseconds with nearest hour precision
 			unixMilli := model.Now().Time().UnixMilli() / 3600000 * 3600000
 
@@ -512,6 +521,7 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
 
 		for i, ts := range data.Timeseries {
 			fingerprint := fingerprints[i]

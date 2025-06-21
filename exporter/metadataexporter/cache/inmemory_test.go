@@ -222,11 +222,11 @@ func TestInMemoryKeyCache_TotalCardinalityLimit(t *testing.T) {
 	cache, err := NewInMemoryKeyCache(opts)
 	require.NoError(t, err)
 
-	cache.AddAttrsToResource(ctx, 111, []uint64{1, 2}, pipeline.SignalTraces)
-	cache.AddAttrsToResource(ctx, 112, []uint64{3, 4}, pipeline.SignalTraces)
-	cache.AddAttrsToResource(ctx, 113, []uint64{5, 6}, pipeline.SignalTraces)
-	cache.AddAttrsToResource(ctx, 114, []uint64{7, 8}, pipeline.SignalTraces)
-	cache.AddAttrsToResource(ctx, 115, []uint64{9, 10}, pipeline.SignalTraces)
+	_ = cache.AddAttrsToResource(ctx, 111, []uint64{1, 2}, pipeline.SignalTraces)
+	_ = cache.AddAttrsToResource(ctx, 112, []uint64{3, 4}, pipeline.SignalTraces)
+	_ = cache.AddAttrsToResource(ctx, 113, []uint64{5, 6}, pipeline.SignalTraces)
+	_ = cache.AddAttrsToResource(ctx, 114, []uint64{7, 8}, pipeline.SignalTraces)
+	_ = cache.AddAttrsToResource(ctx, 115, []uint64{9, 10}, pipeline.SignalTraces)
 
 	exists, err := cache.AttrsExistForResource(ctx, 111, []uint64{1, 2}, pipeline.SignalTraces)
 	require.NoError(t, err)

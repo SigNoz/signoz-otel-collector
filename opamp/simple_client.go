@@ -22,7 +22,7 @@ func NewSimpleClient(coll *signozcol.WrappedCollector, logger *zap.Logger) *simp
 	}
 }
 
-func (c simpleClient) Start(ctx context.Context) error {
+func (c *simpleClient) Start(ctx context.Context) error {
 	c.logger.Info("Starting simple client")
 	err := c.coll.Run(ctx)
 	if err != nil {
@@ -32,7 +32,7 @@ func (c simpleClient) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c simpleClient) Stop(ctx context.Context) error {
+func (c *simpleClient) Stop(ctx context.Context) error {
 	c.logger.Info("Stopping simple client")
 	close(c.stopped)
 	c.coll.Shutdown()

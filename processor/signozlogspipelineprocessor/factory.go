@@ -13,13 +13,15 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
 
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		component.MustNewType("signozlogspipeline"),
+		metadata.Type,
 		createDefaultConfig,
-		processor.WithLogs(createLogsProcessor, component.StabilityLevelDevelopment))
+		processor.WithLogs(createLogsProcessor, metadata.LogsStability))
 }
 
 // Note: This isn't a valid configuration (no operators would lead to no work being done)
@@ -52,7 +54,7 @@ func createLogsProcessor(
 		return nil, fmt.Errorf("couldn't build \"signozlogspipeline\" processor %w", err)
 	}
 
-	return processorhelper.NewLogsProcessor(
+	return processorhelper.NewLogs(
 		ctx,
 		set,
 		cfg,

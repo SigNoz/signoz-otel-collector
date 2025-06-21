@@ -6,8 +6,12 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+var (
+	Type      = component.MustNewType("signozkafkaexporter")
+	ScopeName = "github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
+)
+
 const (
-	Type             = "signozkafkaexporter"
 	TracesStability  = component.StabilityLevelBeta
 	MetricsStability = component.StabilityLevelBeta
 	LogsStability    = component.StabilityLevelBeta

@@ -29,7 +29,7 @@ const (
 
 // NewFactory creates a factory for httplogreceiver
 func NewFactory() receiver.Factory {
-	return receiver.NewFactory(component.MustNewType(metadata.Type), createDefaultConfig, receiver.WithLogs(createLogsReceiver, metadata.LogsStability))
+	return receiver.NewFactory(metadata.Type, createDefaultConfig, receiver.WithLogs(createLogsReceiver, metadata.LogsStability))
 }
 
 // CreateDefaultConfig creates a config with type and version
@@ -88,7 +88,7 @@ func newReceiver(
 	config Config,
 ) (*httplogreceiver, error) {
 	transport := "http"
-	if config.TLSSetting != nil {
+	if config.TLS != nil {
 		transport = "https"
 	}
 	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
@@ -194,7 +194,7 @@ func (r *httplogreceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 
 	r.obsrecv.EndLogsOp(
 		ctx,
-		metadata.Type,
+		metadata.Type.String(),
 		totalCount,
 		err)
 }

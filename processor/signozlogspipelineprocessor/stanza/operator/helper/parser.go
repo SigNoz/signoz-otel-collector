@@ -19,7 +19,7 @@ func NewParserConfig(operatorID, operatorType string) ParserConfig {
 	return ParserConfig{
 		TransformerConfig: NewTransformerConfig(operatorID, operatorType),
 		ParseFrom:         signozstanzaentry.NewBodyField(),
-		ParseTo:           signozstanzaentry.RootableField{Field: signozstanzaentry.Field{entry.NewAttributeField()}},
+		ParseTo:           signozstanzaentry.RootableField{Field: signozstanzaentry.Field{FieldInterface: entry.NewAttributeField()}},
 	}
 }
 
@@ -106,7 +106,8 @@ func (p *ParserOperator) ProcessWithCallback(ctx context.Context, entry *entry.E
 		return p.HandleEntryError(ctx, entry, err)
 	}
 	if skip {
-		p.Write(ctx, entry)
+		// TODO: handle error
+		_ = p.Write(ctx, entry)
 		return nil
 	}
 
@@ -120,7 +121,8 @@ func (p *ParserOperator) ProcessWithCallback(ctx context.Context, entry *entry.E
 		}
 	}
 
-	p.Write(ctx, entry)
+	// TODO: handle error
+	_ = p.Write(ctx, entry)
 	return nil
 }
 

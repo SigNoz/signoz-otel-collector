@@ -28,6 +28,10 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	return t.ProcessWith(ctx, entry, t.Transform)
 }
 
+func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	return t.ProcessBatchWith(ctx, entries, t.Process)
+}
+
 // Transform will apply the add operations to an entry
 func (t *Transformer) Transform(e *entry.Entry) error {
 	if t.Value != nil {

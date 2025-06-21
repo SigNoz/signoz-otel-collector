@@ -9,6 +9,7 @@ import (
 
 	"github.com/expr-lang/expr/vm"
 	"go.opentelemetry.io/collector/component"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -79,6 +80,17 @@ func (t *TransformerOperator) CanProcess() bool {
 	return true
 }
 
+// ProcessFunction is a function that processes an entry.
+type ProcessFunction = func(context.Context, *entry.Entry) error
+
+func (t *TransformerOperator) ProcessBatchWith(ctx context.Context, entries []*entry.Entry, process ProcessFunction) error {
+	var errs error
+	for i := range entries {
+		errs = multierr.Append(errs, process(ctx, entries[i]))
+	}
+	return errs
+}
+
 // ProcessWith will process an entry with a transform function.
 func (t *TransformerOperator) ProcessWith(ctx context.Context, entry *entry.Entry, transform TransformFunction) error {
 	// Short circuit if the "if" condition does not match
@@ -87,14 +99,17 @@ func (t *TransformerOperator) ProcessWith(ctx context.Context, entry *entry.Entr
 		return t.HandleEntryError(ctx, entry, err)
 	}
 	if skip {
-		t.Write(ctx, entry)
+		// TODO: handle error
+		_ = t.Write(ctx, entry)
 		return nil
 	}
 
 	if err := transform(entry); err != nil {
 		return t.HandleEntryError(ctx, entry, err)
 	}
-	t.Write(ctx, entry)
+
+	// TODO: handle error
+	_ = t.Write(ctx, entry)
 	return nil
 }
 
@@ -106,7 +121,8 @@ func (t *TransformerOperator) HandleEntryError(ctx context.Context, entry *entry
 		t.Logger().Error("Failed to process entry", zap.Any("error", err), zap.Any("action", t.OnError))
 	}
 	if t.OnError == SendOnError || t.OnError == SendOnErrorQuiet {
-		t.Write(ctx, entry)
+		// TODO: handle error
+		_ = t.Write(ctx, entry)
 	}
 	return err
 }

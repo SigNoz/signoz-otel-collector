@@ -20,9 +20,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/processor/processortest"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/metadata"
 )
 
 func TestNewProcessor(t *testing.T) {
@@ -58,13 +61,13 @@ func TestNewProcessor(t *testing.T) {
 			// Prepare
 			factory := NewFactory()
 
-			creationParams := processortest.NewNopSettings()
+			creationParams := processortest.NewNopSettings(component.Type(metadata.Type))
 			cfg := factory.CreateDefaultConfig().(*Config)
 			cfg.LatencyHistogramBuckets = tc.latencyHistogramBuckets
 			cfg.Dimensions = tc.dimensions
 
 			// Test
-			traceProcessor, err := factory.CreateTracesProcessor(context.Background(), creationParams, cfg, consumertest.NewNop())
+			traceProcessor, err := factory.CreateTraces(context.Background(), creationParams, cfg, consumertest.NewNop())
 			smp := traceProcessor.(*processorImp)
 
 			// Verify

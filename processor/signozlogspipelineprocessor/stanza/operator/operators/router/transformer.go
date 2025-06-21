@@ -9,6 +9,7 @@ import (
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/expr-lang/expr/vm"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -68,6 +69,14 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	}
 
 	return nil
+}
+
+func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	var errs error
+	for i := range entries {
+		errs = multierr.Append(errs, t.Process(ctx, entries[i]))
+	}
+	return errs
 }
 
 // CanOutput will always return true for a router operator

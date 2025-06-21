@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -45,9 +45,9 @@ func TestLoadConfig(t *testing.T) {
 		require.NoError(sub.Unmarshal(cfg))
 
 		if tt.expectedErr {
-			require.Error(component.ValidateConfig(cfg))
+			require.Error(xconfmap.Validate(cfg))
 		} else {
-			require.NoError(component.ValidateConfig(cfg))
+			require.NoError(xconfmap.Validate(cfg))
 
 		}
 	}

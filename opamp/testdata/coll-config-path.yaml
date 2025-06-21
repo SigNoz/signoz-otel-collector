@@ -1,5 +1,5 @@
 exporters:
-    logging: null
+    debug: null
     prometheus:
         endpoint: 0.0.0.0:8889
 extensions:
@@ -19,14 +19,14 @@ service:
     pipelines:
         metrics:
             exporters:
-                - logging
+                - debug
             processors:
                 - batch
             receivers:
                 - otlp
         traces:
             exporters:
-                - logging
+                - debug
             processors:
                 - batch
             receivers:

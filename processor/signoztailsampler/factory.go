@@ -24,13 +24,8 @@ import (
 	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
-)
 
-const (
-	// The value of "type" Tail Sampling in configuration.
-	typeStr = "signoz_tail_sampling"
-	// The stability level of the processor.
-	stability = component.StabilityLevelBeta
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/metadata"
 )
 
 var onceMetrics sync.Once
@@ -43,9 +38,9 @@ func NewFactory() processor.Factory {
 	})
 
 	return processor.NewFactory(
-		component.MustNewType(typeStr),
+		metadata.Type,
 		createDefaultConfig,
-		processor.WithTraces(createTracesProcessor, stability))
+		processor.WithTraces(createTracesProcessor, metadata.TracesStability))
 }
 
 func createDefaultConfig() component.Config {

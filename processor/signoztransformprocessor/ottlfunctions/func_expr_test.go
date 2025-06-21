@@ -111,8 +111,8 @@ func makeTestOttlLogContext(
 		plog.NewResourceLogs(),
 	)
 	ctx.GetLogRecord().Body().SetStr(body)
-	ctx.GetLogRecord().Attributes().FromRaw(attributes)
-	ctx.GetResource().Attributes().FromRaw(resource)
+	_ = ctx.GetLogRecord().Attributes().FromRaw(attributes)
+	_ = ctx.GetResource().Attributes().FromRaw(resource)
 	ctx.GetLogRecord().SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(timestampSeconds, 0)))
 	ctx.GetLogRecord().SetSeverityText(severityText)
 	ctx.GetLogRecord().SetSeverityNumber(severity)

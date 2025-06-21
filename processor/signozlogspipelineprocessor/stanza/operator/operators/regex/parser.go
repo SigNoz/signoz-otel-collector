@@ -31,6 +31,10 @@ func (p *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 	return p.ParserOperator.ProcessWith(ctx, entry, p.parse)
 }
 
+func (p *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
+	return p.ProcessBatchWith(ctx, entries, p.Process)
+}
+
 // parse will parse a value using the supplied regex.
 func (p *Parser) parse(value any) (any, error) {
 	var raw string

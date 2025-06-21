@@ -75,12 +75,12 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
 	// make a copy of the original file
 	func() {
-		copy("./testdata/service-instance-id.yaml", "./testdata/service-instance-id-copy.yaml")
+		_ = copy("./testdata/service-instance-id.yaml", "./testdata/service-instance-id-copy.yaml")
 	}()
 
 	// restore the original file
 	defer func() {
-		copy("./testdata/service-instance-id-copy.yaml", "./testdata/service-instance-id.yaml")
+		_ = copy("./testdata/service-instance-id-copy.yaml", "./testdata/service-instance-id.yaml")
 		os.Remove("./testdata/service-instance-id-copy.yaml")
 	}()
 
@@ -95,14 +95,14 @@ func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
 func TestNewAgentConfigManagerApply(t *testing.T) {
 	// make a copy of the original file
 	func() {
-		copy("./testdata/coll-config-path.yaml", "./testdata/coll-config-path-copy.yaml")
-		copy("./testdata/coll-config-path-changed.yaml", "./testdata/coll-config-path-changed-copy.yaml")
+		_ = copy("./testdata/coll-config-path.yaml", "./testdata/coll-config-path-copy.yaml")
+		_ = copy("./testdata/coll-config-path-changed.yaml", "./testdata/coll-config-path-changed-copy.yaml")
 	}()
 
 	// restore the original file
 	defer func() {
-		copy("./testdata/coll-config-path-copy.yaml", "./testdata/coll-config-path.yaml")
-		copy("./testdata/coll-config-path-changed-copy.yaml", "./testdata/coll-config-path-changed.yaml")
+		_ = copy("./testdata/coll-config-path-copy.yaml", "./testdata/coll-config-path.yaml")
+		_ = copy("./testdata/coll-config-path-changed-copy.yaml", "./testdata/coll-config-path-changed.yaml")
 		os.Remove("./testdata/coll-config-path-copy.yaml")
 		os.Remove("./testdata/coll-config-path-changed-copy.yaml")
 	}()

@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler/internal/metadata"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -20,7 +22,7 @@ func TestLoadConfig(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 
-	sub, err := cm.Sub(component.NewIDWithName(component.MustNewType(typeStr), "").String())
+	sub, err := cm.Sub(component.NewIDWithName(metadata.Type, "").String())
 	require.NoError(t, err)
 	require.NoError(t, sub.Unmarshal(cfg))
 

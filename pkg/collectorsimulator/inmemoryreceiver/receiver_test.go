@@ -6,10 +6,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
 func TestReceiverLifecycle(t *testing.T) {
@@ -36,7 +38,7 @@ func TestReceiverLifecycle(t *testing.T) {
 	require.NotNil(err, "should not be able to start another receiver with same id before shutting down the previous one")
 
 	// Should not be able to get a hold of an receiver after shutdown
-	testReceiver.Shutdown(context.Background())
+	_ = testReceiver.Shutdown(context.Background())
 	require.Nil(GetReceiverInstance(testReceiverId), "should not be able to find inmemory receiver after shutdown")
 
 	// Should be able to start a new receiver with same id after shutting down
@@ -49,7 +51,7 @@ func TestReceiverLifecycle(t *testing.T) {
 	testReceiver3 := GetReceiverInstance(testReceiverId)
 	require.NotNil(testReceiver3, "could not get receiver instance by Id")
 
-	testReceiver3.Shutdown(context.Background())
+	_ = testReceiver3.Shutdown(context.Background())
 	require.Nil(GetReceiverInstance(testReceiverId))
 }
 
@@ -58,9 +60,9 @@ func makeTestLogReceiver(receiverId string) (receiver.Logs, error) {
 
 	cfg := factory.CreateDefaultConfig()
 
-	confmap.NewFromStringMap(map[string]any{"id": receiverId}).Unmarshal(&cfg)
+	_ = confmap.NewFromStringMap(map[string]any{"id": receiverId}).Unmarshal(&cfg)
 
-	return factory.CreateLogsReceiver(
-		context.Background(), receiver.Settings{}, cfg, consumertest.NewNop(),
+	return factory.CreateLogs(
+		context.Background(), receivertest.NewNopSettings(component.MustNewType("memory")), cfg, consumertest.NewNop(),
 	)
 }

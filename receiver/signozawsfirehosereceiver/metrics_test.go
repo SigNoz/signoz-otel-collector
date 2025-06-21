@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/unmarshaler/unmarshalertest"
 )
@@ -61,7 +62,7 @@ func TestNewMetricsReceiver(t *testing.T) {
 			cfg.RecordType = testCase.recordType
 			got, err := newMetricsReceiver(
 				cfg,
-				receivertest.NewNopSettings(),
+				receivertest.NewNopSettings(metadata.Type),
 				defaultMetricsUnmarshalers(zap.NewNop()),
 				testCase.consumer,
 			)
@@ -85,7 +86,7 @@ func TestMetricsReceiverWithSuccess(t *testing.T) {
 
 	receiver, err := newMetricsReceiver(
 		cfg,
-		receivertest.NewNopSettings(),
+		receivertest.NewNopSettings(metadata.Type),
 		map[string]unmarshaler.MetricsUnmarshaler{"test": unmarshalertest.NewWithMetrics(pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{GaugeMetricsCount: 2, GaugeDataPointCount: 10})))},
 		sink,
 	)
@@ -131,7 +132,7 @@ func TestMetricsReceiverWithError(t *testing.T) {
 
 	receiver, err := newMetricsReceiver(
 		cfg,
-		receivertest.NewNopSettings(),
+		receivertest.NewNopSettings(metadata.Type),
 		map[string]unmarshaler.MetricsUnmarshaler{"test": unmarshalertest.NewErrMetrics(testErr)},
 		consumertest.NewErr(testErr),
 	)

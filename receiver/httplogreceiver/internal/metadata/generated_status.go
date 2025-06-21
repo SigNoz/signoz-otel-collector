@@ -6,7 +6,11 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+var (
+	Type      = component.MustNewType("httplogreceiver")
+	ScopeName = "github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
+)
+
 const (
-	Type          = "httplogreceiver"
 	LogsStability = component.StabilityLevelAlpha
 )

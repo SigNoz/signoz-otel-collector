@@ -4,13 +4,14 @@
 package signoztransformprocessor
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.uber.org/multierr"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/metadata"
@@ -23,10 +24,10 @@ func TestLoadConfig(t *testing.T) {
 	tests := []struct {
 		id       component.ID
 		expected component.Config
-		errorLen int
+		errors   []error
 	}{
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
 				ErrorMode: ottl.PropagateError,
 				TraceStatements: []common.ContextStatements{
@@ -77,7 +78,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "ignore_errors"),
+			id: component.NewIDWithName(metadata.Type, "ignore_errors"),
 			expected: &Config{
 				ErrorMode: ottl.IgnoreError,
 				TraceStatements: []common.ContextStatements{
@@ -93,27 +94,30 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_trace"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_trace"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_trace"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_trace"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_metric"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_metric"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_metric"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_metric"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_log"),
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_log"),
 		},
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_function_log"),
+			id: component.NewIDWithName(metadata.Type, "unknown_function_log"),
 		},
 		{
-			id:       component.NewIDWithName(component.MustNewType(metadata.Type), "bad_syntax_multi_signal"),
-			errorLen: 3,
-		},
+			id: component.NewIDWithName(metadata.Type, "bad_syntax_multi_signal"),
+			errors: []error{
+				errors.New("unexpected token \"where\""),
+				errors.New("unexpected token \"attributes\""),
+				errors.New("unexpected token \"none\""),
+			}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.id.String(), func(t *testing.T) {
@@ -128,23 +132,25 @@ func TestLoadConfig(t *testing.T) {
 			assert.NoError(t, sub.Unmarshal(cfg))
 
 			if tt.expected == nil {
-				err = component.ValidateConfig(cfg)
+				err = xconfmap.Validate(cfg)
 				assert.Error(t, err)
 
-				if tt.errorLen > 0 {
-					assert.Equal(t, tt.errorLen, len(multierr.Errors(err)))
+				if len(tt.errors) > 0 {
+					for _, expectedErr := range tt.errors {
+						assert.ErrorContains(t, err, expectedErr.Error())
+					}
 				}
 
 				return
 			}
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
 }
 
 func Test_UnknownContextID(t *testing.T) {
-	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_context")
+	id := component.NewIDWithName(metadata.Type, "unknown_context")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)
@@ -158,7 +164,7 @@ func Test_UnknownContextID(t *testing.T) {
 }
 
 func Test_UnknownErrorMode(t *testing.T) {
-	id := component.NewIDWithName(component.MustNewType(metadata.Type), "unknown_error_mode")
+	id := component.NewIDWithName(metadata.Type, "unknown_error_mode")
 
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	assert.NoError(t, err)

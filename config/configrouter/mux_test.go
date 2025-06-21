@@ -26,7 +26,7 @@ func TestMuxConfig(t *testing.T) {
 	}).Methods(http.MethodGet)
 	routerConfig.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test"))
+		_, _ = w.Write([]byte("test"))
 	}).Methods(http.MethodGet)
 
 	serverConfig := confighttp.ServerConfig{

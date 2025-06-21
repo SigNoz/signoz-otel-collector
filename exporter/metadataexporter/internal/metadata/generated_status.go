@@ -6,9 +6,13 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+var (
+	Type      = component.MustNewType("metadataexporter")
+	ScopeName = "github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
+)
+
 const (
-	Type             = "metadataexporter"
-	TracesStability  = component.StabilityLevelBeta
-	MetricsStability = component.StabilityLevelBeta
-	LogsStability    = component.StabilityLevelBeta
+	TracesStability  = component.StabilityLevelStable
+	LogsStability    = component.StabilityLevelStable
+	MetricsStability = component.StabilityLevelStable
 )
