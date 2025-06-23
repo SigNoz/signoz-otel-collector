@@ -47,7 +47,7 @@ type NewServerClientOpts struct {
 	Config           *AgentManagerConfig
 	WrappedCollector *signozcol.WrappedCollector
 
-	CollectorConfgPath string
+	CollectorConfigPath string
 }
 
 // NewServerClient creates a new OpAmp client
@@ -70,12 +70,12 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 	svrClient.createInstanceId()
 
 	var err error
-	svrClient.receivedInitialConfig, err = os.ReadFile(args.CollectorConfgPath)
+	svrClient.receivedInitialConfig, err = os.ReadFile(args.CollectorConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read default config: %s", err)
 	}
 
-	dynamicConfig, err := NewDynamicConfig(args.CollectorConfgPath, svrClient.reload, clientLogger)
+	dynamicConfig, err := NewDynamicConfig(args.CollectorConfigPath, svrClient.reload, clientLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collector config: %v", err)
 	}

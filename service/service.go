@@ -47,10 +47,10 @@ func New(
 			return nil, fmt.Errorf("failed to parse manager config: %w", err)
 		}
 		serverClientOpts := &opamp.NewServerClientOpts{
-			Logger:             logger,
-			Config:             managerConfig,
-			WrappedCollector:   wrappedCollector,
-			CollectorConfgPath: collectorConfigPath,
+			Logger:              logger,
+			Config:              managerConfig,
+			WrappedCollector:    wrappedCollector,
+			CollectorConfigPath: collectorConfigPath,
 		}
 		client, err = opamp.NewServerClient(serverClientOpts)
 		if err != nil {
