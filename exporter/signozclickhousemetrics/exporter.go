@@ -250,12 +250,14 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		return nil, err
 	}
 
-	err = chExporter.usageCollector.Start()
-	if err != nil {
-		return nil, err
-	}
-	if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
-		return nil, err
+	if chExporter.usageCollector != nil {
+		err = chExporter.usageCollector.Start()
+		if err != nil {
+			return nil, err
+		}
+		if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
+			return nil, err
+		}
 	}
 
 	return chExporter, nil
