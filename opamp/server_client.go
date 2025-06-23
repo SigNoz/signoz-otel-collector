@@ -173,12 +173,12 @@ func (s *serverClient) Start(ctx context.Context) error {
 
 	psedoConfig, err := s.initialNopConfig()
 	if err != nil {
-		return fmt.Errorf("failed to read default config: %s", err)
+		return fmt.Errorf("failed to get noop config: %s", err)
 	}
 
-	// Apply pseudo config
+	// Apply noop config
 	if err := s.reload(psedoConfig); err != nil {
-		return fmt.Errorf("failed to start with pseudo config: %s", err)
+		return fmt.Errorf("failed to start with noop config: %s", err)
 	}
 
 	// Watch for any async errors from the collector and initiate a shutdown
@@ -193,7 +193,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 func (s *serverClient) initialNopConfig() ([]byte, error) {
 	k := koanf.New(".")
 	if err := k.Load(rawbytes.Provider(s.receivedInitialConfig), yaml.Parser()); err != nil {
-		return nil, fmt.Errorf("error loading config file: %s", err)
+		return nil, fmt.Errorf("failed loading initial config file: %s", err)
 	}
 
 	if !k.Exists("receivers.nop") {
