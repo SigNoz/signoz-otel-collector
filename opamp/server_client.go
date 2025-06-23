@@ -212,19 +212,6 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 	return k.Marshal(yaml.Parser())
 }
 
-// func (s *serverClient) waitForInitialRemoteConfig() {
-// 	for {
-// 		s.logger.Info("Waiting for initial remote config")
-// 		time.Sleep(1 * time.Second)
-// 		s.mux.Lock()
-// 		if s.receivedInitialConfig {
-// 			s.mux.Unlock()
-// 			break
-// 		}
-// 		s.mux.Unlock()
-// 	}
-// }
-
 // Stop stops the Opamp client
 // It stops the Opamp client and disconnects from the Opamp server
 func (s *serverClient) Stop(ctx context.Context) error {
