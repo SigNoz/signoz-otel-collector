@@ -29,6 +29,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -569,6 +570,9 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	tagType utils.TagType,
 	datatype utils.TagDataType,
 ) {
+	if keycheck.IsRandomKey(key) {
+		return
+	}
 	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
 	// skip if the key is already present
 	if item := e.keysCache.Get(cacheKey); item != nil {
@@ -601,7 +605,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for attrKey, attrVal := range attrs.StringData {
-
+		if keycheck.IsRandomKey(attrKey) {
+			continue
+		}
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -627,6 +633,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	}
 
 	for numKey, numVal := range attrs.NumberData {
+		if keycheck.IsRandomKey(numKey) {
+			continue
+		}
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
@@ -646,6 +655,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		}
 	}
 	for boolKey := range attrs.BoolData {
+		if keycheck.IsRandomKey(boolKey) {
+			continue
+		}
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
