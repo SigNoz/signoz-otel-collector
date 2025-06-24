@@ -378,9 +378,6 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 	// monotonicity is assumed for histograms
 	isMonotonic := true
 
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
-
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
 
@@ -418,7 +415,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name, desc, unit, typ, sampleTemporality, isMonotonic, fingerprint)
+		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint)
 
 		batch.addTs(&ts{
 			env:           env,
@@ -462,7 +459,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 				value:       float64(cumulativeCount),
 				flags:       uint32(dp.Flags()),
 			})
-			batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint)
 
 			batch.addTs(&ts{
 				env:           env,
@@ -496,7 +493,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value:       float64(dp.Count()),
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+		batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint)
 		batch.addTs(&ts{
 			env:           env,
 			temporality:   temporality,
@@ -513,6 +510,21 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			resourceAttrs: resourceFingerprintMap,
 		})
 	}
+
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+bucketSuffix, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+bucketSuffix, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
 
 	for i := 0; i < metric.Histogram().DataPoints().Len(); i++ {
 		dp := metric.Histogram().DataPoints().At(i)
@@ -551,9 +563,6 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 	// monotonicity is assumed for summaries
 	isMonotonic := true
 
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
-
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
 
@@ -582,7 +591,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+		batch.addMetadata(name+suffix, desc, unit, sampleTyp, temporality, isMonotonic, fingerprint)
 
 		batch.addTs(&ts{
 			env:           env,
@@ -622,7 +631,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 				value:       quantileValue,
 				flags:       uint32(dp.Flags()),
 			})
-			batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint)
 			batch.addTs(&ts{
 				env:           env,
 				temporality:   temporality,
@@ -640,6 +649,15 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			})
 		}
 	}
+
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+quantilesSuffix, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+quantilesSuffix, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
 
 	for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
 		dp := metric.Summary().DataPoints().At(i)
@@ -690,9 +708,6 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	isMonotonic := true
 
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
-	b.addMetadata(name, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
-
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
 
@@ -730,7 +745,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
+		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint)
 
 		batch.addTs(&ts{
 			env:           env,
@@ -808,6 +823,18 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			resourceAttrs: resourceFingerprintMap,
 		})
 	}
+
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+countSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint)
+
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint)
 
 	for i := 0; i < metric.ExponentialHistogram().DataPoints().Len(); i++ {
 		dp := metric.ExponentialHistogram().DataPoints().At(i)
@@ -1060,8 +1087,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 
 		for _, meta := range metadata {
 			err = statement.Append(
-				meta.metricName,
 				meta.temporality.String(),
+				meta.metricName,
 				meta.description,
 				meta.unit,
 				meta.typ.String(),
