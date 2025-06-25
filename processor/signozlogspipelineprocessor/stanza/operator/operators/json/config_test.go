@@ -110,6 +110,18 @@ func TestConfig(t *testing.T) {
 					return p
 				}(),
 			},
+			{
+				Name: "json_flattening",
+				Expect: func() *Config {
+					p := NewConfig()
+					p.ParseTo = signozstanzaentry.RootableField{Field: signozstanzaentry.Field{entry.NewAttributeField()}}
+					p.EnableFlattening = true
+					p.MaxFlatteningDepth = 4
+					p.EnablePaths = true
+					p.PathPrefix = "parsed"
+					return p
+				}(),
+			},
 		},
 	}.Run(t)
 }
