@@ -171,13 +171,13 @@ func (s *serverClient) Start(ctx context.Context) error {
 		return err
 	}
 
-	psedoConfig, err := s.initialNopConfig()
+	noopConfig, err := s.initialNopConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get noop config: %s", err)
 	}
 
 	// Apply noop config
-	if err := s.reload(psedoConfig); err != nil {
+	if err := s.reload(noopConfig); err != nil {
 		return fmt.Errorf("failed to start with noop config: %s", err)
 	}
 
