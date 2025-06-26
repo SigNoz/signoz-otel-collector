@@ -90,4 +90,4 @@ jobs:
       GITHUB_SILENT: true
       GITHUB_REPOSITORY_NAME: charts-saas-v3-staging
       GITHUB_EVENT_NAME: releaser
-      GITHUB_EVENT_PAYLOAD: '{"deployment": "staging", "otelcol_version": "${{ needs.prepare.outputs.version }}"}'
+      GITHUB_EVENT_PAYLOAD: "{\"deployment\": \"${{ needs.prepare.outputs.deployment }}\", \"otelcol_version\": \"${{ needs.prepare.outputs.version }}\"}"
