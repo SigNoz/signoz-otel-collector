@@ -267,9 +267,9 @@ func (s *serverClient) onRemoteConfigHandler(ctx context.Context, remoteConfig *
 // reload is the callback function that is called when the agent configuration file changes
 func (s *serverClient) reload(contents []byte) error {
 	s.reloadMux.Lock()
-	s.isReloading = true
+	s.isReloading.Store(true)
 	defer func() {
-		s.isReloading = false
+		s.isReloading.Store(false)
 		s.reloadMux.Unlock()
 	}()
 
