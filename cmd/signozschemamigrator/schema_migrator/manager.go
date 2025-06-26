@@ -638,7 +638,7 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 			continue
 		}
 		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() || migration.IsNecessary {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
 					return err
 				}
