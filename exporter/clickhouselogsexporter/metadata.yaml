@@ -1,0 +1,14 @@
+type: clickhouselogsexporter
+status:
+  class: exporter
+  stability:
+    stable: [logs]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
+  goleak:
+    ignore:
+      top:
+        - "go.opencensus.io/stats/view.(*worker).start"
+        - "go.opencensus.io/metric/metricexport.(*IntervalReader).startInternal"

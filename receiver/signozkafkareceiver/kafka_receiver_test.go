@@ -30,7 +30,8 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/testdata"
 	"github.com/SigNoz/signoz-otel-collector/internal/coreinternal/textutils"
 	"github.com/SigNoz/signoz-otel-collector/internal/kafka"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
+
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver/internal/metadata"
 )
 
 func TestNewTracesReceiver_version_err(t *testing.T) {
@@ -38,7 +39,7 @@ func TestNewTracesReceiver_version_err(t *testing.T) {
 		Encoding:        defaultEncoding,
 		ProtocolVersion: "none",
 	}
-	r, err := newTracesReceiver(c, receivertest.NewNopSettings(), defaultTracesUnmarshalers(), consumertest.NewNop())
+	r, err := newTracesReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultTracesUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, r)
 }
@@ -47,7 +48,7 @@ func TestNewTracesReceiver_encoding_err(t *testing.T) {
 	c := Config{
 		Encoding: "foo",
 	}
-	r, err := newTracesReceiver(c, receivertest.NewNopSettings(), defaultTracesUnmarshalers(), consumertest.NewNop())
+	r, err := newTracesReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultTracesUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
@@ -64,11 +65,11 @@ func TestNewTracesReceiver_err_auth_type(t *testing.T) {
 			},
 		},
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
-	r, err := newTracesReceiver(c, receivertest.NewNopSettings(), defaultTracesUnmarshalers(), consumertest.NewNop())
+	r, err := newTracesReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultTracesUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, r)
@@ -79,68 +80,109 @@ func TestNewTracesReceiver_initial_offset_err(t *testing.T) {
 		InitialOffset: "foo",
 		Encoding:      defaultEncoding,
 	}
-	r, err := newTracesReceiver(c, receivertest.NewNopSettings(), defaultTracesUnmarshalers(), consumertest.NewNop())
+	r, err := newTracesReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultTracesUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errInvalidInitialOffset.Error())
 }
 
 func TestTracesReceiverStart(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaTracesConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Ensure shutdown is called
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
+
+	// Give time for goroutines to exit
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestTracesReceiverStartConsume(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaTracesConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
-	require.NoError(t, c.Shutdown(context.Background()))
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	require.NoError(t, err)
-	err = c.consumeLoop(ctx, &tracesConsumerGroupHandler{
+
+	handler := &tracesConsumerGroupHandler{
 		ready: make(chan bool),
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			metrics: metrics,
 		},
-	})
-	assert.EqualError(t, err, context.Canceled.Error())
+	}
+
+	// Start consume loop in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- c.consumeLoop(ctx, handler)
+	}()
+
+	// Give it a moment to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Cancel the context
+	cancelFunc()
+
+	// Wait for consume loop to exit
+	select {
+	case err := <-done:
+		assert.EqualError(t, err, context.Canceled.Error())
+	case <-time.After(5 * time.Second):
+		t.Fatal("consume loop did not exit in time")
+	}
+
+	// Shutdown to clean up
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	require.NoError(t, c.Shutdown(shutdownCtx))
 }
 
 func TestTracesReceiver_error(t *testing.T) {
 	zcore, logObserver := observer.New(zapcore.ErrorLevel)
 	logger := zap.New(zcore)
-	settings := receivertest.NewNopSettings()
+	settings := receivertest.NewNopSettings(metadata.Type)
 	settings.Logger = logger
 
 	expectedErr := errors.New("handler error")
+	consumerGroup := &testConsumerGroup{err: expectedErr}
 	c := kafkaTracesConsumer{
 		nextConsumer:  consumertest.NewNop(),
 		settings:      settings,
-		consumerGroup: &testConsumerGroup{err: expectedErr},
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Wait for error to be logged
 	assert.Eventually(t, func() bool {
 		return logObserver.FilterField(zap.Error(expectedErr)).Len() > 0
 	}, 10*time.Second, time.Millisecond*100)
+
+	// Shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
 }
 
 func TestTracesConsumerGroupHandler(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -177,11 +219,11 @@ func TestTracesConsumerGroupHandler(t *testing.T) {
 }
 
 func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -200,6 +242,7 @@ func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	}
 
 	sessionContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	testSession := testConsumerGroupSession{ctx: sessionContext}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
@@ -224,10 +267,9 @@ func TestTracesConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -266,9 +308,9 @@ func TestTracesConsumerGroupHandler_session_done(t *testing.T) {
 }
 
 func TestTracesConsumerGroupHandler_error_unmarshal(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -298,9 +340,9 @@ func TestTracesConsumerGroupHandler_error_unmarshal(t *testing.T) {
 
 func TestTracesConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := tracesConsumerGroupHandler{
 		unmarshaler:  newPdataTracesUnmarshaler(&ptrace.ProtoUnmarshaler{}, defaultEncoding),
@@ -339,7 +381,7 @@ func TestNewMetricsReceiver_version_err(t *testing.T) {
 		Encoding:        defaultEncoding,
 		ProtocolVersion: "none",
 	}
-	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(), defaultMetricsUnmarshalers(), consumertest.NewNop())
+	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultMetricsUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, r)
 }
@@ -348,7 +390,7 @@ func TestNewMetricsReceiver_encoding_err(t *testing.T) {
 	c := Config{
 		Encoding: "foo",
 	}
-	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(), defaultMetricsUnmarshalers(), consumertest.NewNop())
+	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultMetricsUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
@@ -365,11 +407,11 @@ func TestNewMetricsExporter_err_auth_type(t *testing.T) {
 			},
 		},
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
-	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(), defaultMetricsUnmarshalers(), consumertest.NewNop())
+	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultMetricsUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, r)
@@ -380,68 +422,109 @@ func TestNewMetricsReceiver_initial_offset_err(t *testing.T) {
 		InitialOffset: "foo",
 		Encoding:      defaultEncoding,
 	}
-	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(), defaultMetricsUnmarshalers(), consumertest.NewNop())
+	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultMetricsUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errInvalidInitialOffset.Error())
 }
 
 func TestMetricsReceiverStart(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaMetricsConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Ensure shutdown is called
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
+
+	// Give time for goroutines to exit
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestMetricsReceiverStartConsume(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaMetricsConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
-	require.NoError(t, c.Shutdown(context.Background()))
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	require.NoError(t, err)
-	err = c.consumeLoop(ctx, &metricsConsumerGroupHandler{
+
+	handler := &metricsConsumerGroupHandler{
 		ready: make(chan bool),
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			metrics: metrics,
 		},
-	})
-	assert.EqualError(t, err, context.Canceled.Error())
+	}
+
+	// Start consume loop in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- c.consumeLoop(ctx, handler)
+	}()
+
+	// Give it a moment to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Cancel the context
+	cancelFunc()
+
+	// Wait for consume loop to exit
+	select {
+	case err := <-done:
+		assert.EqualError(t, err, context.Canceled.Error())
+	case <-time.After(5 * time.Second):
+		t.Fatal("consume loop did not exit in time")
+	}
+
+	// Shutdown to clean up
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	require.NoError(t, c.Shutdown(shutdownCtx))
 }
 
 func TestMetricsReceiver_error(t *testing.T) {
 	zcore, logObserver := observer.New(zapcore.ErrorLevel)
 	logger := zap.New(zcore)
-	settings := receivertest.NewNopSettings()
+	settings := receivertest.NewNopSettings(metadata.Type)
 	settings.Logger = logger
 
 	expectedErr := errors.New("handler error")
+	consumerGroup := &testConsumerGroup{err: expectedErr}
 	c := kafkaMetricsConsumer{
 		nextConsumer:  consumertest.NewNop(),
 		settings:      settings,
-		consumerGroup: &testConsumerGroup{err: expectedErr},
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Wait for error to be logged
 	assert.Eventually(t, func() bool {
 		return logObserver.FilterField(zap.Error(expectedErr)).Len() > 0
 	}, 10*time.Second, time.Millisecond*100)
+
+	// Shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
 }
 
 func TestMetricsConsumerGroupHandler(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -478,11 +561,11 @@ func TestMetricsConsumerGroupHandler(t *testing.T) {
 }
 
 func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -501,6 +584,7 @@ func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	}
 
 	sessionContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	testSession := testConsumerGroupSession{ctx: sessionContext}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
@@ -525,10 +609,9 @@ func TestMetricsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -566,9 +649,9 @@ func TestMetricsConsumerGroupHandler_session_done(t *testing.T) {
 }
 
 func TestMetricsConsumerGroupHandler_error_unmarshal(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -598,9 +681,9 @@ func TestMetricsConsumerGroupHandler_error_unmarshal(t *testing.T) {
 
 func TestMetricsConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := metricsConsumerGroupHandler{
 		unmarshaler:  newPdataMetricsUnmarshaler(&pmetric.ProtoUnmarshaler{}, defaultEncoding),
@@ -638,7 +721,7 @@ func TestNewLogsReceiver_version_err(t *testing.T) {
 		Encoding:        defaultEncoding,
 		ProtocolVersion: "none",
 	}
-	r, err := newLogsReceiver(c, receivertest.NewNopSettings(), defaultLogsUnmarshalers(), consumertest.NewNop())
+	r, err := newLogsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Nil(t, r)
 }
@@ -647,7 +730,7 @@ func TestNewLogsReceiver_encoding_err(t *testing.T) {
 	c := Config{
 		Encoding: "foo",
 	}
-	r, err := newLogsReceiver(c, receivertest.NewNopSettings(), defaultLogsUnmarshalers(), consumertest.NewNop())
+	r, err := newLogsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errUnrecognizedEncoding.Error())
@@ -664,11 +747,11 @@ func TestNewLogsExporter_err_auth_type(t *testing.T) {
 			},
 		},
 		Encoding: defaultEncoding,
-		Metadata: kafkaexporter.Metadata{
+		Metadata: Metadata{
 			Full: false,
 		},
 	}
-	r, err := newLogsReceiver(c, receivertest.NewNopSettings(), defaultLogsUnmarshalers(), consumertest.NewNop())
+	r, err := newLogsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS config")
 	assert.Nil(t, r)
@@ -679,68 +762,109 @@ func TestNewLogsReceiver_initial_offset_err(t *testing.T) {
 		InitialOffset: "foo",
 		Encoding:      defaultEncoding,
 	}
-	r, err := newLogsReceiver(c, receivertest.NewNopSettings(), defaultLogsUnmarshalers(), consumertest.NewNop())
+	r, err := newLogsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errInvalidInitialOffset.Error())
 }
 
 func TestLogsReceiverStart(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaLogsConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Ensure shutdown is called
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
+
+	// Give time for goroutines to exit
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestLogsReceiverStartConsume(t *testing.T) {
+	consumerGroup := &testConsumerGroup{}
 	c := kafkaLogsConsumer{
 		nextConsumer:  consumertest.NewNop(),
-		settings:      receivertest.NewNopSettings(),
-		consumerGroup: &testConsumerGroup{},
+		settings:      receivertest.NewNopSettings(metadata.Type),
+		consumerGroup: consumerGroup,
 	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	c.cancelConsumeLoop = cancelFunc
-	require.NoError(t, c.Shutdown(context.Background()))
-	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+
+	metrics, err := NewKafkaReceiverMetrics(c.settings.MeterProvider.Meter(metadata.ScopeName))
 	require.NoError(t, err)
-	err = c.consumeLoop(ctx, &logsConsumerGroupHandler{
+
+	handler := &logsConsumerGroupHandler{
 		ready: make(chan bool),
 		baseConsumerGroupHandler: baseConsumerGroupHandler{
 			metrics: metrics,
 		},
-	})
-	assert.EqualError(t, err, context.Canceled.Error())
+	}
+
+	// Start consume loop in goroutine
+	done := make(chan error, 1)
+	go func() {
+		done <- c.consumeLoop(ctx, handler)
+	}()
+
+	// Give it a moment to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Cancel the context
+	cancelFunc()
+
+	// Wait for consume loop to exit
+	select {
+	case err := <-done:
+		assert.EqualError(t, err, context.Canceled.Error())
+	case <-time.After(5 * time.Second):
+		t.Fatal("consume loop did not exit in time")
+	}
+
+	// Shutdown to clean up
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	require.NoError(t, c.Shutdown(shutdownCtx))
 }
 
 func TestLogsReceiver_error(t *testing.T) {
 	zcore, logObserver := observer.New(zapcore.ErrorLevel)
 	logger := zap.New(zcore)
-	settings := receivertest.NewNopSettings()
+	settings := receivertest.NewNopSettings(metadata.Type)
 	settings.Logger = logger
 
 	expectedErr := errors.New("handler error")
+	consumerGroup := &testConsumerGroup{err: expectedErr}
 	c := kafkaLogsConsumer{
 		nextConsumer:  consumertest.NewNop(),
 		settings:      settings,
-		consumerGroup: &testConsumerGroup{err: expectedErr},
+		consumerGroup: consumerGroup,
 	}
 
 	require.NoError(t, c.Start(context.Background(), componenttest.NewNopHost()))
-	require.NoError(t, c.Shutdown(context.Background()))
+
+	// Wait for error to be logged
 	assert.Eventually(t, func() bool {
 		return logObserver.FilterField(zap.Error(expectedErr)).Len() > 0
 	}, 10*time.Second, time.Millisecond*100)
+
+	// Shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, c.Shutdown(ctx))
 }
 
 func TestLogsConsumerGroupHandler(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -777,11 +901,11 @@ func TestLogsConsumerGroupHandler(t *testing.T) {
 }
 
 func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
 
 	group := &testConsumerGroup{}
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -800,6 +924,7 @@ func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 	}
 
 	sessionContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	testSession := testConsumerGroupSession{ctx: sessionContext}
 	require.NoError(t, c.Setup(testSession))
 	_, ok := <-c.ready
@@ -824,10 +949,9 @@ func TestLogsConsumerGroupHandlerWithMemoryLimiter(t *testing.T) {
 }
 
 func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
-
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -865,9 +989,9 @@ func TestLogsConsumerGroupHandler_session_done(t *testing.T) {
 }
 
 func TestLogsConsumerGroupHandler_error_unmarshal(t *testing.T) {
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -897,9 +1021,9 @@ func TestLogsConsumerGroupHandler_error_unmarshal(t *testing.T) {
 
 func TestLogsConsumerGroupHandler_error_nextConsumer(t *testing.T) {
 	consumerError := errors.New("failed to consume")
-	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 	require.NoError(t, err)
-	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+	metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 	require.NoError(t, err)
 	c := logsConsumerGroupHandler{
 		unmarshaler:  NewPdataLogsUnmarshaler(&plog.ProtoUnmarshaler{}, defaultEncoding),
@@ -968,12 +1092,12 @@ func TestLogsConsumerGroupHandler_unmarshal_text(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings()})
+			obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{ReceiverCreateSettings: receivertest.NewNopSettings(metadata.Type)})
 			require.NoError(t, err)
 			unmarshaler := newTextLogsUnmarshaler()
 			unmarshaler, err = unmarshaler.WithEnc(test.enc)
 			require.NoError(t, err)
-			metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"))
+			metrics, err := NewKafkaReceiverMetrics(noop.NewMeterProvider().Meter(metadata.ScopeName))
 			require.NoError(t, err)
 			sink := &consumertest.LogsSink{}
 			c := logsConsumerGroupHandler{
@@ -1073,7 +1197,7 @@ func TestCreateLogsReceiver_encoding_text_error(t *testing.T) {
 	cfg := Config{
 		Encoding: "text_uft-8",
 	}
-	_, err := newLogsReceiver(cfg, receivertest.NewNopSettings(), defaultLogsUnmarshalers(), consumertest.NewNop())
+	_, err := newLogsReceiver(cfg, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
 	// encoding error comes first
 	assert.Error(t, err, "unsupported encoding")
 }
@@ -1172,26 +1296,67 @@ func (t testConsumerGroupSession) Context() context.Context {
 	return t.ctx
 }
 
+// Updated testConsumerGroup with proper cleanup handling
 type testConsumerGroup struct {
 	once   sync.Once
 	err    error
 	paused bool
+	closed bool
+	mu     sync.Mutex
+
+	// Channel to signal when Consume should exit
+	consumeDone chan struct{}
 }
 
 var _ sarama.ConsumerGroup = (*testConsumerGroup)(nil)
 
 func (t *testConsumerGroup) Consume(ctx context.Context, _ []string, handler sarama.ConsumerGroupHandler) error {
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return sarama.ErrClosedConsumerGroup
+	}
+	if t.consumeDone == nil {
+		t.consumeDone = make(chan struct{})
+	}
+	consumeDone := t.consumeDone
+	t.mu.Unlock()
+
+	// Setup handler once
 	t.once.Do(func() {
 		_ = handler.Setup(testConsumerGroupSession{ctx: ctx})
 	})
-	return t.err
+
+	// If there's an error to return, return it immediately
+	if t.err != nil {
+		return t.err
+	}
+
+	// Block until context is cancelled or Close is called
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-consumeDone:
+		return nil
+	}
 }
 
 func (t *testConsumerGroup) Errors() <-chan error {
-	panic("implement me")
+	return make(chan error)
 }
 
 func (t *testConsumerGroup) Close() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return nil
+	}
+
+	t.closed = true
+	if t.consumeDone != nil {
+		close(t.consumeDone)
+	}
 	return nil
 }
 
@@ -1200,6 +1365,8 @@ func (t *testConsumerGroup) Pause(_ map[string][]int32) {
 }
 
 func (t *testConsumerGroup) PauseAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.paused = true
 }
 
@@ -1208,5 +1375,7 @@ func (t *testConsumerGroup) Resume(_ map[string][]int32) {
 }
 
 func (t *testConsumerGroup) ResumeAll() {
-	t.paused = true
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.paused = false
 }

@@ -1,0 +1,14 @@
+type: signoz_tail_sampling
+
+status:
+  class: processor
+  stability:
+    beta: [traces, metrics, logs]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
+  goleak:
+    ignore:
+      top:
+        - "go.opencensus.io/stats/view.(*worker).start"

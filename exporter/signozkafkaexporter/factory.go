@@ -80,7 +80,7 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 		o(f)
 	}
 	return exporter.NewFactory(
-		component.MustNewType(metadata.Type),
+		metadata.Type,
 		createDefaultConfig,
 		exporter.WithTraces(f.createTracesExporter, metadata.TracesStability),
 		exporter.WithMetrics(f.createMetricsExporter, metadata.MetricsStability),
@@ -90,16 +90,16 @@ func NewFactory(options ...FactoryOption) exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		Brokers:       []string{defaultBroker},
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		Brokers:          []string{defaultBroker},
 		// using an empty topic to track when it has not been set by user, default is based on traces or metrics.
 		Topic:    "",
 		Encoding: defaultEncoding,
-		Metadata: Metadata{
+		Metadata: MetadataConfig{
 			Full: defaultMetadataFull,
-			Retry: MetadataRetry{
+			Retry: MetadataRetryConfig{
 				Max:     defaultMetadataRetryMax,
 				Backoff: defaultMetadataRetryBackoff,
 			},
@@ -135,7 +135,7 @@ func (f *kafkaExporterFactory) createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		set,
 		&oCfg,
@@ -145,7 +145,7 @@ func (f *kafkaExporterFactory) createTracesExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -165,7 +165,7 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		set,
 		&oCfg,
@@ -175,7 +175,7 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -195,7 +195,7 @@ func (f *kafkaExporterFactory) createLogsExporter(
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		&oCfg,
@@ -205,6 +205,6 @@ func (f *kafkaExporterFactory) createLogsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueConfig),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }

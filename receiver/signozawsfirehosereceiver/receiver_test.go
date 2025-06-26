@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -212,7 +213,7 @@ func TestFirehoseRequest(t *testing.T) {
 // testFirehoseReceiver is a convenience function for creating a test firehoseReceiver
 func testFirehoseReceiver(config *Config, consumer firehoseConsumer) *firehoseReceiver {
 	return &firehoseReceiver{
-		settings: receivertest.NewNopSettings(),
+		settings: receivertest.NewNopSettings(metadata.Type),
 		config:   config,
 		consumer: consumer,
 	}
