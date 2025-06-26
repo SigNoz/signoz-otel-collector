@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	"github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension/internal/metadata"
 )
@@ -34,7 +35,7 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: "localhost:13",
-					TLSSetting: &configtls.ServerConfig{
+					TLS: &configtls.ServerConfig{
 						Config: configtls.Config{
 							CAFile:   "/path/to/ca",
 							CertFile: "/path/to/cert",
@@ -70,10 +71,10 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 			if tt.expectedErr != nil {
-				assert.ErrorIs(t, component.ValidateConfig(cfg), tt.expectedErr)
+				assert.ErrorIs(t, xconfmap.Validate(cfg), tt.expectedErr)
 				return
 			}
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

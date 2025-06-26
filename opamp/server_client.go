@@ -3,18 +3,17 @@ package opamp
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"runtime"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
+	"github.com/google/uuid"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/rawbytes"
-	"github.com/oklog/ulid"
 	"github.com/open-telemetry/opamp-go/client"
 	"github.com/open-telemetry/opamp-go/client/types"
 	"github.com/open-telemetry/opamp-go/protobufs"
@@ -38,8 +37,9 @@ type serverClient struct {
 	opampClient           client.OpAMPClient
 	configManager         *agentConfigManager
 	managerConfig         AgentManagerConfig
-	instanceId            ulid.ULID
 	receivedInitialConfig []byte
+	instanceId            uuid.UUID
+	mux                   sync.Mutex
 }
 
 type NewServerClientOpts struct {
@@ -81,7 +81,7 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 	}
 	svrClient.configManager.Set(dynamicConfig)
 
-	svrClient.opampClient = client.NewWebSocket(clientLogger.Sugar())
+	svrClient.opampClient = client.NewWebSocket(NewWrappedLogger(clientLogger.Sugar()))
 
 	return svrClient, nil
 }
@@ -96,8 +96,12 @@ func keyVal(key, val string) *protobufs.KeyValue {
 }
 
 func (s *serverClient) createInstanceId() {
-	entropy := ulid.Monotonic(rand.New(rand.NewSource(0)), 0)
-	s.instanceId = ulid.MustNew(ulid.Timestamp(time.Now()), entropy)
+
+	uid, err := uuid.NewV7()
+	if err != nil {
+		panic(err)
+	}
+	s.instanceId = uid
 }
 
 func (s *serverClient) createAgentDescription() *protobufs.AgentDescription {
@@ -126,11 +130,12 @@ func (s *serverClient) Start(ctx context.Context) error {
 		return err
 	}
 
+	instanceBytes := s.instanceId[:]
 	settings := types.StartSettings{
 		OpAMPServerURL: s.managerConfig.ServerEndpoint,
-		InstanceUid:    s.instanceId.String(),
-		Callbacks: types.CallbacksStruct{
-			OnConnectFunc: func() {
+		InstanceUid:    types.InstanceUid(instanceBytes),
+		Callbacks: types.Callbacks{
+			OnConnect: func(ctx context.Context) {
 				s.logger.Info("Connected to the server. Applying default config.")
 
 				// Apply default config on connection
@@ -138,20 +143,20 @@ func (s *serverClient) Start(ctx context.Context) error {
 					s.logger.Fatal("failed to reload with default config", zap.Error(err))
 				}
 			},
-			OnConnectFailedFunc: func(err error) {
+			OnConnectFailed: func(ctx context.Context, err error) {
 				s.logger.Error("Failed to connect to the server: %v", zap.Error(err))
 			},
-			OnErrorFunc: func(err *protobufs.ServerErrorResponse) {
+			OnError: func(ctx context.Context, err *protobufs.ServerErrorResponse) {
 				s.logger.Error("Server returned an error response: %v", zap.String("", err.ErrorMessage))
 			},
-			GetEffectiveConfigFunc: func(ctx context.Context) (*protobufs.EffectiveConfig, error) {
+			GetEffectiveConfig: func(ctx context.Context) (*protobufs.EffectiveConfig, error) {
 				cfg, err := s.configManager.CreateEffectiveConfigMsg()
 				if err != nil {
 					return nil, err
 				}
 				return cfg, nil
 			},
-			OnMessageFunc: s.onMessageFuncHandler,
+			OnMessage: s.onMessageFuncHandler,
 		},
 		Capabilities: protobufs.AgentCapabilities_AgentCapabilities_ReportsStatus |
 			protobufs.AgentCapabilities_AgentCapabilities_AcceptsRemoteConfig |
@@ -160,7 +165,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 			protobufs.AgentCapabilities_AgentCapabilities_ReportsHealth,
 	}
 
-	err := s.opampClient.SetHealth(&protobufs.AgentHealth{Healthy: false})
+	err := s.opampClient.SetHealth(&protobufs.ComponentHealth{Healthy: false})
 	if err != nil {
 		return err
 	}

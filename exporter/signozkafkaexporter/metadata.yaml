@@ -1,7 +1,10 @@
-type: kafka
+type: signozkafkaexporter
 
 status:
   class: exporter
   stability:
     beta: [traces, metrics, logs]
-  distributions: [contrib, observiq, splunk, sumo, aws]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true

@@ -30,4 +30,6 @@ type KeyCache interface {
 
 	// TotalCardinalityLimitExceeded returns true if the total cardinality limit has been exceeded.
 	TotalCardinalityLimitExceeded(ctx context.Context, ds pipeline.Signal) bool
+
+	Close(ctx context.Context) error
 }

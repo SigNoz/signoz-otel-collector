@@ -24,21 +24,20 @@ import (
 )
 
 type AttributesLimits struct {
-	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval" default:"10m"`
-	MaxDistinctValues int           `mapstructure:"max_distinct_values" default:"25000"`
+	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval"`
+	MaxDistinctValues int           `mapstructure:"max_distinct_values"`
 }
 
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
-	configretry.BackOffConfig    `mapstructure:"retry_on_failure"`
-	exporterhelper.QueueConfig   `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
+	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
-	// For http protocol reference: [mailru/go-clickhouse/#dsn](https://github.com/mailru/go-clickhouse/#dsn).
 	DSN          string `mapstructure:"dsn"`
-	UseNewSchema bool   `mapstructure:"use_new_schema" default:"false"`
+	UseNewSchema bool   `mapstructure:"use_new_schema"`
 
 	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
 }

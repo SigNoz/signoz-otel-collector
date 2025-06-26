@@ -1,0 +1,10 @@
+type: signozspanmetrics
+
+status:
+  class: processor
+  stability:
+    beta: [traces]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true

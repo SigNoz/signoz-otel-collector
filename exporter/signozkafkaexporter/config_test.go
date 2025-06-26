@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
@@ -32,7 +33,7 @@ func TestLoadConfig(t *testing.T) {
 		expected component.Config
 	}{
 		{
-			id: component.NewIDWithName(component.MustNewType(metadata.Type), ""),
+			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
 				TimeoutConfig: exporterhelper.TimeoutConfig{
 					Timeout: 10 * time.Second,
@@ -45,8 +46,9 @@ func TestLoadConfig(t *testing.T) {
 					RandomizationFactor: backoff.DefaultRandomizationFactor,
 					Multiplier:          backoff.DefaultMultiplier,
 				},
-				QueueConfig: exporterhelper.QueueConfig{
+				QueueBatchConfig: exporterhelper.QueueBatchConfig{
 					Enabled:      true,
+					Sizer:        exporterhelper.RequestSizerTypeRequests,
 					NumConsumers: 2,
 					QueueSize:    10,
 				},
@@ -59,9 +61,9 @@ func TestLoadConfig(t *testing.T) {
 						Password: "pass",
 					},
 				},
-				Metadata: Metadata{
+				Metadata: MetadataConfig{
 					Full: false,
-					Retry: MetadataRetry{
+					Retry: MetadataRetryConfig{
 						Max:     15,
 						Backoff: defaultMetadataRetryBackoff,
 					},
@@ -84,7 +86,7 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

@@ -13,7 +13,6 @@ import (
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
@@ -24,6 +23,9 @@ import (
 	metricapi "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 )
 
 var (
@@ -37,8 +39,6 @@ var (
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	meterScope        = "github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2"
-	exporterName      = "signozclickhousemetrics"
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
@@ -176,7 +176,7 @@ func WithSettings(settings exporter.Settings) ExporterOption {
 }
 
 func defaultOptions() []ExporterOption {
-	cache := ttlcache.New[string, bool](
+	cache := ttlcache.New(
 		ttlcache.WithTTL[string, bool](45*time.Minute),
 		ttlcache.WithDisableTouchOnHit[string, bool](),
 	)
@@ -185,7 +185,7 @@ func defaultOptions() []ExporterOption {
 		WithCache(cache),
 		WithLogger(zap.NewNop()),
 		WithEnableExpHist(false),
-		WithMeter(noop.NewMeterProvider().Meter(meterScope)),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	}
 }
 
@@ -944,6 +944,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, ts := range timeSeries {
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
@@ -997,6 +999,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, sample := range samples {
 			err = statement.Append(
 				sample.env,
@@ -1035,6 +1039,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, expHist := range expHist {
 			err = statement.Append(
 				expHist.env,
@@ -1077,6 +1083,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
 		for _, meta := range metadata {
 			err = statement.Append(
 				meta.temporality.String(),
