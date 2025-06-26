@@ -22,6 +22,9 @@ var envPool = sync.Pool{
 			"isJSON": func(v any) bool {
 				return utils.IsJSON(v.(string))
 			},
+			"unquote": func(v any) string {
+				return utils.Unquote(v.(string))
+			},
 		}
 	},
 }

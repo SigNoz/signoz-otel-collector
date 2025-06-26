@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -34,15 +35,16 @@ func (p *Parser) Process(ctx context.Context, entry *entry.Entry) error {
 // parse will parse a value as JSON.
 func (p *Parser) parse(value any) (any, error) {
 	parsedValue := make(map[string]any)
-	switch m := value.(type) {
+	switch value := value.(type) {
 	case string:
-		err := p.json.UnmarshalFromString(m, &parsedValue)
+		// Unquote JSON strings if possible
+		err := p.json.UnmarshalFromString(utils.Unquote(value), &parsedValue)
 		if err != nil {
 			return nil, err
 		}
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
-		parsedValue = m
+		parsedValue = value
 	default:
 		return nil, fmt.Errorf("type %T cannot be parsed as JSON", value)
 	}
