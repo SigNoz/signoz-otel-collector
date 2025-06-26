@@ -238,6 +238,7 @@ require (
 	go.opentelemetry.io/collector/processor/processorhelper v0.128.0
 	go.opentelemetry.io/collector/processor/processortest v0.128.0
 	go.opentelemetry.io/collector/receiver v1.34.0
+	go.opentelemetry.io/collector/receiver/nopreceiver v0.128.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.128.0
 	go.opentelemetry.io/collector/receiver/receiverhelper v0.128.0
 	go.opentelemetry.io/collector/receiver/receivertest v0.128.0
