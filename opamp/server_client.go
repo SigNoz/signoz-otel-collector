@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
@@ -58,10 +59,11 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 
 	svrClient := &serverClient{
 		baseClient: baseClient{
-			coll:    args.WrappedCollector,
-			err:     make(chan error, 1),
-			stopped: make(chan bool),
-			logger:  clientLogger,
+			coll:        args.WrappedCollector,
+			err:         make(chan error, 1),
+			stopped:     make(chan bool),
+			logger:      clientLogger,
+			isReloading: atomic.Bool{},
 		},
 		logger:        clientLogger,
 		configManager: configManager,
