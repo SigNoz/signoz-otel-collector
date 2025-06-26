@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"net"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/cenkalti/backoff/v4"
@@ -337,7 +338,12 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 		if err := rows.Scan(&hostAddr, &port); err != nil {
 			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 		}
-		hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+		if net.ParseIP(hostAddr).To4() != nil {
+			hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+		}
+		else {
+			hostAddrs[fmt.Sprintf("[%s]:%d", hostAddr, port)] = struct{}{}
+		}
 	}
 
 	if len(hostAddrs) != 0 {
