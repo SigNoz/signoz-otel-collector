@@ -130,10 +130,9 @@ func (s *serverClient) Start(ctx context.Context) error {
 		return err
 	}
 
-	instanceBytes := s.instanceId[:]
 	settings := types.StartSettings{
 		OpAMPServerURL: s.managerConfig.ServerEndpoint,
-		InstanceUid:    types.InstanceUid(instanceBytes),
+		InstanceUid:    types.InstanceUid(s.instanceId),
 		Callbacks: types.Callbacks{
 			OnConnect: func(ctx context.Context) {
 				s.logger.Info("Connected to the server. Applying default config.")
