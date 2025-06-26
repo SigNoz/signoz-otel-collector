@@ -353,10 +353,7 @@ func (a AlterTableModifyTTL) IsIdempotent() bool {
 }
 
 func (a AlterTableModifyTTL) IsLightweight() bool {
-	if !a.Settings.MaterializeTTLAfterModify {
-		return true
-	}
-	return false
+	return !a.Settings.MaterializeTTLAfterModify
 }
 
 func (a AlterTableModifyTTL) ToSQL() string {

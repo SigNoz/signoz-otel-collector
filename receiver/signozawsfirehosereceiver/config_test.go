@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 )
@@ -33,7 +34,7 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			err = component.ValidateConfig(cfg)
+			err = xconfmap.Validate(cfg)
 			if configType == "invalid" {
 				assert.Error(t, err)
 			} else {
@@ -42,7 +43,7 @@ func TestLoadConfig(t *testing.T) {
 					RecordType: configType,
 					ServerConfig: confighttp.ServerConfig{
 						Endpoint: "0.0.0.0:4433",
-						TLSSetting: &configtls.ServerConfig{
+						TLS: &configtls.ServerConfig{
 							Config: configtls.Config{
 								CertFile: "server.crt",
 								KeyFile:  "server.key",
