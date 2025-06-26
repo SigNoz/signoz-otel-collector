@@ -77,6 +77,7 @@ type MigrationManager struct {
 	logger             *zap.Logger
 	backoff            *backoff.ExponentialBackOff
 	development        bool
+	withoutTTL         bool
 }
 
 type Option func(*MigrationManager)
@@ -139,6 +140,12 @@ func WithLogger(logger *zap.Logger) Option {
 func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 	return func(mgr *MigrationManager) {
 		mgr.backoff = backoff
+	}
+}
+
+func WithoutTTL() Option {
+	return func(mgr *MigrationManager) {
+		mgr.withoutTTL = true
 	}
 }
 
@@ -912,6 +919,33 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 		insertErr := m.insertMigrationEntry(ctx, database, migrationID, inProgressStatus)
 		if insertErr != nil {
 			return insertErr
+		}
+	}
+
+	// Skip or modify TTL operations if withoutTTL is enabled
+	if m.withoutTTL {
+		switch op := operation.(type) {
+		case *AlterTableModifyTTL:
+			m.logger.Info("Skipping AlterTableModifyTTL operation due to withoutTTL flag", zap.Uint64("migration_id", migrationID))
+			if !skipStatusUpdate {
+				updateErr := m.updateMigrationEntry(ctx, database, migrationID, finishedStatus, "Skipped due to withoutTTL flag")
+				if updateErr != nil {
+					return updateErr
+				}
+			}
+			return nil
+		case *CreateTableOperation:
+			// Clear TTL from table engines
+			switch engine := op.Engine.(type) {
+			case *MergeTree:
+				engine.TTL = ""
+			case *ReplacingMergeTree:
+				engine.MergeTree.TTL = ""
+			case *AggregatingMergeTree:
+				engine.MergeTree.TTL = ""
+			case *SummingMergeTree:
+				engine.MergeTree.TTL = ""
+			}
 		}
 	}
 
