@@ -3,6 +3,8 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+	"github.com/jellydator/ttlcache/v3"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"go.opentelemetry.io/collector/component"
@@ -88,6 +90,6 @@ func createDefaultConfig() component.Config {
 		TimeSeriesTable:  "distributed_time_series_v4",
 		ExpHistTable:     "distributed_exp_hist",
 		MetadataTable:    "distributed_metadata",
-		DisableTtlCache: false,
+		DisableTtlCache:  false,
 	}
 }
