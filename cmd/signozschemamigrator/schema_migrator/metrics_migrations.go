@@ -1,7 +1,5 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/constants"
-
 var MetricsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
@@ -1282,6 +1280,5 @@ var MetricsMigrations = []SchemaMigrationRecord{
             FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
-		IsNecessary: constants.GetOrDefaultEnv("AGGREGATING_MERGE_TREE", "false") == "true",
 	},
 }
