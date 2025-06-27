@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/stretchr/testify/assert"
@@ -16,6 +17,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
 )
 
 // data is a simple means of allowing
@@ -61,13 +64,12 @@ func TestCreateDefaultConfig(t *testing.T) {
 }
 
 func TestCreateMetricExporter(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name       string
 		conf       *Config
 		marshalers []MetricsMarshaler
 		err        error
+		cleanup    bool
 	}{
 		{
 			name: "valid config (no validating broker)",
@@ -78,15 +80,20 @@ func TestCreateMetricExporter(t *testing.T) {
 				conf.Brokers = []string{"invalid:9092"}
 				conf.ProtocolVersion = "2.0.0"
 			}),
-			err: nil,
+			err:     nil,
+			cleanup: true,
 		},
 		{
 			name: "invalid config (validating broker)",
 			conf: applyConfigOption(func(conf *Config) {
 				conf.Brokers = []string{"invalid:9092"}
 				conf.ProtocolVersion = "2.0.0"
+				// Set short timeouts to fail fast
+				conf.Metadata.Retry.Max = 1
+				conf.Metadata.Retry.Backoff = 1 * time.Millisecond
 			}),
-			err: &net.DNSError{},
+			err:     &net.DNSError{},
+			cleanup: false,
 		},
 		{
 			name: "default_encoding",
@@ -97,6 +104,7 @@ func TestCreateMetricExporter(t *testing.T) {
 			}),
 			marshalers: nil,
 			err:        nil,
+			cleanup:    true,
 		},
 		{
 			name: "custom_encoding",
@@ -108,19 +116,17 @@ func TestCreateMetricExporter(t *testing.T) {
 			marshalers: []MetricsMarshaler{
 				newMockMarshaler[pmetric.Metrics]("custom"),
 			},
-			err: nil,
+			err:     nil,
+			cleanup: true,
 		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			f := NewFactory(WithMetricsMarshalers(tc.marshalers...))
-			exporter, err := f.CreateMetricsExporter(
+			exporter, err := f.CreateMetrics(
 				context.Background(),
-				exportertest.NewNopSettings(),
+				exportertest.NewNopSettings(metadata.Type),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -130,18 +136,22 @@ func TestCreateMetricExporter(t *testing.T) {
 			}
 			assert.NoError(t, err, "Must not error")
 			assert.NotNil(t, exporter, "Must return valid exporter when no error is returned")
+
+			// Clean up the producer if created
+			if tc.cleanup && exporter != nil {
+				exporter.Shutdown(context.Background())
+			}
 		})
 	}
 }
 
 func TestCreateLogExporter(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name       string
 		conf       *Config
 		marshalers []LogsMarshaler
 		err        error
+		cleanup    bool
 	}{
 		{
 			name: "valid config (no validating broker)",
@@ -152,15 +162,20 @@ func TestCreateLogExporter(t *testing.T) {
 				conf.Brokers = []string{"invalid:9092"}
 				conf.ProtocolVersion = "2.0.0"
 			}),
-			err: nil,
+			err:     nil,
+			cleanup: true,
 		},
 		{
 			name: "invalid config (validating broker)",
 			conf: applyConfigOption(func(conf *Config) {
 				conf.Brokers = []string{"invalid:9092"}
 				conf.ProtocolVersion = "2.0.0"
+				// Set short timeouts to fail fast
+				conf.Metadata.Retry.Max = 1
+				conf.Metadata.Retry.Backoff = 1 * time.Millisecond
 			}),
-			err: &net.DNSError{},
+			err:     &net.DNSError{},
+			cleanup: false,
 		},
 		{
 			name: "default_encoding",
@@ -171,6 +186,7 @@ func TestCreateLogExporter(t *testing.T) {
 			}),
 			marshalers: nil,
 			err:        nil,
+			cleanup:    true,
 		},
 		{
 			name: "custom_encoding",
@@ -182,19 +198,17 @@ func TestCreateLogExporter(t *testing.T) {
 			marshalers: []LogsMarshaler{
 				newMockMarshaler[plog.Logs]("custom"),
 			},
-			err: nil,
+			err:     nil,
+			cleanup: true,
 		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			f := NewFactory(WithLogsMarshalers(tc.marshalers...))
-			exporter, err := f.CreateLogsExporter(
+			exporter, err := f.CreateLogs(
 				context.Background(),
-				exportertest.NewNopSettings(),
+				exportertest.NewNopSettings(metadata.Type),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -204,18 +218,22 @@ func TestCreateLogExporter(t *testing.T) {
 			}
 			assert.NoError(t, err, "Must not error")
 			assert.NotNil(t, exporter, "Must return valid exporter when no error is returned")
+
+			// Clean up the producer if created
+			if tc.cleanup && exporter != nil {
+				exporter.Shutdown(context.Background())
+			}
 		})
 	}
 }
 
 func TestCreateTraceExporter(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name       string
 		conf       *Config
 		marshalers []TracesMarshaler
 		err        error
+		cleanup    bool
 	}{
 		{
 			name: "valid config (no validating brokers)",
@@ -226,15 +244,20 @@ func TestCreateTraceExporter(t *testing.T) {
 			}),
 			marshalers: nil,
 			err:        nil,
+			cleanup:    true,
 		},
 		{
 			name: "invalid config (validating brokers)",
 			conf: applyConfigOption(func(conf *Config) {
 				conf.Brokers = []string{"invalid:9092"}
 				conf.ProtocolVersion = "2.0.0"
+				// Set short timeouts to fail fast
+				conf.Metadata.Retry.Max = 1
+				conf.Metadata.Retry.Backoff = 1 * time.Millisecond
 			}),
 			marshalers: nil,
 			err:        &net.DNSError{},
+			cleanup:    false,
 		},
 		{
 			name: "default_encoding",
@@ -245,6 +268,7 @@ func TestCreateTraceExporter(t *testing.T) {
 			}),
 			marshalers: nil,
 			err:        nil,
+			cleanup:    true,
 		},
 		{
 			name: "custom_encoding",
@@ -256,19 +280,17 @@ func TestCreateTraceExporter(t *testing.T) {
 			marshalers: []TracesMarshaler{
 				newMockMarshaler[ptrace.Traces]("custom"),
 			},
-			err: nil,
+			err:     nil,
+			cleanup: true,
 		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			f := NewFactory(WithTracesMarshalers(tc.marshalers...))
-			exporter, err := f.CreateTracesExporter(
+			exporter, err := f.CreateTraces(
 				context.Background(),
-				exportertest.NewNopSettings(),
+				exportertest.NewNopSettings(metadata.Type),
 				tc.conf,
 			)
 			if tc.err != nil {
@@ -278,6 +300,11 @@ func TestCreateTraceExporter(t *testing.T) {
 			}
 			assert.NoError(t, err, "Must not error")
 			assert.NotNil(t, exporter, "Must return valid exporter when no error is returned")
+
+			// Clean up the producer if created
+			if tc.cleanup && exporter != nil {
+				exporter.Shutdown(context.Background())
+			}
 		})
 	}
 }

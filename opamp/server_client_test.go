@@ -81,8 +81,8 @@ func TestNewClient(t *testing.T) {
 		Config: &AgentManagerConfig{
 			ServerEndpoint: "ws://" + srv.Endpoint,
 		},
-		CollectorConfgPath: "./testdata/coll-config-path.yaml",
-		WrappedCollector:   coll,
+		CollectorConfigPath: "./testdata/coll-config-path.yaml",
+		WrappedCollector:    coll,
 	})
 
 	require.NoError(t, err)

@@ -24,7 +24,6 @@ exporters:
       enabled: true
       queue_size: 100
       num_consumers: 5
-
 service:
   pipelines:
     traces:

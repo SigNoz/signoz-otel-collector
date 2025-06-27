@@ -21,6 +21,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter/internal/metadata"
 )
 
 func Test_attributesData_add(t *testing.T) {
@@ -442,14 +444,14 @@ func testWriterOptions() []WriterOption {
 	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
 	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
 	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-	rfCache := ttlcache.New[string, struct{}](
+	rfCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](distributedTracesResourceV2Seconds*time.Second),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 		ttlcache.WithCapacity[string, struct{}](100000),
 	)
 	go rfCache.Start()
 
-	meter := noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter")
+	meter := noop.NewMeterProvider().Meter(metadata.ScopeName)
 
 	attrsLimits := AttributesLimits{
 		FetchKeysInterval: 10 * time.Minute,
@@ -500,7 +502,10 @@ func TestExporterInit(t *testing.T) {
 
 	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
 
-	setupTestExporter(t, mock)
+	exporter := setupTestExporter(t, mock)
+
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil
@@ -544,7 +549,8 @@ func TestExporterPushTracesData(t *testing.T) {
 		t.Fatalf("failed to push traces data: %v", err)
 	}
 
-	exporter.Shutdown(context.Background())
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		t.Log("ExpectationsWereMet", mock.ExpectationsWereMet())

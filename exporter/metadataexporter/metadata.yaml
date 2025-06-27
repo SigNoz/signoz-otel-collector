@@ -1,0 +1,5 @@
+type: metadataexporter
+status:
+  class: exporter
+  stability:
+    stable: [traces, logs, metrics]

@@ -10,15 +10,15 @@ processors:
 extensions:
   zpages: {}
 exporters:
-  logging:
+  debug:
 service:
   extensions: [zpages]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
