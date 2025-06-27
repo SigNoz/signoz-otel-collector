@@ -76,10 +76,12 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
+		resource,
 		scope_name,
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -463,6 +465,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return err
 					}
 
+					jsonResources, error := json.Marshal(resourcesMap.StringData)
+					if error != nil {
+						return err
+					}
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -479,6 +485,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attrsMap.NumberData,
 						attrsMap.BoolData,
 						resourcesMap.StringData,
+						string(jsonResources),
 						scopeName,
 						scopeVersion,
 						scopeMap.StringData,

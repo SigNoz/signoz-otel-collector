@@ -63,6 +63,8 @@ const (
 	// IP types
 	ColumnTypeIPv4 PrimitiveColumnType = "IPv4"
 	ColumnTypeIPv6 PrimitiveColumnType = "IPv6"
+	// JSON
+	ColumnTypeJSON PrimitiveColumnType = "JSON"
 )
 
 func (p PrimitiveColumnType) String() string {
