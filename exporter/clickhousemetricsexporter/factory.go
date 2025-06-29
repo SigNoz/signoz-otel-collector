@@ -106,5 +106,6 @@ func createDefaultConfig() component.Config {
 		WriteTSToV4:     true,
 		DisableV2:       false,
 		EnableExpHist:   false,
+		DisableTTLCache: false,
 	}
 }
