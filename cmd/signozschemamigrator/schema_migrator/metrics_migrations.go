@@ -1280,6 +1280,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
             FROM signoz_metrics.time_series_v4_1day`,
 			},
 		},
+		//added is necessary
 		IsNecessary: true,
 	},
 }
