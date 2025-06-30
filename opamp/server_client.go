@@ -206,11 +206,16 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 		k.Set("receivers.nop", map[string]any{})
 	}
 
-	// Delete all service.pipelines.*.receivers keys
 	for _, key := range k.Keys() {
+		// Delete all service.pipelines.*.receivers keys
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".receivers") {
 			k.Delete(key)
 			k.Set(key, []any{"nop"})
+		}
+
+		// delete the processors
+		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".processors") {
+			k.Delete(key)
 		}
 	}
 
