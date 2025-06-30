@@ -24,8 +24,9 @@ var k = koanf.New("::")
 // 2. Reloading the agent configuration when the file changes
 // 3. Providing the current agent configuration to the Opamp client
 type agentConfigManager struct {
-	agentConfig *remoteControlledConfig
-	logger      *zap.Logger
+	agentConfig           *remoteControlledConfig
+	logger                *zap.Logger
+	initialConfigReceived bool
 }
 
 type reloadFunc func([]byte) error
@@ -167,7 +168,7 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 	newConfigHash := fileHash(newContents)
 
 	// Always reload the config if this is the first config received.
-	if bytes.Equal(currentConfig.currentHash, newConfigHash) {
+	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) {
 		a.logger.Info("Config has not changed")
 		return false, nil
 	}
@@ -182,6 +183,10 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 	if err != nil {
 		err = fmt.Errorf("failed hash compute for config %s: %w", currentConfig.path, err)
 		return true, err
+	}
+
+	if !a.initialConfigReceived {
+		a.initialConfigReceived = true
 	}
 
 	return true, nil

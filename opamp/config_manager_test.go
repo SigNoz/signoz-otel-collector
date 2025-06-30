@@ -110,6 +110,7 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 	logger := newLogger(t)
 	mgr := NewAgentConfigManager(logger)
 	assert.NotNil(t, mgr)
+	mgr.initialConfigReceived = true
 
 	cnt := 0
 	reloadFunc := func(contents []byte) error {
