@@ -114,22 +114,26 @@ func (a *agentConfigManager) Set(remoteControlledConfig *remoteControlledConfig)
 }
 
 // createEffectiveConfigMsg creates a protobuf message that contains the effective config.
-func (a *agentConfigManager) CreateEffectiveConfigMsg() (*protobufs.EffectiveConfig, error) {
-	configMap := make(map[string]*protobufs.AgentConfigFile, 1)
-
-	body, err := os.ReadFile(a.agentConfig.path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading config file %s: %w", a.agentConfig.path, err)
+func (a *agentConfigManager) CreateEffectiveConfigMsg(override []byte) (*protobufs.EffectiveConfig, error) {
+	agentConfigFile := &protobufs.AgentConfigFile{
+		ContentType: "text/yaml",
 	}
 
-	configMap[collectorConfigKey] = &protobufs.AgentConfigFile{
-		Body:        body,
-		ContentType: "text/yaml",
+	var err error
+	if override != nil {
+		agentConfigFile.Body = override
+	} else {
+		agentConfigFile.Body, err = os.ReadFile(a.agentConfig.path)
+		if err != nil {
+			return nil, fmt.Errorf("error reading config file %s: %w", a.agentConfig.path, err)
+		}
 	}
 
 	return &protobufs.EffectiveConfig{
 		ConfigMap: &protobufs.AgentConfigMap{
-			ConfigMap: configMap,
+			ConfigMap: map[string]*protobufs.AgentConfigFile{
+				collectorConfigKey: agentConfigFile,
+			},
 		},
 	}, nil
 }
