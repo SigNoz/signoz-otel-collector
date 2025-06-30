@@ -24,9 +24,8 @@ var k = koanf.New("::")
 // 2. Reloading the agent configuration when the file changes
 // 3. Providing the current agent configuration to the Opamp client
 type agentConfigManager struct {
-	agentConfig           *remoteControlledConfig
-	logger                *zap.Logger
-	initialConfigReceived bool
+	agentConfig *remoteControlledConfig
+	logger      *zap.Logger
 }
 
 type reloadFunc func([]byte) error
@@ -114,22 +113,26 @@ func (a *agentConfigManager) Set(remoteControlledConfig *remoteControlledConfig)
 }
 
 // createEffectiveConfigMsg creates a protobuf message that contains the effective config.
-func (a *agentConfigManager) CreateEffectiveConfigMsg() (*protobufs.EffectiveConfig, error) {
-	configMap := make(map[string]*protobufs.AgentConfigFile, 1)
-
-	body, err := os.ReadFile(a.agentConfig.path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading config file %s: %w", a.agentConfig.path, err)
+func (a *agentConfigManager) CreateEffectiveConfigMsg(override []byte) (*protobufs.EffectiveConfig, error) {
+	agentConfigFile := &protobufs.AgentConfigFile{
+		ContentType: "text/yaml",
 	}
 
-	configMap[collectorConfigKey] = &protobufs.AgentConfigFile{
-		Body:        body,
-		ContentType: "text/yaml",
+	var err error
+	if override != nil {
+		agentConfigFile.Body = override
+	} else {
+		agentConfigFile.Body, err = os.ReadFile(a.agentConfig.path)
+		if err != nil {
+			return nil, fmt.Errorf("error reading config file %s: %w", a.agentConfig.path, err)
+		}
 	}
 
 	return &protobufs.EffectiveConfig{
 		ConfigMap: &protobufs.AgentConfigMap{
-			ConfigMap: configMap,
+			ConfigMap: map[string]*protobufs.AgentConfigFile{
+				collectorConfigKey: agentConfigFile,
+			},
 		},
 	}, nil
 }
@@ -164,7 +167,7 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 	newConfigHash := fileHash(newContents)
 
 	// Always reload the config if this is the first config received.
-	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) {
+	if bytes.Equal(currentConfig.currentHash, newConfigHash) {
 		a.logger.Info("Config has not changed")
 		return false, nil
 	}
@@ -179,10 +182,6 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 	if err != nil {
 		err = fmt.Errorf("failed hash compute for config %s: %w", currentConfig.path, err)
 		return true, err
-	}
-
-	if !a.initialConfigReceived {
-		a.initialConfigReceived = true
 	}
 
 	return true, nil

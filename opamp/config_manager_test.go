@@ -63,7 +63,7 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 	assert.Equal(t, 0, cnt)
 
 	mgr.Set(cfg)
-	effCfg, err := mgr.CreateEffectiveConfigMsg()
+	effCfg, err := mgr.CreateEffectiveConfigMsg(nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, effCfg)
 	bytes, err := os.ReadFile("./testdata/coll-config-path.yaml")
@@ -110,7 +110,6 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 	logger := newLogger(t)
 	mgr := NewAgentConfigManager(logger)
 	assert.NotNil(t, mgr)
-	mgr.initialConfigReceived = true
 
 	cnt := 0
 	reloadFunc := func(contents []byte) error {
@@ -123,7 +122,7 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 	assert.Equal(t, 0, cnt)
 
 	mgr.Set(cfg)
-	effCfg, err := mgr.CreateEffectiveConfigMsg()
+	effCfg, err := mgr.CreateEffectiveConfigMsg(nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, effCfg)
 
