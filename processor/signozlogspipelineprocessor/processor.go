@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
@@ -92,11 +93,19 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
+	group, groupCtx := errgroup.WithContext(ctx)
 	for _, e := range entries {
-		if err := p.firstOp.Process(ctx, e); err != nil {
-			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
-		}
+		group.Go(func() error {
+			if err := p.firstOp.Process(groupCtx, e); err != nil {
+				p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+			}
+
+			return nil // not returning error to avoid cancelling groupCtx
+		})
 	}
+
+	// wait for the group execution
+	_ = group.Wait()
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
