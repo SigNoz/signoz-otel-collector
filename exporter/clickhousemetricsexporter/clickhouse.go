@@ -99,6 +99,7 @@ type ClickHouseParams struct {
 	WatcherInterval      time.Duration
 	WriteTSToV4          bool
 	DisableV2            bool
+	DisableTTLCache      bool
 	ExporterId           uuid.UUID
 	Settings             exporter.Settings
 }
@@ -129,11 +130,14 @@ func NewClickHouse(params *ClickHouseParams) (base.Storage, error) {
 		return nil, fmt.Errorf("could not connect to clickhouse: %s", err)
 	}
 
-	cache := ttlcache.New[string, bool](
-		ttlcache.WithTTL[string, bool](45*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-	)
-	go cache.Start()
+	var cache *ttlcache.Cache[string, bool]
+	if !params.DisableTTLCache {
+		cache = ttlcache.New[string, bool](
+			ttlcache.WithTTL[string, bool](45*time.Minute),
+			ttlcache.WithDisableTouchOnHit[string, bool](),
+		)
+		go cache.Start()
+	}
 
 	durationHistogram, err := meter.Float64Histogram(
 		"exporter_db_write_latency",
@@ -467,9 +471,11 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 
 			for fingerprint, labels := range timeSeries {
 				key := fmt.Sprintf("%d:%d", fingerprint, unixMilli)
-				if item := ch.cache.Get(key); item != nil {
-					if value := item.Value(); value {
-						continue
+				if ch.cache != nil {
+					if item := ch.cache.Get(key); item != nil {
+						if value := item.Value(); value {
+							continue
+						}
 					}
 				}
 				encodedLabels := string(marshalLabels(labels, make([]byte, 0, 128)))
@@ -489,7 +495,9 @@ func (ch *clickHouse) Write(ctx context.Context, data *prompb.WriteRequest, metr
 				if err != nil {
 					return err
 				}
-				ch.cache.Set(key, true, ttlcache.DefaultTTL)
+				if ch.cache != nil {
+					ch.cache.Set(key, true, ttlcache.DefaultTTL)
+				}
 			}
 
 			start := time.Now()

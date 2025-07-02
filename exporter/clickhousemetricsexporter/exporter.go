@@ -95,6 +95,7 @@ func NewPrwExporter(cfg *Config, set exporter.Settings) (*PrwExporter, error) {
 		WatcherInterval:      cfg.WatcherInterval,
 		WriteTSToV4:          cfg.WriteTSToV4,
 		DisableV2:            cfg.DisableV2,
+		DisableTTLCache:      cfg.DisableTTLCache,
 		ExporterId:           id,
 		Settings:             set,
 	}
