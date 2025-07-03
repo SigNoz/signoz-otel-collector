@@ -94,7 +94,7 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	entries := plogToEntries(ld)
 
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(runtime.NumCPU())
+	group.SetLimit(runtime.NumCPU() * 5)
 	for _, e := range entries {
 		group.Go(func() error {
 			if err := p.firstOp.Process(groupCtx, e); err != nil {
