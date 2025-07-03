@@ -5,6 +5,7 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
+	"runtime"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -45,8 +46,7 @@ type logsPipelineProcessor struct {
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-
-	shutdownFns []component.ShutdownFunc
+	shutdownFns     []component.ShutdownFunc
 }
 
 // Collector starting up
@@ -94,6 +94,7 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	entries := plogToEntries(ld)
 
 	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(runtime.NumCPU())
 	for _, e := range entries {
 		group.Go(func() error {
 			if err := p.firstOp.Process(groupCtx, e); err != nil {
