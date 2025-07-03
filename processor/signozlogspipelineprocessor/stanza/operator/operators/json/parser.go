@@ -39,16 +39,16 @@ func (p *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error
 // parse will parse a value as JSON.
 func (p *Parser) parse(value any) (any, error) {
 	parsedValue := make(map[string]any)
-	switch value := value.(type) {
+	switch v := value.(type) {
 	case string:
 		// Unquote JSON strings if possible
-		err := p.json.UnmarshalFromString(utils.Unquote(value), &parsedValue)
+		err := p.json.UnmarshalFromString(utils.Unquote(v), &parsedValue)
 		if err != nil {
 			return nil, err
 		}
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
-		parsedValue = value
+		parsedValue = v
 	default:
 		return nil, fmt.Errorf("type %T cannot be parsed as JSON", value)
 	}

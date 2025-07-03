@@ -3,8 +3,6 @@
 package json
 
 import (
-	"math"
-
 	jsoniter "github.com/json-iterator/go"
 	"go.opentelemetry.io/collector/component"
 
@@ -48,7 +46,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	}
 
 	if c.MaxFlatteningDepth < 0 {
-		c.MaxFlatteningDepth = math.MaxInt
+		c.MaxFlatteningDepth = 0
 	}
 
 	return &Parser{
