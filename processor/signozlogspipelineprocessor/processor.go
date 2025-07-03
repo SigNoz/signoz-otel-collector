@@ -35,6 +35,7 @@ func newLogsPipelineProcessor(
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
+		limiter:         make(chan struct{}, runtime.NumCPU()*5),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
@@ -46,6 +47,7 @@ type logsPipelineProcessor struct {
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
+	limiter         chan struct{}
 	shutdownFns     []component.ShutdownFunc
 }
 
@@ -94,9 +96,15 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	entries := plogToEntries(ld)
 
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(runtime.NumCPU() * 5)
+	// group.SetLimit(runtime.NumCPU() * 5)
 	for _, e := range entries {
+		p.limiter <- struct{}{}
+
 		group.Go(func() error {
+			defer func() {
+				<-p.limiter
+			}()
+
 			if err := p.firstOp.Process(groupCtx, e); err != nil {
 				p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 			}
