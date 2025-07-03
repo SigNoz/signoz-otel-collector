@@ -32,10 +32,12 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
+	telemetrySettings.Logger.Info("number of CPUs", zap.Int("num", runtime.NumCPU()))
+
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
-		limiter:         make(chan struct{}, runtime.NumCPU()*5),
+		limiter:         make(chan struct{}, 100),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
