@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"math"
 	"strconv"
 	"strings"
@@ -71,4 +72,19 @@ func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagData
 	key.WriteString(":")
 	key.WriteString(string(tagDataType))
 	return key.String()
+}
+
+func IsJSON(str string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(str), &js) == nil
+}
+
+// Unquote attempts to unquote the string if not then returns the original
+func Unquote(value string) string {
+	unquoted, err := strconv.Unquote(value)
+	if err == nil {
+		return unquoted
+	}
+
+	return value
 }

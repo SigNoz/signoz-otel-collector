@@ -3,6 +3,8 @@
 package json
 
 import (
+	"math"
+
 	jsoniter "github.com/json-iterator/go"
 	"go.opentelemetry.io/collector/component"
 
@@ -32,6 +34,10 @@ func NewConfigWithID(operatorID string) *Config {
 // Config is the configuration of a JSON parser operator.
 type Config struct {
 	signozstanzahelper.ParserConfig `mapstructure:",squash"`
+	EnableFlattening                bool   `mapstructure:"enable_flattening"`
+	MaxFlatteningDepth              int    `mapstructure:"max_flattening_depth"`
+	EnablePaths                     bool   `mapstructure:"enable_paths"`
+	PathPrefix                      string `mapstructure:"path_prefix"`
 }
 
 // Build will build a JSON parser operator.
@@ -41,8 +47,16 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
+	if c.MaxFlatteningDepth < 0 {
+		c.MaxFlatteningDepth = math.MaxInt
+	}
+
 	return &Parser{
-		ParserOperator: parserOperator,
-		json:           jsoniter.ConfigFastest,
+		ParserOperator:     parserOperator,
+		json:               jsoniter.ConfigFastest,
+		enableFlattening:   c.EnableFlattening,
+		maxFlatteningDepth: c.MaxFlatteningDepth,
+		enablePaths:        c.EnablePaths,
+		pathPrefix:         c.PathPrefix,
 	}, nil
 }
