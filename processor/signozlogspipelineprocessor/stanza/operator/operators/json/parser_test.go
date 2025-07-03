@@ -267,6 +267,57 @@ func TestParser(t *testing.T) {
 			func(c *Config) {
 				c.EnableFlattening = true
 				c.EnablePaths = true
+				c.MaxFlatteningDepth = 1
+			},
+			&entry.Entry{
+				Body: testJSONPayload,
+			},
+			&entry.Entry{
+				Attributes: map[string]any{
+					"stream":                     "stdout",
+					"_p":                         "F",
+					"log":                        "{\"level\":\"INFO\",\"target\":\"amzn_nfm::events::event_provider_ebpf\"}",
+					"log_processed.level":        "INFO",
+					"log_processed.message":      "Under log_processed",
+					"log_processed.target":       "amzn_nfm::events::event_provider_ebpf",
+					"log_processed.timestamp":    1.748426199363e+12,
+					"kubernetes.pod_name":        "aws-network-flow-monitor-agent-qdrt2",
+					"kubernetes.namespace_name":  "amazon-network-flow-monitor",
+					"kubernetes.pod_id":          "c514f9a4-0412-4dd7-a4cb-7ff51d9ddee9",
+					"kubernetes.host":            "ip-172-31-29-49.ap-south-1.compute.internal",
+					"kubernetes.container_name":  "aws-network-flow-monitor-agent",
+					"kubernetes.docker_id":       "257e614a0a24c811d9d56b2ae6245b8ae29a1cd3023f3f8a550164108f1fd128",
+					"kubernetes.container_hash":  "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent@sha256:13bc6a5d47f0fc196e969159676dcb52a1eadbe5097b952a1b53bc449c525ed2",
+					"kubernetes.container_image": "602401143452.dkr.ecr.ap-south-1.amazonaws.com/aws-network-sonar-agent:v1.0.2-eksbuild.4",
+
+					"docker": []any{
+						"container_1",
+						"container_8",
+					},
+					"valorant.game": map[string]any{
+						"is_game": "false",
+						"metadata": map[string]any{
+							"version":           "v0.0.1",
+							"installation_path": "C://games/installed/valorant",
+							"vanguard": map[string]any{
+								"running":            true,
+								"malformed_hardware": false,
+								"version":            "patch_v1.100.0",
+								"hash_check_status":  "success",
+							},
+						},
+					},
+					"valorant.uninstall": true,
+					"valorant.message":   "under valorant 3",
+				},
+				Body: testJSONPayload,
+			},
+		},
+		{
+			"enable_flattening_and_path_level_2",
+			func(c *Config) {
+				c.EnableFlattening = true
+				c.EnablePaths = true
 				c.MaxFlatteningDepth = 2
 			},
 			&entry.Entry{
