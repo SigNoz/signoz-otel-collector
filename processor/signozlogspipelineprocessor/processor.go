@@ -97,6 +97,8 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
+	now := time.Now()
+
 	group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
 	for _, e := range entries {
@@ -117,6 +119,8 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	// wait for the group execution
 	_ = group.Wait()
+
+	p.telemetrySettings.Logger.Info("ProcessedLogs in", zap.Duration("time_taken", time.Since(now)), zap.Int("processed_number", len(entries)))
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
