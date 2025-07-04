@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -33,9 +35,18 @@ func newLogsPipelineProcessor(
 	}
 
 	telemetrySettings.Logger.Info("number of CPUs", zap.Int("num", runtime.NumCPU()))
+	meter := telemetrySettings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor")
+	stepDurationMetric, err := meter.Float64Histogram(
+		"step_duration_seconds",
+		metric.WithDescription("Time taken for entries to process"),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &logsPipelineProcessor{
-		telemetrySettings: telemetrySettings,
+		telemetrySettings:  telemetrySettings,
+		stepDurationMetric: stepDurationMetric,
 
 		limiter:         make(chan struct{}, 100),
 		processorConfig: processorConfig,
@@ -44,7 +55,8 @@ func newLogsPipelineProcessor(
 }
 
 type logsPipelineProcessor struct {
-	telemetrySettings component.TelemetrySettings
+	telemetrySettings  component.TelemetrySettings
+	stepDurationMetric metric.Float64Histogram
 
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
@@ -97,7 +109,7 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
-	now := time.Now()
+	start := time.Now()
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
@@ -120,7 +132,11 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	// wait for the group execution
 	_ = group.Wait()
 
-	p.telemetrySettings.Logger.Info("ProcessedLogs in", zap.Duration("time_taken", time.Since(now)), zap.Int("processed_number", len(entries)))
+	p.stepDurationMetric.Record(ctx,
+		float64(time.Since(start).Seconds()),
+		metric.WithAttributes(attribute.String("step", "firstOpProcess"),
+			attribute.Int("total_entries_processed", len(entries))),
+	)
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
