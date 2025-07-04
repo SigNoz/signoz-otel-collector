@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
 
 func newLogsPipelineProcessor(
@@ -35,9 +36,9 @@ func newLogsPipelineProcessor(
 	}
 
 	telemetrySettings.Logger.Info("number of CPUs", zap.Int("num", runtime.NumCPU()))
-	meter := telemetrySettings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor")
-	stepDurationMetric, err := meter.Float64Histogram(
-		"step_duration_seconds",
+	meter := telemetrySettings.MeterProvider.Meter(metadata.ScopeName)
+	durationHistogram, err := meter.Float64Histogram(
+		"pipelines_processing_latency",
 		metric.WithDescription("Time taken for entries to process"),
 	)
 	if err != nil {
@@ -45,8 +46,8 @@ func newLogsPipelineProcessor(
 	}
 
 	return &logsPipelineProcessor{
-		telemetrySettings:  telemetrySettings,
-		stepDurationMetric: stepDurationMetric,
+		telemetrySettings: telemetrySettings,
+		durationHistogram: durationHistogram,
 
 		limiter:         make(chan struct{}, 100),
 		processorConfig: processorConfig,
@@ -55,8 +56,8 @@ func newLogsPipelineProcessor(
 }
 
 type logsPipelineProcessor struct {
-	telemetrySettings  component.TelemetrySettings
-	stepDurationMetric metric.Float64Histogram
+	telemetrySettings component.TelemetrySettings
+	durationHistogram metric.Float64Histogram
 
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
@@ -132,10 +133,12 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	// wait for the group execution
 	_ = group.Wait()
 
-	p.stepDurationMetric.Record(ctx,
+	p.durationHistogram.Record(ctx,
 		float64(time.Since(start).Seconds()),
-		metric.WithAttributes(attribute.String("step", "firstOpProcess"),
-			attribute.Int("total_entries_processed", len(entries))),
+		metric.WithAttributes(
+			attribute.String("step", "firstOpProcess"),
+			attribute.Int("total_entries_processed", len(entries)),
+		),
 	)
 
 	// All stanza ops supported by logs pipelines work synchronously and
