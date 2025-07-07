@@ -49,7 +49,7 @@ func newLogsPipelineProcessor(
 		telemetrySettings: telemetrySettings,
 		durationHistogram: durationHistogram,
 
-		limiter:         make(chan struct{}, 100),
+		limiter:         make(chan struct{}, runtime.NumCPU()),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
