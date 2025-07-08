@@ -69,6 +69,8 @@ type clickhouseMetricsExporter struct {
 
 	usageCollector *usage.UsageCollector
 	exporterId     uuid.UUID
+
+	closeChan chan struct{}
 }
 
 // sample represents a single metric sample
@@ -81,10 +83,6 @@ type sample struct {
 	unixMilli   int64
 	value       float64
 	flags       uint32
-}
-
-func (s *sample) String() string {
-	return "value: " + strconv.FormatFloat(s.value, 'f', -1, 64) + " " + "timestamp:" + strconv.FormatInt(s.unixMilli, 10)
 }
 
 // exponentialHistogramSample represents a single exponential histogram sample
@@ -259,6 +257,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 			return nil, err
 		}
 	}
+	chExporter.closeChan = make(chan struct{})
 
 	return chExporter, nil
 }
@@ -276,6 +275,7 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	if c.usageCollector != nil {
 		c.usageCollector.Stop()
 	}
+	close(c.closeChan)
 	c.wg.Wait()
 	return c.conn.Close()
 }
@@ -958,7 +958,12 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
 	c.wg.Add(1)
 	defer c.wg.Done()
-	return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+	select {
+	case <-c.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+	}
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch) error {
@@ -1060,7 +1065,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			}
 
 			if collectUsage {
-				usage.AddMetric(metrics, "default", 1, int64(len(sample.String())))
+				usage.AddMetric(metrics, "default", 1, 0)
 			}
 		}
 		for k, v := range metrics {
