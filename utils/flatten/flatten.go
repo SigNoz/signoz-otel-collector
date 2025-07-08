@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 )
 
@@ -44,23 +43,24 @@ func FlattenJSON(data map[string]interface{}, prefix string) map[string]interfac
 	return result
 }
 
-var isJSON = regexp.MustCompile(`^\{`).MatchString
-
 // ConvertJSON converts JSON with dotted keys into nested structures.
 func ConvertJSON(input string) (string, error) {
 	var parsed interface{}
-	if !isJSON(input) {
-		return input, fmt.Errorf("input is not a valid JSON string")
+
+	// Basic validation - check if it looks like JSON
+	if len(input) == 0 || !strings.HasPrefix(strings.TrimSpace(input), "{") {
+		return "", fmt.Errorf("input is not a valid JSON object")
 	}
+
 	if err := json.Unmarshal([]byte(input), &parsed); err != nil {
-		return input, err
+		return "", fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	transformed := nestDottedKeys(parsed)
 
 	result, err := json.Marshal(transformed)
 	if err != nil {
-		return input, err
+		return "", fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 	return string(result), nil
 }

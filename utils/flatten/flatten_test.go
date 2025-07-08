@@ -304,23 +304,3 @@ func BenchmarkConvertJSON(b *testing.B) {
 		})
 	}
 }
-
-func BenchmarkJSONSizeComparison(b *testing.B) {
-	// Test different JSON sizes to see performance characteristics
-	sizes := []struct {
-		name string
-		json string
-	}{
-		{"Small", `{"user.name": "Alice", "user.age": 30}`},
-		{"Medium", `{"user.name": "Alice", "user.age": 30, "user.email": "alice@example.com", "metrics.cpu.usage": 85, "metrics.memory.used": 1024, "logs.error.message": "Error", "logs.error.code": 500, "activity.session.id": "abc123", "activity.session.duration": 3600}`},
-		{"Large", `{"user.profile.name": "Alice Smith", "user.profile.email": "alice@example.com", "user.profile.age": 30, "user.profile.address.city": "Wonderland", "user.profile.address.zip": "12345", "user.profile.address.country": "Fantasy", "user.settings.theme": "dark", "user.settings.language": "en", "user.settings.notifications.email": true, "user.settings.notifications.push": false, "metrics.system.cpu.usage": 85, "metrics.system.cpu.temperature": 65, "metrics.system.memory.used": 1024, "metrics.system.memory.total": 2048, "metrics.system.disk.used": 500, "metrics.system.disk.total": 1000, "metrics.network.bytes.sent": 1000000, "metrics.network.bytes.received": 2000000, "logs.application.error.message": "Something went wrong", "logs.application.error.code": 500, "logs.application.warning.message": "Warning message", "logs.application.warning.code": 300, "logs.system.info.message": "System info", "logs.system.info.level": "info", "activity.session.id": "abc123", "activity.session.duration": 3600, "activity.session.start_time": "2023-01-01T00:00:00Z", "activity.session.end_time": "2023-01-01T01:00:00Z"}`},
-	}
-
-	for _, size := range sizes {
-		b.Run(size.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				ConvertJSON(size.json)
-			}
-		})
-	}
-}
