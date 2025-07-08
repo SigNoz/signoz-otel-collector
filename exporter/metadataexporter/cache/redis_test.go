@@ -91,7 +91,7 @@ func TestRedisKeyCache_AddAttrsToResource_ResourceLimitExceeded(t *testing.T) {
 	err := cache.AddAttrsToResource(ctx, 2000, []uint64{123}, pipeline.SignalTraces)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "too many resource fingerprints")
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_AddAttrsToResource_AttrCardinalityExceeded(t *testing.T) {
@@ -111,7 +111,7 @@ func TestRedisKeyCache_AddAttrsToResource_AttrCardinalityExceeded(t *testing.T) 
 	err := cache.AddAttrsToResource(ctx, 3000, []uint64{99}, pipeline.SignalTraces)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "too many attribute fingerprints")
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_AddAttrsToResource_EmptyList(t *testing.T) {
@@ -128,7 +128,7 @@ func TestRedisKeyCache_AddAttrsToResource_EmptyList(t *testing.T) {
 	require.NoError(t, err)
 
 	// No Redis calls expected
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_AttrsExistForResource_Basic(t *testing.T) {
@@ -147,7 +147,7 @@ func TestRedisKeyCache_AttrsExistForResource_Basic(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []bool{true, false, true}, exists)
 
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_AttrsExistForResource_Empty(t *testing.T) {
@@ -159,7 +159,7 @@ func TestRedisKeyCache_AttrsExistForResource_Empty(t *testing.T) {
 	assert.Nil(t, exists) // or an empty slice
 
 	// No calls
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_ResourcesLimitExceeded(t *testing.T) {
@@ -176,7 +176,7 @@ func TestRedisKeyCache_ResourcesLimitExceeded(t *testing.T) {
 	limitExceeded := cache.ResourcesLimitExceeded(ctx, pipeline.SignalTraces)
 	assert.True(t, limitExceeded)
 
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_CardinalityLimitExceeded(t *testing.T) {
@@ -192,7 +192,7 @@ func TestRedisKeyCache_CardinalityLimitExceeded(t *testing.T) {
 	exceeded := cache.CardinalityLimitExceeded(ctx, 777, pipeline.SignalTraces)
 	assert.True(t, exceeded)
 
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }
 
 func TestRedisKeyCache_Debug(t *testing.T) {
@@ -212,5 +212,5 @@ func TestRedisKeyCache_Debug(t *testing.T) {
 	})
 
 	cache.Debug(ctx)
-	mock.ExpectationsWereMet()
+	_ = mock.ExpectationsWereMet()
 }

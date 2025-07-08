@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
@@ -14,6 +15,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
+
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 )
 
 func Test_prepareBatchGauge(t *testing.T) {
@@ -21,7 +24,7 @@ func Test_prepareBatchGauge(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -87,7 +90,7 @@ func Test_prepareBatchSum(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -153,7 +156,7 @@ func Test_prepareBatchHistogram(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -329,6 +332,37 @@ func Test_prepareBatchHistogram(t *testing.T) {
 		assert.Equal(t, ts.unit, currentTs.unit)
 		assert.Equal(t, ts.typ, currentTs.typ)
 	}
+
+	// metadata
+	// count, sum, min, max
+	// 2 => resource attr + __resource.schema_url__
+	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
+	// 2 => point attr + __temporality__
+	// bucket
+	// 2 => resource attr + __resource.schema_url__
+	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
+	// 23 => point attr + __temporality__ + 21 buckets
+
+	assert.Equal(t, len(batch.metadata), 4*(2+4+2)+1*(2+4+23))
+	for _, item := range batch.metadata {
+		validSuffix := false
+		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
+			validSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityCumulative)
+			assert.Equal(t, item.typ, pmetric.MetricTypeSum)
+		}
+		if strings.HasSuffix(item.metricName, bucketSuffix) {
+			validSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityCumulative)
+			assert.Equal(t, item.typ, pmetric.MetricTypeHistogram)
+		}
+		if strings.HasSuffix(item.metricName, minSuffix) || strings.HasSuffix(item.metricName, maxSuffix) {
+			validSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityUnspecified)
+			assert.Equal(t, item.typ, pmetric.MetricTypeGauge)
+		}
+		assert.True(t, validSuffix)
+	}
 }
 
 func Test_prepareBatchExponentialHistogram(t *testing.T) {
@@ -337,7 +371,7 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 		WithEnableExpHist(true),
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -412,6 +446,35 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
 		assert.Equal(t, sample.sketch, curSample.sketch)
 	}
+
+	// metadata
+	// count, sum, min, max
+	// 2 => resource attr + __resource.schema_url__
+	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
+	// 2 => point attr + __temporality__
+	// sketch
+	// 2 => point attr + __temporality__
+
+	assert.Equal(t, len(batch.metadata), 4*(2+4+2)+(2))
+	for _, item := range batch.metadata {
+		metaSuffix := false
+		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
+			metaSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityDelta)
+			assert.Equal(t, item.typ, pmetric.MetricTypeSum)
+		}
+		if strings.HasSuffix(item.metricName, minSuffix) || strings.HasSuffix(item.metricName, maxSuffix) {
+			metaSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityUnspecified)
+			assert.Equal(t, item.typ, pmetric.MetricTypeGauge)
+		}
+		if !metaSuffix {
+			metaSuffix = true
+			assert.Equal(t, item.typ, pmetric.MetricTypeExponentialHistogram)
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityDelta)
+		}
+		assert.True(t, metaSuffix)
+	}
 }
 
 func Test_prepareBatchSummary(t *testing.T) {
@@ -419,7 +482,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -478,6 +541,32 @@ func Test_prepareBatchSummary(t *testing.T) {
 		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
 		assert.Equal(t, sample.value, curSample.value)
 	}
+
+	// metadata
+	// count, sum
+	// 2 => resource attr + __resource.schema_url__
+	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
+	// 2 => point attr + __temporality__
+	// bucket
+	// 2 => resource attr + __resource.schema_url__
+	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
+	// 3 => point attr + __temporality__ + 1 quantile
+
+	assert.Equal(t, len(batch.metadata), 2*(2+4+2)+1*(2+4+3))
+	for _, item := range batch.metadata {
+		validSuffix := false
+		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
+			validSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityCumulative)
+			assert.Equal(t, item.typ, pmetric.MetricTypeSum)
+		}
+		if strings.HasSuffix(item.metricName, quantilesSuffix) {
+			validSuffix = true
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityCumulative)
+			assert.Equal(t, item.typ, pmetric.MetricTypeSummary)
+		}
+		assert.True(t, validSuffix)
+	}
 }
 
 func Benchmark_prepareBatchGauge(b *testing.B) {
@@ -489,7 +578,7 @@ func Benchmark_prepareBatchGauge(b *testing.B) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
@@ -506,7 +595,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
@@ -523,7 +612,7 @@ func Benchmark_prepareBatchHistogram(b *testing.B) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
@@ -541,7 +630,7 @@ func Benchmark_prepareBatchExponentialHistogram(b *testing.B) {
 		WithEnableExpHist(true),
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
@@ -558,7 +647,7 @@ func Benchmark_prepareBatchSummary(b *testing.B) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
@@ -571,7 +660,7 @@ func Test_prepareBatchGaugeWithNan(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -584,7 +673,7 @@ func Test_prepareBatchGaugeWithStaleNan(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -616,7 +705,7 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -806,7 +895,7 @@ func Test_prepareBatchHistogramWithNan(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -819,7 +908,7 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -887,7 +976,7 @@ func Test_prepareBatchSumWithNan(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -900,7 +989,7 @@ func Test_prepareBatchSummaryWithNan(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -913,7 +1002,7 @@ func Test_prepareBatchSummaryWithNoRecordedValue(t *testing.T) {
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -987,7 +1076,7 @@ func Test_prepareBatchExponentialHistogramWithNoRecordedValue(t *testing.T) {
 		WithEnableExpHist(true),
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -1077,7 +1166,7 @@ func Test_prepareBatchExponentialHistogramWithNan(t *testing.T) {
 		WithEnableExpHist(true),
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporterv2")),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)

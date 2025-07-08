@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"github.com/ClickHouse/clickhouse-go/v2"
-	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
@@ -12,6 +11,8 @@ import (
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"time"
+
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 )
 
 // NewFactory creates a new ClickHouse Metrics exporter.
@@ -56,7 +57,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithConfig(chCfg),
 		WithConn(conn),
 		WithLogger(set.Logger),
-		WithMeter(set.MeterProvider.Meter(meterScope)),
+		WithMeter(set.MeterProvider.Meter(internalmetadata.ScopeName)),
 		WithEnableExpHist(chCfg.EnableExpHist),
 		WithSettings(set),
 		WithUsageCollector(collector),
@@ -66,13 +67,13 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		return nil, err
 	}
 
-	exporter, err := exporterhelper.NewMetricsExporter(
+	exporter, err := exporterhelper.NewMetrics(
 		ctx,
 		set,
 		cfg,
 		chExporter.PushMetrics,
 		exporterhelper.WithTimeout(chCfg.TimeoutConfig),
-		exporterhelper.WithQueue(chCfg.QueueConfig),
+		exporterhelper.WithQueue(chCfg.QueueBatchConfig),
 		exporterhelper.WithRetry(chCfg.BackOffConfig),
 		exporterhelper.WithStart(chExporter.Start),
 		exporterhelper.WithShutdown(chExporter.Shutdown),
@@ -87,15 +88,15 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig:   exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
-		QueueConfig:     exporterhelper.NewDefaultQueueConfig(),
-		DSN:             "tcp://localhost:9000",
-		EnableExpHist:   false,
-		Database:        "signoz_metrics",
-		SamplesTable:    "distributed_samples_v4",
-		TimeSeriesTable: "distributed_time_series_v4",
-		ExpHistTable:    "distributed_exp_hist",
-		MetadataTable:   "distributed_metadata",
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		DSN:              "tcp://localhost:9000",
+		EnableExpHist:    false,
+		Database:         "signoz_metrics",
+		SamplesTable:     "distributed_samples_v4",
+		TimeSeriesTable:  "distributed_time_series_v4",
+		ExpHistTable:     "distributed_exp_hist",
+		MetadataTable:    "distributed_metadata",
 	}
 }

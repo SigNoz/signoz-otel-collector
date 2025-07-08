@@ -37,7 +37,8 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn) LogExporterOption {
 			UsageExporter,
 			e.logger,
 		)
-		e.usageCollector.Start()
+		// TODO: handle error
+		_ = e.usageCollector.Start()
 		e.id = id
 	}
 }
