@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
@@ -118,25 +117,25 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 		}
 	}
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	// group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
 	for _, e := range entries {
-		select {
-		case p.limiter <- struct{}{}:
-			group.Go(func() error {
-				defer func() {
-					<-p.limiter
-				}()
-				process(groupCtx, e)
-				return nil // not returning error to avoid cancelling groupCtx
-			})
-		default:
-			process(groupCtx, e)
-		}
+		// select {
+		// case p.limiter <- struct{}{}:
+		// 	group.Go(func() error {
+		// 		defer func() {
+		// 			<-p.limiter
+		// 		}()
+		// 		process(groupCtx, e)
+		// 		return nil // not returning error to avoid cancelling groupCtx
+		// 	})
+		// default:
+		process(ctx, e)
+		// }
 	}
 
 	// wait for the group execution
-	_ = group.Wait()
+	// _ = group.Wait()
 
 	p.durationHistogram.Record(ctx,
 		float64(time.Since(start).Seconds()),
