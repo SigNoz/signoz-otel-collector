@@ -112,22 +112,27 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	start := time.Now()
 
+	process := func(ctx context.Context, entry *entry.Entry) {
+		if err := p.firstOp.Process(ctx, entry); err != nil {
+			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+		}
+	}
+
 	group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
 	for _, e := range entries {
-		p.limiter <- struct{}{}
-
-		group.Go(func() error {
-			defer func() {
-				<-p.limiter
-			}()
-
-			if err := p.firstOp.Process(groupCtx, e); err != nil {
-				p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
-			}
-
-			return nil // not returning error to avoid cancelling groupCtx
-		})
+		select {
+		case p.limiter <- struct{}{}:
+			group.Go(func() error {
+				defer func() {
+					<-p.limiter
+				}()
+				process(groupCtx, e)
+				return nil // not returning error to avoid cancelling groupCtx
+			})
+		default:
+			process(groupCtx, e)
+		}
 	}
 
 	// wait for the group execution
