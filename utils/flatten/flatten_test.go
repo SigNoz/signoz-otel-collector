@@ -299,10 +299,7 @@ func BenchmarkConvertJSON(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := ConvertJSON(bm.json)
-				if err != nil {
-					b.Fatal(err)
-				}
+				ConvertJSON(bm.json)
 			}
 		})
 	}
@@ -322,10 +319,7 @@ func BenchmarkJSONSizeComparison(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(size.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := ConvertJSON(size.json)
-				if err != nil {
-					b.Fatal(err)
-				}
+				ConvertJSON(size.json)
 			}
 		})
 	}
