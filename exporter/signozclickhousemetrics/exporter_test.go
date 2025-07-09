@@ -1206,7 +1206,7 @@ func Test_shutdown(t *testing.T) {
 	chExporter, err := NewClickHouseExporter(
 		WithConn(conn),
 		WithUsageCollector(usageCollector),
-		WithExporterId(id),
+		WithExporterID(id),
 		WithEnableExpHist(true),
 		WithLogger(logger),
 		WithConfig(&Config{}),

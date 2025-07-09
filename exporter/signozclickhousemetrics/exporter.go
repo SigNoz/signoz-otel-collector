@@ -68,7 +68,7 @@ type clickhouseMetricsExporter struct {
 	settings               exporter.Settings
 
 	usageCollector *usage.UsageCollector
-	exporterId     uuid.UUID
+	exporterID     uuid.UUID
 
 	closeChan chan struct{}
 }
@@ -192,9 +192,9 @@ func WithUsageCollector(collector *usage.UsageCollector) ExporterOption {
 	}
 }
 
-func WithExporterId(exporterId uuid.UUID) ExporterOption {
+func WithExporterID(exporterID uuid.UUID) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
-		e.exporterId = exporterId
+		e.exporterID = exporterID
 		return nil
 	}
 }
@@ -273,7 +273,10 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 		c.cache.Stop()
 	}
 	if c.usageCollector != nil {
-		c.usageCollector.Stop()
+		err := c.usageCollector.Stop()
+		if err != nil {
+			c.logger.Error("failed to stop usage collector", zap.Error(err))
+		}
 	}
 	close(c.closeChan)
 	c.wg.Wait()
@@ -1069,7 +1072,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			}
 		}
 		for k, v := range metrics {
-			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterId.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
 		return statement.Send()
 	}
