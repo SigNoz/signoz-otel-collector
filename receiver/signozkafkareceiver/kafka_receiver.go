@@ -452,8 +452,11 @@ loop:
 
 				return nil
 			})
+		default:
+			if err := c.consumerGroup.Consume(ctx, c.topics, handler); err != nil {
+				c.settings.Logger.Error("Error from consumer", zap.Error(err))
+			}
 		}
-
 	}
 	// not checking error cuz group never returns any
 	_ = group.Wait()
