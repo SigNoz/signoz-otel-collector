@@ -81,10 +81,7 @@ func (p *Parser) flatten(parent string, value any, destination map[string]any, d
 			return
 		}
 		// Sorting keys to have a consistent behavior when paths are not enabled and keys repeat at different levels
-		keys := []string{}
-		for key := range maps.Keys(mapped) {
-			keys = append(keys, key)
-		}
+		keys := slices.Collect(maps.Keys(mapped))
 		slices.Sort(keys)
 		for _, key := range keys {
 			newKey := generateKey(parent, key)
