@@ -446,7 +446,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 16,
+			MigrationID: 17,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -470,6 +470,7 @@ ORDER BY name ASC`,
 						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_string", Type: MapColumnType{LowCardinalityColumnType{ColumnTypeString}, ColumnTypeString}, Codec: "ZSTD(1)"},
+						{Name: "_retention_days", Type: ColumnTypeUInt64, Materialized: "15"},
 					},
 					Indexes: []Index{
 						{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
@@ -485,9 +486,9 @@ ORDER BY name ASC`,
 						{Name: "attributes_bool_idx_key", Expression: "mapKeys(attributes_bool)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
 					},
 					Engine: MergeTree{
-						PartitionBy: "toDate(timestamp / 1000000000)",
+						PartitionBy: "(toDate(timestamp / 1000000000), _retention_days)",
 						OrderBy:     "(ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)",
-						TTL:         "toDateTime(timestamp / 1000000000) + toIntervalSecond(1296000)",
+						TTL:         "toDateTime(timestamp / 1000000000) + toIntervalDay(_retention_days)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -503,7 +504,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 17,
+			MigrationID: 18,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -527,6 +528,7 @@ ORDER BY name ASC`,
 						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_string", Type: MapColumnType{LowCardinalityColumnType{ColumnTypeString}, ColumnTypeString}, Codec: "ZSTD(1)"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
 					},
 					Engine: Distributed{
 						Database:    "signoz_logs",
@@ -629,7 +631,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 20,
+			MigrationID: 21,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -638,6 +640,7 @@ ORDER BY name ASC`,
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 						{Name: "fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "seen_at_ts_bucket_start", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
 					},
 					Indexes: []Index{
 						{Name: "idx_labels", Expression: "lower(labels)", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -645,9 +648,9 @@ ORDER BY name ASC`,
 					},
 					Engine: ReplacingMergeTree{
 						MergeTree: MergeTree{
-							PartitionBy: "toDate(seen_at_ts_bucket_start / 1000)",
+							PartitionBy: "toDate(seen_at_ts_bucket_start / 1000), _retention_days",
 							OrderBy:     "(labels, fingerprint, seen_at_ts_bucket_start)",
-							TTL:         "toDateTime(seen_at_ts_bucket_start) + INTERVAL 1296000 SECOND + INTERVAL 1800 SECOND DELETE",
+							TTL:         "toDateTime(seen_at_ts_bucket_start) + toIntervalDay(_retention_days) + INTERVAL 1800 SECOND DELETE",
 							Settings: TableSettings{
 								{Name: "ttl_only_drop_parts", Value: "1"},
 								{Name: "index_granularity", Value: "8192"},
@@ -662,6 +665,7 @@ ORDER BY name ASC`,
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 						{Name: "fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "seen_at_ts_bucket_start", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
 					},
 					Engine: Distributed{
 						Database:    "signoz_logs",
