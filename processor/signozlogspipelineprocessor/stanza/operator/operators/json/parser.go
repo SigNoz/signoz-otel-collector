@@ -76,12 +76,8 @@ func (p *Parser) flatten(parent string, value any, destination map[string]any, d
 	switch t.Kind() {
 	case reflect.Map:
 		mapped, ok := value.(map[string]any)
-		if !ok {
+		if !ok || depth > p.maxFlatteningDepth { // if not map of string:value OR depth higher than max attach it directly and return
 			destination[parent] = value
-			return
-		}
-		if depth > p.maxFlatteningDepth {
-			destination[parent] = mapped
 			return
 		}
 		// Sorting keys to have a consistent behavior when paths are not enabled and keys repeat at different levels
