@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
@@ -48,7 +49,7 @@ func newLogsPipelineProcessor(
 		durationHistogram: durationHistogram,
 		consumer:          nextConsumer,
 		// batchSize:       10_000,
-		// limiter:         make(chan struct{}, runtime.NumCPU()),
+		limiter:         make(chan struct{}, runtime.NumCPU()),
 		processorConfig: processorConfig,
 	}
 
@@ -72,7 +73,7 @@ type logsPipelineProcessor struct {
 	consumer        consumer.Logs
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-	// limiter         chan struct{}
+	limiter         chan struct{}
 	// batchSize       int
 	emitter       helper.LogEmitter
 	fromConverter *adapter.FromPdataConverter
@@ -243,13 +244,41 @@ func (p *logsPipelineProcessor) converterLoop(ctx context.Context, wg *sync.Wait
 				return
 			}
 
-			for _, e := range entries {
-				// Add item to the first operator of the pipeline manually
-				if err := p.firstOp.Process(ctx, e); err != nil {
+			process := func(ctx context.Context, entry *entry.Entry) {
+				// for _, entry := range entries {
+				if err := p.firstOp.Process(ctx, entry); err != nil {
 					p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
-					break
+				}
+				// }
+			}
+
+			group, groupCtx := errgroup.WithContext(ctx)
+			// group.SetLimit(runtime.NumCPU() * 5)
+			for _, e := range entries {
+				select {
+				case p.limiter <- struct{}{}:
+					group.Go(func() error {
+						defer func() {
+							<-p.limiter
+						}()
+						process(groupCtx, e)
+						return nil // not returning error to avoid cancelling groupCtx
+					})
+				default:
+					process(ctx, e)
 				}
 			}
+
+			// wait for the group execution
+			_ = group.Wait()
+
+			// for _, e := range entries {
+			// 	// Add item to the first operator of the pipeline manually
+			// 	if err := p.firstOp.Process(ctx, e); err != nil {
+			// 		p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+			// 		break
+			// 	}
+			// }
 		}
 	}
 }
