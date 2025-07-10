@@ -2,10 +2,11 @@ package utils
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/goccy/go-json"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )

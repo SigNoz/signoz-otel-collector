@@ -3,10 +3,10 @@
 package signozstanzaentry
 
 import (
-	"encoding/json"
 	"fmt"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
+
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
@@ -84,7 +84,7 @@ func ParseBodyJson(entry *entry.Entry) map[string]any {
 
 	if hasBytes {
 		var parsedBody map[string]any
-		err := jsoniter.ConfigFastest.Unmarshal(bodyBytes, &parsedBody)
+		err := json.Unmarshal(bodyBytes, &parsedBody)
 		if err == nil {
 			// Attributes keys starting with InternalTempAttributePrefix
 			// get ignored when entries are converted back to plog.Logs

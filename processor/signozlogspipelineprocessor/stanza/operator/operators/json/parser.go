@@ -12,7 +12,7 @@ import (
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
@@ -20,7 +20,6 @@ import (
 // Parser is an operator that parses JSON.
 type Parser struct {
 	signozstanzahelper.ParserOperator
-	json               jsoniter.API
 	enableFlattening   bool
 	maxFlatteningDepth int
 	enablePaths        bool
@@ -42,7 +41,7 @@ func (p *Parser) parse(value any) (any, error) {
 	switch value := value.(type) {
 	case string:
 		// Unquote JSON strings if possible
-		err := p.json.UnmarshalFromString(utils.Unquote(value), &parsedValue)
+		err := json.Unmarshal([]byte(utils.Unquote(value)), &parsedValue)
 		if err != nil {
 			return nil, err
 		}

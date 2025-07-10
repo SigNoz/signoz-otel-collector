@@ -5,8 +5,9 @@ package cwlog // import "github.com/SigNoz/signoz-otel-collector/receiver/signoz
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
+
+	"github.com/goccy/go-json"
 
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
