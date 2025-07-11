@@ -233,30 +233,6 @@ func (m *MigrationManager) shouldRunSquashed(ctx context.Context, db string) (bo
 	return count == 0 && !didMigrateV2, nil
 }
 
-func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Context) error {
-	m.logger.Info("Checking if should run squashed migrations for logs")
-	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
-	if err != nil {
-		return err
-	}
-	// if the legacy migrations table exists, we don't need to run the custom retention migrations
-	if !should {
-		m.logger.Info("skipping custom retention migrations")
-		return nil
-	}
-	m.logger.Info("Running custom retention migrations for logs")
-	for _, migration := range CustomRetentionLogsMigrations {
-		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
-				return err
-			}
-		}
-	}
-	m.logger.Info("Custom retention migrations for logs completed")
-	return nil
-}
-
-// Deprecated
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
 	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
@@ -326,7 +302,7 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 
 func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 	m.logger.Info("Running squashed migrations")
-	if err := m.runCustomRetentionMigrationsForLogs(ctx); err != nil {
+	if err := m.runSquashedMigrationsForLogs(ctx); err != nil {
 		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
 	if err := m.runSquashedMigrationsForMetrics(ctx); err != nil {
