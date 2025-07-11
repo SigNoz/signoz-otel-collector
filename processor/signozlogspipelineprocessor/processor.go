@@ -255,18 +255,19 @@ func (p *logsPipelineProcessor) converterLoop(ctx context.Context, wg *sync.Wait
 			group, groupCtx := errgroup.WithContext(ctx)
 			// group.SetLimit(runtime.NumCPU() * 5)
 			for _, e := range entries {
-				select {
-				case p.limiter <- struct{}{}:
-					group.Go(func() error {
-						defer func() {
-							<-p.limiter
-						}()
-						process(groupCtx, e)
-						return nil // not returning error to avoid cancelling groupCtx
-					})
-				default:
-					process(ctx, e)
-				}
+				// select {
+				// case p.limiter <- struct{}{}:
+				p.limiter <- struct{}{}
+				group.Go(func() error {
+					defer func() {
+						<-p.limiter
+					}()
+					process(groupCtx, e)
+					return nil // not returning error to avoid cancelling groupCtx
+				})
+				// default:
+				// process(ctx, e)
+				// }
 			}
 
 			// wait for the group execution
