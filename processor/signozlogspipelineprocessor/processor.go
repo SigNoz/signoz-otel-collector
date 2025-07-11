@@ -130,18 +130,19 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	// group.SetLimit(runtime.NumCPU() * 5)
 	// for _, batch := range utils.Batch(entries, p.batchSize) {
 	for _, batch := range entries {
-		select {
-		case p.limiter <- struct{}{}:
-			group.Go(func() error {
-				defer func() {
-					<-p.limiter
-				}()
-				process(groupCtx, batch)
-				return nil // not returning error to avoid cancelling groupCtx
-			})
-		default:
-			process(ctx, batch)
-		}
+		// select {
+		p.limiter <- struct{}{}
+		// case p.limiter <- struct{}{}:
+		group.Go(func() error {
+			defer func() {
+				<-p.limiter
+			}()
+			process(groupCtx, batch)
+			return nil // not returning error to avoid cancelling groupCtx
+		})
+		// default:
+		// process(ctx, batch)
+		// }
 	}
 
 	// wait for the group execution
