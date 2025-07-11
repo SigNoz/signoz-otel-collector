@@ -2,7 +2,7 @@
 package remove
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )

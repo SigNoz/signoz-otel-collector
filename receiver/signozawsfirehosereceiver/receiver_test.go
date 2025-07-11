@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/stretchr/testify/require"

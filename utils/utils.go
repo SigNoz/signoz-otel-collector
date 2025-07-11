@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-json"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -71,4 +73,35 @@ func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagData
 	key.WriteString(":")
 	key.WriteString(string(tagDataType))
 	return key.String()
+}
+
+func IsJSON(str string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(str), &js) == nil
+}
+
+// Unquote attempts to unquote the string if not then returns the original
+func Unquote(value string) string {
+	unquoted, err := strconv.Unquote(value)
+	if err == nil {
+		return unquoted
+	}
+
+	return value
+}
+
+func Batch[T any](input []T, batchSize int) [][]T {
+	if batchSize <= 0 {
+		panic("batchSize must be greater than 0")
+	}
+
+	var batches [][]T
+	for i := 0; i < len(input); i += batchSize {
+		end := i + batchSize
+		if end > len(input) {
+			end = len(input)
+		}
+		batches = append(batches, input[i:end])
+	}
+	return batches
 }
