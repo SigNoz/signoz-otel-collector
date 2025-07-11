@@ -17,11 +17,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
-	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 func newLogsPipelineProcessor(
@@ -118,35 +116,35 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	start := time.Now()
 
-	// process := func(ctx context.Context, entry *entry.Entry) {
-	process := func(ctx context.Context, entries []*entry.Entry) {
-		for _, entry := range entries {
-			if err := p.firstOp.Process(ctx, entry); err != nil {
-				p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
-			}
+	process := func(ctx context.Context, entry *entry.Entry) {
+		// process := func(ctx context.Context, entries []*entry.Entry) {
+		// for _, entry := range entries {
+		if err := p.firstOp.Process(ctx, entry); err != nil {
+			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
+		// }
 	}
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	// group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
-	for _, batch := range utils.Batch(entries, p.batchSize) {
-		// for _, batch := range entries {
-		select {
-		case p.limiter <- struct{}{}:
-			group.Go(func() error {
-				defer func() {
-					<-p.limiter
-				}()
-				process(groupCtx, batch)
-				return nil // not returning error to avoid cancelling groupCtx
-			})
-		default:
-			process(ctx, batch)
-		}
+	// for _, batch := range utils.Batch(entries, p.batchSize) {
+	for _, batch := range entries {
+		// select {
+		// case p.limiter <- struct{}{}:
+		// 	group.Go(func() error {
+		// 		defer func() {
+		// 			<-p.limiter
+		// 		}()
+		// 		process(groupCtx, batch)
+		// 		return nil // not returning error to avoid cancelling groupCtx
+		// 	})
+		// default:
+		process(ctx, batch)
+		// }
 	}
 
 	// wait for the group execution
-	_ = group.Wait()
+	// _ = group.Wait()
 
 	p.durationHistogram.Record(ctx,
 		float64(time.Since(start).Seconds()),
