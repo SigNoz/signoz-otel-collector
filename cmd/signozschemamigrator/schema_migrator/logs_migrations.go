@@ -192,7 +192,7 @@ ORDER BY name ASC`,
 		DownItems: []Operation{},
 	},
 	{
-		MigrationID: 2001,
+		MigrationID: 1004,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
@@ -250,7 +250,7 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		MigrationID: 2002,
+		MigrationID: 1005,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
@@ -291,7 +291,7 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		MigrationID: 2003,
+		MigrationID: 1006,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
@@ -327,7 +327,7 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		MigrationID: 2004,
+		MigrationID: 1007,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
