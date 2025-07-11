@@ -21,6 +21,7 @@ import (
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 func newLogsPipelineProcessor(
@@ -112,22 +113,24 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
+	length := len(entries)
+	go p.telemetrySettings.Logger.Info("Number of entried", zap.Any("number", length))
+
 	start := time.Now()
 
-	process := func(ctx context.Context, entry *entry.Entry) {
-		// process := func(ctx context.Context, entries []*entry.Entry) {
-		// for _, entry := range entries {
-		// if err := p.firstOp.Process(ctx, entry); err != nil {
-		if err := p.firstOp.Process(ctx, entry); err != nil {
-			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+	// process := func(ctx context.Context, entry *entry.Entry) {
+	process := func(ctx context.Context, entries []*entry.Entry) {
+		for _, entry := range entries {
+			if err := p.firstOp.Process(ctx, entry); err != nil {
+				p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+			}
 		}
-		// }
 	}
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	// group.SetLimit(runtime.NumCPU() * 5)
-	// for _, batch := range utils.Batch(entries, p.batchSize) {
-	for _, batch := range entries {
+	for _, batch := range utils.Batch(entries, p.batchSize) {
+		// for _, batch := range entries {
 		select {
 		case p.limiter <- struct{}{}:
 			group.Go(func() error {
