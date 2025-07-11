@@ -5,6 +5,7 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
+	"runtime"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -13,9 +14,13 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
 
 func newLogsPipelineProcessor(
@@ -30,9 +35,22 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
+	telemetrySettings.Logger.Info("number of CPUs", zap.Int("num", runtime.NumCPU()))
+	meter := telemetrySettings.MeterProvider.Meter(metadata.ScopeName)
+	durationHistogram, err := meter.Float64Histogram(
+		"pipelines_processing_latency",
+		metric.WithDescription("Time taken for entries to process"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
+		durationHistogram: durationHistogram,
 
+		batchSize:       10_000,
+		limiter:         make(chan struct{}, runtime.NumCPU()),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
@@ -40,12 +58,14 @@ func newLogsPipelineProcessor(
 
 type logsPipelineProcessor struct {
 	telemetrySettings component.TelemetrySettings
+	durationHistogram metric.Float64Histogram
 
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-
-	shutdownFns []component.ShutdownFunc
+	limiter         chan struct{}
+	batchSize       int
+	shutdownFns     []component.ShutdownFunc
 }
 
 // Collector starting up
@@ -92,11 +112,49 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
-	for _, e := range entries {
-		if err := p.firstOp.Process(ctx, e); err != nil {
+	length := len(entries)
+	go p.telemetrySettings.Logger.Info("Number of entried", zap.Any("number", length))
+
+	start := time.Now()
+
+	process := func(ctx context.Context, entry *entry.Entry) {
+		// process := func(ctx context.Context, entries []*entry.Entry) {
+		// for _, entry := range entries {
+		if err := p.firstOp.Process(ctx, entry); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
+		// }
 	}
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	// group.SetLimit(runtime.NumCPU() * 5)
+	// for _, batch := range utils.Batch(entries, p.batchSize) {
+	for _, batch := range entries {
+		// select {
+		p.limiter <- struct{}{}
+		// case p.limiter <- struct{}{}:
+		group.Go(func() error {
+			defer func() {
+				<-p.limiter
+			}()
+			process(groupCtx, batch)
+			return nil // not returning error to avoid cancelling groupCtx
+		})
+		// default:
+		// process(ctx, batch)
+		// }
+	}
+
+	// wait for the group execution
+	_ = group.Wait()
+
+	p.durationHistogram.Record(ctx,
+		float64(time.Since(start).Seconds()),
+		metric.WithAttributes(
+			attribute.String("step", "firstOpProcess"),
+			attribute.Int("total_entries_processed", len(entries)),
+		),
+	)
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
