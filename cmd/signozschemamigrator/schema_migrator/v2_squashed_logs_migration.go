@@ -7,108 +7,6 @@ var (
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
-					Table:    "logs",
-					Columns: []Column{
-						{Name: "timestamp", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-						{Name: "observed_timestamp", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-						{Name: "id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "trace_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "span_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "trace_flags", Type: ColumnTypeUInt32},
-						{Name: "severity_text", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "severity_number", Type: ColumnTypeUInt8},
-						{Name: "body", Type: ColumnTypeString, Codec: "ZSTD(2)"},
-						{Name: "resources_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "resources_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_int64_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_int64_value", Type: ArrayColumnType{ColumnTypeInt64}, Codec: "ZSTD(1)"},
-						{Name: "attributes_float64_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_float64_value", Type: ArrayColumnType{ColumnTypeFloat64}, Codec: "ZSTD(1)"},
-						{Name: "attributes_bool_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_bool_value", Type: ArrayColumnType{ColumnTypeBool}, Codec: "ZSTD(1)"},
-						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "scope_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "scope_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					},
-					Indexes: []Index{
-						{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
-						{Name: "severity_number_idx", Expression: "severity_number", Type: "set(25)", Granularity: 4},
-						{Name: "severity_text_idx", Expression: "severity_text", Type: "set(25)", Granularity: 4},
-						{Name: "trace_flags_idx", Expression: "trace_flags", Type: "bloom_filter", Granularity: 4},
-						{Name: "body_idx", Expression: "lower(body)", Type: "ngrambf_v1(4, 60000, 5, 0)", Granularity: 1},
-						{Name: "scope_name_idx", Expression: "scope_name", Type: "tokenbf_v1(10240, 3, 0)", Granularity: 4},
-					},
-					Engine: MergeTree{
-						PartitionBy: "toDate(timestamp / 1000000000)",
-						OrderBy:     "(timestamp, id)",
-						TTL:         "toDateTime(timestamp / 1000000000) + toIntervalSecond(1296000)",
-						Settings: TableSettings{
-							{Name: "index_granularity", Value: "8192"},
-							{Name: "ttl_only_drop_parts", Value: "1"},
-						},
-					},
-				},
-			},
-			DownItems: []Operation{
-				DropTableOperation{
-					Database: "signoz_logs",
-					Table:    "logs",
-				},
-			},
-		},
-		{
-			MigrationID: 2,
-			UpItems: []Operation{
-				CreateTableOperation{
-					Database: "signoz_logs",
-					Table:    "distributed_logs",
-					Columns: []Column{
-						{Name: "timestamp", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-						{Name: "observed_timestamp", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-						{Name: "id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "trace_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "span_id", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "trace_flags", Type: ColumnTypeUInt32},
-						{Name: "severity_text", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "severity_number", Type: ColumnTypeUInt8},
-						{Name: "body", Type: ColumnTypeString, Codec: "ZSTD(2)"},
-						{Name: "resources_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "resources_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_int64_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_int64_value", Type: ArrayColumnType{ColumnTypeInt64}, Codec: "ZSTD(1)"},
-						{Name: "attributes_float64_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_float64_value", Type: ArrayColumnType{ColumnTypeFloat64}, Codec: "ZSTD(1)"},
-						{Name: "attributes_bool_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "attributes_bool_value", Type: ArrayColumnType{ColumnTypeBool}, Codec: "ZSTD(1)"},
-						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-						{Name: "scope_string_key", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "scope_string_value", Type: ArrayColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					},
-					Engine: Distributed{
-						Database:    "signoz_logs",
-						Table:       "logs",
-						ShardingKey: "cityHash64(id)",
-					},
-				},
-			},
-			DownItems: []Operation{
-				DropTableOperation{
-					Database: "signoz_logs",
-					Table:    "distributed_logs",
-				},
-			},
-		},
-		{
-			MigrationID: 3,
-			UpItems: []Operation{
-				CreateTableOperation{
-					Database: "signoz_logs",
 					Table:    "logs_attribute_keys",
 					Columns: []Column{
 						{Name: "name", Type: ColumnTypeString},
@@ -132,7 +30,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 4,
+			MigrationID: 2,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -156,7 +54,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 5,
+			MigrationID: 3,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -181,7 +79,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 6,
+			MigrationID: 4,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -206,7 +104,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 7,
+			MigrationID: 5,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -231,7 +129,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 8,
+			MigrationID: 6,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -256,7 +154,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 9,
+			MigrationID: 7,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -283,7 +181,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 10,
+			MigrationID: 8,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -301,7 +199,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 11,
+			MigrationID: 9,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -326,7 +224,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 12,
+			MigrationID: 10,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -361,7 +259,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 13,
+			MigrationID: 11,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -390,7 +288,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 14,
+			MigrationID: 12,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -419,7 +317,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 15,
+			MigrationID: 13,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -446,7 +344,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 16,
+			MigrationID: 14,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -504,7 +402,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 17,
+			MigrationID: 15,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -545,7 +443,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 18,
+			MigrationID: 16,
 			UpItems: []Operation{
 				DropTableOperation{
 					Database: "signoz_logs",
@@ -570,7 +468,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 19,
+			MigrationID: 17,
 			UpItems: []Operation{
 				CreateMaterializedViewOperation{
 					Database:  "signoz_logs",
@@ -631,7 +529,7 @@ ORDER BY name ASC`,
 			},
 		},
 		{
-			MigrationID: 20,
+			MigrationID: 18,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
