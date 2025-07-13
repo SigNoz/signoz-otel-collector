@@ -1,5 +1,6 @@
 package schemamigrator
 
+// Added _retention_days materialized column which is added _retention_days in partition key
 var (
 	CustomRetentionLogsMigrations = []SchemaMigrationRecord{
 		{
