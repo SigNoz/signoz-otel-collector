@@ -3,10 +3,18 @@ package signozclickhousemetrics
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
+	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	"go.uber.org/zap/zaptest"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
@@ -1172,4 +1180,65 @@ func Test_prepareBatchExponentialHistogramWithNan(t *testing.T) {
 	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	assert.Equal(t, 0, len(batch.samples))
+}
+
+func Test_shutdown(t *testing.T) {
+	conn, err := cmock.NewClickHouseNative(nil)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	id := uuid.New()
+	logger := zaptest.NewLogger(t)
+	conn.MatchExpectationsInOrder(false)
+	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)")                                                                                                                        //samples query
+	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")                //time series query
+	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //metadata query
+	conn.ExpectExec("insert into signoz_metrics.distributed_usage values ($1, $2, $3, $4, $5)")                                                                                                                                                                         // usage exporter query
+	conn.ExpectClose()
+	usageCollector := usage.NewUsageCollector(
+		id,
+		conn,
+		usage.Options{
+			ReportingInterval: 5 * time.Minute,
+		},
+		"signoz_metrics",
+		UsageExporter, logger)
+	chExporter, err := NewClickHouseExporter(
+		WithConn(conn),
+		WithUsageCollector(usageCollector),
+		WithExporterID(id),
+		WithEnableExpHist(true),
+		WithLogger(logger),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when creating new exporter", err)
+	}
+
+	// Send one metric before shutdown
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+	err = chExporter.PushMetrics(context.Background(), metrics)
+	if err != nil {
+		t.Fatalf("unexpected error pushing metrics: %v", err)
+	}
+
+	wg := new(sync.WaitGroup)
+	err = chExporter.Shutdown(context.Background())
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when shutting down exporter", err)
+	}
+	errChan := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errChan <- chExporter.PushMetrics(context.Background(), pmetric.NewMetrics())
+		}()
+	}
+	wg.Wait()
+	close(errChan)
+	for ok := range errChan {
+		assert.Error(t, ok)
+	}
 }

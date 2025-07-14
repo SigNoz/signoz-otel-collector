@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"math"
 	"strconv"
 	"strings"
@@ -61,6 +66,11 @@ type clickhouseMetricsExporter struct {
 	processMetricsDuration metricapi.Float64Histogram
 	exportMetricsDuration  metricapi.Float64Histogram
 	settings               exporter.Settings
+
+	usageCollector *usage.UsageCollector
+	exporterID     uuid.UUID
+
+	closeChan chan struct{}
 }
 
 // sample represents a single metric sample
@@ -175,6 +185,20 @@ func WithSettings(settings exporter.Settings) ExporterOption {
 	}
 }
 
+func WithUsageCollector(collector *usage.UsageCollector) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.usageCollector = collector
+		return nil
+	}
+}
+
+func WithExporterID(exporterID uuid.UUID) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.exporterID = exporterID
+		return nil
+	}
+}
+
 func defaultOptions() []ExporterOption {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, bool](45*time.Minute),
@@ -224,6 +248,17 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		return nil, err
 	}
 
+	if chExporter.usageCollector != nil {
+		err = chExporter.usageCollector.Start()
+		if err != nil {
+			return nil, err
+		}
+		if err := view.Register(MetricPointsCountView, MetricPointsBytesView); err != nil {
+			return nil, err
+		}
+	}
+	chExporter.closeChan = make(chan struct{})
+
 	return chExporter, nil
 }
 
@@ -237,6 +272,13 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	if c.cacheRunning {
 		c.cache.Stop()
 	}
+	if c.usageCollector != nil {
+		err := c.usageCollector.Stop()
+		if err != nil {
+			c.logger.Error("failed to stop usage collector", zap.Error(err))
+		}
+	}
+	close(c.closeChan)
 	c.wg.Wait()
 	return c.conn.Close()
 }
@@ -919,7 +961,12 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
 	c.wg.Add(1)
 	defer c.wg.Done()
-	return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+	select {
+	case <-c.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+	}
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch) error {
@@ -980,6 +1027,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 
 	writeSamples := func(ctx context.Context, samples []*sample) error {
 		start := time.Now()
+		metrics := map[string]usage.Metric{}
 
 		defer func() {
 			c.exportMetricsDuration.Record(
@@ -1014,6 +1062,17 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
+			collectUsage := true
+			if strings.HasPrefix(sample.metricName, "signoz") || strings.HasPrefix(sample.metricName, "chi") || strings.HasPrefix(sample.metricName, "otelcol") {
+				collectUsage = false
+			}
+
+			if collectUsage {
+				usage.AddMetric(metrics, "default", 1, 0)
+			}
+		}
+		for k, v := range metrics {
+			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
 		return statement.Send()
 	}
