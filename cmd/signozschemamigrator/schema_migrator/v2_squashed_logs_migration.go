@@ -4,7 +4,7 @@ package schemamigrator
 var (
 	CustomRetentionLogsMigrations = []SchemaMigrationRecord{
 		{
-			MigrationID: 3,
+			MigrationID: 1,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -31,7 +31,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 4,
+			MigrationID: 2,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -55,7 +55,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 9,
+			MigrationID: 3,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -82,7 +82,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 10,
+			MigrationID: 4,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -100,7 +100,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 14,
+			MigrationID: 5,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -129,7 +129,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 15,
+			MigrationID: 6,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -156,7 +156,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 16,
+			MigrationID: 7,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -215,7 +215,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 17,
+			MigrationID: 8,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
@@ -257,7 +257,7 @@ var (
 			},
 		},
 		{
-			MigrationID: 20,
+			MigrationID: 9,
 			UpItems: []Operation{
 				CreateTableOperation{
 					Database: "signoz_logs",
