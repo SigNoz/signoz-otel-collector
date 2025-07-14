@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -71,7 +70,6 @@ type kafkaLogsConsumer struct {
 	topics            []string
 	cancelConsumeLoop context.CancelFunc
 	unmarshaler       LogsUnmarshaler
-	limiter           chan struct{}
 
 	settings receiver.Settings
 
@@ -348,7 +346,6 @@ func newLogsReceiver(config Config, set receiver.Settings, unmarshalers map[stri
 	return &kafkaLogsConsumer{
 		consumerGroup:     client,
 		topics:            []string{config.Topic},
-		limiter:           make(chan struct{}, runtime.NumCPU()),
 		nextConsumer:      nextConsumer,
 		unmarshaler:       unmarshaler,
 		settings:          set,
@@ -444,46 +441,6 @@ func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.Cons
 		}
 	}
 }
-
-// func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.ConsumerGroupHandler) error {
-// 	group, _ := errgroup.WithContext(ctx)
-// loop:
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			break loop
-// 		case c.limiter <- struct{}{}:
-// 			group.Go(func() error {
-// 				defer func() {
-// 					<-c.limiter
-// 				}()
-
-// 				// `Consume` should be called inside an infinite loop, when a
-// 				// server-side rebalance happens, the consumer session will need to be
-// 				// recreated to get the new claims
-// 				if err := c.consumerGroup.Consume(ctx, c.topics, handler); err != nil {
-// 					c.settings.Logger.Error("Error from consumer", zap.Error(err))
-// 				}
-
-// 				return nil
-// 			})
-// 		default:
-// 			if err := c.consumerGroup.Consume(ctx, c.topics, handler); err != nil {
-// 				c.settings.Logger.Error("Error from consumer", zap.Error(err))
-// 			}
-// 		}
-// 	}
-// 	// not checking error cuz group never returns any
-// 	_ = group.Wait()
-
-// 	// check if context was cancelled, signaling that the consumer should stop
-// 	if ctx.Err() != nil {
-// 		c.settings.Logger.Info("Consumer stopped", zap.Error(ctx.Err()))
-// 		return ctx.Err()
-// 	}
-
-// 	return nil
-// }
 
 func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
 	c.cancelConsumeLoop()

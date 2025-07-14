@@ -88,19 +88,3 @@ func Unquote(value string) string {
 
 	return value
 }
-
-func Batch[T any](input []T, batchSize int) [][]T {
-	if batchSize <= 0 {
-		panic("batchSize must be greater than 0")
-	}
-
-	var batches [][]T
-	for i := 0; i < len(input); i += batchSize {
-		end := i + batchSize
-		if end > len(input) {
-			end = len(input)
-		}
-		batches = append(batches, input[i:end])
-	}
-	return batches
-}
