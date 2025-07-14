@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"net/netip"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
@@ -337,7 +339,14 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 		if err := rows.Scan(&hostAddr, &port); err != nil {
 			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 		}
-		hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+
+		addr, err := netip.ParseAddr(hostAddr)
+		if err != nil {
+			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+		}
+
+		addrPort := netip.AddrPortFrom(addr, port)
+		hostAddrs[addrPort.String()] = struct{}{}
 	}
 
 	if len(hostAddrs) != 0 {
@@ -361,7 +370,14 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 				if err := rows.Scan(&hostAddr, &port); err != nil {
 					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 				}
-				hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+
+				addr, err := netip.ParseAddr(hostAddr)
+				if err != nil {
+					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+				}
+
+				addrPort := netip.AddrPortFrom(addr, port)
+				hostAddrs[addrPort.String()] = struct{}{}
 			}
 			break
 		}
