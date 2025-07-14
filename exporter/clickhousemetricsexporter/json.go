@@ -15,7 +15,7 @@
 package clickhousemetricsexporter
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/gofuzz"
 	"github.com/prometheus/prometheus/prompb"

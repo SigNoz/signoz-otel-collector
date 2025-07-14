@@ -4,9 +4,10 @@
 package signozstanzahelper
 
 import (
-	"encoding/json"
 	"os"
 	"sync"
+
+	"github.com/goccy/go-json"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/SigNoz/signoz-otel-collector/utils"
