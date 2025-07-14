@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/SigNoz/signoz-otel-collector/usage"
-	"github.com/google/uuid"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -910,9 +911,7 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
-		resourceFingerprint := internal.NewFingerprint(internal.ResourceFingerprintType, internal.InitialOffset, rm.Resource().Attributes(), map[string]string{
-			"__resource.schema_url__": rm.SchemaUrl(),
-		})
+		resourceFingerprint := internal.NewFingerprint(internal.ResourceFingerprintType, internal.InitialOffset, rm.Resource().Attributes(), map[string]string{})
 
 		env := ""
 		if de, ok := rm.Resource().Attributes().Get(semconv.AttributeDeploymentEnvironment); ok {
