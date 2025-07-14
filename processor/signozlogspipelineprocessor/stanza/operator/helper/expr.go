@@ -4,12 +4,12 @@
 package signozstanzahelper
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
-	"reflect"
 	"sync"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/vm"
@@ -20,31 +20,18 @@ var envPool = sync.Pool{
 	New: func() any {
 		return map[string]any{
 			"os_env_func": os.Getenv,
-			"typeOf": func(v any) string { // custom function to detect type in expressions
-				t := reflect.TypeOf(v)
-				if t == nil {
-					return "nil"
+			"isJSON": func(v any) bool {
+				switch val := v.(type) {
+				case string:
+					return json.Valid([]byte(val))
+				case []byte:
+					return json.Valid(val)
 				}
 
-				switch t.Kind() {
-				case reflect.String:
-					return "string"
-				case reflect.Map:
-					if t.Key().Kind() == reflect.String {
-						return "map[string]any"
-					}
-					return "map"
-				case reflect.Slice, reflect.Array:
-					return "array"
-				case reflect.Bool:
-					return "bool"
-				case reflect.Int, reflect.Int64:
-					return "int"
-				case reflect.Float64:
-					return "float"
-				default:
-					return fmt.Sprintf("Unhandled Type[%T]", v)
-				}
+				return false
+			},
+			"unquote": func(v any) string {
+				return utils.Unquote(v.(string))
 			},
 		}
 	},

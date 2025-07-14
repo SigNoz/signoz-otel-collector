@@ -72,3 +72,13 @@ func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagData
 	key.WriteString(string(tagDataType))
 	return key.String()
 }
+
+// Unquote attempts to unquote the string if not then returns the original
+func Unquote(value string) string {
+	unquoted, err := strconv.Unquote(value)
+	if err == nil {
+		return unquoted
+	}
+
+	return value
+}
