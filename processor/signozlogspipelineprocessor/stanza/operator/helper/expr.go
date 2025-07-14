@@ -7,8 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/goccy/go-json"
-
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/expr-lang/expr"
@@ -22,14 +20,7 @@ var envPool = sync.Pool{
 		return map[string]any{
 			"os_env_func": os.Getenv,
 			"isJSON": func(v any) bool {
-				switch val := v.(type) {
-				case string:
-					return json.Valid([]byte(val))
-				case []byte:
-					return json.Valid(val)
-				}
-
-				return false
+				return utils.IsJSON(v)
 			},
 			"unquote": func(v any) string {
 				return utils.Unquote(v.(string))

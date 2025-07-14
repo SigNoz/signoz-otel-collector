@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/hex"
+	encodingjson "encoding/json"
 	"math"
 	"strconv"
 	"strings"
@@ -81,4 +82,17 @@ func Unquote(value string) string {
 	}
 
 	return value
+}
+
+// IsJSON works with encodingjson instead of goccy because of better benchmarking for specifically for Valid function with default package
+// check here: https://github.com/SigNoz/signoz-otel-collector/pull/641#issuecomment-3068629067
+func IsJSON(v any) bool {
+	switch val := v.(type) {
+	case string:
+		return encodingjson.Valid([]byte(val))
+	case []byte:
+		return encodingjson.Valid(val)
+	}
+
+	return false
 }
