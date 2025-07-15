@@ -191,4 +191,43 @@ ORDER BY name ASC`,
 		},
 		DownItems: []Operation{},
 	},
+	{
+		MigrationID: 1004,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "resource",
+					Type:  ColumnTypeJSON,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "resource",
+					Type:  ColumnTypeJSON,
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name: "resource",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name: "resource",
+				},
+			},
+		},
+	},
 }
