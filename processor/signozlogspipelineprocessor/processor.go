@@ -33,12 +33,14 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
-	telemetrySettings.Logger.Info("number of CPUs", zap.Int("num", runtime.NumCPU()))
+	concurrency := int(math.Max(1, float64(runtime.NumCPU())))
+
+	telemetrySettings.Logger.Info("logspipeline concurrency set to ", zap.Int("num", concurrency))
 
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
-		limiter:         make(chan struct{}, int(math.Max(1, float64(runtime.NumCPU())))),
+		limiter:         make(chan struct{}, concurrency),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
@@ -105,13 +107,13 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 	}
 
 	group, groupCtx := errgroup.WithContext(ctx)
-	for _, batch := range entries {
+	for _, entry := range entries {
 		p.limiter <- struct{}{}
 		group.Go(func() error {
 			defer func() {
 				<-p.limiter
 			}()
-			process(groupCtx, batch)
+			process(groupCtx, entry)
 			return nil // not returning error to avoid cancelling groupCtx
 		})
 	}
