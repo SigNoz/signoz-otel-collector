@@ -5,6 +5,7 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
+	"math"
 	"runtime"
 	"time"
 
@@ -37,7 +38,7 @@ func newLogsPipelineProcessor(
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
-		limiter:         make(chan struct{}, runtime.NumCPU()),
+		limiter:         make(chan struct{}, int(math.Max(1, float64(runtime.NumCPU())))),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
