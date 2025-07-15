@@ -98,9 +98,6 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
-	length := len(entries)
-	go p.telemetrySettings.Logger.Info("Number of entried", zap.Any("number", length))
-
 	process := func(ctx context.Context, entry *entry.Entry) {
 		if err := p.firstOp.Process(ctx, entry); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
