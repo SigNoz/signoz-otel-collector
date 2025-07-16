@@ -263,7 +263,7 @@ type DBResponseTTL struct {
 }
 
 func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("fetching min accepted ts")
+	e.logger.Info("Updating min accepted ts")
 
 	var delTTL uint64 = 15
 
