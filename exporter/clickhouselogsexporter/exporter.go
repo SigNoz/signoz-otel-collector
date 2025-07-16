@@ -265,19 +265,7 @@ type DBResponseTTL struct {
 func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	e.logger.Info("fetching min accepted ts")
 
-	ctx := context.Background()
 	var delTTL uint64 = 15
-	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", logsTableV2, databaseName)
-	err := e.db.Select(ctx, &dbResp, q)
-	if err != nil {
-		e.logger.Error("error while fetching ttl", zap.Error(err))
-		return
-	}
-	if len(dbResp) == 0 {
-		e.logger.Error("ttl not found")
-		return
-	}
 
 	seconds := delTTL * 24 * 60 * 60
 	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
