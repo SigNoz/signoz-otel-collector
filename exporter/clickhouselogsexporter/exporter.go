@@ -19,8 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -268,7 +266,7 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	e.logger.Info("fetching min accepted ts")
 
 	ctx := context.Background()
-	var delTTL uint64 = 0
+	var delTTL uint64 = 15
 	var dbResp []DBResponseTTL
 	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", logsTableV2, databaseName)
 	err := e.db.Select(ctx, &dbResp, q)
@@ -281,18 +279,8 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 		return
 	}
 
-	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
-	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
-	if len(m) > 1 {
-		seconds_int, err := strconv.Atoi(m[1])
-		if err != nil {
-			e.logger.Error("error while converting ttl to int", zap.Error(err))
-			return
-		}
-		delTTL = uint64(seconds_int)
-	}
-
-	acceptedDateTime := time.Now().Add(-(time.Duration(delTTL) * time.Second))
+	seconds := delTTL * 24 * 60 * 60
+	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
 	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
