@@ -180,8 +180,8 @@ var (
 						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_string", Type: MapColumnType{LowCardinalityColumnType{ColumnTypeString}, ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
-						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Materialized: "0"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Default: "15"},
+						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Default: "0"},
 					},
 					Indexes: []Index{
 						{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
@@ -239,8 +239,8 @@ var (
 						{Name: "scope_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_version", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "scope_string", Type: MapColumnType{LowCardinalityColumnType{ColumnTypeString}, ColumnTypeString}, Codec: "ZSTD(1)"},
-						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
-						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Materialized: "0"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Default: "15"},
+						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Default: "0"},
 					},
 					Engine: Distributed{
 						Database:    "signoz_logs",
@@ -266,8 +266,8 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 						{Name: "fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "seen_at_ts_bucket_start", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
-						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Materialized: "0"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Default: "15"},
+						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Default: "0"},
 					},
 					Indexes: []Index{
 						{Name: "idx_labels", Expression: "lower(labels)", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
@@ -292,8 +292,8 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 						{Name: "fingerprint", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 						{Name: "seen_at_ts_bucket_start", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
-						{Name: "_retention_days", Type: ColumnTypeUInt16, Materialized: "15"},
-						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Materialized: "0"},
+						{Name: "_retention_days", Type: ColumnTypeUInt16, Default: "15"},
+						{Name: "_retention_days_cold", Type: ColumnTypeUInt16, Default: "0"},
 					},
 					Engine: Distributed{
 						Database:    "signoz_logs",
