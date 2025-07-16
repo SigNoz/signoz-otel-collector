@@ -275,7 +275,7 @@ var (
 					},
 					Engine: ReplacingMergeTree{
 						MergeTree: MergeTree{
-							PartitionBy: "(toDate(seen_at_ts_bucket_start / 1000), _retention_days, _retention_days_cold)",
+							PartitionBy: "(toDate(seen_at_ts_bucket_start), _retention_days, _retention_days_cold)",
 							OrderBy:     "(labels, fingerprint, seen_at_ts_bucket_start)",
 							TTL:         "toDateTime(seen_at_ts_bucket_start) + toIntervalDay(_retention_days) + toIntervalSecond(1800)",
 							Settings: TableSettings{
