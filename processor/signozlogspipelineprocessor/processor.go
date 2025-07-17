@@ -33,7 +33,7 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
-	concurrency := int(math.Max(1, float64(runtime.NumCPU()))) * 4
+	concurrency := int(math.Max(1, float64(runtime.NumCPU()))) * 100
 
 	telemetrySettings.Logger.Info("logspipeline concurrency set to ", zap.Int("num", concurrency))
 
