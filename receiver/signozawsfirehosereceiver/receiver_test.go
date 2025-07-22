@@ -130,7 +130,7 @@ func TestFirehoseRequest(t *testing.T) {
 		"WithInvalidBody": {
 			body:           "{ test: ",
 			wantStatusCode: http.StatusBadRequest,
-			wantErr:        errors.New("json: cannot unmarshal string into Go value of type signozawsfirehosereceiver.firehoseRequest"),
+			wantErr:        errors.New("invalid character '\"' looking for beginning of value"),
 		},
 		"WithNoRecords": {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
