@@ -9,18 +9,18 @@ import (
 // naming based on the convention specified here - https://opentelemetry.io/docs/specs/semconv/general/naming/#metrics
 const (
 	metricNameSpansCount = "signoz.meter.span.count"
-	metricNameSpansSize  = "signoz.meter.span.size"
 	metricDescSpansCount = "The number of spans observed."
+	metricNameSpansSize  = "signoz.meter.span.size"
 	metricDescSpansSize  = "The size of spans observed."
 
 	metricNameMetricsDataPointsCount = "signoz.meter.metric.datapoint.count"
-	metricNameMetricsDataPointsSize  = "signoz.meter.metric.datapoint.size"
 	metricDescMetricsDataPointsCount = "The number of data points observed."
+	metricNameMetricsDataPointsSize  = "signoz.meter.metric.datapoint.size"
 	metricDescMetricsDataPointsSize  = "The size of data points observed."
 
 	metricNameLogsCount = "signoz.meter.log.count"
-	metricNameLogsSize  = "signoz.meter.log.size"
 	metricDescLogsCount = "The number of log records observed."
+	metricNameLogsSize  = "signoz.meter.log.size"
 	metricDescLogsSize  = "The size of log records observed."
 )
 
@@ -36,9 +36,11 @@ type Config struct {
 	_ struct{}
 }
 
+// Dimension defines the dimension name and optional default value in case the dimension is missing for corresponding telemetry signal
 type Dimension struct {
-	Key          string  `mapstructure:"key"`
-	DefaultValue *string `mapstructure:"default_value"`
+	Name    string  `mapstructure:"name"`
+	Default *string `mapstructure:"default"`
+
 	// prevent unkeyed literal initialization
 	_ struct{}
 }
@@ -54,11 +56,11 @@ func (c *Config) Validate() error {
 // validateDimensions checks duplicates for dimensions.
 func validateDimensions(dimensions []Dimension) error {
 	labelNames := make(map[string]struct{})
-	for _, key := range dimensions {
-		if _, ok := labelNames[key.Key]; ok {
-			return fmt.Errorf("duplicate dimension key %s", key.Key)
+	for _, dimension := range dimensions {
+		if _, ok := labelNames[dimension.Name]; ok {
+			return fmt.Errorf("duplicate dimension name %s", dimension.Name)
 		}
-		labelNames[key.Key] = struct{}{}
+		labelNames[dimension.Name] = struct{}{}
 	}
 
 	return nil

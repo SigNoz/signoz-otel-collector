@@ -4,6 +4,7 @@ package signozmeterconnector
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
@@ -13,8 +14,8 @@ import (
 	"github.com/jonboulle/clockwork"
 )
 
-var (
-	defaultServiceName = "unknown_service"
+const (
+	defaultMetricsFlushInterval = time.Hour * 1
 )
 
 // NewFactory returns a ConnectorFactory.
@@ -33,10 +34,19 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		Dimensions: []Dimension{
 			{
-				Key:          "service.name",
-				DefaultValue: &defaultServiceName,
+				Name: "service.name",
+			},
+			{
+				Name: "deployment.environment",
+			},
+			{
+				Name: "host.name",
+			},
+			{
+				Name: "ingestion.key",
 			},
 		},
+		MetricsFlushInterval: defaultMetricsFlushInterval,
 	}
 }
 

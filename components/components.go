@@ -169,6 +169,7 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	"go.uber.org/multierr"
 
+	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
@@ -388,6 +389,7 @@ func Components() (otelcol.Factories, error) {
 		servicegraphconnector.NewFactory(),
 		spanmetricsconnector.NewFactory(),
 		sumconnector.NewFactory(),
+		signozmeterconnector.NewFactory(),
 	}
 	factories.Connectors, err = otelcol.MakeFactoryMap(connectors...)
 	if err != nil {
