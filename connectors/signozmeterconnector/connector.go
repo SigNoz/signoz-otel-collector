@@ -163,6 +163,9 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) {
 	// This component no longer needs to read the metrics once built, so it is safe to unlock.
 	meterconnector.lock.Unlock()
 
+	if metrics.DataPointCount() == 0 {
+		return
+	}
 	if err := meterconnector.metricsConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		meterconnector.logger.Error("failed ConsumeMetrics", zap.Error(err))
 		return
@@ -177,6 +180,8 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 		resourceMetrics := metrics.ResourceMetrics().AppendEmpty()
 		scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 		scopeMetrics.Scope().SetName("signozmeterconnector")
+		// for each resource metric key we need 6 metrics (2 for each telemetry data type)
+		scopeMetrics.Metrics().EnsureCapacity(6 * len(meterconnector.data))
 
 		// generate the metrics from the aggregated telemetry data collected in memory
 		meterconnector.collectLogMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
@@ -189,9 +194,14 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 
 // generate metrics from the stored dimensions and data for logs
 func (meterconnector *meterConnector) collectLogMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+	if meterMetrics.LogCount == 0 {
+		return
+	}
+
 	metric := scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameLogsCount)
 	metric.SetDescription(metricDescLogsCount)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
@@ -206,6 +216,7 @@ func (meterconnector *meterConnector) collectLogMetrics(scopeMetrics pmetric.Sco
 	metric = scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameLogsSize)
 	metric.SetDescription(metricDescLogsSize)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
@@ -220,9 +231,14 @@ func (meterconnector *meterConnector) collectLogMetrics(scopeMetrics pmetric.Sco
 
 // generate metrics from the stored dimensions and data for spans
 func (meterconnector *meterConnector) collectSpanMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+	if meterMetrics.SpanCount == 0 {
+		return
+	}
+
 	metric := scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameSpansCount)
 	metric.SetDescription(metricDescSpansCount)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
@@ -237,6 +253,7 @@ func (meterconnector *meterConnector) collectSpanMetrics(scopeMetrics pmetric.Sc
 	metric = scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameSpansSize)
 	metric.SetDescription(metricDescSpansSize)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
@@ -251,9 +268,14 @@ func (meterconnector *meterConnector) collectSpanMetrics(scopeMetrics pmetric.Sc
 
 // generate metrics from the stored dimensions and data for metrics
 func (meterconnector *meterConnector) collectMetricDataPointMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+	if meterMetrics.MetricDataPointCount == 0 {
+		return
+	}
+
 	metric := scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameMetricsDataPointsCount)
 	metric.SetDescription(metricDescMetricsDataPointsCount)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
@@ -268,6 +290,7 @@ func (meterconnector *meterConnector) collectMetricDataPointMetrics(scopeMetrics
 	metric = scopeMetrics.Metrics().AppendEmpty()
 	metric.SetName(metricNameMetricsDataPointsSize)
 	metric.SetDescription(metricDescMetricsDataPointsSize)
+	metric.SetEmptySum()
 	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 	metric.Sum().SetIsMonotonic(true)
 
