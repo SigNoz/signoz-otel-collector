@@ -1,0 +1,71 @@
+//go:generate mdatagen metadata.yaml
+
+package signozmeterconnector
+
+import (
+	"context"
+
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/connector"
+	"go.opentelemetry.io/collector/consumer"
+
+	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
+	"github.com/jonboulle/clockwork"
+)
+
+var (
+	defaultServiceName = "unknown_service"
+)
+
+// NewFactory returns a ConnectorFactory.
+func NewFactory() connector.Factory {
+	return connector.NewFactory(
+		metadata.Type,
+		createDefaultConfig,
+		connector.WithTracesToMetrics(createTracesToMetrics, metadata.TracesToMetricsStability),
+		connector.WithMetricsToMetrics(createMetricsToMetrics, metadata.MetricsToMetricsStability),
+		connector.WithLogsToMetrics(createLogsToMetrics, metadata.LogsToMetricsStability),
+	)
+}
+
+// createDefaultConfig creates the default configuration.
+func createDefaultConfig() component.Config {
+	return &Config{
+		Dimensions: []Dimension{
+			{
+				Key:          "service.name",
+				DefaultValue: &defaultServiceName,
+			},
+		},
+	}
+}
+
+// createTracesToMetrics creates a traces to metrics connector based on provided config.
+func createTracesToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Traces, error) {
+	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	c.metricsConsumer = nextConsumer
+	return c, nil
+}
+
+// createLogsToMetrics creates a logs to metrics connector based on provided config.
+func createLogsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Logs, error) {
+	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	c.metricsConsumer = nextConsumer
+	return c, nil
+}
+
+// createMetricsToMetrics creates a metrics to metrics connector based on provided config.
+func createMetricsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Metrics, error) {
+	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	c.metricsConsumer = nextConsumer
+	return c, nil
+}
