@@ -135,21 +135,21 @@ func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 
 func (meterConnector *meterConnector) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	meterConnector.lock.Lock()
-	meterConnector.aggregateMetricsFromTraces(traces)
+	meterConnector.aggregateMeterMetricsFromTraces(traces)
 	meterConnector.lock.Unlock()
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
 	meterConnector.lock.Lock()
-	meterConnector.aggregateMetricsFromMetrics(metrics)
+	meterConnector.aggregateMeterMetricsFromMetrics(metrics)
 	meterConnector.lock.Unlock()
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeLogs(ctx context.Context, logs plog.Logs) error {
 	meterConnector.lock.Lock()
-	meterConnector.aggregateMetricsFromLogs(logs)
+	meterConnector.aggregateMeterMetricsFromLogs(logs)
 	meterConnector.lock.Unlock()
 	return nil
 }
@@ -184,16 +184,16 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 		scopeMetrics.Metrics().EnsureCapacity(6 * len(meterconnector.data))
 
 		// generate the metrics from the aggregated telemetry data collected in memory
-		meterconnector.collectLogMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
-		meterconnector.collectSpanMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
-		meterconnector.collectMetricDataPointMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+		meterconnector.collectLogMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+		meterconnector.collectTraceMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+		meterconnector.collectMetricMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
 	}
 
 	return metrics
 }
 
 // generate metrics from the stored dimensions and data for logs
-func (meterconnector *meterConnector) collectLogMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectLogMeterMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
 	if meterMetrics.LogCount == 0 {
 		return
 	}
@@ -230,7 +230,7 @@ func (meterconnector *meterConnector) collectLogMetrics(scopeMetrics pmetric.Sco
 }
 
 // generate metrics from the stored dimensions and data for spans
-func (meterconnector *meterConnector) collectSpanMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectTraceMeterMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
 	if meterMetrics.SpanCount == 0 {
 		return
 	}
@@ -267,7 +267,7 @@ func (meterconnector *meterConnector) collectSpanMetrics(scopeMetrics pmetric.Sc
 }
 
 // generate metrics from the stored dimensions and data for metrics
-func (meterconnector *meterConnector) collectMetricDataPointMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectMetricMeterMetrics(scopeMetrics pmetric.ScopeMetrics, resourceMetricKey resourceMetricKey, meterMetrics meterMetrics, timestamp pcommon.Timestamp) {
 	if meterMetrics.MetricDataPointCount == 0 {
 		return
 	}
@@ -311,7 +311,7 @@ func (meterconnector *meterConnector) resetState() {
 }
 
 // generate the aggregated data from the traces data stream
-func (meterconnector *meterConnector) aggregateMetricsFromTraces(traces ptrace.Traces) {
+func (meterconnector *meterConnector) aggregateMeterMetricsFromTraces(traces ptrace.Traces) {
 	// generate raw data from inmemeory storage from traces
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpans := traces.ResourceSpans().At(i)
@@ -340,7 +340,7 @@ func (meterconnector *meterConnector) aggregateMetricsFromTraces(traces ptrace.T
 }
 
 // generate the aggregated data from the metrics data stream
-func (meterconnector *meterConnector) aggregateMetricsFromMetrics(metrics pmetric.Metrics) {
+func (meterconnector *meterConnector) aggregateMeterMetricsFromMetrics(metrics pmetric.Metrics) {
 	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
 		resourceMetric := metrics.ResourceMetrics().At(i)
 		resourceAttr := resourceMetric.Resource().Attributes()
@@ -370,7 +370,7 @@ func (meterconnector *meterConnector) aggregateMetricsFromMetrics(metrics pmetri
 }
 
 // generate the aggregated data from the logs data stream
-func (meterconnector *meterConnector) aggregateMetricsFromLogs(logs plog.Logs) {
+func (meterconnector *meterConnector) aggregateMeterMetricsFromLogs(logs plog.Logs) {
 	// generate raw data for inmemory storage from logs
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
 		resourceLogs := logs.ResourceLogs().At(i)
@@ -406,8 +406,8 @@ func (meterconnector *meterConnector) buildKeyFromResourceBasedOnDimensions(reso
 	meterconnector.keyBuf.Reset()
 
 	for _, dimension := range meterconnector.dimensions {
-		dimensionValue := meterconnector.getDimensionValue(dimension, resourceAttributes)
-		meterconnector.keyBuf.WriteString(metricKeySeparator + dimensionValue)
+		dimensionValue, _ := meterconnector.getDimensionValue(dimension, resourceAttributes)
+		meterconnector.concatDimensionValue(meterconnector.keyBuf, dimensionValue, true)
 	}
 
 	return resourceMetricKey(meterconnector.keyBuf.String())
@@ -420,8 +420,11 @@ func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(r
 
 	for _, dimension := range meterconnector.dimensions {
 		// get the dimension value from the resource attributes
-		dimensionValue := meterconnector.getDimensionValue(dimension, resourceAttributes)
-		dimensionsMap.PutStr(dimension.Name, dimensionValue)
+		dimensionValue, ok := meterconnector.getDimensionValue(dimension, resourceAttributes)
+		if ok {
+			dimensionsMap.PutStr(dimension.Name, dimensionValue)
+		}
+
 	}
 
 	return dimensionsMap
@@ -429,17 +432,24 @@ func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(r
 
 // getDimensionValue iterates over the attributes and find the dimension value on order basis.
 // if nothing is found it returns the default value (if specified) else an empty string
-func (meterconnector *meterConnector) getDimensionValue(dimension PDataDimension, attributes ...pcommon.Map) string {
+func (meterconnector *meterConnector) getDimensionValue(dimension PDataDimension, attributes ...pcommon.Map) (string, bool) {
 	for _, attrs := range attributes {
 		if attr, exists := attrs.Get(dimension.Name); exists {
-			return attr.AsString()
+			return attr.AsString(), true
 		}
 	}
 
 	// Set the default if configured, otherwise this metric will have no Value set for the Dimension.
 	if dimension.Value != nil {
-		return dimension.Value.AsString()
+		return dimension.Value.AsString(), true
 	}
 
-	return ""
+	return "", false
+}
+
+func (meterconnector *meterConnector) concatDimensionValue(dest *bytes.Buffer, value string, prefixSep bool) {
+	if prefixSep {
+		dest.WriteString(metricKeySeparator)
+	}
+	dest.WriteString(value)
 }
