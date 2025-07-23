@@ -7,13 +7,12 @@ import (
 )
 
 var (
-	Type      = component.MustNewType("count")
-	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
+	Type      = component.MustNewType("signozmeter")
+	ScopeName = "github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
 )
 
 const (
-	TracesToMetricsStability   = component.StabilityLevelAlpha
-	MetricsToMetricsStability  = component.StabilityLevelAlpha
-	LogsToMetricsStability     = component.StabilityLevelAlpha
-	ProfilesToMetricsStability = component.StabilityLevelAlpha
+	TracesToMetricsStability  = component.StabilityLevelBeta
+	MetricsToMetricsStability = component.StabilityLevelBeta
+	LogsToMetricsStability    = component.StabilityLevelBeta
 )

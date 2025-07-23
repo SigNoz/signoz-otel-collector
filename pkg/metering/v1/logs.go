@@ -23,19 +23,7 @@ func (meter *logs) Size(ld plog.Logs) int {
 	total := 0
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		resourceLog := ld.ResourceLogs().At(i)
-		resourceAttributesSize := meter.Sizer.SizeOfMapStringAny(resourceLog.Resource().Attributes().AsRaw())
-
-		for j := 0; j < resourceLog.ScopeLogs().Len(); j++ {
-			scopeLogs := resourceLog.ScopeLogs().At(j)
-
-			for k := 0; k < scopeLogs.LogRecords().Len(); k++ {
-				logRecord := scopeLogs.LogRecords().At(k)
-				total += resourceAttributesSize +
-					meter.Sizer.SizeOfMapStringAny(logRecord.Attributes().AsRaw()) +
-					len([]byte(logRecord.Body().AsString()))
-			}
-
-		}
+		total += meter.SizePerResource(resourceLog)
 	}
 
 	return total
