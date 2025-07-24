@@ -48,45 +48,42 @@ func newAggregatedMeterMetrics() *aggregatedMeterMetrics {
 }
 
 func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcommon.Map, count, size int) {
-	agm.Lock()
-
 	key := pdatautil.MapHash(attrs)
+	agm.Lock()
+	defer agm.Unlock()
+
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
 		meterMetrics = newMeterMetrics(attrs)
 		agm.meterMetrics[key] = meterMetrics
 	}
 	meterMetrics.UpdateMetricDataPointMeterMetrics(count, size)
-
-	agm.Unlock()
 }
 
 func (agm *aggregatedMeterMetrics) UpdateSpanMeterMetrics(attrs pcommon.Map, count, size int) {
-	agm.Lock()
-
 	key := pdatautil.MapHash(attrs)
+	agm.Lock()
+	defer agm.Unlock()
+
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
 		meterMetrics = newMeterMetrics(attrs)
 		agm.meterMetrics[key] = meterMetrics
 	}
 	meterMetrics.UpdateSpanMeterMetrics(count, size)
-
-	agm.Unlock()
 }
 
 func (agm *aggregatedMeterMetrics) UpdateLogMeterMetrics(attrs pcommon.Map, count, size int) {
-	agm.Lock()
-
 	key := pdatautil.MapHash(attrs)
+	agm.Lock()
+	defer agm.Unlock()
+
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
 		meterMetrics = newMeterMetrics(attrs)
 		agm.meterMetrics[key] = meterMetrics
 	}
 	meterMetrics.UpdateLogMeterMetrics(count, size)
-
-	agm.Unlock()
 }
 
 func (agm *aggregatedMeterMetrics) Purge() {

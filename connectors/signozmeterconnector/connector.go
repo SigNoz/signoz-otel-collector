@@ -107,13 +107,14 @@ func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 	if meterconnector.started {
 		// flush all the inmemory metrics we have before shutting down
 		meterconnector.exportMetrics(ctx)
+
 		meterconnector.logger.Info("stopping ticker")
 		meterconnector.ticker.Stop()
 		meterconnector.done <- struct{}{}
 		meterconnector.started = false
+		meterconnector.wg.Wait()
 	}
 
-	meterconnector.wg.Wait()
 	meterconnector.logger.Info("signozmeterconnector stopped gracefully")
 	return nil
 }
