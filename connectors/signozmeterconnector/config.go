@@ -36,7 +36,7 @@ type Config struct {
 	_ struct{}
 }
 
-// Dimension defines the dimension name and optional default value in case the dimension is missing for corresponding telemetry signal
+// Dimension defines the dimension name and optional default value in case the dimension is missing for corresponding telemetry signal's resource attributes
 type Dimension struct {
 	Name    string  `mapstructure:"name"`
 	Default *string `mapstructure:"default"`

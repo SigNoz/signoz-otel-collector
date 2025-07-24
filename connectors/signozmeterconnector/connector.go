@@ -32,7 +32,7 @@ type meterConnector struct {
 	logsMeter       metering.Logs
 	tracesMeter     metering.Traces
 	metricsMeter    metering.Metrics
-	dimensions      []PDataDimension
+	dimensions      []ResourceDimensions
 	dimensionsData  map[resourceMetricKey]pcommon.Map
 	data            map[resourceMetricKey]meterMetrics
 	clock           clockwork.Clock
@@ -54,16 +54,16 @@ type meterMetrics struct {
 	LogSize              int
 }
 
-type PDataDimension struct {
+type ResourceDimensions struct {
 	Name  string
 	Value *pcommon.Value
 }
 
-func newDimensions(cfgDims []Dimension) []PDataDimension {
+func newDimensions(cfgDims []Dimension) []ResourceDimensions {
 	if len(cfgDims) == 0 {
 		return nil
 	}
-	dims := make([]PDataDimension, len(cfgDims))
+	dims := make([]ResourceDimensions, len(cfgDims))
 	for i := range cfgDims {
 		dims[i].Name = cfgDims[i].Name
 		if cfgDims[i].Default != nil {
@@ -432,7 +432,7 @@ func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(r
 
 // getDimensionValue iterates over the attributes and find the dimension value on order basis.
 // if nothing is found it returns the default value (if specified) else an empty string
-func (meterconnector *meterConnector) getDimensionValue(dimension PDataDimension, attributes ...pcommon.Map) (string, bool) {
+func (meterconnector *meterConnector) getDimensionValue(dimension ResourceDimensions, attributes ...pcommon.Map) (string, bool) {
 	for _, attrs := range attributes {
 		if attr, exists := attrs.Get(dimension.Name); exists {
 			return attr.AsString(), true
