@@ -156,6 +156,7 @@ import (
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/debugexporter"
+	"go.opentelemetry.io/collector/exporter/nopexporter"
 	"go.opentelemetry.io/collector/exporter/otlpexporter"
 	"go.opentelemetry.io/collector/exporter/otlphttpexporter"
 	"go.opentelemetry.io/collector/extension"
@@ -337,6 +338,7 @@ func Components() (otelcol.Factories, error) {
 		signozkafkaexporter.NewFactory(),
 		syslogexporter.NewFactory(),
 		zipkinexporter.NewFactory(),
+		nopexporter.NewFactory(),
 	}
 	for _, exp := range factories.Exporters {
 		exporters = append(exporters, exp)
