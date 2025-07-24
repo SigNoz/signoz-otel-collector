@@ -2,6 +2,7 @@ package signozmeterconnector
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -9,7 +10,6 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
-	"github.com/jonboulle/clockwork"
 )
 
 const (
@@ -40,9 +40,6 @@ func createDefaultConfig() component.Config {
 			{
 				Name: "host.name",
 			},
-			{
-				Name: "ingestion.key",
-			},
 		},
 		MetricsFlushInterval: defaultMetricsFlushInterval,
 	}
@@ -50,30 +47,62 @@ func createDefaultConfig() component.Config {
 
 // createTracesToMetrics creates a traces to metrics connector based on provided config.
 func createTracesToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Traces, error) {
-	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
-	if err != nil {
-		return nil, err
+	mu.Lock()
+	defer mu.Unlock()
+	oCfg := cfg.(*Config)
+
+	connector := connectors[oCfg]
+
+	if connector == nil {
+		c, err := newConnector(params.Logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+		c.metricsConsumer = nextConsumer
+		connectors[oCfg] = c
 	}
-	c.metricsConsumer = nextConsumer
-	return c, nil
+
+	return connectors[oCfg], nil
 }
 
 // createLogsToMetrics creates a logs to metrics connector based on provided config.
 func createLogsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Logs, error) {
-	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
-	if err != nil {
-		return nil, err
+	mu.Lock()
+	defer mu.Unlock()
+	oCfg := cfg.(*Config)
+
+	connector := connectors[oCfg]
+
+	if connector == nil {
+		c, err := newConnector(params.Logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+		c.metricsConsumer = nextConsumer
+		connectors[oCfg] = c
 	}
-	c.metricsConsumer = nextConsumer
-	return c, nil
+
+	return connectors[oCfg], nil
 }
 
 // createMetricsToMetrics creates a metrics to metrics connector based on provided config.
 func createMetricsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Metrics, error) {
-	c, err := newConnector(params.Logger, cfg, clockwork.FromContext(ctx))
-	if err != nil {
-		return nil, err
+	mu.Lock()
+	defer mu.Unlock()
+	oCfg := cfg.(*Config)
+
+	connector := connectors[oCfg]
+	if connector == nil {
+		c, err := newConnector(params.Logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+		c.metricsConsumer = nextConsumer
+		connectors[oCfg] = c
 	}
-	c.metricsConsumer = nextConsumer
-	return c, nil
+
+	return connectors[oCfg], nil
 }
+
+var mu sync.Mutex
+var connectors = map[*Config]*meterConnector{}

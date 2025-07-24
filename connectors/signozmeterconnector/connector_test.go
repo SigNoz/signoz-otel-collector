@@ -9,7 +9,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
-	"github.com/jonboulle/clockwork"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -166,52 +166,6 @@ func TestLogsToMetrics(t *testing.T) {
 	}
 }
 
-func TestBuildKeyFromResourceBasedDimensions(t *testing.T) {
-	testCases := []struct {
-		Name               string
-		Dimensions         []Dimension
-		ResourceAttributes map[string]any
-		expected           string
-	}{
-		{
-			Name:               "nil_dimensions",
-			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
-			ResourceAttributes: map[string]any{"k8s.deployment.name": "my_deployment"},
-			expected:           "\x00\x00",
-		},
-		{
-			Name:               "missing_dimensions_with_defaults",
-			Dimensions:         []Dimension{{Name: "service.name", Default: &defaultServiceName}, {Name: "deployment.environment", Default: &defaultDeploymentEnvironment}},
-			ResourceAttributes: map[string]any{"k8s.deployment.name": "my_deployment"},
-			expected:           "\x00unknown_service\x00default_deployment_environment",
-		},
-		{
-			Name:               "partial_missing_dimensions_without_defaults",
-			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
-			ResourceAttributes: map[string]any{"deployment.environment": "my_dev_deployment"},
-			expected:           "\x00\x00my_dev_deployment",
-		},
-		{
-			Name:               "partial_missing_dimensions_with_defaults",
-			Dimensions:         []Dimension{{Name: "service.name", Default: &defaultServiceName}, {Name: "deployment.environment", Default: &defaultDeploymentEnvironment}},
-			ResourceAttributes: map[string]any{"deployment.environment": "my_dev_deployment"},
-			expected:           "\x00unknown_service\x00my_dev_deployment",
-		},
-	}
-
-	for _, tc := range testCases {
-		connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: tc.Dimensions, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
-		require.NoError(t, err)
-
-		resourceAttrMap := pcommon.NewMap()
-		err = resourceAttrMap.FromRaw(tc.ResourceAttributes)
-		require.NoError(t, err)
-
-		metricKey := connector.buildKeyFromResourceBasedOnDimensions(resourceAttrMap)
-		assert.Equal(t, resourceMetricKey(tc.expected), metricKey)
-	}
-}
-
 func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 	testCases := []struct {
 		Name               string
@@ -223,7 +177,7 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 			Name:               "nil_dimensions",
 			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
 			ResourceAttributes: map[string]any{"k8s.deployment.name": "my_deployment"},
-			expected:           map[string]any{},
+			expected:           map[string]any{"service.name": "", "deployment.environment": ""},
 		},
 		{
 			Name:               "missing_dimensions_with_defaults",
@@ -235,7 +189,7 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 			Name:               "partial_missing_dimensions_without_defaults",
 			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
 			ResourceAttributes: map[string]any{"deployment.environment": "my_dev_deployment"},
-			expected:           map[string]any{"deployment.environment": "my_dev_deployment"},
+			expected:           map[string]any{"service.name": "", "deployment.environment": "my_dev_deployment"},
 		},
 		{
 			Name:               "partial_missing_dimensions_with_defaults",
@@ -246,7 +200,7 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: tc.Dimensions, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+		connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: tc.Dimensions, MetricsFlushInterval: time.Second})
 		require.NoError(t, err)
 
 		expectedDimensionsMap := pcommon.NewMap()
@@ -264,33 +218,27 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromTraces(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testSpans := ptracesgen.Generate(ptracesgen.WithSpanCount(10), ptracesgen.WithResourceAttributeStringValue("unknown_service"))
 	connector.aggregateMeterMetricsFromTraces(testSpans)
 
-	expectedData := map[resourceMetricKey]meterMetrics{
-		"\x00unknown_service": {
-			SpanCount: 10,
-			SpanSize:  4150,
+	m := pcommon.NewMap()
+	m.PutStr("resource.0", "unknown_service")
+	expectedData := map[[16]byte]*meterMetrics{
+		pdatautil.MapHash(m): {
+			spanCount: 10,
+			spanSize:  4150,
+			attrs:     m,
 		},
 	}
 
-	expectedDimensionsData := map[resourceMetricKey]pcommon.Map{
-		"\x00unknown_service": func() pcommon.Map {
-			m := pcommon.NewMap()
-			m.PutStr("resource.0", "unknown_service")
-			return m
-		}(),
-	}
-
-	assert.Equal(t, expectedData, connector.data)
-	assert.Equal(t, expectedDimensionsData, connector.dimensionsData)
+	assert.Equal(t, expectedData, connector.aggregatedMeterMetrics.meterMetrics)
 }
 
 func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testMetrics := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
@@ -299,64 +247,56 @@ func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
 	}), pmetricsgen.WithResourceAttributeStringValue("unknown_service"))
 	connector.aggregateMeterMetricsFromMetrics(testMetrics)
 
-	expectedData := map[resourceMetricKey]meterMetrics{
-		"\x00unknown_service0": {
-			MetricDataPointCount: 100,
-			MetricDataPointSize:  0,
+	m := pcommon.NewMap()
+	m.PutStr("resource.attr_0", "unknown_service0")
+	expectedData := map[[16]byte]*meterMetrics{
+		pdatautil.MapHash(m): {
+			metricDataPointCount: 100,
+			metricDataPointSize:  0,
+			attrs:                m,
 		},
 	}
 
-	expectedDimensionsData := map[resourceMetricKey]pcommon.Map{
-		"\x00unknown_service0": func() pcommon.Map {
-			m := pcommon.NewMap()
-			m.PutStr("resource.attr_0", "unknown_service0")
-			return m
-		}(),
-	}
-
-	assert.Equal(t, expectedData, connector.data)
-	assert.Equal(t, expectedDimensionsData, connector.dimensionsData)
+	assert.Equal(t, expectedData, connector.aggregatedMeterMetrics.meterMetrics)
 }
 
 func TestAggregateMeterMetricsFromLogs(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testLogs := plogsgen.Generate(plogsgen.WithLogRecordCount(10), plogsgen.WithResourceAttributeStringValue("unknown_service"))
 	connector.aggregateMeterMetricsFromLogs(testLogs)
 
-	expectedData := map[resourceMetricKey]meterMetrics{
-		"\x00unknown_service": {
-			LogCount: 10,
-			LogSize:  590,
+	m := pcommon.NewMap()
+	m.PutStr("resource.0", "unknown_service")
+	expectedData := map[[16]byte]*meterMetrics{
+		pdatautil.MapHash(m): {
+			logCount: 10,
+			logSize:  590,
+			attrs:    m,
 		},
 	}
 
-	expectedDimensionsData := map[resourceMetricKey]pcommon.Map{
-		"\x00unknown_service": func() pcommon.Map {
-			m := pcommon.NewMap()
-			m.PutStr("resource.0", "unknown_service")
-			return m
-		}(),
-	}
+	assert.Equal(t, expectedData, connector.aggregatedMeterMetrics.meterMetrics)
 
-	assert.Equal(t, expectedData, connector.data)
-	assert.Equal(t, expectedDimensionsData, connector.dimensionsData)
 }
 
 func TestCollectTraceMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
-	resourceMetricKey := resourceMetricKey("\x00unknown_service")
+
+	m := pcommon.NewMap()
+	m.PutStr("resource.0", "unknown_service")
 	meterMetrics := meterMetrics{
-		SpanCount: 10,
-		SpanSize:  590,
+		spanCount: 10,
+		spanSize:  590,
+		attrs:     m,
 	}
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
 
-	connector.collectTraceMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+	connector.collectTraceMeterMetrics(scopeMetrics, &meterMetrics, timestamp)
 
 	metrics := scopeMetrics.Metrics()
 	require.Equal(t, 2, metrics.Len())
@@ -371,18 +311,20 @@ func TestCollectTraceMeterMetrics(t *testing.T) {
 }
 
 func TestCollectMetricMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
-	resourceMetricKey := resourceMetricKey("\x00unknown_service")
+	m := pcommon.NewMap()
+	m.PutStr("resource.0", "unknown_service")
 	meterMetrics := meterMetrics{
-		MetricDataPointCount: 100,
-		MetricDataPointSize:  0,
+		metricDataPointCount: 100,
+		metricDataPointSize:  0,
+		attrs:                m,
 	}
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
 
-	connector.collectMetricMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+	connector.collectMetricMeterMetrics(scopeMetrics, &meterMetrics, timestamp)
 
 	metrics := scopeMetrics.Metrics()
 	require.Equal(t, 2, metrics.Len())
@@ -397,18 +339,20 @@ func TestCollectMetricMeterMetrics(t *testing.T) {
 }
 
 func TestCollectLogMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second}, clockwork.NewFakeClock())
+	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
-	resourceMetricKey := resourceMetricKey("\x00unknown_service")
+	m := pcommon.NewMap()
+	m.PutStr("resource.0", "unknown_service")
 	meterMetrics := meterMetrics{
-		LogCount: 10,
-		LogSize:  590,
+		logCount: 10,
+		logSize:  590,
+		attrs:    m,
 	}
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
 
-	connector.collectLogMeterMetrics(scopeMetrics, resourceMetricKey, meterMetrics, timestamp)
+	connector.collectLogMeterMetrics(scopeMetrics, &meterMetrics, timestamp)
 
 	metrics := scopeMetrics.Metrics()
 	require.Equal(t, 2, metrics.Len())

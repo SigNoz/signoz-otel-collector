@@ -6,5 +6,3 @@ status:
     beta: [traces_to_metrics, metrics_to_metrics, logs_to_metrics]
   
 tests:
-  skip_lifecycle: true
-  skip_shutdown: true
