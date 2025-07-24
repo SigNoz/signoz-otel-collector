@@ -35,9 +35,6 @@ func TestLoadConfig(t *testing.T) {
 					{
 						Name: "host.name",
 					},
-					{
-						Name: "ingestion.key",
-					},
 				},
 				MetricsFlushInterval: time.Hour * 1,
 			},
@@ -71,9 +68,6 @@ func TestLoadConfig(t *testing.T) {
 					},
 					{
 						Name: "host.name",
-					},
-					{
-						Name: "ingestion.key",
 					},
 				},
 				MetricsFlushInterval: time.Minute * 1,
