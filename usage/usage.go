@@ -2,10 +2,11 @@ package usage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"

@@ -4,10 +4,11 @@
 package cwlog
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/goccy/go-json"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

@@ -19,11 +19,12 @@
 package healthcheck // import "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension/internal/healthcheck"
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"go.uber.org/zap"
 )

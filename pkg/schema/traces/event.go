@@ -2,9 +2,10 @@ package traces
 
 import (
 	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/goccy/go-json"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"

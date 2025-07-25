@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/pkg/schema/common"
