@@ -26,7 +26,7 @@ type meterConnector struct {
 	logsMeter              metering.Logs
 	tracesMeter            metering.Traces
 	metricsMeter           metering.Metrics
-	dimensions             map[string]string
+	dimensions             pcommon.Map
 	aggregatedMeterMetrics *aggregatedMeterMetrics
 	started                bool
 	ticker                 *time.Ticker
@@ -34,16 +34,20 @@ type meterConnector struct {
 	wg                     sync.WaitGroup
 }
 
-func newDimensionsMap(cfgDims []Dimension) map[string]string {
-	dimensionsMap := map[string]string{}
+func newDimensionsMap(cfgDims []Dimension) pcommon.Map {
+	if len(cfgDims) == 0 {
+		return pcommon.NewMap()
+	}
 
+	dimensionsMap := pcommon.NewMap()
+	dimensionsMap.EnsureCapacity(len(cfgDims))
 	for i := range cfgDims {
 		key := cfgDims[i].Name
-		value := ""
+		value := pcommon.NewValueStr("")
 		if cfgDims[i].Default != nil {
-			value = *cfgDims[i].Default
+			value = pcommon.NewValueStr(*cfgDims[i].Default)
 		}
-		dimensionsMap[key] = value
+		dimensionsMap.PutStr(key, value.AsString())
 	}
 
 	return dimensionsMap
@@ -311,9 +315,10 @@ func (meterconnector *meterConnector) aggregateMeterMetricsFromLogs(logs plog.Lo
 // buildDimensionsMapFromResourceAttributes builds the map to be stored against the resourceMetricKey
 func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(resourceAttributes pcommon.Map) pcommon.Map {
 	dimensionsMap := pcommon.NewMap()
+	meterconnector.dimensions.CopyTo(dimensionsMap)
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		if _, ok := meterconnector.dimensions[k]; ok {
+		if _, ok := dimensionsMap.Get(k); ok {
 			dimensionsMap.PutStr(k, v.AsString())
 		}
 		return true
