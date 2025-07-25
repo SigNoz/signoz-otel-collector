@@ -12,11 +12,6 @@ import (
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 )
 
-var (
-	defaultServiceName  = "unknown_service"
-	defaultIngestionKey = "my_ingestion_key"
-)
-
 func TestLoadConfig(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -71,22 +66,6 @@ func TestLoadConfig(t *testing.T) {
 					},
 				},
 				MetricsFlushInterval: time.Minute * 1,
-			},
-		},
-		{
-			name: "custom_dimensions_with_defaults",
-			expect: &Config{
-				Dimensions: []Dimension{
-					{
-						Name:    "service.name",
-						Default: &defaultServiceName,
-					},
-					{
-						Name:    "ingestion.key",
-						Default: &defaultIngestionKey,
-					},
-				},
-				MetricsFlushInterval: time.Hour * 1,
 			},
 		},
 	}

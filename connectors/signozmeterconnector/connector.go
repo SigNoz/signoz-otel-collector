@@ -26,7 +26,7 @@ type meterConnector struct {
 	logsMeter              metering.Logs
 	tracesMeter            metering.Traces
 	metricsMeter           metering.Metrics
-	dimensions             pcommon.Map
+	dimensions             map[string]struct{}
 	aggregatedMeterMetrics *aggregatedMeterMetrics
 	started                bool
 	ticker                 *time.Ticker
@@ -34,20 +34,10 @@ type meterConnector struct {
 	wg                     sync.WaitGroup
 }
 
-func newDimensionsMap(cfgDims []Dimension) pcommon.Map {
-	if len(cfgDims) == 0 {
-		return pcommon.NewMap()
-	}
-
-	dimensionsMap := pcommon.NewMap()
-	dimensionsMap.EnsureCapacity(len(cfgDims))
-	for i := range cfgDims {
-		key := cfgDims[i].Name
-		value := pcommon.NewValueStr("")
-		if cfgDims[i].Default != nil {
-			value = pcommon.NewValueStr(*cfgDims[i].Default)
-		}
-		dimensionsMap.PutStr(key, value.AsString())
+func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
+	dimensionsMap := map[string]struct{}{}
+	for _, key := range cfgDims {
+		dimensionsMap[key.Name] = struct{}{}
 	}
 
 	return dimensionsMap
@@ -84,7 +74,7 @@ func (meterconnector *meterConnector) Start(ctx context.Context, host component.
 			case <-meterconnector.done:
 				return
 			case <-meterconnector.ticker.C:
-				meterconnector.exportMetrics(ctx)
+				_ = meterconnector.exportMetrics(ctx)
 			}
 		}
 	}()
@@ -95,7 +85,7 @@ func (meterconnector *meterConnector) Start(ctx context.Context, host component.
 func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 	if meterconnector.started {
 		// flush all the inmemory metrics we have before shutting down
-		meterconnector.exportMetrics(ctx)
+		_ = meterconnector.exportMetrics(ctx)
 		meterconnector.ticker.Stop()
 		meterconnector.done <- struct{}{}
 		meterconnector.started = false
@@ -120,7 +110,7 @@ func (meterConnector *meterConnector) ConsumeLogs(ctx context.Context, logs plog
 	return nil
 }
 
-func (meterconnector *meterConnector) exportMetrics(ctx context.Context) {
+func (meterconnector *meterConnector) exportMetrics(ctx context.Context) error {
 	meterconnector.aggregatedMeterMetrics.Lock()
 
 	metrics := meterconnector.buildMetrics()
@@ -130,12 +120,14 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) {
 	meterconnector.aggregatedMeterMetrics.Unlock()
 
 	if metrics.DataPointCount() == 0 {
-		return
+		return nil
 	}
 	if err := meterconnector.metricsConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		meterconnector.logger.Error("failed ConsumeMetrics", zap.Error(err))
-		return
+		return err
 	}
+
+	return nil
 }
 
 func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
@@ -315,10 +307,9 @@ func (meterconnector *meterConnector) aggregateMeterMetricsFromLogs(logs plog.Lo
 // buildDimensionsMapFromResourceAttributes builds the map to be stored against the resourceMetricKey
 func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(resourceAttributes pcommon.Map) pcommon.Map {
 	dimensionsMap := pcommon.NewMap()
-	meterconnector.dimensions.CopyTo(dimensionsMap)
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		if _, ok := dimensionsMap.Get(k); ok {
+		if _, ok := meterconnector.dimensions[k]; ok {
 			dimensionsMap.PutStr(k, v.AsString())
 		}
 		return true

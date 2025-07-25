@@ -20,10 +20,6 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-var (
-	defaultDeploymentEnvironment = "default_deployment_environment"
-)
-
 func TestTracesToMetrics(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -174,28 +170,22 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 		expected           map[string]any
 	}{
 		{
-			Name:               "nil_dimensions",
+			Name:               "missing_dimensions",
 			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
 			ResourceAttributes: map[string]any{"k8s.deployment.name": "my_deployment"},
-			expected:           map[string]any{"service.name": "", "deployment.environment": ""},
+			expected:           map[string]any{},
 		},
 		{
-			Name:               "missing_dimensions_with_defaults",
-			Dimensions:         []Dimension{{Name: "service.name", Default: &defaultServiceName}, {Name: "deployment.environment", Default: &defaultDeploymentEnvironment}},
-			ResourceAttributes: map[string]any{"k8s.deployment.name": "my_deployment"},
-			expected:           map[string]any{"service.name": defaultServiceName, "deployment.environment": defaultDeploymentEnvironment},
-		},
-		{
-			Name:               "partial_missing_dimensions_without_defaults",
+			Name:               "partial_missing_dimensions",
 			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
 			ResourceAttributes: map[string]any{"deployment.environment": "my_dev_deployment"},
-			expected:           map[string]any{"service.name": "", "deployment.environment": "my_dev_deployment"},
+			expected:           map[string]any{"deployment.environment": "my_dev_deployment"},
 		},
 		{
-			Name:               "partial_missing_dimensions_with_defaults",
-			Dimensions:         []Dimension{{Name: "service.name", Default: &defaultServiceName}, {Name: "deployment.environment", Default: &defaultDeploymentEnvironment}},
-			ResourceAttributes: map[string]any{"deployment.environment": "my_dev_deployment"},
-			expected:           map[string]any{"service.name": defaultServiceName, "deployment.environment": "my_dev_deployment"},
+			Name:               "all_missing_dimensions",
+			Dimensions:         []Dimension{{Name: "service.name"}, {Name: "deployment.environment"}},
+			ResourceAttributes: map[string]any{"service.name": "my_dev_service", "deployment.environment": "my_dev_deployment"},
+			expected:           map[string]any{"service.name": "my_dev_service", "deployment.environment": "my_dev_deployment"},
 		},
 	}
 
