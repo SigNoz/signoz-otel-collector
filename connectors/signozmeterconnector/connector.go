@@ -26,7 +26,7 @@ type meterConnector struct {
 	logsMeter              metering.Logs
 	tracesMeter            metering.Traces
 	metricsMeter           metering.Metrics
-	dimensions             pcommon.Map
+	dimensions             map[string]string
 	aggregatedMeterMetrics *aggregatedMeterMetrics
 	started                bool
 	ticker                 *time.Ticker
@@ -34,20 +34,16 @@ type meterConnector struct {
 	wg                     sync.WaitGroup
 }
 
-func newDimensionsMap(cfgDims []Dimension) pcommon.Map {
-	if len(cfgDims) == 0 {
-		return pcommon.NewMap()
-	}
+func newDimensionsMap(cfgDims []Dimension) map[string]string {
+	dimensionsMap := map[string]string{}
 
-	dimensionsMap := pcommon.NewMap()
-	dimensionsMap.EnsureCapacity(len(cfgDims))
 	for i := range cfgDims {
 		key := cfgDims[i].Name
-		value := pcommon.NewValueStr("")
+		value := ""
 		if cfgDims[i].Default != nil {
-			value = pcommon.NewValueStr(*cfgDims[i].Default)
+			value = *cfgDims[i].Default
 		}
-		dimensionsMap.PutStr(key, value.AsString())
+		dimensionsMap[key] = value
 	}
 
 	return dimensionsMap
@@ -55,7 +51,6 @@ func newDimensionsMap(cfgDims []Dimension) pcommon.Map {
 
 // initialize the signozmeterconnector
 func newConnector(logger *zap.Logger, config component.Config) (*meterConnector, error) {
-	logger.Info("building signozmeterconnector with config", zap.Any("config", config))
 	cfg := config.(*Config)
 
 	return &meterConnector{
@@ -76,14 +71,6 @@ func (*meterConnector) Capabilities() consumer.Capabilities {
 }
 
 func (meterconnector *meterConnector) Start(ctx context.Context, host component.Host) error {
-	meterconnector.logger.Info("starting signozmeterconnector")
-
-	// since we will be using single instance of the connector for the same config
-	// we don't want multiple tickers to start. one ticker will take care of dumping the metrics.
-	if meterconnector.started {
-		return nil
-	}
-
 	meterconnector.started = true
 	meterconnector.wg.Add(1)
 	go func() {
@@ -102,20 +89,15 @@ func (meterconnector *meterConnector) Start(ctx context.Context, host component.
 }
 
 func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
-	meterconnector.logger.Info("shutting down signozmeterconnector")
-
 	if meterconnector.started {
 		// flush all the inmemory metrics we have before shutting down
 		meterconnector.exportMetrics(ctx)
-
-		meterconnector.logger.Info("stopping ticker")
 		meterconnector.ticker.Stop()
 		meterconnector.done <- struct{}{}
 		meterconnector.started = false
 		meterconnector.wg.Wait()
 	}
 
-	meterconnector.logger.Info("signozmeterconnector stopped gracefully")
 	return nil
 }
 
@@ -173,7 +155,7 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 }
 
 // generate metrics from the stored dimensions and data for logs
-func (meterconnector *meterConnector) collectLogMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectLogMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetric, timestamp pcommon.Timestamp) {
 	if meterMetrics.logCount == 0 {
 		return
 	}
@@ -208,7 +190,7 @@ func (meterconnector *meterConnector) collectLogMeterMetrics(scopeMetrics pmetri
 }
 
 // generate metrics from the stored dimensions and data for spans
-func (meterconnector *meterConnector) collectTraceMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectTraceMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetric, timestamp pcommon.Timestamp) {
 	if meterMetrics.spanCount == 0 {
 		return
 	}
@@ -243,7 +225,7 @@ func (meterconnector *meterConnector) collectTraceMeterMetrics(scopeMetrics pmet
 }
 
 // generate metrics from the stored dimensions and data for metrics
-func (meterconnector *meterConnector) collectMetricMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetrics, timestamp pcommon.Timestamp) {
+func (meterconnector *meterConnector) collectMetricMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetric, timestamp pcommon.Timestamp) {
 	if meterMetrics.metricDataPointCount == 0 {
 		return
 	}
@@ -329,10 +311,9 @@ func (meterconnector *meterConnector) aggregateMeterMetricsFromLogs(logs plog.Lo
 // buildDimensionsMapFromResourceAttributes builds the map to be stored against the resourceMetricKey
 func (meterconnector *meterConnector) buildDimensionsMapFromResourceAttributes(resourceAttributes pcommon.Map) pcommon.Map {
 	dimensionsMap := pcommon.NewMap()
-	meterconnector.dimensions.CopyTo(dimensionsMap)
 
 	resourceAttributes.Range(func(k string, v pcommon.Value) bool {
-		if _, ok := dimensionsMap.Get(k); ok {
+		if _, ok := meterconnector.dimensions[k]; ok {
 			dimensionsMap.PutStr(k, v.AsString())
 		}
 		return true

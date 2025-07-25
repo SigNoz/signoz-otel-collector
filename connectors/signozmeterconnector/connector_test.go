@@ -226,7 +226,7 @@ func TestAggregateMeterMetricsFromTraces(t *testing.T) {
 
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
-	expectedData := map[[16]byte]*meterMetrics{
+	expectedData := map[[16]byte]*meterMetric{
 		pdatautil.MapHash(m): {
 			spanCount: 10,
 			spanSize:  4150,
@@ -249,7 +249,7 @@ func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
 
 	m := pcommon.NewMap()
 	m.PutStr("resource.attr_0", "unknown_service0")
-	expectedData := map[[16]byte]*meterMetrics{
+	expectedData := map[[16]byte]*meterMetric{
 		pdatautil.MapHash(m): {
 			metricDataPointCount: 100,
 			metricDataPointSize:  0,
@@ -269,7 +269,7 @@ func TestAggregateMeterMetricsFromLogs(t *testing.T) {
 
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
-	expectedData := map[[16]byte]*meterMetrics{
+	expectedData := map[[16]byte]*meterMetric{
 		pdatautil.MapHash(m): {
 			logCount: 10,
 			logSize:  590,
@@ -289,7 +289,7 @@ func TestCollectTraceMeterMetrics(t *testing.T) {
 
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
-	meterMetrics := meterMetrics{
+	meterMetrics := meterMetric{
 		spanCount: 10,
 		spanSize:  590,
 		attrs:     m,
@@ -317,7 +317,7 @@ func TestCollectMetricMeterMetrics(t *testing.T) {
 	scopeMetrics := pmetric.NewScopeMetrics()
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
-	meterMetrics := meterMetrics{
+	meterMetrics := meterMetric{
 		metricDataPointCount: 100,
 		metricDataPointSize:  0,
 		attrs:                m,
@@ -345,7 +345,7 @@ func TestCollectLogMeterMetrics(t *testing.T) {
 	scopeMetrics := pmetric.NewScopeMetrics()
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
-	meterMetrics := meterMetrics{
+	meterMetrics := meterMetric{
 		logCount: 10,
 		logSize:  590,
 		attrs:    m,

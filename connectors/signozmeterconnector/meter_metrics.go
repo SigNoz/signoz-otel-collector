@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-type meterMetrics struct {
+type meterMetric struct {
 	spanCount            int
 	spanSize             int
 	metricDataPointCount int
@@ -18,32 +18,13 @@ type meterMetrics struct {
 }
 
 type aggregatedMeterMetrics struct {
-	meterMetrics map[[16]byte]*meterMetrics
+	meterMetrics map[[16]byte]*meterMetric
 	sync.Mutex
-}
-
-func newMeterMetrics(attrs pcommon.Map) *meterMetrics {
-	return &meterMetrics{attrs: attrs}
-}
-
-func (meterMetrics *meterMetrics) UpdateMetricDataPointMeterMetrics(count, size int) {
-	meterMetrics.metricDataPointCount = count
-	meterMetrics.metricDataPointSize = size
-}
-
-func (meterMetrics *meterMetrics) UpdateSpanMeterMetrics(count, size int) {
-	meterMetrics.spanCount = count
-	meterMetrics.spanSize = size
-}
-
-func (meterMetrics *meterMetrics) UpdateLogMeterMetrics(count, size int) {
-	meterMetrics.logCount = count
-	meterMetrics.logSize = size
 }
 
 func newAggregatedMeterMetrics() *aggregatedMeterMetrics {
 	return &aggregatedMeterMetrics{
-		meterMetrics: map[[16]byte]*meterMetrics{},
+		meterMetrics: map[[16]byte]*meterMetric{},
 	}
 }
 
@@ -54,10 +35,11 @@ func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcom
 
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
-		meterMetrics = newMeterMetrics(attrs)
+		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.UpdateMetricDataPointMeterMetrics(count, size)
+	meterMetrics.metricDataPointCount = count
+	meterMetrics.metricDataPointSize = size
 }
 
 func (agm *aggregatedMeterMetrics) UpdateSpanMeterMetrics(attrs pcommon.Map, count, size int) {
@@ -67,10 +49,11 @@ func (agm *aggregatedMeterMetrics) UpdateSpanMeterMetrics(attrs pcommon.Map, cou
 
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
-		meterMetrics = newMeterMetrics(attrs)
+		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.UpdateSpanMeterMetrics(count, size)
+	meterMetrics.spanCount = count
+	meterMetrics.spanSize = size
 }
 
 func (agm *aggregatedMeterMetrics) UpdateLogMeterMetrics(attrs pcommon.Map, count, size int) {
@@ -80,12 +63,13 @@ func (agm *aggregatedMeterMetrics) UpdateLogMeterMetrics(attrs pcommon.Map, coun
 
 	meterMetrics, ok := agm.meterMetrics[key]
 	if !ok {
-		meterMetrics = newMeterMetrics(attrs)
+		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.UpdateLogMeterMetrics(count, size)
+	meterMetrics.logCount = count
+	meterMetrics.logSize = size
 }
 
 func (agm *aggregatedMeterMetrics) Purge() {
-	agm.meterMetrics = map[[16]byte]*meterMetrics{}
+	agm.meterMetrics = map[[16]byte]*meterMetric{}
 }

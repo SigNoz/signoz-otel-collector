@@ -2,7 +2,6 @@ package signozmeterconnector
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -47,62 +46,33 @@ func createDefaultConfig() component.Config {
 
 // createTracesToMetrics creates a traces to metrics connector based on provided config.
 func createTracesToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Traces, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	oCfg := cfg.(*Config)
-
-	connector := connectors[oCfg]
-
-	if connector == nil {
-		c, err := newConnector(params.Logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-		c.metricsConsumer = nextConsumer
-		connectors[oCfg] = c
+	c, err := newConnector(params.Logger, cfg)
+	if err != nil {
+		return nil, err
 	}
+	c.metricsConsumer = nextConsumer
 
-	return connectors[oCfg], nil
+	return c, nil
 }
 
 // createLogsToMetrics creates a logs to metrics connector based on provided config.
 func createLogsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Logs, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	oCfg := cfg.(*Config)
-
-	connector := connectors[oCfg]
-
-	if connector == nil {
-		c, err := newConnector(params.Logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-		c.metricsConsumer = nextConsumer
-		connectors[oCfg] = c
+	c, err := newConnector(params.Logger, cfg)
+	if err != nil {
+		return nil, err
 	}
+	c.metricsConsumer = nextConsumer
 
-	return connectors[oCfg], nil
+	return c, nil
 }
 
 // createMetricsToMetrics creates a metrics to metrics connector based on provided config.
 func createMetricsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Metrics, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	oCfg := cfg.(*Config)
-
-	connector := connectors[oCfg]
-	if connector == nil {
-		c, err := newConnector(params.Logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-		c.metricsConsumer = nextConsumer
-		connectors[oCfg] = c
+	c, err := newConnector(params.Logger, cfg)
+	if err != nil {
+		return nil, err
 	}
+	c.metricsConsumer = nextConsumer
 
-	return connectors[oCfg], nil
+	return c, nil
 }
-
-var mu sync.Mutex
-var connectors = map[*Config]*meterConnector{}
