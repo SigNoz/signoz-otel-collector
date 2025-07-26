@@ -1,0 +1,248 @@
+package signozclickhousemeter
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+	"sync"
+
+	"github.com/google/uuid"
+
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
+
+	internal "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter/internal"
+)
+
+var (
+	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
+
+type clickhouseMeterExporter struct {
+	cfg        *Config
+	logger     *zap.Logger
+	conn       clickhouse.Conn
+	wg         sync.WaitGroup
+	samplesSQL string
+	settings   exporter.Settings
+	exporterID uuid.UUID
+	closeChan  chan struct{}
+}
+
+// sample represents a single metric sample
+// directly mapped to the table `samples` schema
+type sample struct {
+	temporality   pmetric.AggregationTemporality
+	metricName    string
+	description   string
+	unit          string
+	typ           pmetric.MetricType
+	isMonotonic   bool
+	labels        string
+	attrs         map[string]string
+	scopeAttrs    map[string]string
+	resourceAttrs map[string]string
+	fingerprint   uint64
+	unixMilli     int64
+	value         float64
+	flags         uint32
+}
+
+type ExporterOption func(e *clickhouseMeterExporter) error
+
+func WithLogger(logger *zap.Logger) ExporterOption {
+	return func(e *clickhouseMeterExporter) error {
+		e.logger = logger
+		return nil
+	}
+}
+
+func WithConn(conn clickhouse.Conn) ExporterOption {
+	return func(e *clickhouseMeterExporter) error {
+		e.conn = conn
+		return nil
+	}
+}
+
+func WithConfig(cfg *Config) ExporterOption {
+	return func(e *clickhouseMeterExporter) error {
+		e.cfg = cfg
+		return nil
+	}
+}
+
+func WithSettings(settings exporter.Settings) ExporterOption {
+	return func(e *clickhouseMeterExporter) error {
+		e.settings = settings
+		return nil
+	}
+}
+
+func WithExporterID(exporterID uuid.UUID) ExporterOption {
+	return func(e *clickhouseMeterExporter) error {
+		e.exporterID = exporterID
+		return nil
+	}
+}
+
+func defaultOptions() []ExporterOption {
+	return []ExporterOption{
+		WithLogger(zap.NewNop()),
+	}
+}
+
+func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMeterExporter, error) {
+	chExporter := &clickhouseMeterExporter{}
+
+	newOptions := append(defaultOptions(), opts...)
+	for _, opt := range newOptions {
+		if err := opt(chExporter); err != nil {
+			return nil, err
+		}
+	}
+
+	chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+	chExporter.closeChan = make(chan struct{})
+	return chExporter, nil
+}
+
+func (c *clickhouseMeterExporter) Start(ctx context.Context, host component.Host) error {
+	return nil
+}
+
+func (c *clickhouseMeterExporter) Shutdown(ctx context.Context) error {
+	close(c.closeChan)
+	c.wg.Wait()
+	return c.conn.Close()
+}
+
+// processSum processes sum metrics
+func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric, resourceFingerprint, scopeFingerprint *internal.Fingerprint) {
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	// sum metrics have a temporality
+	temporality := metric.Sum().AggregationTemporality()
+	isMonotonic := metric.Sum().IsMonotonic()
+
+	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
+	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
+
+	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
+		dp := metric.Sum().DataPoints().At(i)
+		var value float64
+		switch dp.ValueType() {
+		case pmetric.NumberDataPointValueTypeInt:
+			value = float64(dp.IntValue())
+		case pmetric.NumberDataPointValueTypeDouble:
+			value = dp.DoubleValue()
+		}
+		if math.IsNaN(value) {
+			c.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", name))
+			continue
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality__": temporality.String(),
+		})
+		fingerprintMap := fingerprint.AttributesAsMap()
+		batch.addSample(&sample{
+			temporality:   temporality,
+			metricName:    name,
+			fingerprint:   fingerprint.HashWithName(name),
+			unixMilli:     unixMilli,
+			value:         value,
+			flags:         uint32(dp.Flags()),
+			description:   desc,
+			unit:          unit,
+			typ:           typ,
+			isMonotonic:   isMonotonic,
+			labels:        internal.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
+			attrs:         fingerprintMap,
+			scopeAttrs:    scopeFingerprintMap,
+			resourceAttrs: resourceFingerprintMap,
+		})
+	}
+}
+
+func (c *clickhouseMeterExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
+	batch := newBatch()
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		rm := md.ResourceMetrics().At(i)
+		resourceFingerprint := internal.NewFingerprint(internal.ResourceFingerprintType, internal.InitialOffset, rm.Resource().Attributes(), map[string]string{})
+		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
+			sm := rm.ScopeMetrics().At(j)
+			scopeFingerprint := internal.NewFingerprint(internal.ScopeFingerprintType, resourceFingerprint.Hash(), sm.Scope().Attributes(), map[string]string{
+				"__scope.name__":       sm.Scope().Name(),
+				"__scope.version__":    sm.Scope().Version(),
+				"__scope.schema_url__": sm.SchemaUrl(),
+			})
+
+			for k := 0; k < sm.Metrics().Len(); k++ {
+				metric := sm.Metrics().At(k)
+				switch metric.Type() {
+				case pmetric.MetricTypeSum:
+					c.processSum(batch, metric, resourceFingerprint, scopeFingerprint)
+				default:
+					c.logger.Warn("unknown metric type", zap.String("metric_name", metric.Name()), zap.String("metric_type", metric.Type().String()))
+				}
+			}
+		}
+	}
+	return batch
+}
+
+func (c *clickhouseMeterExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+	c.wg.Add(1)
+	defer c.wg.Done()
+	select {
+	case <-c.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+	}
+}
+
+func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) error {
+	if len(batch.samples) == 0 {
+		return nil
+	}
+	statement, err := c.conn.PrepareBatch(ctx, c.samplesSQL, driver.WithReleaseConnection())
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+
+	for _, sample := range batch.samples {
+		roundedUnixMilli := sample.unixMilli / 3600000 * 3600000
+		err = statement.Append(
+			sample.temporality.String(),
+			sample.metricName,
+			sample.description,
+			sample.unit,
+			sample.typ.String(),
+			sample.isMonotonic,
+			sample.labels,
+			sample.attrs,
+			sample.scopeAttrs,
+			sample.resourceAttrs,
+			sample.fingerprint,
+			roundedUnixMilli,
+			sample.value,
+			sample.flags,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return statement.Send()
+}
