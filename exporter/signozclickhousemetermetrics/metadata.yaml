@@ -1,0 +1,14 @@
+type: signozclickhousemetermetrics
+
+status:
+  class: exporter
+  stability:
+    beta:
+      - metrics
+  distributions:
+    - signoz
+
+tests:
+  config:
+  skip_lifecycle: false
+  skip_shutdown: false
