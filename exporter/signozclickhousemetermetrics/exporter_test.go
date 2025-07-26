@@ -1,4 +1,4 @@
-package signozclickhousemeter
+package signozclickhousemetermetrics
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/google/uuid"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"go.uber.org/zap/zaptest"
 
@@ -23,21 +22,17 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 	metrics := pmetricsgen.GenerateSumMetrics(10000, 10, 10, 10, 10, 0, 0)
 	b.ResetTimer()
 	b.ReportAllocs()
-	exp, err := NewClickHouseExporter(
-		WithLogger(zap.NewNop()),
-		WithConfig(&Config{}))
+	exp, err := NewClickHouseExporter(zap.NewNop(), &Config{DSN: "tcp://localhost:9000?database=default"})
 	require.NoError(b, err)
 	for i := 0; i < b.N; i++ {
 		exp.prepareBatch(context.Background(), metrics)
 	}
+	exp.Shutdown(context.Background())
 }
 
 func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 1, 0)
-	exp, err := NewClickHouseExporter(
-		WithLogger(zap.NewNop()),
-		WithConfig(&Config{}),
-	)
+	exp, err := NewClickHouseExporter(zap.NewNop(), &Config{DSN: "tcp://localhost:9000?database=default"})
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
@@ -68,18 +63,16 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 		assert.Equal(t, sample.value, curSample.value)
 		assert.Equal(t, sample.flags, curSample.flags)
 	}
+	exp.Shutdown(context.Background())
 }
 
 func Test_prepareBatchSumWithNan(t *testing.T) {
 	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 0, 1)
-	exp, err := NewClickHouseExporter(
-		WithLogger(zap.NewNop()),
-		WithConfig(&Config{}),
-	)
+	exp, err := NewClickHouseExporter(zap.NewNop(), &Config{DSN: "tcp://localhost:9000?database=default"})
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.Equal(t, 0, len(batch.samples))
-
+	exp.Shutdown(context.Background())
 }
 
 func Test_shutdown(t *testing.T) {
@@ -87,30 +80,27 @@ func Test_shutdown(t *testing.T) {
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	id := uuid.New()
-	logger := zaptest.NewLogger(t)
+
 	conn.MatchExpectationsInOrder(false)
 	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
 	conn.ExpectClose()
-	chExporter, err := NewClickHouseExporter(
-		WithConn(conn),
-		WithExporterID(id),
-		WithLogger(logger),
-		WithConfig(&Config{}),
-	)
+	exporter, err := NewClickHouseExporter(zaptest.NewLogger(t), &Config{DSN: "tcp://localhost:9000?database=default"})
+	defaultConn := exporter.conn
+	exporter.conn = conn
+
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when creating new exporter", err)
 	}
 
 	// Send one metric before shutdown
 	metrics := pmetricsgen.GenerateSumMetrics(1, 1, 1, 1, 1, 0, 0)
-	err = chExporter.PushMetrics(context.Background(), metrics)
+	err = exporter.ConsumeMetrics(context.Background(), metrics)
 	if err != nil {
 		t.Fatalf("unexpected error pushing metrics: %v", err)
 	}
 
 	wg := new(sync.WaitGroup)
-	err = chExporter.Shutdown(context.Background())
+	err = exporter.Shutdown(context.Background())
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when shutting down exporter", err)
 	}
@@ -119,11 +109,12 @@ func Test_shutdown(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errChan <- chExporter.PushMetrics(context.Background(), pmetric.NewMetrics())
+			errChan <- exporter.ConsumeMetrics(context.Background(), pmetric.NewMetrics())
 		}()
 	}
 	wg.Wait()
 	close(errChan)
+	defaultConn.Close()
 	for ok := range errChan {
 		assert.Error(t, ok)
 	}

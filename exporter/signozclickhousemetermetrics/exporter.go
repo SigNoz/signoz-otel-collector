@@ -1,4 +1,4 @@
-package signozclickhousemeter
+package signozclickhousemetermetrics
 
 import (
 	"context"
@@ -7,16 +7,14 @@ import (
 	"math"
 	"sync"
 
-	"github.com/google/uuid"
-
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 
-	internal "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter/internal"
+	internal "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetermetrics/internal"
 )
 
 var (
@@ -31,13 +29,10 @@ type clickhouseMeterExporter struct {
 	conn       clickhouse.Conn
 	wg         sync.WaitGroup
 	samplesSQL string
-	settings   exporter.Settings
-	exporterID uuid.UUID
 	closeChan  chan struct{}
 }
 
-// sample represents a single metric sample
-// directly mapped to the table `samples` schema
+// sample represents a single metric sample directly mapped to the table `samples` schema
 type sample struct {
 	temporality   pmetric.AggregationTemporality
 	metricName    string
@@ -55,62 +50,30 @@ type sample struct {
 	flags         uint32
 }
 
-type ExporterOption func(e *clickhouseMeterExporter) error
+func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickhouseMeterExporter, error) {
+	cfg := config.(*Config)
 
-func WithLogger(logger *zap.Logger) ExporterOption {
-	return func(e *clickhouseMeterExporter) error {
-		e.logger = logger
-		return nil
+	connOptions, err := clickhouse.ParseDSN(cfg.DSN)
+	if err != nil {
+		return nil, err
 	}
+
+	conn, err := clickhouse.Open(connOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return &clickhouseMeterExporter{
+		cfg:        cfg,
+		logger:     logger,
+		conn:       conn,
+		samplesSQL: fmt.Sprintf(samplesSQLTmpl, cfg.Database, cfg.SamplesTable),
+		closeChan:  make(chan struct{}),
+	}, nil
 }
 
-func WithConn(conn clickhouse.Conn) ExporterOption {
-	return func(e *clickhouseMeterExporter) error {
-		e.conn = conn
-		return nil
-	}
-}
-
-func WithConfig(cfg *Config) ExporterOption {
-	return func(e *clickhouseMeterExporter) error {
-		e.cfg = cfg
-		return nil
-	}
-}
-
-func WithSettings(settings exporter.Settings) ExporterOption {
-	return func(e *clickhouseMeterExporter) error {
-		e.settings = settings
-		return nil
-	}
-}
-
-func WithExporterID(exporterID uuid.UUID) ExporterOption {
-	return func(e *clickhouseMeterExporter) error {
-		e.exporterID = exporterID
-		return nil
-	}
-}
-
-func defaultOptions() []ExporterOption {
-	return []ExporterOption{
-		WithLogger(zap.NewNop()),
-	}
-}
-
-func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMeterExporter, error) {
-	chExporter := &clickhouseMeterExporter{}
-
-	newOptions := append(defaultOptions(), opts...)
-	for _, opt := range newOptions {
-		if err := opt(chExporter); err != nil {
-			return nil, err
-		}
-	}
-
-	chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
-	chExporter.closeChan = make(chan struct{})
-	return chExporter, nil
+func (c *clickhouseMeterExporter) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
 }
 
 func (c *clickhouseMeterExporter) Start(ctx context.Context, host component.Host) error {
@@ -173,7 +136,7 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 	}
 }
 
-func (c *clickhouseMeterExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
+func (c *clickhouseMeterExporter) prepareBatch(_ context.Context, md pmetric.Metrics) *batch {
 	batch := newBatch()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
@@ -200,7 +163,7 @@ func (c *clickhouseMeterExporter) prepareBatch(ctx context.Context, md pmetric.M
 	return batch
 }
 
-func (c *clickhouseMeterExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) error {
+func (c *clickhouseMeterExporter) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	c.wg.Add(1)
 	defer c.wg.Done()
 	select {
