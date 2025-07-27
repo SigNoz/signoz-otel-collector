@@ -9,7 +9,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/pkg/fingerprint"
+	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"

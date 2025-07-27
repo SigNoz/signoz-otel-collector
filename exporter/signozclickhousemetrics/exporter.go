@@ -31,7 +31,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
-	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/pkg/fingerprint"
+	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 )
 
 var (
