@@ -22,13 +22,15 @@ var MeterMigrations = []SchemaMigrationRecord{
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "DoubleDelta, ZSTD(1)"},
 					{Name: "value", Type: SimpleAggregateFunction{FunctionName: "sum", Arguments: []ColumnType{ColumnTypeFloat64}}, Codec: "Gorilla, ZSTD(1)"},
 				},
-				Engine: MergeTree{
-					PartitionBy: "toYYYYMM(toDateTime(intDiv(unix_milli, 1000)))",
-					OrderBy:     "(temporality, metric_name, fingerprint, toDayOfMonth(toDateTime(intDiv(unix_milli, 1000))))",
-					TTL:         "toDateTime(intDiv(unix_milli, 1000)) + toIntervalYear(1)",
-					Settings: TableSettings{
-						{Name: "index_granularity", Value: "8192"},
-						{Name: "ttl_only_drop_parts", Value: "1"},
+				Engine: AggregatingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toYYYYMM(toDateTime(intDiv(unix_milli, 1000)))",
+						OrderBy:     "(temporality, metric_name, fingerprint, toDayOfMonth(toDateTime(intDiv(unix_milli, 1000))))",
+						TTL:         "toDateTime(intDiv(unix_milli, 1000)) + toIntervalYear(1)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
 					},
 				},
 			},
