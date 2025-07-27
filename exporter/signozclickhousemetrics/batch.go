@@ -1,7 +1,7 @@
 package signozclickhousemetrics
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal"
+	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/pkg/fingerprint"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -24,7 +24,7 @@ func newBatch() *batch {
 	}
 }
 
-func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *internal.Fingerprint) {
+func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint) {
 	for key, value := range fingerprint.Attributes() {
 		seenKey := key + name
 		if key == "le" {

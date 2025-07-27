@@ -1,4 +1,4 @@
-package signozclickhousemetermetrics
+package signozclickhousemeter
 
 import (
 	"testing"

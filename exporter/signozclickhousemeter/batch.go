@@ -1,4 +1,4 @@
-package signozclickhousemetermetrics
+package signozclickhousemeter
 
 type batch struct {
 	samples []*sample

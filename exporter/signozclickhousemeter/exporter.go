@@ -1,4 +1,4 @@
-package signozclickhousemetermetrics
+package signozclickhousemeter
 
 import (
 	"context"
@@ -9,12 +9,11 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/pkg/fingerprint"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
-
-	internal "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetermetrics/internal"
 )
 
 var (
@@ -86,7 +85,7 @@ func (c *clickhouseMeterExporter) Shutdown(ctx context.Context) error {
 }
 
 // processSum processes sum metrics
-func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric, resourceFingerprint, scopeFingerprint *internal.Fingerprint) {
+func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) {
 	name := metric.Name()
 	desc := metric.Description()
 	unit := metric.Unit()
@@ -112,7 +111,7 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 			continue
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
-		fingerprint := internal.NewFingerprint(internal.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
@@ -126,7 +125,7 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 			unit:          unit,
 			typ:           typ,
 			isMonotonic:   isMonotonic,
-			labels:        internal.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
+			labels:        pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
 			attrs:         fingerprintMap,
 			scopeAttrs:    scopeFingerprintMap,
 			resourceAttrs: resourceFingerprintMap,
@@ -138,10 +137,10 @@ func (c *clickhouseMeterExporter) prepareBatch(_ context.Context, md pmetric.Met
 	batch := newBatch()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
-		resourceFingerprint := internal.NewFingerprint(internal.ResourceFingerprintType, internal.InitialOffset, rm.Resource().Attributes(), map[string]string{})
+		resourceFingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.ResourceFingerprintType, pkgfingerprint.InitialOffset, rm.Resource().Attributes(), map[string]string{})
 		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
 			sm := rm.ScopeMetrics().At(j)
-			scopeFingerprint := internal.NewFingerprint(internal.ScopeFingerprintType, resourceFingerprint.Hash(), sm.Scope().Attributes(), map[string]string{
+			scopeFingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.ScopeFingerprintType, resourceFingerprint.Hash(), sm.Scope().Attributes(), map[string]string{
 				"__scope.name__":       sm.Scope().Name(),
 				"__scope.version__":    sm.Scope().Version(),
 				"__scope.schema_url__": sm.SchemaUrl(),

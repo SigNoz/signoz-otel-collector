@@ -175,7 +175,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
-	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetermetrics"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
@@ -340,7 +340,7 @@ func Components() (otelcol.Factories, error) {
 		syslogexporter.NewFactory(),
 		zipkinexporter.NewFactory(),
 		nopexporter.NewFactory(),
-		signozclickhousemetermetrics.NewFactory(),
+		signozclickhousemeter.NewFactory(),
 	}
 	for _, exp := range factories.Exporters {
 		exporters = append(exporters, exp)

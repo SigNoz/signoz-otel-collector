@@ -1,9 +1,9 @@
-package signozclickhousemetermetrics
+package signozclickhousemeter
 
 import (
 	"context"
 
-	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetermetrics/internal/metadata"
+	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter/internal/metadata"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
