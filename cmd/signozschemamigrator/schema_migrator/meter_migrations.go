@@ -23,9 +23,9 @@ var MeterMigrations = []SchemaMigrationRecord{
 					{Name: "value", Type: SimpleAggregateFunction{FunctionName: "sum", Arguments: []ColumnType{ColumnTypeFloat64}}, Codec: "Gorilla, ZSTD(1)"},
 				},
 				Engine: MergeTree{
-					PartitionBy: "toYYYYMM(unix_milli / 1000)",
-					OrderBy:     "(temporality, metric_name, fingerprint, toDate(unix_milli / 1000))",
-					TTL:         "toDateTime(unix_milli / 1000) + toIntervalYear(1)",
+					PartitionBy: "toYYYYMM(toDateTime(intDiv(unix_milli, 1000)))",
+					OrderBy:     "(temporality, metric_name, fingerprint, toDayOfMonth(toDateTime(intDiv(unix_milli, 1000))))",
+					TTL:         "toDateTime(intDiv(unix_milli, 1000)) + toIntervalYear(1)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
 						{Name: "ttl_only_drop_parts", Value: "1"},
