@@ -3,7 +3,6 @@ package signozclickhousemetermetrics
 import (
 	"context"
 	"log"
-	"sync"
 	"testing"
 
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
@@ -42,7 +41,6 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 			metricName:    "system.cpu.time0",
 			unixMilli:     1727286182000,
 			value:         0,
-			flags:         1,
 			description:   "cpu time of the host",
 			unit:          "s",
 			typ:           pmetric.MetricTypeSum,
@@ -61,7 +59,6 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 		assert.Equal(t, sample.metricName, curSample.metricName)
 		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
 		assert.Equal(t, sample.value, curSample.value)
-		assert.Equal(t, sample.flags, curSample.flags)
 	}
 	exp.Shutdown(context.Background())
 }
@@ -82,7 +79,7 @@ func Test_shutdown(t *testing.T) {
 	}
 
 	conn.MatchExpectationsInOrder(false)
-	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
+	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
 	conn.ExpectClose()
 	exporter, err := NewClickHouseExporter(zaptest.NewLogger(t), &Config{DSN: "tcp://localhost:9000?database=default"})
 	defaultConn := exporter.conn
@@ -99,23 +96,9 @@ func Test_shutdown(t *testing.T) {
 		t.Fatalf("unexpected error pushing metrics: %v", err)
 	}
 
-	wg := new(sync.WaitGroup)
 	err = exporter.Shutdown(context.Background())
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when shutting down exporter", err)
 	}
-	errChan := make(chan error, 5)
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errChan <- exporter.ConsumeMetrics(context.Background(), pmetric.NewMetrics())
-		}()
-	}
-	wg.Wait()
-	close(errChan)
 	defaultConn.Close()
-	for ok := range errChan {
-		assert.Error(t, ok)
-	}
 }

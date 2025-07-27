@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
@@ -47,7 +47,6 @@ type sample struct {
 	fingerprint   uint64
 	unixMilli     int64
 	value         float64
-	flags         uint32
 }
 
 func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickhouseMeterExporter, error) {
@@ -123,7 +122,6 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 			fingerprint:   fingerprint.HashWithName(name),
 			unixMilli:     unixMilli,
 			value:         value,
-			flags:         uint32(dp.Flags()),
 			description:   desc,
 			unit:          unit,
 			typ:           typ,
@@ -200,7 +198,6 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 			sample.fingerprint,
 			roundedUnixMilli,
 			sample.value,
-			sample.flags,
 		)
 		if err != nil {
 			return err
