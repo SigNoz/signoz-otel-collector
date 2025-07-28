@@ -156,6 +156,7 @@ import (
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/debugexporter"
+	"go.opentelemetry.io/collector/exporter/nopexporter"
 	"go.opentelemetry.io/collector/exporter/otlpexporter"
 	"go.opentelemetry.io/collector/exporter/otlphttpexporter"
 	"go.opentelemetry.io/collector/extension"
@@ -169,10 +170,12 @@ import (
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 	"go.uber.org/multierr"
 
+	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
@@ -336,6 +339,8 @@ func Components() (otelcol.Factories, error) {
 		signozkafkaexporter.NewFactory(),
 		syslogexporter.NewFactory(),
 		zipkinexporter.NewFactory(),
+		nopexporter.NewFactory(),
+		signozclickhousemeter.NewFactory(),
 	}
 	for _, exp := range factories.Exporters {
 		exporters = append(exporters, exp)
@@ -388,6 +393,7 @@ func Components() (otelcol.Factories, error) {
 		servicegraphconnector.NewFactory(),
 		spanmetricsconnector.NewFactory(),
 		sumconnector.NewFactory(),
+		signozmeterconnector.NewFactory(),
 	}
 	factories.Connectors, err = otelcol.MakeFactoryMap(connectors...)
 	if err != nil {

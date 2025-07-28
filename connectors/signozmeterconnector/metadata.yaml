@@ -1,0 +1,8 @@
+type: signozmeter
+
+status:
+  class: connector
+  stability:
+    beta: [traces_to_metrics, metrics_to_metrics, logs_to_metrics]
+  
+tests:

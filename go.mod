@@ -66,6 +66,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.128.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.128.0
@@ -215,12 +216,14 @@ require (
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.34.0
 	go.opentelemetry.io/collector/confmap/xconfmap v0.128.0
 	go.opentelemetry.io/collector/connector v0.128.0
+	go.opentelemetry.io/collector/connector/connectortest v0.128.0
 	go.opentelemetry.io/collector/consumer v1.34.0
 	go.opentelemetry.io/collector/consumer/consumererror v0.128.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.128.0
 	go.opentelemetry.io/collector/exporter v0.128.0
 	go.opentelemetry.io/collector/exporter/debugexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/exportertest v0.128.0
+	go.opentelemetry.io/collector/exporter/nopexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/otlpexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/otlphttpexporter v0.128.0
 	go.opentelemetry.io/collector/extension v1.34.0
@@ -539,7 +542,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/experimentalmetricmetadata v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/configkafka v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/topic v0.128.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azurelogs v0.128.0 // indirect
@@ -627,7 +629,6 @@ require (
 	go.opentelemetry.io/collector/config/configoptional v0.128.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/httpprovider v1.34.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.34.0 // indirect
-	go.opentelemetry.io/collector/connector/connectortest v0.128.0 // indirect
 	go.opentelemetry.io/collector/connector/xconnector v0.128.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumererror/xconsumererror v0.128.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.128.0 // indirect
