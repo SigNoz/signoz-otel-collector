@@ -5,8 +5,9 @@ package cwmetricstream // import "github.com/SigNoz/signoz-otel-collector/receiv
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
+
+	"github.com/goccy/go-json"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"

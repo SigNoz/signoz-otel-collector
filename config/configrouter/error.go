@@ -1,8 +1,9 @@
 package configrouter
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/goccy/go-json"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
