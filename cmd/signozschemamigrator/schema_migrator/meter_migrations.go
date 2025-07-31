@@ -249,8 +249,8 @@ var MeterMigrations = []SchemaMigrationRecord{
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
 						OrderBy:     "(temporality, metric_name, attr_name, attr_type, attr_datatype, attr_string_value)",
-						PartitionBy: "toDate(last_reported_unix_milli / 1000)",
-						TTL:         "toDateTime(last_reported_unix_milli / 1000) + toIntervalSecond(2592000)",
+						PartitionBy: "toYYYYMM(toDateTime(intDiv(last_reported_unix_milli, 1000)))",
+						TTL:         "toDateTime(intDiv(last_reported_unix_milli, 1000)) + toIntervalYear(1)",
 						Settings: []TableSetting{
 							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
