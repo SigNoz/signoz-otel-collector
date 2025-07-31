@@ -56,5 +56,6 @@ func createDefaultConfig() component.Config {
 		DSN:              "tcp://localhost:9000",
 		Database:         "signoz_meter",
 		SamplesTable:     "distributed_samples",
+		MetadataTable:    "distributed_metadata",
 	}
 }
