@@ -35,8 +35,8 @@ var MeterMigrations = []SchemaMigrationRecord{
 		},
 		DownItems: []Operation{
 			DropTableOperation{
-				Database: "signoz_metrics",
-				Table:    "samples_v4",
+				Database: "signoz_meter",
+				Table:    "samples",
 			},
 		},
 	},
@@ -137,7 +137,7 @@ var MeterMigrations = []SchemaMigrationRecord{
 		},
 		DownItems: []Operation{
 			DropTableOperation{
-				Database: "signoz_metrics",
+				Database: "signoz_meter",
 				Table:    "samples_agg_1d_mv",
 			},
 		},
@@ -223,6 +223,79 @@ var MeterMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_meter",
 				Table:    "distributed_samples_agg_1d",
+			},
+		},
+	},
+	{
+		MigrationID: 6,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_meter",
+				Table:    "metadata",
+				Columns: []Column{
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
+					{Name: "attr_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_datatype", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_string_value", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "first_reported_unix_milli", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "ZSTD(1)"},
+					{Name: "last_reported_unix_milli", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "ZSTD(1)"},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     "(temporality, metric_name, attr_name, attr_type, attr_datatype, attr_string_value)",
+						PartitionBy: "toDate(last_reported_unix_milli / 1000)",
+						TTL:         "toDateTime(last_reported_unix_milli / 1000) + toIntervalSecond(2592000)",
+						Settings: []TableSetting{
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_meter",
+				Table:    "metadata",
+			},
+		},
+	},
+	{
+		MigrationID: 7,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_meter",
+				Table:    "distributed_metadata",
+				Columns: []Column{
+					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "description", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
+					{Name: "attr_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_datatype", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
+					{Name: "attr_string_value", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "first_reported_unix_milli", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "ZSTD(1)"},
+					{Name: "last_reported_unix_milli", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "ZSTD(1)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_meter",
+					Table:       "metadata",
+					ShardingKey: "rand()",
+				},
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_meter",
+				Table:    "distributed_metadata",
 			},
 		},
 	},

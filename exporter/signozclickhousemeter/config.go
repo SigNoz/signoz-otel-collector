@@ -16,6 +16,7 @@ type Config struct {
 	DSN                          string                          `mapstructure:"dsn"`
 	Database                     string                          `mapstructure:"database"`
 	SamplesTable                 string                          `mapstructure:"samples_table"`
+	MetadataTable                string                          `mapstructure:"metadata_table"`
 }
 
 var _ component.Config = (*Config)(nil)

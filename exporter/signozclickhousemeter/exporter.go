@@ -6,29 +6,33 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 )
 
 var (
-	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	samplesSQLTmpl  = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	metadataSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
 type clickhouseMeterExporter struct {
-	cfg        *Config
-	logger     *zap.Logger
-	conn       clickhouse.Conn
-	wg         sync.WaitGroup
-	samplesSQL string
-	closeChan  chan struct{}
+	cfg         *Config
+	logger      *zap.Logger
+	conn        clickhouse.Conn
+	wg          sync.WaitGroup
+	samplesSQL  string
+	metadataSQL string
+	closeChan   chan struct{}
 }
 
 // sample represents a single metric sample directly mapped to the table `samples` schema
@@ -48,6 +52,19 @@ type sample struct {
 	value         float64
 }
 
+type metadata struct {
+	metricName      string
+	temporality     pmetric.AggregationTemporality
+	description     string
+	unit            string
+	typ             pmetric.MetricType
+	isMonotonic     bool
+	attrName        string
+	attrType        string
+	attrDatatype    pcommon.ValueType
+	attrStringValue string
+}
+
 func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickhouseMeterExporter, error) {
 	cfg := config.(*Config)
 
@@ -62,11 +79,12 @@ func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickh
 	}
 
 	return &clickhouseMeterExporter{
-		cfg:        cfg,
-		logger:     logger,
-		conn:       conn,
-		samplesSQL: fmt.Sprintf(samplesSQLTmpl, cfg.Database, cfg.SamplesTable),
-		closeChan:  make(chan struct{}),
+		cfg:         cfg,
+		logger:      logger,
+		conn:        conn,
+		samplesSQL:  fmt.Sprintf(samplesSQLTmpl, cfg.Database, cfg.SamplesTable),
+		metadataSQL: fmt.Sprintf(metadataSQLTmpl, cfg.Database, cfg.MetadataTable),
+		closeChan:   make(chan struct{}),
 	}, nil
 }
 
@@ -94,6 +112,9 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 	temporality := metric.Sum().AggregationTemporality()
 	isMonotonic := metric.Sum().IsMonotonic()
 
+	batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, resourceFingerprint)
+	batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, scopeFingerprint)
+
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
 
@@ -115,6 +136,7 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
+		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint)
 		batch.addSample(&sample{
 			temporality:   temporality,
 			metricName:    name,
@@ -172,36 +194,96 @@ func (c *clickhouseMeterExporter) ConsumeMetrics(ctx context.Context, md pmetric
 }
 
 func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) error {
-	if len(batch.samples) == 0 {
-		return nil
-	}
-	statement, err := c.conn.PrepareBatch(ctx, c.samplesSQL, driver.WithReleaseConnection())
-	if err != nil {
-		return err
-	}
-	defer statement.Close()
+	writeSamples := func(ctx context.Context, samples []*sample) error {
+		if len(samples) == 0 {
+			return nil
+		}
 
-	for _, sample := range batch.samples {
-		roundedUnixMilli := sample.unixMilli / 3600000 * 3600000
-		err = statement.Append(
-			sample.temporality.String(),
-			sample.metricName,
-			sample.description,
-			sample.unit,
-			sample.typ.String(),
-			sample.isMonotonic,
-			sample.labels,
-			sample.attrs,
-			sample.scopeAttrs,
-			sample.resourceAttrs,
-			sample.fingerprint,
-			roundedUnixMilli,
-			sample.value,
-		)
+		statement, err := c.conn.PrepareBatch(ctx, c.samplesSQL, driver.WithReleaseConnection())
 		if err != nil {
 			return err
 		}
+		defer statement.Close()
+
+		for _, sample := range samples {
+			roundedUnixMilli := sample.unixMilli / 3600000 * 3600000
+			err = statement.Append(
+				sample.temporality.String(),
+				sample.metricName,
+				sample.description,
+				sample.unit,
+				sample.typ.String(),
+				sample.isMonotonic,
+				sample.labels,
+				sample.attrs,
+				sample.scopeAttrs,
+				sample.resourceAttrs,
+				sample.fingerprint,
+				roundedUnixMilli,
+				sample.value,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		return statement.Send()
 	}
 
-	return statement.Send()
+	writeMetadata := func(ctx context.Context, metadata []*metadata) error {
+		if len(metadata) == 0 {
+			return nil
+		}
+		statement, err := c.conn.PrepareBatch(ctx, c.metadataSQL, driver.WithReleaseConnection())
+		if err != nil {
+			return err
+		}
+		defer statement.Close()
+
+		for _, meta := range metadata {
+			err = statement.Append(
+				meta.temporality.String(),
+				meta.metricName,
+				meta.description,
+				meta.unit,
+				meta.typ.String(),
+				meta.isMonotonic,
+				meta.attrName,
+				meta.attrType,
+				meta.attrDatatype,
+				meta.attrStringValue,
+				time.Now().UnixMilli(),
+				time.Now().UnixMilli(),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return statement.Send()
+	}
+
+	// Send all statements in parallel
+	errC := make(chan error, 4)
+	go func() {
+		errC <- writeSamples(ctx, batch.samples)
+	}()
+	go func() {
+		if err := writeMetadata(ctx, batch.metadata); err != nil {
+			// we don't need to return an error here because the metadata is not critical to the operation of the exporter
+			// and we don't want to cause the exporter to fail if it is not able to write metadata for some reason
+			// if there were a generic error, it would have been returned in the other write functions
+			c.logger.Error("error writing metadata", zap.Error(err))
+		}
+
+		errC <- nil
+	}()
+
+	var errs []error
+	for i := 0; i < 2; i++ {
+		if err := <-errC; err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
