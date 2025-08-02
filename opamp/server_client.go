@@ -209,6 +209,10 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 		k.Set("receivers.nop", map[string]any{})
 	}
 
+	if !k.Exists("exporters.nop") {
+		k.Set("exporters.nop", map[string]any{})
+	}
+
 	for _, key := range k.Keys() {
 		// Delete all service.pipelines.*.receivers keys
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".receivers") {
@@ -219,6 +223,12 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 		// delete the processors
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".processors") {
 			k.Delete(key)
+		}
+
+		// delete the exporters
+		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".exporters") {
+			k.Delete(key)
+			k.Set(key, []any{"nop"})
 		}
 	}
 

@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	samplesSQLTmpl = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, labels, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
@@ -33,19 +33,16 @@ type clickhouseMeterExporter struct {
 
 // sample represents a single metric sample directly mapped to the table `samples` schema
 type sample struct {
-	temporality   pmetric.AggregationTemporality
-	metricName    string
-	description   string
-	unit          string
-	typ           pmetric.MetricType
-	isMonotonic   bool
-	labels        string
-	attrs         map[string]string
-	scopeAttrs    map[string]string
-	resourceAttrs map[string]string
-	fingerprint   uint64
-	unixMilli     int64
-	value         float64
+	temporality pmetric.AggregationTemporality
+	metricName  string
+	description string
+	unit        string
+	typ         pmetric.MetricType
+	isMonotonic bool
+	labels      string
+	fingerprint uint64
+	unixMilli   int64
+	value       float64
 }
 
 func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickhouseMeterExporter, error) {
@@ -116,19 +113,16 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			temporality:   temporality,
-			metricName:    name,
-			fingerprint:   fingerprint.HashWithName(name),
-			unixMilli:     unixMilli,
-			value:         value,
-			description:   desc,
-			unit:          unit,
-			typ:           typ,
-			isMonotonic:   isMonotonic,
-			labels:        pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:         fingerprintMap,
-			scopeAttrs:    scopeFingerprintMap,
-			resourceAttrs: resourceFingerprintMap,
+			temporality: temporality,
+			metricName:  name,
+			fingerprint: fingerprint.HashWithName(name),
+			unixMilli:   unixMilli,
+			value:       value,
+			description: desc,
+			unit:        unit,
+			typ:         typ,
+			isMonotonic: isMonotonic,
+			labels:      pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
 		})
 	}
 }
@@ -191,9 +185,6 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 			sample.typ.String(),
 			sample.isMonotonic,
 			sample.labels,
-			sample.attrs,
-			sample.scopeAttrs,
-			sample.resourceAttrs,
 			sample.fingerprint,
 			roundedUnixMilli,
 			sample.value,
