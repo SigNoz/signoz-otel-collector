@@ -46,7 +46,7 @@ func TestParserStringFailure(t *testing.T) {
 	parser := newTestParser(t)
 	_, err := parser.parse("invalid")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "error found in #1 byte")
+	require.Contains(t, err.Error(), "expected { character for map value")
 }
 
 func TestParserByteFailure(t *testing.T) {
