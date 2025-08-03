@@ -6,7 +6,6 @@ package signozawsfirehosereceiver // import "github.com/SigNoz/signoz-otel-colle
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/config/configrouter"
 	"go.opentelemetry.io/collector/component"

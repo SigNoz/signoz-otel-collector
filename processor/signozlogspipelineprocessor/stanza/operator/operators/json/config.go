@@ -3,7 +3,6 @@
 package json
 
 import (
-	jsoniter "github.com/json-iterator/go"
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
@@ -51,7 +50,6 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	return &Parser{
 		ParserOperator:     parserOperator,
-		json:               jsoniter.ConfigFastest,
 		enableFlattening:   c.EnableFlattening,
 		maxFlatteningDepth: c.MaxFlatteningDepth,
 		enablePaths:        c.EnablePaths,
