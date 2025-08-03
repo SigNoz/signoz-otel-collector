@@ -38,8 +38,8 @@ func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcom
 		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.metricDataPointCount = count
-	meterMetrics.metricDataPointSize = size
+	meterMetrics.metricDataPointCount += count
+	meterMetrics.metricDataPointSize += size
 }
 
 func (agm *aggregatedMeterMetrics) UpdateSpanMeterMetrics(attrs pcommon.Map, count, size int) {
@@ -52,8 +52,8 @@ func (agm *aggregatedMeterMetrics) UpdateSpanMeterMetrics(attrs pcommon.Map, cou
 		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.spanCount = count
-	meterMetrics.spanSize = size
+	meterMetrics.spanCount += count
+	meterMetrics.spanSize += size
 }
 
 func (agm *aggregatedMeterMetrics) UpdateLogMeterMetrics(attrs pcommon.Map, count, size int) {
@@ -66,8 +66,8 @@ func (agm *aggregatedMeterMetrics) UpdateLogMeterMetrics(attrs pcommon.Map, coun
 		meterMetrics = &meterMetric{attrs: attrs}
 		agm.meterMetrics[key] = meterMetrics
 	}
-	meterMetrics.logCount = count
-	meterMetrics.logSize = size
+	meterMetrics.logCount += count
+	meterMetrics.logSize += size
 }
 
 func (agm *aggregatedMeterMetrics) Purge() {

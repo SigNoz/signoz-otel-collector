@@ -15,12 +15,14 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	v1 "github.com/SigNoz/signoz-otel-collector/pkg/metering/v1"
+	"github.com/google/uuid"
 )
 
 // meterConnector records count and size of spans, metrics data points, log records
 // and emits them onto a metrics pipeline.
 type meterConnector struct {
 	logger                 *zap.Logger
+	id                     uuid.UUID
 	config                 Config
 	metricsConsumer        consumer.Metrics
 	logsMeter              metering.Logs
@@ -49,6 +51,7 @@ func newConnector(logger *zap.Logger, config component.Config) (*meterConnector,
 
 	return &meterConnector{
 		logger:                 logger,
+		id:                     uuid.New(),
 		config:                 *cfg,
 		dimensions:             newDimensionsMap(cfg.Dimensions),
 		logsMeter:              v1.NewLogs(logger),
@@ -138,6 +141,8 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 		resourceMetrics := metrics.ResourceMetrics().AppendEmpty()
 		scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 		scopeMetrics.Scope().SetName("signozmeterconnector")
+		// add connector id for single-writer in case of multiple connectors
+		scopeMetrics.Scope().Attributes().PutStr("connector_id", meterconnector.id.String())
 		// for each resource metric key we need 6 metrics (2 for each telemetry data type)
 		scopeMetrics.Metrics().EnsureCapacity(6 * len(meterconnector.aggregatedMeterMetrics.meterMetrics))
 
