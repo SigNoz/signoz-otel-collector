@@ -47,18 +47,13 @@ func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
 func newConnector(logger *zap.Logger, config component.Config) (*meterConnector, error) {
 	cfg := config.(*Config)
 
-	metricsMeter, err := v1.NewMetrics(logger, v1.WithExcludeRegex("^(signoz|otelcol).*"))
-	if err != nil {
-		return nil, err
-	}
-
 	return &meterConnector{
 		logger:                 logger,
 		config:                 *cfg,
 		dimensions:             newDimensionsMap(cfg.Dimensions),
 		logsMeter:              v1.NewLogs(logger),
 		tracesMeter:            v1.NewTraces(logger),
-		metricsMeter:           metricsMeter,
+		metricsMeter:           v1.NewMetrics(logger),
 		aggregatedMeterMetrics: newAggregatedMeterMetrics(),
 		ticker:                 time.NewTicker(cfg.MetricsFlushInterval),
 		done:                   make(chan struct{}),

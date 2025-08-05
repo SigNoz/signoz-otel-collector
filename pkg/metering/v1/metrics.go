@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"errors"
 	"regexp"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -10,49 +9,26 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	excludeRegex = "^(signoz|otelcol).*"
+)
+
 type metrics struct {
 	Logger       *zap.Logger
 	Sizer        metering.Sizer
 	ExcludeRegex *regexp.Regexp
 }
-type metricOptions struct {
-	ExcludeRegex string
-}
 
-type MetricOption func(*metricOptions)
-
-func WithExcludeRegex(regex string) MetricOption {
-	return func(o *metricOptions) {
-		if regex != "" {
-			o.ExcludeRegex = regex
-		}
-	}
-}
-
-func NewMetrics(logger *zap.Logger, opts ...MetricOption) (metering.Metrics, error) {
+func NewMetrics(logger *zap.Logger) metering.Metrics {
 	if logger == nil {
 		logger = zap.NewNop()
-	}
-
-	options := &metricOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	var excludeRegex *regexp.Regexp
-	if options.ExcludeRegex != "" {
-		compiledRegex, err := regexp.Compile(options.ExcludeRegex)
-		if err != nil {
-			return nil, errors.New("failed to compile exclude regex")
-		}
-		excludeRegex = compiledRegex
 	}
 
 	return &metrics{
 		Logger:       logger,
 		Sizer:        metering.NewJSONSizer(logger),
-		ExcludeRegex: excludeRegex,
-	}, nil
+		ExcludeRegex: regexp.MustCompile(excludeRegex),
+	}
 }
 
 func (meter *metrics) Size(md pmetric.Metrics) int {
