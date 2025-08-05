@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
@@ -88,7 +89,7 @@ func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
 		SummaryQuantileCount:  3,
 	}))
 
-	excludeRegex = "^zk.duration*"
+	excludeRegex = regexp.MustCompile("^zk.duration*")
 	meter := NewMetrics(zap.NewNop())
 
 	assert.Equal(t, 0, meter.Count(md))

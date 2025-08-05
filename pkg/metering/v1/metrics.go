@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	excludeRegex = "^(signoz|otelcol).*"
+	excludeRegex = regexp.MustCompile("^(signoz|otelcol).*")
 )
 
 type metrics struct {
@@ -27,7 +27,7 @@ func NewMetrics(logger *zap.Logger) metering.Metrics {
 	return &metrics{
 		Logger:       logger,
 		Sizer:        metering.NewJSONSizer(logger),
-		ExcludeRegex: regexp.MustCompile(excludeRegex),
+		ExcludeRegex: excludeRegex,
 	}
 }
 
