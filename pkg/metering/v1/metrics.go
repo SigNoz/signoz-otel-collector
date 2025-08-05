@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"regexp"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -15,20 +16,20 @@ type metrics struct {
 	ExcludeRegex *regexp.Regexp
 }
 type metricOptions struct {
-	ExcludeRegex *regexp.Regexp
+	ExcludeRegex string
 }
 
 type MetricOption func(*metricOptions)
 
-func WithExcludePattern(pattern string) MetricOption {
+func WithExcludeRegex(regex string) MetricOption {
 	return func(o *metricOptions) {
-		if pattern != "" {
-			o.ExcludeRegex = regexp.MustCompile(pattern)
+		if regex != "" {
+			o.ExcludeRegex = regex
 		}
 	}
 }
 
-func NewMetrics(logger *zap.Logger, opts ...MetricOption) metering.Metrics {
+func NewMetrics(logger *zap.Logger, opts ...MetricOption) (metering.Metrics, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -38,11 +39,20 @@ func NewMetrics(logger *zap.Logger, opts ...MetricOption) metering.Metrics {
 		opt(options)
 	}
 
+	var excludeRegex *regexp.Regexp
+	if options.ExcludeRegex != "" {
+		compiledRegex, err := regexp.Compile(options.ExcludeRegex)
+		if err != nil {
+			return nil, errors.New("failed to compile exclude regex")
+		}
+		excludeRegex = compiledRegex
+	}
+
 	return &metrics{
 		Logger:       logger,
 		Sizer:        metering.NewJSONSizer(logger),
-		ExcludeRegex: options.ExcludeRegex,
-	}
+		ExcludeRegex: excludeRegex,
+	}, nil
 }
 
 func (meter *metrics) Size(md pmetric.Metrics) int {

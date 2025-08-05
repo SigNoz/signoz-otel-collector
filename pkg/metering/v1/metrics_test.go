@@ -5,12 +5,14 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 )
 
 func TestMetrics(t *testing.T) {
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	md := pmetric.NewMetrics()
 	md.ResourceMetrics().AppendEmpty()
@@ -24,7 +26,8 @@ func TestMetrics_CountGaugeMetrics(t *testing.T) {
 		GaugeDataPointCount: 10,
 	}))
 
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	// 10 metrics * 10 data points = 100
 	assert.Equal(t, 100, meter.Count(md))
@@ -36,7 +39,8 @@ func TestMetrics_CountSumMetrics(t *testing.T) {
 		SumDataPointCount: 6,
 	}))
 
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	// 10 metrics * 6 data points = 60
 	assert.Equal(t, 60, meter.Count(md))
@@ -49,7 +53,8 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 		HistogramBucketCount:    20,
 	}))
 
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	// 6 data points * 20 buckets = 120
 	assert.Equal(t, 120, meter.Count(md))
@@ -62,7 +67,8 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 		ExponentialHistogramBucketCount:    20,
 	}))
 
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	// 6 data points * 20 buckets = 120
 	// 120 negative + 120 positive = 240
@@ -76,7 +82,8 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 		SummaryQuantileCount:  3,
 	}))
 
-	meter := NewMetrics(zap.NewNop())
+	meter, err := NewMetrics(zap.NewNop())
+	require.NoError(t, err)
 
 	assert.Equal(t, 18, meter.Count(md))
 }
@@ -88,7 +95,8 @@ func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
 		SummaryQuantileCount:  3,
 	}))
 
-	meter := NewMetrics(zap.NewNop(), WithExcludePattern("^zk.duration*"))
+	meter, err := NewMetrics(zap.NewNop(), WithExcludeRegex("^zk.duration*"))
+	require.NoError(t, err)
 
 	assert.Equal(t, 0, meter.Count(md))
 }
