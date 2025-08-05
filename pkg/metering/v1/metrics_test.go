@@ -80,3 +80,15 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 
 	assert.Equal(t, 18, meter.Count(md))
 }
+
+func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
+	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
+		SummaryMetricsCount:   1,
+		SummaryDataPointCount: 6,
+		SummaryQuantileCount:  3,
+	}))
+
+	meter := NewMetrics(zap.NewNop(), WithExcludePattern("^zk.duration*"))
+
+	assert.Equal(t, 0, meter.Count(md))
+}

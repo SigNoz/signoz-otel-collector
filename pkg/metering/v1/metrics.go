@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"regexp"
+
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -8,17 +10,38 @@ import (
 )
 
 type metrics struct {
-	Logger *zap.Logger
-	Sizer  metering.Sizer
+	Logger       *zap.Logger
+	Sizer        metering.Sizer
+	ExcludeRegex *regexp.Regexp
+}
+type metricOptions struct {
+	ExcludeRegex *regexp.Regexp
 }
 
-func NewMetrics(logger *zap.Logger) metering.Metrics {
+type MetricOption func(*metricOptions)
+
+func WithExcludePattern(pattern string) MetricOption {
+	return func(o *metricOptions) {
+		if pattern != "" {
+			o.ExcludeRegex = regexp.MustCompile(pattern)
+		}
+	}
+}
+
+func NewMetrics(logger *zap.Logger, opts ...MetricOption) metering.Metrics {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+
+	options := &metricOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	return &metrics{
-		Logger: logger,
-		Sizer:  metering.NewJSONSizer(logger),
+		Logger:       logger,
+		Sizer:        metering.NewJSONSizer(logger),
+		ExcludeRegex: options.ExcludeRegex,
 	}
 }
 
@@ -57,6 +80,10 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 
 		for k := 0; k < scopeMetrics.Metrics().Len(); k++ {
 			metric := scopeMetrics.Metrics().At(k)
+			// if the metric satisifies the excluded regex then skip the metric
+			if meter.ExcludeRegex != nil && meter.ExcludeRegex.MatchString(metric.Name()) {
+				continue
+			}
 
 			switch metric.Type() {
 			case pmetric.MetricTypeGauge:
