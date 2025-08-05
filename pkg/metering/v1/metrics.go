@@ -14,9 +14,8 @@ var (
 )
 
 type metrics struct {
-	Logger       *zap.Logger
-	Sizer        metering.Sizer
-	ExcludeRegex *regexp.Regexp
+	Logger *zap.Logger
+	Sizer  metering.Sizer
 }
 
 func NewMetrics(logger *zap.Logger) metering.Metrics {
@@ -25,9 +24,8 @@ func NewMetrics(logger *zap.Logger) metering.Metrics {
 	}
 
 	return &metrics{
-		Logger:       logger,
-		Sizer:        metering.NewJSONSizer(logger),
-		ExcludeRegex: excludeRegex,
+		Logger: logger,
+		Sizer:  metering.NewJSONSizer(logger),
 	}
 }
 
@@ -67,7 +65,7 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 		for k := 0; k < scopeMetrics.Metrics().Len(); k++ {
 			metric := scopeMetrics.Metrics().At(k)
 			// if the metric satisifies the excluded regex then skip the metric
-			if meter.ExcludeRegex != nil && meter.ExcludeRegex.MatchString(metric.Name()) {
+			if excludeRegex.MatchString(metric.Name()) {
 				continue
 			}
 
