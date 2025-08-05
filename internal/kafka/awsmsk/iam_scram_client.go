@@ -4,11 +4,12 @@
 package awsmsk // import "github.com/open-telemetry/opentelemetry-collector-contrib/internal/kafka/awsmsk"
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/IBM/sarama"
 	"github.com/aws/aws-sdk-go/aws/credentials"
