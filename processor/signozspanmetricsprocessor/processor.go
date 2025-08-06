@@ -72,7 +72,8 @@ type exemplarData struct {
 }
 
 type exponentialHistogram struct {
-	histogram *structure.Histogram[float64]
+	histogram      *structure.Histogram[float64]
+	latestSpanTime pcommon.Timestamp // Store latest span timestamp for temporal accuracy
 }
 
 type metricKey string
@@ -157,10 +158,11 @@ func newDimensions(cfgDims []Dimension) []dimension {
 }
 
 type histogramData struct {
-	count         uint64
-	sum           float64
-	bucketCounts  []uint64
-	exemplarsData []exemplarData
+	count          uint64
+	sum            float64
+	bucketCounts   []uint64
+	exemplarsData  []exemplarData
+	latestSpanTime pcommon.Timestamp // Store latest span timestamp for temporal accuracy
 }
 
 func expoHistToExponentialDataPoint(agg *structure.Histogram[float64], dp pmetric.ExponentialHistogramDataPoint) {
@@ -194,6 +196,19 @@ func expoHistToExponentialDataPoint(agg *structure.Histogram[float64], dp pmetri
 
 func (h *exponentialHistogram) Observe(value float64) {
 	h.histogram.Update(value)
+}
+
+// getBoundedTimestamp returns the span timestamp if it's within the tolerance window,
+// otherwise returns a bounded timestamp to prevent extreme timeline jumps
+func getBoundedTimestamp(spanTime pcommon.Timestamp, currentTime time.Time) pcommon.Timestamp {
+	maxAge := 2 * time.Minute // 2-minute tolerance for late-arriving spans
+	currentTimeNano := pcommon.NewTimestampFromTime(currentTime)
+	oldestAllowed := currentTimeNano - pcommon.Timestamp(maxAge.Nanoseconds())
+
+	if spanTime < oldestAllowed {
+		return oldestAllowed // Cap very old spans to prevent timeline jumps
+	}
+	return spanTime // Use actual span time for recent spans
 }
 
 func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
@@ -576,10 +591,12 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	mLatency.SetEmptyHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mLatency.Histogram().DataPoints()
 	dps.EnsureCapacity(len(p.histograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	currentTime := time.Now()
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
 		dpLatency.SetStartTimestamp(p.startTimestamp)
+		// Use bounded span timestamp for temporal accuracy instead of processing time
+		timestamp := getBoundedTimestamp(hist.latestSpanTime, currentTime)
 		dpLatency.SetTimestamp(timestamp)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
 		dpLatency.BucketCounts().FromRaw(hist.bucketCounts)
@@ -606,10 +623,12 @@ func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) erro
 	mExpLatency.SetEmptyExponentialHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mExpLatency.ExponentialHistogram().DataPoints()
 	dps.EnsureCapacity(len(p.expHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	currentTime := time.Now()
 	for key, hist := range p.expHistograms {
 		dp := dps.AppendEmpty()
 		dp.SetStartTimestamp(p.startTimestamp)
+		// Use bounded span timestamp for temporal accuracy instead of processing time
+		timestamp := getBoundedTimestamp(hist.latestSpanTime, currentTime)
 		dp.SetTimestamp(timestamp)
 		expoHistToExponentialDataPoint(hist.histogram, dp)
 		dimensions, err := p.getDimensionsByExpHistogramKey(key)
@@ -642,8 +661,11 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	callSumDps.EnsureCapacity(len(p.dbCallHistograms))
 	callCountDps.EnsureCapacity(len(p.dbCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	currentTime := time.Now()
 	for key, metric := range p.dbCallHistograms {
+		// Use bounded span timestamp for temporal accuracy instead of processing time
+		timestamp := getBoundedTimestamp(metric.latestSpanTime, currentTime)
+
 		dpDBCallSum := callSumDps.AppendEmpty()
 		dpDBCallSum.SetStartTimestamp(p.startTimestamp)
 		dpDBCallSum.SetTimestamp(timestamp)
@@ -683,8 +705,11 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 	callSumDps.EnsureCapacity(len(p.externalCallHistograms))
 	callCountDps.EnsureCapacity(len(p.externalCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	currentTime := time.Now()
 	for key, metric := range p.externalCallHistograms {
+		// Use bounded span timestamp for temporal accuracy instead of processing time
+		timestamp := getBoundedTimestamp(metric.latestSpanTime, currentTime)
+
 		dpExternalCallSum := callSumDps.AppendEmpty()
 		dpExternalCallSum.SetStartTimestamp(p.startTimestamp)
 		dpExternalCallSum.SetTimestamp(timestamp)
@@ -715,10 +740,12 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mCalls.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mCalls.Sum().DataPoints()
 	dps.EnsureCapacity(len(p.callHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	currentTime := time.Now()
 	for key, hist := range p.callHistograms {
 		dpCalls := dps.AppendEmpty()
 		dpCalls.SetStartTimestamp(p.startTimestamp)
+		// Use bounded span timestamp for temporal accuracy instead of processing time
+		timestamp := getBoundedTimestamp(hist.latestSpanTime, currentTime)
 		dpCalls.SetTimestamp(timestamp)
 		dpCalls.SetIntValue(int64(hist.count))
 
@@ -913,21 +940,21 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
 	key := metricKey(p.keyBuf.String())
 	p.cache(serviceName, span, key, resourceAttr)
-	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID())
+	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID(), startTime)
 
 	if p.config.EnableExpHistogram {
 		p.keyBuf.Reset()
 		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
 		expKey := metricKey(p.keyBuf.String())
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
-		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
+		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID(), startTime)
 	}
 
 	p.keyBuf.Reset()
 	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
 	callKey := metricKey(p.keyBuf.String())
 	p.callCache(serviceName, span, callKey, resourceAttr)
-	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
+	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID(), startTime)
 
 	spanAttr := span.Attributes()
 	remoteAddr, externalCallPresent := getRemoteAddress(span)
@@ -941,7 +968,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 			"address": pcommon.NewValueStr(remoteAddr),
 		}
 		p.externalCallCache(serviceName, span, externalCallKey, resourceAttr, extraDims)
-		p.updateExternalHistogram(externalCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
+		p.updateExternalHistogram(externalCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID(), startTime)
 	}
 
 	_, dbCallPresent := spanAttr.Get("db.system")
@@ -950,7 +977,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		buildCustomKey(p.keyBuf, serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		dbCallKey := metricKey(p.keyBuf.String())
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
-		p.updateDBHistogram(dbCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
+		p.updateDBHistogram(dbCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID(), startTime)
 	}
 }
 
@@ -997,7 +1024,7 @@ func (p *processorImp) resetAccumulatedMetrics() {
 }
 
 // updateHistogram adds the histogram sample to the histogram defined by the metric key.
-func (p *processorImp) updateHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID, spanStartTime pcommon.Timestamp) {
 	histo, ok := p.histograms[key]
 	if !ok {
 		histo = &histogramData{
@@ -1012,9 +1039,10 @@ func (p *processorImp) updateHistogram(key metricKey, latency float64, traceID p
 	index := sort.SearchFloat64s(p.latencyBounds, latency)
 	histo.bucketCounts[index]++
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
+	histo.latestSpanTime = spanStartTime // Store latest span timestamp for temporal accuracy
 }
 
-func (p *processorImp) updateExpHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateExpHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID, spanStartTime pcommon.Timestamp) {
 	histo, ok := p.expHistograms[key]
 	if !ok {
 		histogram := new(structure.Histogram[float64])
@@ -1030,9 +1058,10 @@ func (p *processorImp) updateExpHistogram(key metricKey, latency float64, traceI
 	}
 
 	histo.Observe(latency)
+	histo.latestSpanTime = spanStartTime // Store latest span timestamp for temporal accuracy
 }
 
-func (p *processorImp) updateCallHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateCallHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID, spanStartTime pcommon.Timestamp) {
 	histo, ok := p.callHistograms[key]
 	if !ok {
 		histo = &histogramData{
@@ -1047,9 +1076,10 @@ func (p *processorImp) updateCallHistogram(key metricKey, latency float64, trace
 	index := sort.SearchFloat64s(p.latencyBounds, latency)
 	histo.bucketCounts[index]++
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
+	histo.latestSpanTime = spanStartTime // Store latest span timestamp for temporal accuracy
 }
 
-func (p *processorImp) updateDBHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateDBHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID, spanStartTime pcommon.Timestamp) {
 	histo, ok := p.dbCallHistograms[key]
 	if !ok {
 		histo = &histogramData{
@@ -1064,9 +1094,10 @@ func (p *processorImp) updateDBHistogram(key metricKey, latency float64, traceID
 	index := sort.SearchFloat64s(p.latencyBounds, latency)
 	histo.bucketCounts[index]++
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
+	histo.latestSpanTime = spanStartTime // Store latest span timestamp for temporal accuracy
 }
 
-func (p *processorImp) updateExternalHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID) {
+func (p *processorImp) updateExternalHistogram(key metricKey, latency float64, traceID pcommon.TraceID, spanID pcommon.SpanID, spanStartTime pcommon.Timestamp) {
 	histo, ok := p.externalCallHistograms[key]
 	if !ok {
 		histo = &histogramData{
@@ -1081,6 +1112,7 @@ func (p *processorImp) updateExternalHistogram(key metricKey, latency float64, t
 	index := sort.SearchFloat64s(p.latencyBounds, latency)
 	histo.bucketCounts[index]++
 	histo.exemplarsData = append(histo.exemplarsData, exemplarData{traceID: traceID, spanID: spanID, value: latency})
+	histo.latestSpanTime = spanStartTime // Store latest span timestamp for temporal accuracy
 }
 
 // resetExemplarData resets the entire exemplars map so the next trace will recreate all
