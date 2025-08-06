@@ -1,10 +1,16 @@
 package v1
 
 import (
+	"regexp"
+
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
+)
+
+var (
+	excludeRegex = regexp.MustCompile("^(signoz|otelcol).*")
 )
 
 type metrics struct {
@@ -16,6 +22,7 @@ func NewMetrics(logger *zap.Logger) metering.Metrics {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+
 	return &metrics{
 		Logger: logger,
 		Sizer:  metering.NewJSONSizer(logger),
@@ -57,6 +64,10 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 
 		for k := 0; k < scopeMetrics.Metrics().Len(); k++ {
 			metric := scopeMetrics.Metrics().At(k)
+			// if the metric satisifies the excluded regex then skip the metric
+			if excludeRegex.MatchString(metric.Name()) {
+				continue
+			}
 
 			switch metric.Type() {
 			case pmetric.MetricTypeGauge:
