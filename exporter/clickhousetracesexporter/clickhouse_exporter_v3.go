@@ -325,7 +325,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
 
-		ResourcesString: resourceAttrs,
+		ResourcesString:         resourceAttrs,
+		BillableResourcesString: billableResourceAttrs,
 
 		ServiceName: ServiceName,
 

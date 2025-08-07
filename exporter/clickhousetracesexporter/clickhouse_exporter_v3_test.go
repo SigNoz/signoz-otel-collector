@@ -427,7 +427,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					resource := pcommon.NewResource()
 					resource.Attributes().PutStr("service.name", "test_service")
 					// this resource shouldn't show up in the final generated span
-					resource.Attributes().PutStr("signoz.internal.test", "test_internal")
+					resource.Attributes().PutStr("signoz.workspace.internal.test", "test_internal")
 					resource.Attributes().PutInt("num", 10)
 					v := resource.Attributes().PutEmptyMap("mymap")
 					v.PutStr("map_key", "map_val")
@@ -457,11 +457,11 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				AttributesNumber: map[string]float64{},
 				AttributesBool:   map[string]bool{},
 				ResourcesString: map[string]string{
-					"mymap.map_double":     "20.5",
-					"mymap.map_key":        "map_val",
-					"service.name":         "test_service",
-					"num":                  "10",
-					"signoz.internal.test": "test_internal",
+					"mymap.map_double":               "20.5",
+					"mymap.map_key":                  "map_val",
+					"service.name":                   "test_service",
+					"num":                            "10",
+					"signoz.workspace.internal.test": "test_internal",
 				},
 				BillableResourcesString: map[string]string{
 					"mymap.map_double": "20.5",
@@ -504,6 +504,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				!reflect.DeepEqual(got.AttributesNumber, tt.want.AttributesNumber) ||
 				!reflect.DeepEqual(got.AttributesBool, tt.want.AttributesBool) ||
 				!reflect.DeepEqual(got.ResourcesString, tt.want.ResourcesString) ||
+				!reflect.DeepEqual(got.BillableResourcesString, tt.want.BillableResourcesString) ||
 				got.ServiceName != tt.want.ServiceName ||
 				got.HttpUrl != tt.want.HttpUrl ||
 				got.HttpMethod != tt.want.HttpMethod ||
