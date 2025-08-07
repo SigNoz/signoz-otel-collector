@@ -2,6 +2,7 @@ package metering
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,19 +16,45 @@ import (
 )
 
 type jsonSizer struct {
-	Logger *zap.Logger
+	Logger                   *zap.Logger
+	ExcludeResourceAttribute *regexp.Regexp
 }
 
-func NewJSONSizer(logger *zap.Logger) Sizer {
+type jsonSizerOptions struct {
+	ExcludeResourceAttribute *regexp.Regexp
+}
+
+type jsonSizerOption func(*jsonSizerOptions)
+
+func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
+	return func(opts *jsonSizerOptions) {
+		opts.ExcludeResourceAttribute = pattern
+	}
+}
+
+func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
+	opts := &jsonSizerOptions{}
+	for _, opt := range options {
+		opt(opts)
+	}
 	return &jsonSizer{
-		Logger: logger,
+		Logger:                   logger,
+		ExcludeResourceAttribute: opts.ExcludeResourceAttribute,
 	}
 }
 
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
-	bytes, err := json.Marshal(input)
+	output := map[string]any{}
+	for key, value := range input {
+		if sizer.ExcludeResourceAttribute != nil && sizer.ExcludeResourceAttribute.MatchString(key) {
+			continue
+		}
+		output[key] = value
+	}
+
+	bytes, err := json.Marshal(output)
 	if err != nil {
-		sizer.Logger.Error("cannot marshal object, setting size to 0", zap.Error(err), zap.Any("obj", input))
+		sizer.Logger.Error("cannot marshal object, setting size to 0", zap.Error(err), zap.Any("obj", output))
 		return 0
 	}
 
@@ -38,6 +65,9 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInMapStringString(input pcommon.Map)
 	output := map[string]string{}
 
 	input.Range(func(k string, v pcommon.Value) bool {
+		if sizer.ExcludeResourceAttribute != nil && sizer.ExcludeResourceAttribute.MatchString(k) {
+			return true
+		}
 		switch v.Type() {
 		case pcommon.ValueTypeMap:
 			flattened := flatten.FlattenJSON(v.Map().AsRaw(), k)

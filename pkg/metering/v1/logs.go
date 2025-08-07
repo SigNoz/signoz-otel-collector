@@ -1,10 +1,7 @@
 package v1
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
-
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
@@ -17,7 +14,7 @@ type logs struct {
 func NewLogs(logger *zap.Logger) metering.Logs {
 	return &logs{
 		Logger: logger,
-		Sizer:  metering.NewJSONSizer(logger),
+		Sizer:  metering.NewJSONSizer(logger, metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs)),
 	}
 }
 
@@ -33,14 +30,7 @@ func (meter *logs) Size(ld plog.Logs) int {
 
 func (meter *logs) SizePerResource(rld plog.ResourceLogs) int {
 	total := 0
-	filteredAttributes := map[string]any{}
-	rld.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
-		if !common.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
-			filteredAttributes[k] = v.AsRaw()
-		}
-		return true
-	})
-	resourceAttributesSize := meter.Sizer.SizeOfMapStringAny(filteredAttributes)
+	resourceAttributesSize := meter.Sizer.SizeOfMapStringAny(rld.Resource().Attributes().AsRaw())
 
 	for j := 0; j < rld.ScopeLogs().Len(); j++ {
 		scopeLogs := rld.ScopeLogs().At(j)

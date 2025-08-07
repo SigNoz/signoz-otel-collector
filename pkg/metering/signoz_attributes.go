@@ -1,4 +1,4 @@
-package common
+package metering
 
 import "regexp"
 

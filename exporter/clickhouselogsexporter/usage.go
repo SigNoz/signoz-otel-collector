@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
@@ -100,7 +100,7 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 func getResourceAttributesByte(resource pcommon.Resource) ([]byte, error) {
 	filteredResources := map[string]any{}
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		if !common.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
+		if !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
 			filteredResources[k] = v
 		}
 		return true

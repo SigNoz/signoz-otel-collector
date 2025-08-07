@@ -3,11 +3,9 @@ package v1
 import (
 	"github.com/goccy/go-json"
 
-	internalcommon "github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/pkg/schema/common"
 	schema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 )
@@ -21,7 +19,7 @@ type traces struct {
 func NewTraces(logger *zap.Logger) metering.Traces {
 	return &traces{
 		Logger: logger,
-		Sizer:  metering.NewJSONSizer(logger),
+		Sizer:  metering.NewJSONSizer(logger, metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs)),
 		KeySizes: map[string]int{
 			"resources_string":  len("\"resources_string\""),
 			"startTimeUnixNano": len("\"startTimeUnixNano\""),
@@ -56,20 +54,7 @@ func (meter *traces) Size(td ptrace.Traces) int {
 
 func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 	total := 0
-
-	filteredAttributesMap := pcommon.NewMap()
-	filteredAttributesMap.EnsureCapacity(rtd.Resource().Attributes().Len())
-	// we need to copy the original map here because converting it to map[string]any and then converting it to map
-	// is causing diff in the calculations
-	rtd.Resource().Attributes().CopyTo(filteredAttributesMap)
-	rtd.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
-		if internalcommon.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
-			_ = filteredAttributesMap.Remove(k)
-		}
-		return true
-	})
-
-	resourceAttributesSize := meter.Sizer.SizeOfFlatPcommonMapInMapStringString(filteredAttributesMap)
+	resourceAttributesSize := meter.Sizer.SizeOfFlatPcommonMapInMapStringString(rtd.Resource().Attributes())
 
 	for j := 0; j < rtd.ScopeSpans().Len(); j++ {
 		scopeSpans := rtd.ScopeSpans().At(j)
