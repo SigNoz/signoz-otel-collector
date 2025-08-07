@@ -44,6 +44,10 @@ func main() {
 		log.Fatalf("failed to initialize zap logger: %v", err)
 	}
 
+	// 🎯 CUSTOM LOG: Confirm our timestamp-aware spans changes are running
+	logger.Info("🚀 SignOz OTEL Collector starting with TIMESTAMP-AWARE SPANS implementation!")
+	logger.Info("✅ This collector now uses actual span timestamps instead of processing time for metrics aggregation")
+
 	collectorConfig, _ := f.GetString("config")
 	managerConfig, _ := f.GetString("manager-config")
 	copyPath, _ := f.GetString("copy-path")
