@@ -13,6 +13,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -149,4 +150,45 @@ func TestExporterPushLogsData(t *testing.T) {
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil
 	})
+}
+
+func TestGetResourceAttributesByte(t *testing.T) {
+	tests := []struct {
+		name      string
+		attribute string
+		pass      bool
+	}{
+		{
+			name:      "add_signoz_resource_attribute",
+			attribute: "signoz.workspace.internal.test",
+			pass:      true,
+		},
+		{
+			name:      "add_non_signoz_resource_attribute",
+			attribute: "nonsignoz.internal.test",
+			pass:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			plogs := plogsgen.Generate(plogsgen.WithResourceAttributeCount(10))
+
+			// get the base expected value
+			withoutSigNozAttrs, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
+			require.NoError(t, err)
+
+			// add the provided attributeand get the actual value
+			plogs.ResourceLogs().At(0).Resource().Attributes().PutStr(tc.attribute, "test")
+			WithNewAttribute, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
+			require.NoError(t, err)
+
+			if tc.pass {
+				assert.Equal(t, withoutSigNozAttrs, WithNewAttribute)
+			} else {
+				assert.NotEqual(t, withoutSigNozAttrs, WithNewAttribute)
+			}
+
+		})
+	}
 }

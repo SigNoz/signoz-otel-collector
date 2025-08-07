@@ -166,7 +166,8 @@ type SpanV3 struct {
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
-	ResourcesString map[string]string `json:"resources_string,omitempty"`
+	ResourcesString         map[string]string `json:"_,omitempty"`
+	BillableResourcesString map[string]string `json:"resources_string,omitempty"`
 
 	// for events
 	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
