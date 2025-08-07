@@ -16,19 +16,19 @@ import (
 )
 
 type jsonSizer struct {
-	Logger                   *zap.Logger
-	ExcludeResourceAttribute *regexp.Regexp
+	Logger         *zap.Logger
+	ExcludePattern *regexp.Regexp
 }
 
 type jsonSizerOptions struct {
-	ExcludeResourceAttribute *regexp.Regexp
+	ExcludePattern *regexp.Regexp
 }
 
 type jsonSizerOption func(*jsonSizerOptions)
 
 func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
 	return func(opts *jsonSizerOptions) {
-		opts.ExcludeResourceAttribute = pattern
+		opts.ExcludePattern = pattern
 	}
 }
 
@@ -38,18 +38,24 @@ func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
 		opt(opts)
 	}
 	return &jsonSizer{
-		Logger:                   logger,
-		ExcludeResourceAttribute: opts.ExcludeResourceAttribute,
+		Logger:         logger,
+		ExcludePattern: opts.ExcludePattern,
 	}
 }
 
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
 	output := map[string]any{}
-	for key, value := range input {
-		if sizer.ExcludeResourceAttribute != nil && sizer.ExcludeResourceAttribute.MatchString(key) {
-			continue
+
+	if sizer.ExcludePattern != nil {
+		for key, value := range input {
+			if sizer.ExcludePattern.MatchString(key) {
+				continue
+			}
+			output[key] = value
 		}
-		output[key] = value
+	} else {
+		// skip the looping through if the exclude pattern isn't configured
+		output = input
 	}
 
 	bytes, err := json.Marshal(output)
@@ -65,7 +71,7 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInMapStringString(input pcommon.Map)
 	output := map[string]string{}
 
 	input.Range(func(k string, v pcommon.Value) bool {
-		if sizer.ExcludeResourceAttribute != nil && sizer.ExcludeResourceAttribute.MatchString(k) {
+		if sizer.ExcludePattern != nil && sizer.ExcludePattern.MatchString(k) {
 			return true
 		}
 		switch v.Type() {
