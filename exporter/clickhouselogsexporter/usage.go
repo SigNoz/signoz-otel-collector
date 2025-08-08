@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 const (
@@ -92,4 +95,20 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 		}
 	}
 	return data, nil
+}
+
+func getResourceAttributesByte(resource pcommon.Resource) ([]byte, error) {
+	filteredResources := map[string]any{}
+	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
+		if !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
+			filteredResources[k] = v
+		}
+		return true
+	})
+	resBytes, err := json.Marshal(filteredResources)
+	if err != nil {
+		return nil, err
+	}
+
+	return resBytes, nil
 }
