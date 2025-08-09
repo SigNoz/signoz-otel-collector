@@ -34,6 +34,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/segmentio/ksuid"
@@ -463,6 +464,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return err
 					}
 
+					bodyStr := getStringifiedBody(r.Body())
+					body, err := flatten.ConvertJSON(bodyStr)
+					if err != nil {
+						body = bodyStr
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -474,7 +481,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						uint32(r.Flags()),
 						r.SeverityText(),
 						uint8(r.SeverityNumber()),
-						getStringifiedBody(r.Body()),
+						body,
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
