@@ -6,16 +6,15 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	v1 "github.com/SigNoz/signoz-otel-collector/pkg/metering/v1"
 	"github.com/google/uuid"
@@ -37,7 +36,7 @@ type meterConnector struct {
 	ticker                 *time.Ticker
 	done                   chan struct{}
 	wg                     sync.WaitGroup
-	telemetryBuilder       *metadata.TelemetryBuilder
+	telemetry              *meterTelemetry
 }
 
 func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
@@ -50,10 +49,10 @@ func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
 }
 
 // initialize the signozmeterconnector
-func newConnector(logger *zap.Logger, settings component.TelemetrySettings, config component.Config) (*meterConnector, error) {
+func newConnector(logger *zap.Logger, settings connector.Settings, config component.Config) (*meterConnector, error) {
 	cfg := config.(*Config)
 
-	telemetryBuilder, err := metadata.NewTelemetryBuilder(settings)
+	meterTelemetry, err := newMeterTelemetry(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +68,7 @@ func newConnector(logger *zap.Logger, settings component.TelemetrySettings, conf
 		aggregatedMeterMetrics: newAggregatedMeterMetrics(),
 		ticker:                 time.NewTicker(cfg.MetricsFlushInterval),
 		done:                   make(chan struct{}),
-		telemetryBuilder:       telemetryBuilder,
+		telemetry:              meterTelemetry,
 	}, nil
 }
 
@@ -110,42 +109,27 @@ func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 
 func (meterConnector *meterConnector) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	meterConnector.aggregateMeterMetricsFromTraces(traces)
-	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
-		ctx,
-		int64(traces.SpanCount()),
-		metric.WithAttributeSet(
-			attribute.NewSet(
-				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
-				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("traces")},
-			)),
+	meterConnector.telemetry.record(ctx, connectorRoleReceiver, int64(traces.SpanCount()),
+		attribute.KeyValue{Key: attribute.Key(acceptedAttribute), Value: attribute.BoolValue(true)},
+		attribute.KeyValue{Key: attribute.Key(signalAttribute), Value: attribute.StringValue("traces")},
 	)
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
 	meterConnector.aggregateMeterMetricsFromMetrics(metrics)
-	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
-		ctx,
-		int64(metrics.DataPointCount()),
-		metric.WithAttributeSet(
-			attribute.NewSet(
-				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
-				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("metrics")},
-			)),
+	meterConnector.telemetry.record(ctx, connectorRoleReceiver, int64(metrics.DataPointCount()),
+		attribute.KeyValue{Key: attribute.Key(acceptedAttribute), Value: attribute.BoolValue(true)},
+		attribute.KeyValue{Key: attribute.Key(signalAttribute), Value: attribute.StringValue("metrics")},
 	)
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeLogs(ctx context.Context, logs plog.Logs) error {
 	meterConnector.aggregateMeterMetricsFromLogs(logs)
-	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
-		ctx,
-		int64(logs.LogRecordCount()),
-		metric.WithAttributeSet(
-			attribute.NewSet(
-				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
-				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("logs")},
-			)),
+	meterConnector.telemetry.record(ctx, connectorRoleReceiver, int64(logs.LogRecordCount()),
+		attribute.KeyValue{Key: attribute.Key(acceptedAttribute), Value: attribute.BoolValue(true)},
+		attribute.KeyValue{Key: attribute.Key(signalAttribute), Value: attribute.StringValue("logs")},
 	)
 	return nil
 }
@@ -164,18 +148,16 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) error {
 	}
 	if err := meterconnector.metricsConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		meterconnector.logger.Error("failed ConsumeMetrics", zap.Error(err))
-		meterconnector.telemetryBuilder.ConnectorProducedItemsCount.Add(
-			ctx,
-			int64(metrics.DataPointCount()),
-			metric.WithAttributeSet(attribute.NewSet(attribute.KeyValue{Key: "sent", Value: attribute.BoolValue(false)})),
+		meterconnector.telemetry.record(ctx, connectorRoleExporter, int64(metrics.DataPointCount()),
+			attribute.KeyValue{Key: attribute.Key(sentAttribute), Value: attribute.BoolValue(false)},
+			attribute.KeyValue{Key: attribute.Key(signalAttribute), Value: attribute.StringValue("metrics")},
 		)
 		return err
 	}
 
-	meterconnector.telemetryBuilder.ConnectorProducedItemsCount.Add(
-		ctx,
-		int64(metrics.DataPointCount()),
-		metric.WithAttributeSet(attribute.NewSet(attribute.KeyValue{Key: "sent", Value: attribute.BoolValue(true)})),
+	meterconnector.telemetry.record(ctx, connectorRoleExporter, int64(metrics.DataPointCount()),
+		attribute.KeyValue{Key: attribute.Key(sentAttribute), Value: attribute.BoolValue(true)},
+		attribute.KeyValue{Key: attribute.Key(signalAttribute), Value: attribute.StringValue("metrics")},
 	)
 	return nil
 }
