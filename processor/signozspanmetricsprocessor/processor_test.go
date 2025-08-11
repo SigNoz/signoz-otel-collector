@@ -1243,3 +1243,128 @@ func TestAddTimeToKeyBuf(t *testing.T) {
 	result = processor.keyBuf.String()
 	assert.Equal(t, expectedStringWithoutSeparator, result)
 }
+
+func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
+	// Test that buildMetricKey conditionally adds time bucketing based on temporality
+
+	// Create a span with a specific start time
+	span := ptrace.NewSpan()
+	span.SetName("test-operation")
+	span.SetKind(ptrace.SpanKindServer)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+
+	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
+
+	resourceAttr := pcommon.NewMap()
+	serviceName := "test-service"
+	bucket := startTime.Truncate(time.Minute)
+
+	// Test Delta Temporality - should include time bucket prefix
+	deltaConfig := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
+	}
+
+	deltaProcessor := &processorImp{
+		config:                                 *deltaConfig,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+	}
+
+	deltaKey := deltaProcessor.buildMetricKey(serviceName, span, nil, resourceAttr, bucket)
+
+	// Verify the key starts with the bucket timestamp for delta temporality
+	expectedBucket := bucket.Unix()
+	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// Test Cumulative Temporality - should NOT include time bucket prefix
+	cumulativeConfig := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
+	}
+
+	cumulativeProcessor := &processorImp{
+		config:                                 *cumulativeConfig,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+	}
+
+	cumulativeKey := cumulativeProcessor.buildMetricKey(serviceName, span, nil, resourceAttr, bucket)
+
+	// Verify the key does NOT start with the bucket timestamp for cumulative temporality
+	assert.False(t, strings.HasPrefix(string(cumulativeKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// The cumulative key should start with the service name
+	assert.True(t, strings.HasPrefix(string(cumulativeKey), serviceName))
+}
+
+func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
+	// Test that buildCustomMetricKey conditionally adds time bucketing based on temporality
+
+	// Create a span with a specific start time
+	span := ptrace.NewSpan()
+	span.SetName("test-operation")
+	span.SetKind(ptrace.SpanKindClient)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+
+	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
+
+	resourceAttr := pcommon.NewMap()
+	serviceName := "test-service"
+	bucket := startTime.Truncate(time.Minute)
+	extraVals := []string{"example.com:8080"}
+
+	// Test Delta Temporality - should include time bucket prefix
+	deltaConfig := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
+	}
+
+	deltaProcessor := &processorImp{
+		config:                                 *deltaConfig,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+	}
+
+	deltaKey := deltaProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals, bucket)
+
+	// Verify the key starts with the bucket timestamp for delta temporality
+	expectedBucket := bucket.Unix()
+	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// Test Cumulative Temporality - should NOT include time bucket prefix
+	cumulativeConfig := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
+	}
+
+	cumulativeProcessor := &processorImp{
+		config:                                 *cumulativeConfig,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+	}
+
+	cumulativeKey := cumulativeProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals, bucket)
+
+	// Verify the key does NOT start with the bucket timestamp for cumulative temporality
+	assert.False(t, strings.HasPrefix(string(cumulativeKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// The cumulative key should start with the service name
+	assert.True(t, strings.HasPrefix(string(cumulativeKey), serviceName))
+}
