@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,7 @@ const (
 	resourcePrefix             = "resource_"
 	overflowServiceName        = "overflow_service"
 	overflowOperation          = "overflow_operation"
+	defaultTimeBucketInterval  = time.Minute
 )
 
 var (
@@ -64,6 +66,29 @@ var (
 		2, 4, 6, 8, 10, 50, 100, 200, 400, 800, 1000, 1400, 2000, 5000, 10_000, 15_000,
 	}
 )
+
+// parseBucketFromKeyOrNow parses the time bucket prefix from a metric key and returns the bucket start and end timestamps.
+// If the key doesn't have a time bucket prefix (backward compatibility), it uses the current time to compute the bucket.
+func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time) (start, end pcommon.Timestamp) {
+	s := string(k)
+	idx := strings.IndexByte(s, 0) // first separator
+	if idx <= 0 {
+		// Back-compat: no bucket prefix; use "now" as the bucket end.
+		bucketEnd := now.Truncate(interval).Add(interval)
+		bucketStart := bucketEnd.Add(-interval)
+		return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+	}
+	u, err := strconv.ParseInt(s[:idx], 10, 64)
+	if err != nil {
+		// Back-compat on parse failure
+		bucketEnd := now.Truncate(interval).Add(interval)
+		bucketStart := bucketEnd.Add(-interval)
+		return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+	}
+	bucketStart := time.Unix(u, 0)
+	bucketEnd := bucketStart.Add(interval)
+	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+}
 
 type exemplarData struct {
 	traceID pcommon.TraceID
@@ -199,6 +224,11 @@ func (h *exponentialHistogram) Observe(value float64) {
 func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor with config", zap.Any("config", config))
 	pConfig := config.(*Config)
+
+	// Set default time bucket interval if not specified
+	if pConfig.TimeBucketInterval == 0 {
+		pConfig.TimeBucketInterval = defaultTimeBucketInterval
+	}
 
 	bounds := defaultLatencyHistogramBucketsMs
 	if pConfig.LatencyHistogramBuckets != nil {
@@ -576,16 +606,17 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	mLatency.SetEmptyHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mLatency.Histogram().DataPoints()
 	dps.EnsureCapacity(len(p.histograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
-		dpLatency.SetStartTimestamp(p.startTimestamp)
-		dpLatency.SetTimestamp(timestamp)
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		dpLatency.SetStartTimestamp(start)
+		dpLatency.SetTimestamp(end)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
 		dpLatency.BucketCounts().FromRaw(hist.bucketCounts)
 		dpLatency.SetCount(hist.count)
 		dpLatency.SetSum(hist.sum)
-		setExemplars(hist.exemplarsData, timestamp, dpLatency.Exemplars())
+		setExemplars(hist.exemplarsData, end, dpLatency.Exemplars())
 
 		dimensions, err := p.getDimensionsByMetricKey(key)
 		if err != nil {
@@ -606,11 +637,12 @@ func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) erro
 	mExpLatency.SetEmptyExponentialHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mExpLatency.ExponentialHistogram().DataPoints()
 	dps.EnsureCapacity(len(p.expHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.expHistograms {
 		dp := dps.AppendEmpty()
-		dp.SetStartTimestamp(p.startTimestamp)
-		dp.SetTimestamp(timestamp)
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		dp.SetStartTimestamp(start)
+		dp.SetTimestamp(end)
 		expoHistToExponentialDataPoint(hist.histogram, dp)
 		dimensions, err := p.getDimensionsByExpHistogramKey(key)
 		if err != nil {
@@ -642,16 +674,17 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	callSumDps.EnsureCapacity(len(p.dbCallHistograms))
 	callCountDps.EnsureCapacity(len(p.dbCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, metric := range p.dbCallHistograms {
 		dpDBCallSum := callSumDps.AppendEmpty()
-		dpDBCallSum.SetStartTimestamp(p.startTimestamp)
-		dpDBCallSum.SetTimestamp(timestamp)
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		dpDBCallSum.SetStartTimestamp(start)
+		dpDBCallSum.SetTimestamp(end)
 		dpDBCallSum.SetDoubleValue(metric.sum)
 
 		dpDBCallCount := callCountDps.AppendEmpty()
-		dpDBCallCount.SetStartTimestamp(p.startTimestamp)
-		dpDBCallCount.SetTimestamp(timestamp)
+		dpDBCallCount.SetStartTimestamp(start)
+		dpDBCallCount.SetTimestamp(end)
 		dpDBCallCount.SetIntValue(int64(metric.count))
 
 		dimensions, err := p.getDimensionsByDBCallMetricKey(key)
@@ -683,16 +716,17 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 	callSumDps.EnsureCapacity(len(p.externalCallHistograms))
 	callCountDps.EnsureCapacity(len(p.externalCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, metric := range p.externalCallHistograms {
 		dpExternalCallSum := callSumDps.AppendEmpty()
-		dpExternalCallSum.SetStartTimestamp(p.startTimestamp)
-		dpExternalCallSum.SetTimestamp(timestamp)
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		dpExternalCallSum.SetStartTimestamp(start)
+		dpExternalCallSum.SetTimestamp(end)
 		dpExternalCallSum.SetDoubleValue(metric.sum)
 
 		dpExternalCallCount := callCountDps.AppendEmpty()
-		dpExternalCallCount.SetStartTimestamp(p.startTimestamp)
-		dpExternalCallCount.SetTimestamp(timestamp)
+		dpExternalCallCount.SetStartTimestamp(start)
+		dpExternalCallCount.SetTimestamp(end)
 		dpExternalCallCount.SetIntValue(int64(metric.count))
 
 		dimensions, err := p.getDimensionsByExternalCallMetricKey(key)
@@ -715,11 +749,12 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mCalls.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mCalls.Sum().DataPoints()
 	dps.EnsureCapacity(len(p.callHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.callHistograms {
 		dpCalls := dps.AppendEmpty()
-		dpCalls.SetStartTimestamp(p.startTimestamp)
-		dpCalls.SetTimestamp(timestamp)
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		dpCalls.SetStartTimestamp(start)
+		dpCalls.SetTimestamp(end)
 		dpCalls.SetIntValue(int64(hist.count))
 
 		dimensions, err := p.getDimensionsByCallMetricKey(key)
@@ -908,8 +943,14 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	if endTime > startTime {
 		latencyInMilliseconds = float64(endTime-startTime) / float64(time.Millisecond.Nanoseconds())
 	}
-	// Always reset the buffer before re-using.
+
+	// Compute bucket from span start timestamp
+	bucket := startTime.AsTime().Truncate(p.config.GetTimeBucketInterval())
+
+	// Build bucketed key for latency metrics
 	p.keyBuf.Reset()
+	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+	p.keyBuf.WriteString(metricKeySeparator)
 	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
 	key := metricKey(p.keyBuf.String())
 	p.cache(serviceName, span, key, resourceAttr)
@@ -917,13 +958,18 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	if p.config.EnableExpHistogram {
 		p.keyBuf.Reset()
+		p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+		p.keyBuf.WriteString(metricKeySeparator)
 		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
 		expKey := metricKey(p.keyBuf.String())
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
 		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
+	// Build bucketed key for call metrics
 	p.keyBuf.Reset()
+	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+	p.keyBuf.WriteString(metricKeySeparator)
 	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
 	callKey := metricKey(p.keyBuf.String())
 	p.callCache(serviceName, span, callKey, resourceAttr)
@@ -935,6 +981,8 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	if span.Kind() == ptrace.SpanKindClient && externalCallPresent {
 		extraVals := []string{remoteAddr}
 		p.keyBuf.Reset()
+		p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+		p.keyBuf.WriteString(metricKeySeparator)
 		buildCustomKey(p.keyBuf, serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
 		externalCallKey := metricKey(p.keyBuf.String())
 		extraDims := map[string]pcommon.Value{
@@ -947,6 +995,8 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	_, dbCallPresent := spanAttr.Get("db.system")
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
 		p.keyBuf.Reset()
+		p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+		p.keyBuf.WriteString(metricKeySeparator)
 		buildCustomKey(p.keyBuf, serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		dbCallKey := metricKey(p.keyBuf.String())
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)

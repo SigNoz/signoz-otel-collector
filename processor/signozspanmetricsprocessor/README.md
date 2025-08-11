@@ -45,6 +45,42 @@ Each metric will have _at least_ the following dimensions because they are commo
 
 This processor lets traces to continue through the pipeline unmodified.
 
+## Time-Bucketed Keys (Timestamp-Aware Metrics)
+
+The processor supports time-bucketed keys that enable timestamp-aware metrics. When enabled, spans are grouped into time buckets based on their start timestamp rather than when they are processed. This ensures that metrics align with the actual time when spans occurred, providing more accurate temporal correlation.
+
+### How it works
+
+1. **Time Bucketing**: Spans are grouped into time buckets based on their `StartTimestamp()` using the configured `time_bucket_interval`
+2. **Key Structure**: Time bucket information is prepended to metric keys: `<bucketStartUnix> | service | operation | span.kind | status.code | [dimensions...]`
+3. **Timestamp Alignment**: Metrics are exported with timestamps that reflect the actual time bucket when spans occurred
+4. **Backward Compatibility**: Legacy keys without time bucket prefixes are handled gracefully using current time
+
+### Benefits
+
+- **Temporal Accuracy**: Metrics appear at the correct time in dashboards, not when they were processed
+- **Late-Arriving Spans**: Spans that arrive minutes after generation are correctly attributed to their original time
+- **Correlation**: Better alignment between traces, metrics, and logs for debugging time-sensitive issues
+- **Delta Temporality**: Optimized for DELTA aggregation with bounded memory usage per flush cycle
+
+### Example Configuration
+
+```yaml
+processors:
+  signozspanmetrics/delta:
+    time_bucket_interval: 1m  # 1 minute buckets
+    metrics_exporter: signozclickhousemetrics
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    metrics_flush_interval: 60s
+```
+
+### Behavioral Notes
+
+- **Start-Time Bucketing**: Spans are attributed to the bucket of their start time, even if they cross minute boundaries
+- **No Lateness Window**: All encountered buckets in the current cycle are exported immediately
+- **Memory Usage**: Bounded per cycle - one key per (series × minute) encountered, then reset
+- **Out-of-Order**: Older minute spans arriving in later cycles may cause out-of-order writes (acceptable for DELTA)
+
 The following settings are required:
 
 - `metrics_exporter`: the name of the exporter that this processor will write metrics to. This exporter **must** be present in a pipeline.
@@ -76,3 +112,9 @@ The following settings can be optionally configured:
 - `aggregation_temporality`: Defines the aggregation temporality of the generated metrics. 
   One of either `AGGREGATION_TEMPORALITY_CUMULATIVE` or `AGGREGATION_TEMPORALITY_DELTA`.
   - Default: `AGGREGATION_TEMPORALITY_CUMULATIVE`
+- `time_bucket_interval`: Defines the time interval for bucketing spans based on their start timestamp.
+  Spans are grouped into time buckets based on when they started, not when they are processed.
+  This enables timestamp-aware metrics that align with the actual time when spans occurred.
+  - Default: `1m` (1 minute)
+  - Example: `30s`, `2m`, `5m`
+  - **Note**: This feature is designed for DELTA temporality and provides backward compatibility with legacy keys.

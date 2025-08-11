@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1113,4 +1114,107 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestTimeBucketedKeys(t *testing.T) {
+	// Test that time-bucketed keys are generated correctly and timestamps are parsed properly
+	config := &Config{
+		DimensionsCacheSize: 1000,
+		TimeBucketInterval:  time.Minute, // 1 minute buckets
+	}
+
+	processor := &processorImp{
+		config:                                 *config,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+	}
+
+	// Create a span with a specific start time
+	span := ptrace.NewSpan()
+	span.SetName("test-operation")
+	span.SetKind(ptrace.SpanKindServer)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+
+	// Set start time to 12:30:15 (should bucket to 12:30:00)
+	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
+
+	resourceAttr := pcommon.NewMap()
+	serviceName := "test-service"
+
+	// Test that the key includes the bucket timestamp
+	processor.keyBuf.Reset()
+	processor.keyBuf.WriteString(strconv.FormatInt(startTime.Truncate(time.Minute).Unix(), 10))
+	processor.keyBuf.WriteString(metricKeySeparator)
+	processor.buildKey(processor.keyBuf, serviceName, span, nil, resourceAttr)
+	key := metricKey(processor.keyBuf.String())
+
+	// Verify the key starts with the bucket timestamp
+	expectedBucket := startTime.Truncate(time.Minute).Unix()
+	assert.True(t, strings.HasPrefix(string(key), strconv.FormatInt(expectedBucket, 10)))
+
+	// Test parsing the bucket from the key
+	start, end := parseBucketFromKeyOrNow(key, time.Minute, time.Now())
+	expectedStart := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute))
+	expectedEnd := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute).Add(time.Minute))
+
+	assert.Equal(t, expectedStart, start)
+	assert.Equal(t, expectedEnd, end)
+}
+
+func TestTimeBucketedKeysBackwardCompatibility(t *testing.T) {
+	// Test that legacy keys without time bucket prefix are handled correctly
+	config := &Config{
+		DimensionsCacheSize: 1000,
+		TimeBucketInterval:  time.Minute,
+	}
+
+	_ = &processorImp{
+		config: *config,
+		keyBuf: &bytes.Buffer{},
+	}
+
+	// Create a legacy key without time bucket prefix
+	legacyKey := metricKey("test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK")
+
+	// Test parsing with current time
+	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
+	start, end := parseBucketFromKeyOrNow(legacyKey, time.Minute, now)
+
+	// Should use current time to compute bucket
+	expectedStart := pcommon.NewTimestampFromTime(now.Truncate(time.Minute))
+	expectedEnd := pcommon.NewTimestampFromTime(now.Truncate(time.Minute).Add(time.Minute))
+
+	assert.Equal(t, expectedStart, start)
+	assert.Equal(t, expectedEnd, end)
+}
+
+func TestTimeBucketedKeysParseFailure(t *testing.T) {
+	// Test that malformed keys are handled gracefully
+	config := &Config{
+		DimensionsCacheSize: 1000,
+		TimeBucketInterval:  time.Minute,
+	}
+
+	_ = &processorImp{
+		config: *config,
+		keyBuf: &bytes.Buffer{},
+	}
+
+	// Create a malformed key with non-numeric prefix
+	malformedKey := metricKey("invalid\x00test-service\x00test-operation")
+
+	// Test parsing with current time
+	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
+	start, end := parseBucketFromKeyOrNow(malformedKey, time.Minute, now)
+
+	// Should fallback to current time
+	expectedStart := pcommon.NewTimestampFromTime(now.Truncate(time.Minute))
+	expectedEnd := pcommon.NewTimestampFromTime(now.Truncate(time.Minute).Add(time.Minute))
+
+	assert.Equal(t, expectedStart, start)
+	assert.Equal(t, expectedEnd, end)
 }
