@@ -6,41 +6,17 @@
 
 The following telemetry is emitted by this component.
 
-### otelcol_connector.produced.items.failed.count
+### otelcol_connector.produced.items.count
 
-Number of datapoints failed to be exported from connector
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| 1 | Sum | Int | true |
-
-### otelcol_connector.produced.items.sent.count
-
-Number of datapoints successfully exported from connector
+Number of items produced from connector
 
 | Unit | Metric Type | Value Type | Monotonic |
 | ---- | ----------- | ---------- | --------- |
 | 1 | Sum | Int | true |
 
-### otelcol_connector.received.accepted.items.log.count
+### otelcol_connector.received.items.count
 
-Number of log records successfully received  from the upstream pipeline
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| 1 | Sum | Int | true |
-
-### otelcol_connector.received.accepted.items.metric.datapoint.count
-
-Number of metric datapoints successfully received from the upstream pipeline
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| 1 | Sum | Int | true |
-
-### otelcol_connector.received.accepted.items.span.count
-
-Number of spans successfully received from the upstream pipeline
+Number of items received from the upstream pipeline
 
 | Unit | Metric Type | Value Type | Monotonic |
 | ---- | ----------- | ---------- | --------- |

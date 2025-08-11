@@ -23,14 +23,11 @@ func Tracer(settings component.TelemetrySettings) trace.Tracer {
 // TelemetryBuilder provides an interface for components to report telemetry
 // as defined in metadata and user config.
 type TelemetryBuilder struct {
-	meter                                              metric.Meter
-	mu                                                 sync.Mutex
-	registrations                                      []metric.Registration
-	ConnectorProducedItemsFailedCount                  metric.Int64Counter
-	ConnectorProducedItemsSentCount                    metric.Int64Counter
-	ConnectorReceivedAcceptedItemsLogCount             metric.Int64Counter
-	ConnectorReceivedAcceptedItemsMetricDatapointCount metric.Int64Counter
-	ConnectorReceivedAcceptedItemsSpanCount            metric.Int64Counter
+	meter                       metric.Meter
+	mu                          sync.Mutex
+	registrations               []metric.Registration
+	ConnectorProducedItemsCount metric.Int64Counter
+	ConnectorReceivedItemsCount metric.Int64Counter
 }
 
 // TelemetryBuilderOption applies changes to default builder.
@@ -62,33 +59,15 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	}
 	builder.meter = Meter(settings)
 	var err, errs error
-	builder.ConnectorProducedItemsFailedCount, err = builder.meter.Int64Counter(
-		"otelcol_connector.produced.items.failed.count",
-		metric.WithDescription("Number of datapoints failed to be exported from connector"),
+	builder.ConnectorProducedItemsCount, err = builder.meter.Int64Counter(
+		"otelcol_connector.produced.items.count",
+		metric.WithDescription("Number of items produced from connector"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)
-	builder.ConnectorProducedItemsSentCount, err = builder.meter.Int64Counter(
-		"otelcol_connector.produced.items.sent.count",
-		metric.WithDescription("Number of datapoints successfully exported from connector"),
-		metric.WithUnit("1"),
-	)
-	errs = errors.Join(errs, err)
-	builder.ConnectorReceivedAcceptedItemsLogCount, err = builder.meter.Int64Counter(
-		"otelcol_connector.received.accepted.items.log.count",
-		metric.WithDescription("Number of log records successfully received  from the upstream pipeline"),
-		metric.WithUnit("1"),
-	)
-	errs = errors.Join(errs, err)
-	builder.ConnectorReceivedAcceptedItemsMetricDatapointCount, err = builder.meter.Int64Counter(
-		"otelcol_connector.received.accepted.items.metric.datapoint.count",
-		metric.WithDescription("Number of metric datapoints successfully received from the upstream pipeline"),
-		metric.WithUnit("1"),
-	)
-	errs = errors.Join(errs, err)
-	builder.ConnectorReceivedAcceptedItemsSpanCount, err = builder.meter.Int64Counter(
-		"otelcol_connector.received.accepted.items.span.count",
-		metric.WithDescription("Number of spans successfully received from the upstream pipeline"),
+	builder.ConnectorReceivedItemsCount, err = builder.meter.Int64Counter(
+		"otelcol_connector.received.items.count",
+		metric.WithDescription("Number of items received from the upstream pipeline"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)

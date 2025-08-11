@@ -9,36 +9,15 @@ tests:
 
 telemetry:
   metrics:
-    connector.received.accepted.items.log.count:
-      description: Number of log records successfully received  from the upstream pipeline
+    connector.received.items.count:
+      description: Number of items received from the upstream pipeline
       unit: "1"
       enabled: true
       sum:
         value_type: int
         monotonic: true
-    connector.received.accepted.items.span.count:
-      description: Number of spans successfully received from the upstream pipeline
-      unit: "1"
-      enabled: true
-      sum:
-        value_type: int
-        monotonic: true
-    connector.received.accepted.items.metric.datapoint.count:
-      description: Number of metric datapoints successfully received from the upstream pipeline
-      unit: "1"
-      enabled: true
-      sum:
-        value_type: int
-        monotonic: true
-    connector.produced.items.sent.count:
-      description: Number of datapoints successfully exported from connector
-      unit: "1"
-      enabled: true
-      sum:
-        value_type: int
-        monotonic: true
-    connector.produced.items.failed.count:
-      description: Number of datapoints failed to be exported from connector
+    connector.produced.items.count:
+      description: Number of items produced from connector
       unit: "1"
       enabled: true
       sum:

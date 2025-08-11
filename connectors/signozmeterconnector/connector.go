@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
@@ -108,19 +110,43 @@ func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 
 func (meterConnector *meterConnector) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	meterConnector.aggregateMeterMetricsFromTraces(traces)
-	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsSpanCount.Add(ctx, int64(traces.SpanCount()))
+	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
+		ctx,
+		int64(traces.SpanCount()),
+		metric.WithAttributeSet(
+			attribute.NewSet(
+				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
+				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("traces")},
+			)),
+	)
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
 	meterConnector.aggregateMeterMetricsFromMetrics(metrics)
-	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsMetricDatapointCount.Add(ctx, int64(metrics.DataPointCount()))
+	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
+		ctx,
+		int64(metrics.DataPointCount()),
+		metric.WithAttributeSet(
+			attribute.NewSet(
+				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
+				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("metrics")},
+			)),
+	)
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeLogs(ctx context.Context, logs plog.Logs) error {
 	meterConnector.aggregateMeterMetricsFromLogs(logs)
-	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsLogCount.Add(ctx, int64(logs.LogRecordCount()))
+	meterConnector.telemetryBuilder.ConnectorReceivedItemsCount.Add(
+		ctx,
+		int64(logs.LogRecordCount()),
+		metric.WithAttributeSet(
+			attribute.NewSet(
+				attribute.KeyValue{Key: "accepted", Value: attribute.BoolValue(true)},
+				attribute.KeyValue{Key: "signal", Value: attribute.StringValue("logs")},
+			)),
+	)
 	return nil
 }
 
@@ -138,11 +164,19 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) error {
 	}
 	if err := meterconnector.metricsConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		meterconnector.logger.Error("failed ConsumeMetrics", zap.Error(err))
-		meterconnector.telemetryBuilder.ConnectorProducedItemsFailedCount.Add(ctx, int64(metrics.DataPointCount()))
+		meterconnector.telemetryBuilder.ConnectorProducedItemsCount.Add(
+			ctx,
+			int64(metrics.DataPointCount()),
+			metric.WithAttributeSet(attribute.NewSet(attribute.KeyValue{Key: "sent", Value: attribute.BoolValue(false)})),
+		)
 		return err
 	}
 
-	meterconnector.telemetryBuilder.ConnectorProducedItemsSentCount.Add(ctx, int64(metrics.DataPointCount()))
+	meterconnector.telemetryBuilder.ConnectorProducedItemsCount.Add(
+		ctx,
+		int64(metrics.DataPointCount()),
+		metric.WithAttributeSet(attribute.NewSet(attribute.KeyValue{Key: "sent", Value: attribute.BoolValue(true)})),
+	)
 	return nil
 }
 

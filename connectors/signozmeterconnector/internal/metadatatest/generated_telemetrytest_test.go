@@ -19,24 +19,12 @@ func TestSetupTelemetry(t *testing.T) {
 	tb, err := metadata.NewTelemetryBuilder(testTel.NewTelemetrySettings())
 	require.NoError(t, err)
 	defer tb.Shutdown()
-	tb.ConnectorProducedItemsFailedCount.Add(context.Background(), 1)
-	tb.ConnectorProducedItemsSentCount.Add(context.Background(), 1)
-	tb.ConnectorReceivedAcceptedItemsLogCount.Add(context.Background(), 1)
-	tb.ConnectorReceivedAcceptedItemsMetricDatapointCount.Add(context.Background(), 1)
-	tb.ConnectorReceivedAcceptedItemsSpanCount.Add(context.Background(), 1)
-	AssertEqualConnectorProducedItemsFailedCount(t, testTel,
+	tb.ConnectorProducedItemsCount.Add(context.Background(), 1)
+	tb.ConnectorReceivedItemsCount.Add(context.Background(), 1)
+	AssertEqualConnectorProducedItemsCount(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
-	AssertEqualConnectorProducedItemsSentCount(t, testTel,
-		[]metricdata.DataPoint[int64]{{Value: 1}},
-		metricdatatest.IgnoreTimestamp())
-	AssertEqualConnectorReceivedAcceptedItemsLogCount(t, testTel,
-		[]metricdata.DataPoint[int64]{{Value: 1}},
-		metricdatatest.IgnoreTimestamp())
-	AssertEqualConnectorReceivedAcceptedItemsMetricDatapointCount(t, testTel,
-		[]metricdata.DataPoint[int64]{{Value: 1}},
-		metricdatatest.IgnoreTimestamp())
-	AssertEqualConnectorReceivedAcceptedItemsSpanCount(t, testTel,
+	AssertEqualConnectorReceivedItemsCount(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 

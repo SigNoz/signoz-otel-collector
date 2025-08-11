@@ -21,10 +21,10 @@ func NewSettings(tt *componenttest.Telemetry) connector.Settings {
 	return set
 }
 
-func AssertEqualConnectorProducedItemsFailedCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualConnectorProducedItemsCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol_connector.produced.items.failed.count",
-		Description: "Number of datapoints failed to be exported from connector",
+		Name:        "otelcol_connector.produced.items.count",
+		Description: "Number of items produced from connector",
 		Unit:        "1",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -32,15 +32,15 @@ func AssertEqualConnectorProducedItemsFailedCount(t *testing.T, tt *componenttes
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol_connector.produced.items.failed.count")
+	got, err := tt.GetMetric("otelcol_connector.produced.items.count")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualConnectorProducedItemsSentCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualConnectorReceivedItemsCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol_connector.produced.items.sent.count",
-		Description: "Number of datapoints successfully exported from connector",
+		Name:        "otelcol_connector.received.items.count",
+		Description: "Number of items received from the upstream pipeline",
 		Unit:        "1",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
@@ -48,55 +48,7 @@ func AssertEqualConnectorProducedItemsSentCount(t *testing.T, tt *componenttest.
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol_connector.produced.items.sent.count")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualConnectorReceivedAcceptedItemsLogCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_connector.received.accepted.items.log.count",
-		Description: "Number of log records successfully received  from the upstream pipeline",
-		Unit:        "1",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_connector.received.accepted.items.log.count")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualConnectorReceivedAcceptedItemsMetricDatapointCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_connector.received.accepted.items.metric.datapoint.count",
-		Description: "Number of metric datapoints successfully received from the upstream pipeline",
-		Unit:        "1",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_connector.received.accepted.items.metric.datapoint.count")
-	require.NoError(t, err)
-	metricdatatest.AssertEqual(t, want, got, opts...)
-}
-
-func AssertEqualConnectorReceivedAcceptedItemsSpanCount(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
-	want := metricdata.Metrics{
-		Name:        "otelcol_connector.received.accepted.items.span.count",
-		Description: "Number of spans successfully received from the upstream pipeline",
-		Unit:        "1",
-		Data: metricdata.Sum[int64]{
-			Temporality: metricdata.CumulativeTemporality,
-			IsMonotonic: true,
-			DataPoints:  dps,
-		},
-	}
-	got, err := tt.GetMetric("otelcol_connector.received.accepted.items.span.count")
+	got, err := tt.GetMetric("otelcol_connector.received.items.count")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
