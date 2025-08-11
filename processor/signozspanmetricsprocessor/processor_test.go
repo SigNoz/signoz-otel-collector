@@ -1219,8 +1219,8 @@ func TestTimeBucketedKeysParseFailure(t *testing.T) {
 	assert.Equal(t, expectedEnd, end)
 }
 
-func TestFormKeyBufferPrefixWithStartBucket(t *testing.T) {
-	// Test that writeBucketPrefix correctly writes the bucket timestamp and separator
+func TestAddTimeToKeyBuf(t *testing.T) {
+	// Test that AddTimeToKeyBuf correctly writes the bucket timestamp and separator
 	processor := &processorImp{
 		keyBuf: &bytes.Buffer{},
 	}
@@ -1228,12 +1228,18 @@ func TestFormKeyBufferPrefixWithStartBucket(t *testing.T) {
 	// Create a specific time for testing
 	testTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
 	expectedUnix := testTime.Unix()
-	expectedString := strconv.FormatInt(expectedUnix, 10) + metricKeySeparator
 
-	// Call the helper method
-	processor.FormKeyBufferPrefixWithStartBucket(testTime)
-
-	// Verify the result
+	// Test with separator (appendSeparator = true)
+	processor.keyBuf.Reset()
+	expectedStringWithSeparator := strconv.FormatInt(expectedUnix, 10) + metricKeySeparator
+	processor.AddTimeToKeyBuf(testTime, true)
 	result := processor.keyBuf.String()
-	assert.Equal(t, expectedString, result)
+	assert.Equal(t, expectedStringWithSeparator, result)
+
+	// Test without separator (appendSeparator = false)
+	processor.keyBuf.Reset()
+	expectedStringWithoutSeparator := strconv.FormatInt(expectedUnix, 10)
+	processor.AddTimeToKeyBuf(testTime, false)
+	result = processor.keyBuf.String()
+	assert.Equal(t, expectedStringWithoutSeparator, result)
 }

@@ -90,10 +90,13 @@ func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time)
 	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
 }
 
-// FormKeyBufferPrefixWithStartBucket writes the bucket timestamp prefix to the key buffer.
-func (p *processorImp) FormKeyBufferPrefixWithStartBucket(bucket time.Time) {
+// AddTimeToKeyBuf writes the bucket timestamp prefix to the key buffer.
+// If appendSeparator is true, it also adds the metric key separator.
+func (p *processorImp) AddTimeToKeyBuf(bucket time.Time, appendSeparator bool) {
 	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
-	p.keyBuf.WriteString(metricKeySeparator)
+	if appendSeparator {
+		p.keyBuf.WriteString(metricKeySeparator)
+	}
 }
 
 type exemplarData struct {
@@ -955,7 +958,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	// Build bucketed key for latency metrics
 	p.keyBuf.Reset()
-	p.FormKeyBufferPrefixWithStartBucket(bucket)
+	p.AddTimeToKeyBuf(bucket, true)
 	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
 	key := metricKey(p.keyBuf.String())
 	p.cache(serviceName, span, key, resourceAttr)
@@ -963,7 +966,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	if p.config.EnableExpHistogram {
 		p.keyBuf.Reset()
-		p.FormKeyBufferPrefixWithStartBucket(bucket)
+		p.AddTimeToKeyBuf(bucket, true)
 		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
 		expKey := metricKey(p.keyBuf.String())
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
@@ -972,7 +975,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	// Build bucketed key for call metrics
 	p.keyBuf.Reset()
-	p.FormKeyBufferPrefixWithStartBucket(bucket)
+	p.AddTimeToKeyBuf(bucket, true)
 	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
 	callKey := metricKey(p.keyBuf.String())
 	p.callCache(serviceName, span, callKey, resourceAttr)
@@ -984,7 +987,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	if span.Kind() == ptrace.SpanKindClient && externalCallPresent {
 		extraVals := []string{remoteAddr}
 		p.keyBuf.Reset()
-		p.FormKeyBufferPrefixWithStartBucket(bucket)
+		p.AddTimeToKeyBuf(bucket, true)
 		buildCustomKey(p.keyBuf, serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
 		externalCallKey := metricKey(p.keyBuf.String())
 		extraDims := map[string]pcommon.Value{
@@ -997,7 +1000,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	_, dbCallPresent := spanAttr.Get("db.system")
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
 		p.keyBuf.Reset()
-		p.FormKeyBufferPrefixWithStartBucket(bucket)
+		p.AddTimeToKeyBuf(bucket, true)
 		buildCustomKey(p.keyBuf, serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		dbCallKey := metricKey(p.keyBuf.String())
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
