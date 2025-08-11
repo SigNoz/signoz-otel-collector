@@ -1218,3 +1218,22 @@ func TestTimeBucketedKeysParseFailure(t *testing.T) {
 	assert.Equal(t, expectedStart, start)
 	assert.Equal(t, expectedEnd, end)
 }
+
+func TestFormKeyBufferPrefixWithStartBucket(t *testing.T) {
+	// Test that writeBucketPrefix correctly writes the bucket timestamp and separator
+	processor := &processorImp{
+		keyBuf: &bytes.Buffer{},
+	}
+
+	// Create a specific time for testing
+	testTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	expectedUnix := testTime.Unix()
+	expectedString := strconv.FormatInt(expectedUnix, 10) + metricKeySeparator
+
+	// Call the helper method
+	processor.FormKeyBufferPrefixWithStartBucket(testTime)
+
+	// Verify the result
+	result := processor.keyBuf.String()
+	assert.Equal(t, expectedString, result)
+}
