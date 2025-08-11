@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	v1 "github.com/SigNoz/signoz-otel-collector/pkg/metering/v1"
 	"github.com/google/uuid"
@@ -34,6 +35,7 @@ type meterConnector struct {
 	ticker                 *time.Ticker
 	done                   chan struct{}
 	wg                     sync.WaitGroup
+	telemetryBuilder       *metadata.TelemetryBuilder
 }
 
 func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
@@ -46,8 +48,13 @@ func newDimensionsMap(cfgDims []Dimension) map[string]struct{} {
 }
 
 // initialize the signozmeterconnector
-func newConnector(logger *zap.Logger, config component.Config) (*meterConnector, error) {
+func newConnector(logger *zap.Logger, settings component.TelemetrySettings, config component.Config) (*meterConnector, error) {
 	cfg := config.(*Config)
+
+	telemetryBuilder, err := metadata.NewTelemetryBuilder(settings)
+	if err != nil {
+		return nil, err
+	}
 
 	return &meterConnector{
 		logger:                 logger,
@@ -60,6 +67,7 @@ func newConnector(logger *zap.Logger, config component.Config) (*meterConnector,
 		aggregatedMeterMetrics: newAggregatedMeterMetrics(),
 		ticker:                 time.NewTicker(cfg.MetricsFlushInterval),
 		done:                   make(chan struct{}),
+		telemetryBuilder:       telemetryBuilder,
 	}, nil
 }
 
@@ -100,16 +108,19 @@ func (meterconnector *meterConnector) Shutdown(ctx context.Context) error {
 
 func (meterConnector *meterConnector) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	meterConnector.aggregateMeterMetricsFromTraces(traces)
+	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsSpanCount.Add(ctx, int64(traces.SpanCount()))
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
 	meterConnector.aggregateMeterMetricsFromMetrics(metrics)
+	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsMetricDatapointCount.Add(ctx, int64(metrics.DataPointCount()))
 	return nil
 }
 
 func (meterConnector *meterConnector) ConsumeLogs(ctx context.Context, logs plog.Logs) error {
 	meterConnector.aggregateMeterMetricsFromLogs(logs)
+	meterConnector.telemetryBuilder.ConnectorReceivedAcceptedItemsLogCount.Add(ctx, int64(logs.LogRecordCount()))
 	return nil
 }
 
@@ -127,9 +138,11 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) error {
 	}
 	if err := meterconnector.metricsConsumer.ConsumeMetrics(ctx, metrics); err != nil {
 		meterconnector.logger.Error("failed ConsumeMetrics", zap.Error(err))
+		meterconnector.telemetryBuilder.ConnectorProducedItemsFailedCount.Add(ctx, int64(metrics.DataPointCount()))
 		return err
 	}
 
+	meterconnector.telemetryBuilder.ConnectorProducedItemsSentCount.Add(ctx, int64(metrics.DataPointCount()))
 	return nil
 }
 

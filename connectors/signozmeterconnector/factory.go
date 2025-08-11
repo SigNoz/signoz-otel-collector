@@ -46,7 +46,7 @@ func createDefaultConfig() component.Config {
 
 // createTracesToMetrics creates a traces to metrics connector based on provided config.
 func createTracesToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Traces, error) {
-	c, err := newConnector(params.Logger, cfg)
+	c, err := newConnector(params.Logger, params.TelemetrySettings, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func createTracesToMetrics(ctx context.Context, params connector.Settings, cfg c
 
 // createLogsToMetrics creates a logs to metrics connector based on provided config.
 func createLogsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Logs, error) {
-	c, err := newConnector(params.Logger, cfg)
+	c, err := newConnector(params.Logger, params.TelemetrySettings, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func createLogsToMetrics(ctx context.Context, params connector.Settings, cfg com
 
 // createMetricsToMetrics creates a metrics to metrics connector based on provided config.
 func createMetricsToMetrics(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Metrics, error) {
-	c, err := newConnector(params.Logger, cfg)
+	c, err := newConnector(params.Logger, params.TelemetrySettings, cfg)
 	if err != nil {
 		return nil, err
 	}

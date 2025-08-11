@@ -190,7 +190,7 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: tc.Dimensions, MetricsFlushInterval: time.Second})
+		connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: tc.Dimensions, MetricsFlushInterval: time.Second})
 		require.NoError(t, err)
 
 		expectedDimensionsMap := pcommon.NewMap()
@@ -208,7 +208,7 @@ func TestBuildDimensionsMapFromResourceAttributes(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromTraces(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testSpans := ptracesgen.Generate(ptracesgen.WithSpanCount(10), ptracesgen.WithResourceAttributeStringValue("unknown_service"))
@@ -228,7 +228,7 @@ func TestAggregateMeterMetricsFromTraces(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromMultiTraces(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testSpans := ptracesgen.Generate(ptracesgen.WithSpanCount(10), ptracesgen.WithResourceAttributeStringValue("unknown_service"))
@@ -250,7 +250,7 @@ func TestAggregateMeterMetricsFromMultiTraces(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testMetrics := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
@@ -273,7 +273,7 @@ func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromMultiMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.attr_0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testMetrics := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
@@ -298,7 +298,7 @@ func TestAggregateMeterMetricsFromMultiMetrics(t *testing.T) {
 }
 
 func TestAggregateMeterMetricsFromLogs(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testLogs := plogsgen.Generate(plogsgen.WithLogRecordCount(10), plogsgen.WithResourceAttributeStringValue("unknown_service"))
@@ -318,7 +318,7 @@ func TestAggregateMeterMetricsFromLogs(t *testing.T) {
 
 }
 func TestAggregateMeterMetricsFromMultipleLogs(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	testLogs := plogsgen.Generate(plogsgen.WithLogRecordCount(10), plogsgen.WithResourceAttributeStringValue("unknown_service"))
@@ -341,7 +341,7 @@ func TestAggregateMeterMetricsFromMultipleLogs(t *testing.T) {
 }
 
 func TestCollectTraceMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
@@ -370,7 +370,7 @@ func TestCollectTraceMeterMetrics(t *testing.T) {
 }
 
 func TestCollectMetricMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
@@ -398,7 +398,7 @@ func TestCollectMetricMeterMetrics(t *testing.T) {
 }
 
 func TestCollectLogMeterMetrics(t *testing.T) {
-	connector, err := newConnector(zaptest.NewLogger(t), &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
+	connector, err := newConnector(zaptest.NewLogger(t), connectortest.NewNopSettings(typ).TelemetrySettings, &Config{Dimensions: []Dimension{{Name: "resource.0"}}, MetricsFlushInterval: time.Second})
 	require.NoError(t, err)
 
 	scopeMetrics := pmetric.NewScopeMetrics()
