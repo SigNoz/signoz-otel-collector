@@ -68,22 +68,19 @@ var (
 )
 
 // parseBucketFromKeyOrNow parses the time bucket prefix from a metric key and returns the bucket start and end timestamps.
-// If the key doesn't have a time bucket prefix (backward compatibility), it uses the current time to compute the bucket.
-func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time) (start, end pcommon.Timestamp) {
+// If the key doesn't have a time bucket prefix (backward compatibility), it uses the processor start time and current time.
+func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time, processorStartTime pcommon.Timestamp) (start, end pcommon.Timestamp) {
 	s := string(k)
 	idx := strings.IndexByte(s, 0) // first separator
 	if idx <= 0 {
-		// No bucket prefix (cumulative temporality or back-compat); use "now" as the bucket end.
-		bucketEnd := now.Truncate(interval).Add(interval)
-		bucketStart := bucketEnd.Add(-interval)
-		return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+		// No bucket prefix (cumulative temporality or back-compat); use processor start time and current time.
+		// This maintains the original behavior: StartTimestamp = processor start, Timestamp = now
+		return processorStartTime, pcommon.NewTimestampFromTime(now)
 	}
 	u, err := strconv.ParseInt(s[:idx], 10, 64)
 	if err != nil {
-		// Back-compat on parse failure
-		bucketEnd := now.Truncate(interval).Add(interval)
-		bucketStart := bucketEnd.Add(-interval)
-		return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+		// Back-compat on parse failure; use processor start time and current time
+		return processorStartTime, pcommon.NewTimestampFromTime(now)
 	}
 	bucketStart := time.Unix(u, 0)
 	bucketEnd := bucketStart.Add(interval)
@@ -648,7 +645,7 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpLatency.SetStartTimestamp(start)
 		dpLatency.SetTimestamp(end)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
@@ -679,7 +676,7 @@ func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) erro
 
 	for key, hist := range p.expHistograms {
 		dp := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dp.SetStartTimestamp(start)
 		dp.SetTimestamp(end)
 		expoHistToExponentialDataPoint(hist.histogram, dp)
@@ -716,7 +713,7 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, metric := range p.dbCallHistograms {
 		dpDBCallSum := callSumDps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpDBCallSum.SetStartTimestamp(start)
 		dpDBCallSum.SetTimestamp(end)
 		dpDBCallSum.SetDoubleValue(metric.sum)
@@ -758,7 +755,7 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 	for key, metric := range p.externalCallHistograms {
 		dpExternalCallSum := callSumDps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpExternalCallSum.SetStartTimestamp(start)
 		dpExternalCallSum.SetTimestamp(end)
 		dpExternalCallSum.SetDoubleValue(metric.sum)
@@ -791,7 +788,7 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, hist := range p.callHistograms {
 		dpCalls := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now())
+		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpCalls.SetStartTimestamp(start)
 		dpCalls.SetTimestamp(end)
 		dpCalls.SetIntValue(int64(hist.count))

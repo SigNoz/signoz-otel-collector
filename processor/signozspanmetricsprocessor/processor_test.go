@@ -1120,7 +1120,12 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 }
 
 func TestTimeBucketedKeys(t *testing.T) {
-	// Test that time-bucketed keys are generated correctly and timestamps are parsed properly
+	// Tests end-to-end time-bucketed key generation and parsing for DELTA temporality.
+	// Verifies that:
+	// 1. Span start time is correctly truncated to time bucket boundary (e.g., 12:30:15 -> 12:30:00)
+	// 2. Time bucket prefix (Unix timestamp) is properly prepended to metric keys
+	// 3. parseBucketFromKeyOrNow correctly extracts bucket start/end times from prefixed keys
+	// This validates the core time bucketing functionality that enables timestamp-aware metrics
 	mexp := &mocks.MetricsExporter{}
 	tcon := &mocks.TracesConsumer{}
 	logger := zap.NewNop()
@@ -1155,7 +1160,8 @@ func TestTimeBucketedKeys(t *testing.T) {
 	assert.True(t, strings.HasPrefix(string(key), strconv.FormatInt(expectedBucket, 10)))
 
 	// Test parsing the bucket from the key
-	start, end := parseBucketFromKeyOrNow(key, time.Minute, time.Now())
+	testProcessorStartTime := pcommon.NewTimestampFromTime(time.Now().Add(-time.Hour)) // 1 hour ago
+	start, end := parseBucketFromKeyOrNow(key, time.Minute, time.Now(), testProcessorStartTime)
 	expectedStart := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute))
 	expectedEnd := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute).Add(time.Minute))
 
@@ -1164,7 +1170,12 @@ func TestTimeBucketedKeys(t *testing.T) {
 }
 
 func TestTimeBucketedKeysBackwardCompatibility(t *testing.T) {
-	// Test that legacy keys without time bucket prefix are handled correctly
+	// Tests backward compatibility for legacy metric keys that lack time bucket prefixes.
+	// Verifies that:
+	// 1. Keys without timestamp prefix are correctly identified (idx <= 0)
+	// 2. parseBucketFromKeyOrNow falls back to processor start time + current time
+	// 3. Legacy behavior is preserved: StartTimestamp = processor start, Timestamp = now
+	// This ensures existing deployments continue working after time bucketing feature introduction
 	config := &Config{
 		DimensionsCacheSize: 1000,
 		TimeBucketInterval:  time.Minute,
@@ -1180,18 +1191,24 @@ func TestTimeBucketedKeysBackwardCompatibility(t *testing.T) {
 
 	// Test parsing with current time
 	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
-	start, end := parseBucketFromKeyOrNow(legacyKey, time.Minute, now)
+	processorStartTime := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)) // 1.5 hours ago
+	start, end := parseBucketFromKeyOrNow(legacyKey, time.Minute, now, processorStartTime)
 
-	// Should use current time to compute bucket
-	expectedStart := pcommon.NewTimestampFromTime(now.Truncate(time.Minute))
-	expectedEnd := pcommon.NewTimestampFromTime(now.Truncate(time.Minute).Add(time.Minute))
+	// Should use processor start time and current time (not bucket computation)
+	expectedStart := processorStartTime
+	expectedEnd := pcommon.NewTimestampFromTime(now)
 
 	assert.Equal(t, expectedStart, start)
 	assert.Equal(t, expectedEnd, end)
 }
 
 func TestTimeBucketedKeysParseFailure(t *testing.T) {
-	// Test that malformed keys are handled gracefully
+	// Tests graceful handling of malformed time bucket prefixes in metric keys.
+	// Verifies that:
+	// 1. Keys with non-numeric timestamp prefixes are detected as parse failures
+	// 2. parseBucketFromKeyOrNow falls back to processor start time + current time
+	// 3. Invalid keys don't crash the system but use safe fallback behavior
+	// This ensures robustness against corrupted or manually crafted metric keys
 	config := &Config{
 		DimensionsCacheSize: 1000,
 		TimeBucketInterval:  time.Minute,
@@ -1207,18 +1224,23 @@ func TestTimeBucketedKeysParseFailure(t *testing.T) {
 
 	// Test parsing with current time
 	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
-	start, end := parseBucketFromKeyOrNow(malformedKey, time.Minute, now)
+	processorStartTime := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)) // 1.5 hours ago
+	start, end := parseBucketFromKeyOrNow(malformedKey, time.Minute, now, processorStartTime)
 
-	// Should fallback to current time
-	expectedStart := pcommon.NewTimestampFromTime(now.Truncate(time.Minute))
-	expectedEnd := pcommon.NewTimestampFromTime(now.Truncate(time.Minute).Add(time.Minute))
+	// Should fallback to processor start time and current time (not bucket computation)
+	expectedStart := processorStartTime
+	expectedEnd := pcommon.NewTimestampFromTime(now)
 
 	assert.Equal(t, expectedStart, start)
 	assert.Equal(t, expectedEnd, end)
 }
 
 func TestAddTimeToKeyBuf(t *testing.T) {
-	// Test that AddTimeToKeyBuf correctly writes the bucket timestamp and separator
+	// Tests the AddTimeToKeyBuf helper method that writes time bucket prefixes to metric keys.
+	// Verifies that:
+	// 1. Unix timestamp is correctly converted to string and written to buffer
+	// 2. Metric separator (\x00) is conditionally appended based on appendSeparator parameter
+	// 3. Buffer contents match expected format for time-bucketed metric keys
 	processor := &processorImp{
 		keyBuf: &bytes.Buffer{},
 	}
@@ -1243,7 +1265,12 @@ func TestAddTimeToKeyBuf(t *testing.T) {
 }
 
 func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
-	// Test that buildMetricKey conditionally adds time bucketing based on temporality
+	// Tests conditional time bucketing in buildMetricKey based on aggregation temporality.
+	// Verifies that:
+	// 1. DELTA temporality: metric keys include time bucket prefix (timestamp + separator)
+	// 2. CUMULATIVE temporality: metric keys do NOT include time bucket prefix (memory optimization)
+	// 3. Same input span produces different key formats depending on temporality setting
+	// This ensures time bucketing only applies when memory usage is bounded (delta mode)
 
 	// Create a span with a specific start time
 	span := ptrace.NewSpan()
@@ -1287,7 +1314,12 @@ func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
 }
 
 func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
-	// Test that buildCustomMetricKey conditionally adds time bucketing based on temporality
+	// Tests conditional time bucketing in buildCustomMetricKey (for external calls, DB calls, etc.).
+	// Verifies that:
+	// 1. DELTA temporality: custom metric keys include time bucket prefix
+	// 2. CUMULATIVE temporality: custom metric keys do NOT include time bucket prefix
+	// 3. Extra values (like external endpoints) are preserved in both temporality modes
+	// This ensures consistent time bucketing behavior across all metric key types
 
 	// Create a span with a specific start time
 	span := ptrace.NewSpan()
@@ -1332,8 +1364,13 @@ func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
 }
 
 func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
-	// Test that time bucketing works correctly with custom span start/end times
-	// This test verifies that spans are properly grouped into time buckets based on their start times
+	// Tests comprehensive time bucketing behavior with multiple spans across different time buckets.
+	// Verifies that:
+	// 1. Spans are correctly grouped into 1-minute time buckets based on their start timestamps
+	// 2. Spans crossing bucket boundaries are attributed to their start time bucket
+	// 3. DELTA temporality creates separate histogram entries per time bucket
+	// 4. CUMULATIVE temporality avoids time bucketing (single histogram entry, no memory growth)
+	// This validates that time bucketing properly segregates metrics by temporal windows
 
 	// Configure processor for delta temporality with 1-minute buckets
 	mexp := &mocks.MetricsExporter{}
@@ -1501,8 +1538,12 @@ func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
 }
 
 func TestBuildMetricsTimestampAccuracy(t *testing.T) {
-	// Test that buildMetrics() correctly uses metric timestamps derived from span start times
-	// via time bucketing instead of processing time
+	// Tests that buildMetrics() generates metrics with correct timestamps based on temporality mode.
+	// Verifies that:
+	// 1. DELTA temporality: metrics use bucket timestamps derived from span start times (timestamp-aware)
+	// 2. CUMULATIVE temporality: metrics use processor start time + current time (original behavior)
+	// 3. Timestamp values appear in final metric data points, not just during aggregation
+	// This validates the end-to-end timestamp accuracy for dashboard correlation and late-arriving spans
 
 	// Define time buckets for predictable testing
 	bucket1Start := time.Date(2024, 1, 1, 12, 30, 0, 0, time.UTC) // 12:30:00
@@ -1686,25 +1727,20 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 					require.True(t, hasService, "Data point should have service.name attribute")
 
 					if serviceNameAttr.Str() == serviceName {
-						// For cumulative temporality, timestamps should be based on current time bucket boundaries
-						// This is expected behavior - they use current time but truncated to bucket intervals
+						// For cumulative temporality, timestamps should use processor start time and current time
+						// This is the correct behavior that matches the original main branch
 						startTime := dp.StartTimestamp().AsTime()
 						timestamp := dp.Timestamp().AsTime()
 
-						currentBucketStart := beforeBuild.Truncate(time.Minute)
-						currentBucketEnd := currentBucketStart.Add(time.Minute)
+						processorStartTime := processor.startTimestamp.AsTime()
 
-						// Allow for some flexibility around the build time (bucket boundaries can shift by 1 minute)
-						assert.True(t,
-							startTime.Equal(currentBucketStart) ||
-								startTime.Equal(currentBucketStart.Add(-time.Minute)) ||
-								startTime.Equal(currentBucketStart.Add(time.Minute)),
-							"StartTimestamp should be close to current time bucket start for cumulative temporality")
-						assert.True(t,
-							timestamp.Equal(currentBucketEnd) ||
-								timestamp.Equal(currentBucketEnd.Add(-time.Minute)) ||
-								timestamp.Equal(currentBucketEnd.Add(time.Minute)),
-							"Timestamp should be close to current time bucket end for cumulative temporality")
+						// StartTimestamp should be the processor start time
+						assert.Equal(t, processorStartTime, startTime,
+							"StartTimestamp should be processor start time for cumulative temporality")
+
+						// Timestamp should be close to current time (within a few seconds of beforeBuild)
+						assert.True(t, timestamp.After(beforeBuild.Add(-5*time.Second)) && timestamp.Before(beforeBuild.Add(5*time.Second)),
+							"Timestamp should be close to current time for cumulative temporality")
 
 						// Verify timestamps are NOT the span bucket times (from 2024)
 						assert.False(t, startTime.Equal(bucket1Start),
@@ -1732,25 +1768,20 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 					require.True(t, hasService, "Data point should have service.name attribute")
 
 					if serviceNameAttr.Str() == serviceName {
-						// For cumulative temporality, timestamps should be based on current time bucket boundaries
-						// This is expected behavior - they use current time but truncated to bucket intervals
+						// For cumulative temporality, timestamps should use processor start time and current time
+						// This is the correct behavior that matches the original main branch
 						startTime := dp.StartTimestamp().AsTime()
 						timestamp := dp.Timestamp().AsTime()
 
-						currentBucketStart := beforeBuild.Truncate(time.Minute)
-						currentBucketEnd := currentBucketStart.Add(time.Minute)
+						processorStartTime := processor.startTimestamp.AsTime()
 
-						// Allow for some flexibility around the build time (bucket boundaries can shift by 1 minute)
-						assert.True(t,
-							startTime.Equal(currentBucketStart) ||
-								startTime.Equal(currentBucketStart.Add(-time.Minute)) ||
-								startTime.Equal(currentBucketStart.Add(time.Minute)),
-							"StartTimestamp should be close to current time bucket start for cumulative temporality")
-						assert.True(t,
-							timestamp.Equal(currentBucketEnd) ||
-								timestamp.Equal(currentBucketEnd.Add(-time.Minute)) ||
-								timestamp.Equal(currentBucketEnd.Add(time.Minute)),
-							"Timestamp should be close to current time bucket end for cumulative temporality")
+						// StartTimestamp should be the processor start time
+						assert.Equal(t, processorStartTime, startTime,
+							"StartTimestamp should be processor start time for cumulative temporality")
+
+						// Timestamp should be close to current time (within a few seconds of beforeBuild)
+						assert.True(t, timestamp.After(beforeBuild.Add(-5*time.Second)) && timestamp.Before(beforeBuild.Add(5*time.Second)),
+							"Timestamp should be close to current time for cumulative temporality")
 
 						// Verify timestamps are NOT the span bucket times (from 2024)
 						assert.False(t, startTime.Equal(bucket1Start),
