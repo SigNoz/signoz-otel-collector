@@ -1368,3 +1368,232 @@ func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
 	// The cumulative key should start with the service name
 	assert.True(t, strings.HasPrefix(string(cumulativeKey), serviceName))
 }
+
+func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
+	// Test that time bucketing works correctly with custom span start/end times
+	// This test verifies that spans are properly grouped into time buckets based on their start times
+
+	// Configure processor for delta temporality with 1-minute buckets
+	config := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
+		MetricsFlushInterval:   60 * time.Second,
+	}
+
+	// Initialize caches
+	metricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
+	callMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
+	dbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
+	externalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
+
+	processor := &processorImp{
+		config:                                 *config,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+		histograms:                             make(map[metricKey]*histogramData),
+		expHistograms:                          make(map[metricKey]*exponentialHistogram),
+		callHistograms:                         make(map[metricKey]*histogramData),
+		dbCallHistograms:                       make(map[metricKey]*histogramData),
+		externalCallHistograms:                 make(map[metricKey]*histogramData),
+		metricKeyToDimensions:                  metricKeyToDimensions,
+		callMetricKeyToDimensions:              callMetricKeyToDimensions,
+		dbCallMetricKeyToDimensions:            dbCallMetricKeyToDimensions,
+		externalCallMetricKeyToDimensions:      externalCallMetricKeyToDimensions,
+		latencyBounds:                          defaultLatencyHistogramBucketsMs,
+		callLatencyBounds:                      defaultLatencyHistogramBucketsMs,
+		dbCallLatencyBounds:                    defaultLatencyHistogramBucketsMs,
+		externalCallLatencyBounds:              defaultLatencyHistogramBucketsMs,
+		attrsCardinality:                       make(map[string]map[string]struct{}),
+		excludePatternRegex:                    make(map[string]*regexp.Regexp),
+	}
+
+	// Create resource attributes
+	resourceAttr := pcommon.NewMap()
+	resourceAttr.PutStr("service.name", "test-service")
+	serviceName := "test-service"
+
+	// Define time buckets (1-minute intervals)
+	bucket1Start := time.Date(2024, 1, 1, 12, 30, 0, 0, time.UTC) // 12:30:00
+	bucket2Start := time.Date(2024, 1, 1, 12, 31, 0, 0, time.UTC) // 12:31:00
+	bucket3Start := time.Date(2024, 1, 1, 12, 32, 0, 0, time.UTC) // 12:32:00
+
+	// Create spans in different time buckets
+	spans := []struct {
+		name           string
+		startTime      time.Time
+		endTime        time.Time
+		expectedBucket time.Time
+	}{
+		{
+			name:           "span-in-bucket1",
+			startTime:      bucket1Start.Add(15 * time.Second), // 12:30:15
+			endTime:        bucket1Start.Add(45 * time.Second), // 12:30:45
+			expectedBucket: bucket1Start,
+		},
+		{
+			name:           "span-in-bucket1-late",
+			startTime:      bucket1Start.Add(45 * time.Second), // 12:30:45
+			endTime:        bucket1Start.Add(55 * time.Second), // 12:30:55
+			expectedBucket: bucket1Start,
+		},
+		{
+			name:           "span-in-bucket2",
+			startTime:      bucket2Start.Add(10 * time.Second), // 12:31:10
+			endTime:        bucket2Start.Add(30 * time.Second), // 12:31:30
+			expectedBucket: bucket2Start,
+		},
+		{
+			name:           "span-in-bucket3",
+			startTime:      bucket3Start.Add(5 * time.Second),  // 12:32:05
+			endTime:        bucket3Start.Add(25 * time.Second), // 12:32:25
+			expectedBucket: bucket3Start,
+		},
+		{
+			name:           "span-crossing-buckets",
+			startTime:      bucket1Start.Add(55 * time.Second), // 12:30:55 (should bucket to bucket1)
+			endTime:        bucket2Start.Add(5 * time.Second),  // 12:31:05
+			expectedBucket: bucket1Start,
+		},
+	}
+
+	// Process each span
+	for _, spanData := range spans {
+		span := ptrace.NewSpan()
+		span.SetName(spanData.name)
+		span.SetKind(ptrace.SpanKindServer)
+		span.Status().SetCode(ptrace.StatusCodeOk)
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(spanData.startTime))
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(spanData.endTime))
+
+		// Aggregate metrics for this span
+		processor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+	}
+
+	for key, _ := range processor.histograms {
+		t.Logf("key: %s", key)
+	}
+
+	// Verify that histograms are properly time bucketed
+	// We should have separate histogram entries for each time bucket
+	bucket1Keys := 0
+	bucket2Keys := 0
+	bucket3Keys := 0
+	otherKeys := 0
+
+	expectedBucket1Prefix := strconv.FormatInt(bucket1Start.Unix(), 10)
+	expectedBucket2Prefix := strconv.FormatInt(bucket2Start.Unix(), 10)
+	expectedBucket3Prefix := strconv.FormatInt(bucket3Start.Unix(), 10)
+
+	// Count keys in each bucket
+	for key := range processor.histograms {
+		keyStr := string(key)
+		if strings.HasPrefix(keyStr, expectedBucket1Prefix) {
+			bucket1Keys++
+		} else if strings.HasPrefix(keyStr, expectedBucket2Prefix) {
+			bucket2Keys++
+		} else if strings.HasPrefix(keyStr, expectedBucket3Prefix) {
+			bucket3Keys++
+		} else {
+			otherKeys++
+		}
+	}
+
+	// We expect 3 spans in bucket1 (including the crossing span), 1 span in bucket2, 1 span in bucket3
+	// Each span creates 1 histogram key (latency metrics)
+	assert.Equal(t, 3, bucket1Keys, "Expected 3 histogram keys in bucket1")
+	assert.Equal(t, 1, bucket2Keys, "Expected 1 histogram key in bucket2")
+	assert.Equal(t, 1, bucket3Keys, "Expected 1 histogram key in bucket3")
+	assert.Equal(t, 0, otherKeys, "Expected no histogram keys in other buckets")
+
+	// Verify specific histogram data
+	for key, histogram := range processor.histograms {
+		keyStr := string(key)
+
+		// Extract bucket timestamp from key
+		idx := strings.IndexByte(keyStr, 0) // first separator
+		assert.Greater(t, idx, 0, "Key should have bucket prefix")
+
+		bucketUnix, err := strconv.ParseInt(keyStr[:idx], 10, 64)
+		assert.NoError(t, err, "Should be able to parse bucket timestamp")
+
+		bucketTime := time.Unix(bucketUnix, 0).UTC()
+
+		// Verify that the histogram has the correct bucket timestamp
+		if strings.HasPrefix(keyStr, expectedBucket1Prefix) {
+			assert.Equal(t, bucket1Start, bucketTime, "Bucket1 histogram should have correct timestamp")
+		} else if strings.HasPrefix(keyStr, expectedBucket2Prefix) {
+			assert.Equal(t, bucket2Start, bucketTime, "Bucket2 histogram should have correct timestamp")
+		} else if strings.HasPrefix(keyStr, expectedBucket3Prefix) {
+			assert.Equal(t, bucket3Start, bucketTime, "Bucket3 histogram should have correct timestamp")
+		}
+
+		// Verify histogram has data
+		assert.Greater(t, histogram.count, uint64(0), "Histogram should have count > 0")
+		assert.Greater(t, histogram.sum, float64(0), "Histogram should have sum > 0")
+	}
+
+	// Test that cumulative temporality does NOT use time bucketing
+	cumulativeConfig := &Config{
+		DimensionsCacheSize:    1000,
+		TimeBucketInterval:     time.Minute,
+		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
+		MetricsFlushInterval:   60 * time.Second,
+	}
+
+	// Initialize caches for cumulative processor
+	cumulativeMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
+	cumulativeCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
+	cumulativeDbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
+	cumulativeExternalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
+
+	cumulativeProcessor := &processorImp{
+		config:                                 *cumulativeConfig,
+		keyBuf:                                 &bytes.Buffer{},
+		serviceToOperations:                    make(map[string]map[string]struct{}),
+		maxNumberOfServicesToTrack:             256,
+		maxNumberOfOperationsToTrackPerService: 2048,
+		histograms:                             make(map[metricKey]*histogramData),
+		expHistograms:                          make(map[metricKey]*exponentialHistogram),
+		callHistograms:                         make(map[metricKey]*histogramData),
+		dbCallHistograms:                       make(map[metricKey]*histogramData),
+		externalCallHistograms:                 make(map[metricKey]*histogramData),
+		metricKeyToDimensions:                  cumulativeMetricKeyToDimensions,
+		callMetricKeyToDimensions:              cumulativeCallMetricKeyToDimensions,
+		dbCallMetricKeyToDimensions:            cumulativeDbCallMetricKeyToDimensions,
+		externalCallMetricKeyToDimensions:      cumulativeExternalCallMetricKeyToDimensions,
+		latencyBounds:                          defaultLatencyHistogramBucketsMs,
+		callLatencyBounds:                      defaultLatencyHistogramBucketsMs,
+		dbCallLatencyBounds:                    defaultLatencyHistogramBucketsMs,
+		externalCallLatencyBounds:              defaultLatencyHistogramBucketsMs,
+		attrsCardinality:                       make(map[string]map[string]struct{}),
+		excludePatternRegex:                    make(map[string]*regexp.Regexp),
+	}
+
+	// Process a span with cumulative temporality
+	span := ptrace.NewSpan()
+	span.SetName("cumulative-span")
+	span.SetKind(ptrace.SpanKindServer)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(15 * time.Second)))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(45 * time.Second)))
+
+	cumulativeProcessor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+
+	// Verify that cumulative temporality does NOT use time bucketing
+	cumulativeKeys := 0
+	for key := range cumulativeProcessor.histograms {
+		keyStr := string(key)
+		// Should NOT start with bucket timestamp
+		assert.False(t, strings.HasPrefix(keyStr, expectedBucket1Prefix),
+			"Cumulative temporality should not use time bucketing")
+		// Should start with service name
+		assert.True(t, strings.HasPrefix(keyStr, serviceName),
+			"Cumulative temporality key should start with service name")
+		cumulativeKeys++
+	}
+
+	assert.Equal(t, 1, cumulativeKeys, "Cumulative temporality should have 1 histogram key")
+}
