@@ -18,8 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -266,34 +264,12 @@ type DBResponseTTL struct {
 }
 
 func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("fetching min accepted ts")
+	e.logger.Info("Updating min accepted ts")
 
-	ctx := context.Background()
-	var delTTL uint64 = 0
-	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", logsTableV2, databaseName)
-	err := e.db.Select(ctx, &dbResp, q)
-	if err != nil {
-		e.logger.Error("error while fetching ttl", zap.Error(err))
-		return
-	}
-	if len(dbResp) == 0 {
-		e.logger.Error("ttl not found")
-		return
-	}
+	var delTTL uint64 = 15
 
-	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
-	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
-	if len(m) > 1 {
-		seconds_int, err := strconv.Atoi(m[1])
-		if err != nil {
-			e.logger.Error("error while converting ttl to int", zap.Error(err))
-			return
-		}
-		delTTL = uint64(seconds_int)
-	}
-
-	acceptedDateTime := time.Now().Add(-(time.Duration(delTTL) * time.Second))
+	seconds := delTTL * 24 * 60 * 60
+	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
 	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
