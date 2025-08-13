@@ -422,7 +422,8 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 	metricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 	callMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 	dbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
-	externalCallMetricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	externalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	expHistogramKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 
 	defaultDimensions := []dimension{
 		// Set nil defaults to force a lookup for the attribute in the span.
@@ -478,6 +479,7 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 
 		startTimestamp:         pcommon.NewTimestampFromTime(time.Now()),
 		histograms:             make(map[metricKey]*histogramData),
+		expHistograms:          make(map[metricKey]*exponentialHistogram),
 		callHistograms:         make(map[metricKey]*histogramData),
 		dbCallHistograms:       make(map[metricKey]*histogramData),
 		externalCallHistograms: make(map[metricKey]*histogramData),
@@ -509,6 +511,7 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 
 		keyBuf:                            new(bytes.Buffer),
 		metricKeyToDimensions:             metricKeyToDimensions,
+		expHistogramKeyToDimensions:       expHistogramKeyToDimensions,
 		callMetricKeyToDimensions:         callMetricKeyToDimensions,
 		dbCallMetricKeyToDimensions:       dbCallMetricKeyToDimensions,
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensions,
@@ -1118,18 +1121,13 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 
 func TestTimeBucketedKeys(t *testing.T) {
 	// Test that time-bucketed keys are generated correctly and timestamps are parsed properly
-	config := &Config{
-		DimensionsCacheSize: 1000,
-		TimeBucketInterval:  time.Minute, // 1 minute buckets
-	}
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
 
-	processor := &processorImp{
-		config:                                 *config,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-	}
+	// Create processor with delta temporality (required for time bucketing)
+	processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	processor.config.TimeBucketInterval = time.Minute // 1 minute buckets
 
 	// Create a span with a specific start time
 	span := ptrace.NewSpan()
@@ -1262,19 +1260,12 @@ func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
 	bucket := startTime.Truncate(time.Minute)
 
 	// Test Delta Temporality - should include time bucket prefix
-	deltaConfig := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
-	}
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
 
-	deltaProcessor := &processorImp{
-		config:                                 *deltaConfig,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-	}
+	deltaProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	deltaProcessor.config.TimeBucketInterval = time.Minute
 
 	deltaKey := deltaProcessor.buildMetricKey(serviceName, span, nil, resourceAttr, bucket)
 
@@ -1283,19 +1274,8 @@ func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
 	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
 
 	// Test Cumulative Temporality - should NOT include time bucket prefix
-	cumulativeConfig := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-	}
-
-	cumulativeProcessor := &processorImp{
-		config:                                 *cumulativeConfig,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-	}
+	cumulativeProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+	cumulativeProcessor.config.TimeBucketInterval = time.Minute
 
 	cumulativeKey := cumulativeProcessor.buildMetricKey(serviceName, span, nil, resourceAttr, bucket)
 
@@ -1325,19 +1305,12 @@ func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
 	extraVals := []string{"example.com:8080"}
 
 	// Test Delta Temporality - should include time bucket prefix
-	deltaConfig := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
-	}
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
 
-	deltaProcessor := &processorImp{
-		config:                                 *deltaConfig,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-	}
+	deltaProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	deltaProcessor.config.TimeBucketInterval = time.Minute
 
 	deltaKey := deltaProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals, bucket)
 
@@ -1346,19 +1319,8 @@ func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
 	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
 
 	// Test Cumulative Temporality - should NOT include time bucket prefix
-	cumulativeConfig := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-	}
-
-	cumulativeProcessor := &processorImp{
-		config:                                 *cumulativeConfig,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-	}
+	cumulativeProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+	cumulativeProcessor.config.TimeBucketInterval = time.Minute
 
 	cumulativeKey := cumulativeProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals, bucket)
 
@@ -1374,41 +1336,13 @@ func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
 	// This test verifies that spans are properly grouped into time buckets based on their start times
 
 	// Configure processor for delta temporality with 1-minute buckets
-	config := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_DELTA",
-		MetricsFlushInterval:   60 * time.Second,
-	}
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
 
-	// Initialize caches
-	metricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
-	callMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
-	dbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
-	externalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](config.DimensionsCacheSize)
-
-	processor := &processorImp{
-		config:                                 *config,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-		histograms:                             make(map[metricKey]*histogramData),
-		expHistograms:                          make(map[metricKey]*exponentialHistogram),
-		callHistograms:                         make(map[metricKey]*histogramData),
-		dbCallHistograms:                       make(map[metricKey]*histogramData),
-		externalCallHistograms:                 make(map[metricKey]*histogramData),
-		metricKeyToDimensions:                  metricKeyToDimensions,
-		callMetricKeyToDimensions:              callMetricKeyToDimensions,
-		dbCallMetricKeyToDimensions:            dbCallMetricKeyToDimensions,
-		externalCallMetricKeyToDimensions:      externalCallMetricKeyToDimensions,
-		latencyBounds:                          defaultLatencyHistogramBucketsMs,
-		callLatencyBounds:                      defaultLatencyHistogramBucketsMs,
-		dbCallLatencyBounds:                    defaultLatencyHistogramBucketsMs,
-		externalCallLatencyBounds:              defaultLatencyHistogramBucketsMs,
-		attrsCardinality:                       make(map[string]map[string]struct{}),
-		excludePatternRegex:                    make(map[string]*regexp.Regexp),
-	}
+	processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	processor.config.TimeBucketInterval = time.Minute
+	processor.config.MetricsFlushInterval = 60 * time.Second
 
 	// Create resource attributes
 	resourceAttr := pcommon.NewMap()
@@ -1536,41 +1470,9 @@ func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
 	}
 
 	// Test that cumulative temporality does NOT use time bucketing
-	cumulativeConfig := &Config{
-		DimensionsCacheSize:    1000,
-		TimeBucketInterval:     time.Minute,
-		AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-		MetricsFlushInterval:   60 * time.Second,
-	}
-
-	// Initialize caches for cumulative processor
-	cumulativeMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
-	cumulativeCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
-	cumulativeDbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
-	cumulativeExternalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](cumulativeConfig.DimensionsCacheSize)
-
-	cumulativeProcessor := &processorImp{
-		config:                                 *cumulativeConfig,
-		keyBuf:                                 &bytes.Buffer{},
-		serviceToOperations:                    make(map[string]map[string]struct{}),
-		maxNumberOfServicesToTrack:             256,
-		maxNumberOfOperationsToTrackPerService: 2048,
-		histograms:                             make(map[metricKey]*histogramData),
-		expHistograms:                          make(map[metricKey]*exponentialHistogram),
-		callHistograms:                         make(map[metricKey]*histogramData),
-		dbCallHistograms:                       make(map[metricKey]*histogramData),
-		externalCallHistograms:                 make(map[metricKey]*histogramData),
-		metricKeyToDimensions:                  cumulativeMetricKeyToDimensions,
-		callMetricKeyToDimensions:              cumulativeCallMetricKeyToDimensions,
-		dbCallMetricKeyToDimensions:            cumulativeDbCallMetricKeyToDimensions,
-		externalCallMetricKeyToDimensions:      cumulativeExternalCallMetricKeyToDimensions,
-		latencyBounds:                          defaultLatencyHistogramBucketsMs,
-		callLatencyBounds:                      defaultLatencyHistogramBucketsMs,
-		dbCallLatencyBounds:                    defaultLatencyHistogramBucketsMs,
-		externalCallLatencyBounds:              defaultLatencyHistogramBucketsMs,
-		attrsCardinality:                       make(map[string]map[string]struct{}),
-		excludePatternRegex:                    make(map[string]*regexp.Regexp),
-	}
+	cumulativeProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+	cumulativeProcessor.config.TimeBucketInterval = time.Minute
+	cumulativeProcessor.config.MetricsFlushInterval = 60 * time.Second
 
 	// Process a span with cumulative temporality
 	span := ptrace.NewSpan()
@@ -1596,4 +1498,276 @@ func TestTimeBucketingWithCustomSpanTimes(t *testing.T) {
 	}
 
 	assert.Equal(t, 1, cumulativeKeys, "Cumulative temporality should have 1 histogram key")
+}
+
+func TestBuildMetricsTimestampAccuracy(t *testing.T) {
+	// Test that buildMetrics() correctly uses metric timestamps derived from span start times
+	// via time bucketing instead of processing time
+
+	// Define time buckets for predictable testing
+	bucket1Start := time.Date(2024, 1, 1, 12, 30, 0, 0, time.UTC) // 12:30:00
+	bucket1End := bucket1Start.Add(time.Minute)                   // 12:31:00
+
+	t.Run("Delta_Uses_Bucket_Timestamps", func(t *testing.T) {
+		// Use existing helper function to create properly initialized processor
+		mexp := &mocks.MetricsExporter{}
+		tcon := &mocks.TracesConsumer{}
+		logger := zap.NewNop()
+
+		// Create processor with delta temporality
+		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+
+		// Configure time bucketing
+		processor.config.TimeBucketInterval = time.Minute
+
+		// Create resource attributes
+		resourceAttr := pcommon.NewMap()
+		resourceAttr.PutStr("service.name", "test-service")
+		serviceName := "test-service"
+
+		// Create span with specific start time that will fall into bucket1
+		span := ptrace.NewSpan()
+		span.SetName("test-span")
+		span.SetKind(ptrace.SpanKindServer)
+		span.Status().SetCode(ptrace.StatusCodeOk)
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(15 * time.Second))) // 12:30:15
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(45 * time.Second)))   // 12:30:45
+
+		// Aggregate metrics for this span
+		processor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+
+		// Build metrics
+		metrics, err := processor.buildMetrics()
+		assert.NoError(t, err, "buildMetrics should not return error")
+
+		// Verify metrics structure
+		require.Equal(t, 1, metrics.ResourceMetrics().Len())
+		ilm := metrics.ResourceMetrics().At(0).ScopeMetrics()
+		require.Equal(t, 1, ilm.Len())
+		assert.Equal(t, "signozspanmetricsprocessor", ilm.At(0).Scope().Name())
+
+		// Get all metrics
+		allMetrics := ilm.At(0).Metrics()
+		require.Greater(t, allMetrics.Len(), 0, "Should have at least one metric")
+
+		// Verify timestamp accuracy for each metric
+		foundDeltaTimestamps := false
+		for i := 0; i < allMetrics.Len(); i++ {
+			metric := allMetrics.At(i)
+
+			switch metric.Type() {
+			case pmetric.MetricTypeHistogram:
+				histogram := metric.Histogram()
+				dps := histogram.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For delta temporality, timestamps should match bucket boundaries
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						// Verify timestamps match expected bucket boundaries
+						assert.Equal(t, bucket1Start, startTime,
+							"StartTimestamp should match bucket start time for delta temporality")
+						assert.Equal(t, bucket1End, timestamp,
+							"Timestamp should match bucket end time for delta temporality")
+
+						// Verify timestamps are NOT close to current time
+						now := time.Now()
+						assert.False(t, timestamp.After(now.Add(-5*time.Second)) && timestamp.Before(now.Add(5*time.Second)),
+							"Timestamp should NOT be close to current time for delta temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.Count(), uint64(0), "Histogram should have count > 0")
+						assert.Greater(t, dp.Sum(), float64(0), "Histogram should have sum > 0")
+
+						foundDeltaTimestamps = true
+						t.Logf("Delta histogram - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+
+			case pmetric.MetricTypeSum:
+				sum := metric.Sum()
+				dps := sum.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For delta temporality, timestamps should match bucket boundaries
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						// Verify timestamps match expected bucket boundaries
+						assert.Equal(t, bucket1Start, startTime,
+							"StartTimestamp should match bucket start time for delta temporality")
+						assert.Equal(t, bucket1End, timestamp,
+							"Timestamp should match bucket end time for delta temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.IntValue(), int64(0), "Sum should have value > 0")
+
+						foundDeltaTimestamps = true
+						t.Logf("Delta sum - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+			}
+		}
+
+		assert.True(t, foundDeltaTimestamps, "Should have found at least one data point with delta timestamps")
+	})
+
+	t.Run("Cumulative_Uses_Current_Time", func(t *testing.T) {
+		// Use existing helper function to create properly initialized processor
+		mexp := &mocks.MetricsExporter{}
+		tcon := &mocks.TracesConsumer{}
+		logger := zap.NewNop()
+
+		// Create processor with cumulative temporality
+		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+
+		// Configure time bucketing (but it shouldn't be used for cumulative)
+		processor.config.TimeBucketInterval = time.Minute
+
+		// Create resource attributes
+		resourceAttr := pcommon.NewMap()
+		resourceAttr.PutStr("service.name", "test-service")
+		serviceName := "test-service"
+
+		// Create span with specific start time
+		span := ptrace.NewSpan()
+		span.SetName("cumulative-span")
+		span.SetKind(ptrace.SpanKindServer)
+		span.Status().SetCode(ptrace.StatusCodeOk)
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(15 * time.Second))) // 12:30:15
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(45 * time.Second)))   // 12:30:45
+
+		// Aggregate metrics for this span
+		processor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+
+		// Record time before building metrics
+		beforeBuild := time.Now()
+
+		// Build metrics
+		metrics, err := processor.buildMetrics()
+		assert.NoError(t, err, "buildMetrics should not return error")
+
+		// Verify metrics structure
+		require.Equal(t, 1, metrics.ResourceMetrics().Len())
+		ilm := metrics.ResourceMetrics().At(0).ScopeMetrics()
+		require.Equal(t, 1, ilm.Len())
+
+		// Get all metrics
+		allMetrics := ilm.At(0).Metrics()
+		require.Greater(t, allMetrics.Len(), 0, "Should have at least one metric")
+
+		// Verify timestamp accuracy for each metric
+		foundCumulativeTimestamps := false
+		for i := 0; i < allMetrics.Len(); i++ {
+			metric := allMetrics.At(i)
+
+			switch metric.Type() {
+			case pmetric.MetricTypeHistogram:
+				histogram := metric.Histogram()
+				dps := histogram.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For cumulative temporality, timestamps should be based on current time bucket boundaries
+						// This is expected behavior - they use current time but truncated to bucket intervals
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						currentBucketStart := beforeBuild.Truncate(time.Minute)
+						currentBucketEnd := currentBucketStart.Add(time.Minute)
+
+						// Allow for some flexibility around the build time (bucket boundaries can shift by 1 minute)
+						assert.True(t,
+							startTime.Equal(currentBucketStart) ||
+								startTime.Equal(currentBucketStart.Add(-time.Minute)) ||
+								startTime.Equal(currentBucketStart.Add(time.Minute)),
+							"StartTimestamp should be close to current time bucket start for cumulative temporality")
+						assert.True(t,
+							timestamp.Equal(currentBucketEnd) ||
+								timestamp.Equal(currentBucketEnd.Add(-time.Minute)) ||
+								timestamp.Equal(currentBucketEnd.Add(time.Minute)),
+							"Timestamp should be close to current time bucket end for cumulative temporality")
+
+						// Verify timestamps are NOT the span bucket times (from 2024)
+						assert.False(t, startTime.Equal(bucket1Start),
+							"StartTimestamp should NOT match span bucket start time for cumulative temporality")
+						assert.False(t, timestamp.Equal(bucket1End),
+							"Timestamp should NOT match span bucket end time for cumulative temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.Count(), uint64(0), "Histogram should have count > 0")
+						assert.Greater(t, dp.Sum(), float64(0), "Histogram should have sum > 0")
+
+						foundCumulativeTimestamps = true
+						t.Logf("Cumulative histogram - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+
+			case pmetric.MetricTypeSum:
+				sum := metric.Sum()
+				dps := sum.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For cumulative temporality, timestamps should be based on current time bucket boundaries
+						// This is expected behavior - they use current time but truncated to bucket intervals
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						currentBucketStart := beforeBuild.Truncate(time.Minute)
+						currentBucketEnd := currentBucketStart.Add(time.Minute)
+
+						// Allow for some flexibility around the build time (bucket boundaries can shift by 1 minute)
+						assert.True(t,
+							startTime.Equal(currentBucketStart) ||
+								startTime.Equal(currentBucketStart.Add(-time.Minute)) ||
+								startTime.Equal(currentBucketStart.Add(time.Minute)),
+							"StartTimestamp should be close to current time bucket start for cumulative temporality")
+						assert.True(t,
+							timestamp.Equal(currentBucketEnd) ||
+								timestamp.Equal(currentBucketEnd.Add(-time.Minute)) ||
+								timestamp.Equal(currentBucketEnd.Add(time.Minute)),
+							"Timestamp should be close to current time bucket end for cumulative temporality")
+
+						// Verify timestamps are NOT the span bucket times (from 2024)
+						assert.False(t, startTime.Equal(bucket1Start),
+							"StartTimestamp should NOT match span bucket start time for cumulative temporality")
+						assert.False(t, timestamp.Equal(bucket1End),
+							"Timestamp should NOT match span bucket end time for cumulative temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.IntValue(), int64(0), "Sum should have value > 0")
+
+						foundCumulativeTimestamps = true
+						t.Logf("Cumulative sum - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+			}
+		}
+
+		assert.True(t, foundCumulativeTimestamps, "Should have found at least one data point with cumulative timestamps")
+	})
 }
