@@ -77,10 +77,12 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
+		resource,
 		scope_name,
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -462,7 +464,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					if err != nil {
 						return err
 					}
-
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -478,6 +479,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
+						resourcesMap.StringData,
 						resourcesMap.StringData,
 						scopeName,
 						scopeVersion,
