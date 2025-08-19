@@ -1032,7 +1032,8 @@ func TestProcessorUpdateExemplars(t *testing.T) {
 	value := float64(42)
 
 	// ----- call -------------------------------------------------------------
-	p.updateHistogram(key, value, traceID, spanID)
+	spanStartTime := pcommon.NewTimestampFromTime(time.Now())
+	p.updateHistogram(key, value, traceID, spanID, spanStartTime)
 
 	// ----- verify -----------------------------------------------------------
 	assert.NoError(t, err)
