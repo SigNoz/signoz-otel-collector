@@ -101,7 +101,7 @@ func getResourceAttributesByte(resource pcommon.Resource) ([]byte, error) {
 	filteredResources := map[string]any{}
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
 		if !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
-			filteredResources[k] = v
+			filteredResources[k] = v.AsRaw()
 		}
 		return true
 	})
