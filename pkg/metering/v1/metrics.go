@@ -79,12 +79,23 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 				// each bucket is treated as separate sample
 				for i := 0; i < metric.Histogram().DataPoints().Len(); i++ {
 					subCount += metric.Histogram().DataPoints().At(i).BucketCounts().Len()
+					subCount += 1 // count metric
+					if metric.Histogram().DataPoints().At(i).HasSum() {
+						subCount += 1
+					}
+					if metric.Histogram().DataPoints().At(i).HasMin() {
+						subCount += 1
+					}
+					if metric.Histogram().DataPoints().At(i).HasMax() {
+						subCount += 1
+					}
 				}
 				count += subCount
 			case pmetric.MetricTypeSummary:
 				subCount := 0
 				for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
 					subCount += metric.Summary().DataPoints().At(i).QuantileValues().Len()
+					subCount += 2 // count,sum metrics
 				}
 				count += subCount
 			case pmetric.MetricTypeExponentialHistogram:
@@ -97,6 +108,16 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 					// each bucket of positive and negative is treated as separate sample
 					subCount += metric.ExponentialHistogram().DataPoints().At(i).Negative().BucketCounts().Len() +
 						metric.ExponentialHistogram().DataPoints().At(i).Positive().BucketCounts().Len()
+					subCount += 1 // count metric
+					if metric.ExponentialHistogram().DataPoints().At(i).HasSum() {
+						subCount += 1
+					}
+					if metric.ExponentialHistogram().DataPoints().At(i).HasMin() {
+						subCount += 1
+					}
+					if metric.ExponentialHistogram().DataPoints().At(i).HasMax() {
+						subCount += 1
+					}
 				}
 				count += subCount
 			}
