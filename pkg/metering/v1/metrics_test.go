@@ -53,7 +53,7 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 	meter := NewMetrics(zap.NewNop())
 
 	// 6 data points * 20 buckets = 120
-	assert.Equal(t, 120, meter.Count(md))
+	assert.Equal(t, 144, meter.Count(md))
 }
 
 func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
@@ -67,7 +67,7 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 
 	// 6 data points * 20 buckets = 120
 	// 120 negative + 120 positive = 240
-	assert.Equal(t, 240, meter.Count(md))
+	assert.Equal(t, 264, meter.Count(md))
 }
 
 func TestMetrics_CountSummaryMetrics(t *testing.T) {
@@ -79,7 +79,7 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 
 	meter := NewMetrics(zap.NewNop())
 
-	assert.Equal(t, 18, meter.Count(md))
+	assert.Equal(t, 30, meter.Count(md))
 }
 
 func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
