@@ -25,6 +25,22 @@ func TestTracesSizeWithNoEvents(t *testing.T) {
 	assert.Equal(t, 406, size)
 }
 
+func TestTracesSizeWithNoEventAndSigNozResource(t *testing.T) {
+	traces := ptracesgen.Generate(
+		ptracesgen.WithSpanCount(1),
+		ptracesgen.WithResourceAttributeCount(1),
+		ptracesgen.WithSpanKind(ptrace.SpanKindProducer),
+		ptracesgen.WithResourceAttributeStringValue("test"),
+	)
+	// adding signoz resource attribute shouldn't affect the calculation
+	traces.ResourceSpans().At(0).Resource().Attributes().PutStr("signoz.workspace.internal.test", "signoz-test")
+
+	meter := NewTraces(zap.NewNop())
+	size := meter.Size(traces)
+
+	assert.Equal(t, 406, size)
+}
+
 func TestTracesSizeWithEvents(t *testing.T) {
 	traces := ptracesgen.Generate(
 		ptracesgen.WithSpanCount(1),

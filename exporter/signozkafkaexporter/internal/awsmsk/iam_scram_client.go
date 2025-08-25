@@ -4,11 +4,12 @@
 package awsmsk // import "github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/awsmsk"
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/Shopify/sarama"
 	"github.com/aws/aws-sdk-go/aws/credentials"

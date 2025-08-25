@@ -13,6 +13,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/expr-lang/expr v1.17.5
 	github.com/go-redis/redismock/v9 v9.2.0
+	github.com/goccy/go-json v0.10.5
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/uuid v1.6.0
@@ -65,6 +66,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.128.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.128.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.128.0
@@ -214,12 +216,14 @@ require (
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.34.0
 	go.opentelemetry.io/collector/confmap/xconfmap v0.128.0
 	go.opentelemetry.io/collector/connector v0.128.0
+	go.opentelemetry.io/collector/connector/connectortest v0.128.0
 	go.opentelemetry.io/collector/consumer v1.34.0
 	go.opentelemetry.io/collector/consumer/consumererror v0.128.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.128.0
 	go.opentelemetry.io/collector/exporter v0.128.0
 	go.opentelemetry.io/collector/exporter/debugexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/exportertest v0.128.0
+	go.opentelemetry.io/collector/exporter/nopexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/otlpexporter v0.128.0
 	go.opentelemetry.io/collector/exporter/otlphttpexporter v0.128.0
 	go.opentelemetry.io/collector/extension v1.34.0
@@ -422,7 +426,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/go-zookeeper/zk v1.0.4 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gocql/gocql v1.7.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -539,7 +542,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/experimentalmetricmetadata v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/configkafka v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/kafka/topic v0.128.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azurelogs v0.128.0 // indirect
@@ -627,7 +629,6 @@ require (
 	go.opentelemetry.io/collector/config/configoptional v0.128.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/httpprovider v1.34.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.34.0 // indirect
-	go.opentelemetry.io/collector/connector/connectortest v0.128.0 // indirect
 	go.opentelemetry.io/collector/connector/xconnector v0.128.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumererror/xconsumererror v0.128.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.128.0 // indirect
@@ -728,7 +729,7 @@ require (
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/json-iterator/go v1.1.12
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -773,7 +774,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
+	golang.org/x/sync v0.15.0
 	golang.org/x/sys v0.33.0 // indirect
 	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect

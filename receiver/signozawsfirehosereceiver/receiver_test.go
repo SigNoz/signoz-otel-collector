@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/stretchr/testify/require"
@@ -129,7 +130,7 @@ func TestFirehoseRequest(t *testing.T) {
 		"WithInvalidBody": {
 			body:           "{ test: ",
 			wantStatusCode: http.StatusBadRequest,
-			wantErr:        errors.New("json: cannot unmarshal string into Go value of type signozawsfirehosereceiver.firehoseRequest"),
+			wantErr:        errors.New("invalid character '\"' looking for beginning of value"),
 		},
 		"WithNoRecords": {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),

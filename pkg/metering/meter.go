@@ -10,11 +10,13 @@ import (
 
 // Meter is an interface that receives telemetry data and
 // calculates billable metrics.
-type Meter[T ptrace.Traces | pmetric.Metrics | plog.Logs] interface {
+type Meter[T ptrace.Traces | pmetric.Metrics | plog.Logs, V ptrace.ResourceSpans | pmetric.ResourceMetrics | plog.ResourceLogs] interface {
 	// Size calculates size of the telemetry data in bytes.
 	Size(T) int
+	SizePerResource(V) int
 	// Count calculates count of the telemetry data.
 	Count(T) int
+	CountPerResource(V) int
 }
 
 // Sizer is an interface that calculates the size of different of map[string]any
@@ -34,15 +36,15 @@ type Sizer interface {
 
 // Logs calculates billable metrics for logs.
 type Logs interface {
-	Meter[plog.Logs]
+	Meter[plog.Logs, plog.ResourceLogs]
 }
 
 // Traces calculates billable metrics for traces.
 type Traces interface {
-	Meter[ptrace.Traces]
+	Meter[ptrace.Traces, ptrace.ResourceSpans]
 }
 
 // Metrics calculates billable metrics for metrics.
 type Metrics interface {
-	Meter[pmetric.Metrics]
+	Meter[pmetric.Metrics, pmetric.ResourceMetrics]
 }

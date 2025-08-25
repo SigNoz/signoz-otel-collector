@@ -15,3 +15,6 @@ tests:
   expect_consumer_error: true
   goleak:
     skip: false
+    ignore:
+      top:
+        - go.opencensus.io/stats/view.(*worker).start

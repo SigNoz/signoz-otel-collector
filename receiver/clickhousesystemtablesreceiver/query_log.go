@@ -2,11 +2,12 @@ package clickhousesystemtablesreceiver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/collector/pdata/pcommon"

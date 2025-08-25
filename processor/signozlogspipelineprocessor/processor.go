@@ -5,6 +5,8 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
+	"math"
+	"runtime"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -14,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
@@ -30,9 +33,14 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
+	concurrency := int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
+
+	telemetrySettings.Logger.Info("logspipeline concurrency set to ", zap.Int("num", concurrency))
+
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
+		limiter:         make(chan struct{}, concurrency),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
@@ -44,8 +52,8 @@ type logsPipelineProcessor struct {
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-
-	shutdownFns []component.ShutdownFunc
+	limiter         chan struct{}
+	shutdownFns     []component.ShutdownFunc
 }
 
 // Collector starting up
@@ -92,11 +100,26 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
-	for _, e := range entries {
-		if err := p.firstOp.Process(ctx, e); err != nil {
+	process := func(ctx context.Context, entry *entry.Entry) {
+		if err := p.firstOp.Process(ctx, entry); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
 	}
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	for _, entry := range entries {
+		p.limiter <- struct{}{}
+		group.Go(func() error {
+			defer func() {
+				<-p.limiter
+			}()
+			process(groupCtx, entry)
+			return nil // not returning error to avoid cancelling groupCtx
+		})
+	}
+
+	// wait for the group execution
+	_ = group.Wait()
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.

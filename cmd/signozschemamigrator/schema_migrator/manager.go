@@ -26,16 +26,19 @@ var (
 	ErrFailedToRunSquashedMigrations    = errors.New("failed to run squashed migrations")
 	ErrFailedToCreateSchemaMigrationsV2 = errors.New("failed to create schema_migrations_v2 table")
 	ErrDistributionQueueError           = errors.New("distribution_queue has entries with error_count != 0 or is_blocked = 1")
-	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs", "signoz_metadata", "signoz_analytics"}
-	legacyMigrationsTable               = "schema_migrations"
-	signozLogsDB                        = "signoz_logs"
-	signozMetricsDB                     = "signoz_metrics"
-	signozTracesDB                      = "signoz_traces"
-	signozMetadataDB                    = "signoz_metadata"
-	signozAnalyticsDB                   = "signoz_analytics"
-	inProgressStatus                    = "in-progress"
-	finishedStatus                      = "finished"
-	failedStatus                        = "failed"
+
+	legacyMigrationsTable = "schema_migrations"
+	signozLogsDB          = "signoz_logs"
+	signozMetricsDB       = "signoz_metrics"
+	signozTracesDB        = "signoz_traces"
+	signozMetadataDB      = "signoz_metadata"
+	signozAnalyticsDB     = "signoz_analytics"
+	signozMeterDB         = "signoz_meter"
+	dbs                   = []string{signozTracesDB, signozMetricsDB, signozLogsDB, signozMetadataDB, signozAnalyticsDB, signozMeterDB}
+
+	inProgressStatus = "in-progress"
+	finishedStatus   = "finished"
+	failedStatus     = "failed"
 )
 
 type Mutation struct {
@@ -196,6 +199,14 @@ func (m *MigrationManager) Bootstrap() error {
 	for _, migration := range V2MigrationTablesAnalytics {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozAnalyticsDB, true); err != nil {
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
+			}
+		}
+	}
+
+	for _, migration := range V2MigrationTablesMeter {
+		for _, item := range migration.UpItems {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozMeterDB, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -710,6 +721,19 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
+	for _, migration := range MeterMigrations {
+		if !m.shouldRunMigration(signozMeterDB, migration.MigrationID, upVersions) {
+			continue
+		}
+		for _, item := range migration.UpItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -764,6 +788,19 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 		for _, item := range migration.DownItems {
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozAnalyticsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range MeterMigrations {
+		if !m.shouldRunMigration(signozMeterDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
 					return err
 				}
 			}
