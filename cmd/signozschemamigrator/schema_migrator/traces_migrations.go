@@ -914,7 +914,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "signoz_index_v3",
 				Column: Column{
 					Name:  "resource",
-					Type:  ColumnTypeJSON,
+					Type:  JSONColumnType{MaxDynamicPaths: 100},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -923,7 +923,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "distributed_signoz_index_v3",
 				Column: Column{
 					Name:  "resource",
-					Type:  ColumnTypeJSON,
+					Type:  JSONColumnType{MaxDynamicPaths: 100},
 					Codec: "ZSTD(1)",
 				},
 			},

@@ -464,6 +464,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					if err != nil {
 						return err
 					}
+
+					if len(resourcesMap.StringData) > 100 {
+						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,

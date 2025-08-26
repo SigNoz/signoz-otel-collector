@@ -63,12 +63,28 @@ const (
 	// IP types
 	ColumnTypeIPv4 PrimitiveColumnType = "IPv4"
 	ColumnTypeIPv6 PrimitiveColumnType = "IPv6"
-	// JSON
-	ColumnTypeJSON PrimitiveColumnType = "JSON"
 )
 
 func (p PrimitiveColumnType) String() string {
 	return string(p)
+}
+
+// JSONColumnType represent a JSON column type
+type JSONColumnType struct {
+	MaxDynamicPaths uint
+	MaxDynamicTypes uint
+}
+
+func (f JSONColumnType) String() string {
+	params := []string{}
+	if f.MaxDynamicPaths != 0 {
+		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", f.MaxDynamicPaths))
+	}
+	if f.MaxDynamicTypes != 0 {
+		params = append(params, fmt.Sprintf("max_dynamic_types=%d", f.MaxDynamicTypes))
+	}
+
+	return fmt.Sprintf("JSON(%s)", strings.Join(params, ", "))
 }
 
 // FixedStringColumnType represents a fixed string column type.
