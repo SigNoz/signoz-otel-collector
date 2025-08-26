@@ -3,10 +3,18 @@ package signozclickhousemetrics
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/google/uuid"
+	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	"go.uber.org/zap/zaptest"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
@@ -59,10 +67,10 @@ func Test_prepareBatchGauge(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"system.memory.usage0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Unspecified\",\"gauge.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"system.memory.usage0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Unspecified\",\"gauge.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"__temporality__": "Unspecified", "gauge.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 	}
 	assert.Equal(t, len(expectedTs), len(batch.ts))
@@ -125,10 +133,10 @@ func Test_prepareBatchSum(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   true,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"system.cpu.time0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
+			labels:        "{\"__name__\":\"system.cpu.time0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
 			attrs:         map[string]string{"__temporality__": "Cumulative", "sum.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 	}
 	assert.Equal(t, len(expectedTs), len(batch.ts))
@@ -239,10 +247,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"__temporality__": "Cumulative", "histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -253,10 +261,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.sum\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.sum\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -267,10 +275,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.min\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.min\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -281,10 +289,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.max\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.max\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 	}
 
@@ -299,10 +307,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 			typ:           pmetric.MetricTypeHistogram,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        fmt.Sprintf("{\"__name__\":\"http.server.duration0.bucket\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"%d\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}", i),
+			labels:        fmt.Sprintf("{\"__name__\":\"http.server.duration0.bucket\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"%d\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}", i),
 			attrs:         map[string]string{"histogram.attr_0": "1", "le": strconv.Itoa(i)},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		})
 	}
 
@@ -316,10 +324,10 @@ func Test_prepareBatchHistogram(t *testing.T) {
 		typ:           pmetric.MetricTypeHistogram,
 		isMonotonic:   false,
 		unixMilli:     1727286182000,
-		labels:        "{\"__name__\":\"http.server.duration0.bucket\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"+Inf\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+		labels:        "{\"__name__\":\"http.server.duration0.bucket\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"+Inf\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 		attrs:         map[string]string{"histogram.attr_0": "1", "le": "+Inf"},
 		scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-		resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+		resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 	})
 
 	for idx, ts := range expectedTs {
@@ -335,15 +343,15 @@ func Test_prepareBatchHistogram(t *testing.T) {
 
 	// metadata
 	// count, sum, min, max
-	// 2 => resource attr + __resource.schema_url__
+	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 2 => point attr + __temporality__
 	// bucket
-	// 2 => resource attr + __resource.schema_url__
+	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 23 => point attr + __temporality__ + 21 buckets
 
-	assert.Equal(t, len(batch.metadata), 4*(2+4+2)+1*(2+4+23))
+	assert.Equal(t, len(batch.metadata), 4*(2+4+1)+1*(1+4+23))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -449,13 +457,13 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 
 	// metadata
 	// count, sum, min, max
-	// 2 => resource attr + __resource.schema_url__
+	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 2 => point attr + __temporality__
 	// sketch
 	// 2 => point attr + __temporality__
 
-	assert.Equal(t, len(batch.metadata), 4*(2+4+2)+(2))
+	assert.Equal(t, len(batch.metadata), 4*(1+4+2)+(2))
 	for _, item := range batch.metadata {
 		metaSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -544,15 +552,15 @@ func Test_prepareBatchSummary(t *testing.T) {
 
 	// metadata
 	// count, sum
-	// 2 => resource attr + __resource.schema_url__
+	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 2 => point attr + __temporality__
 	// bucket
-	// 2 => resource attr + __resource.schema_url__
+	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 3 => point attr + __temporality__ + 1 quantile
 
-	assert.Equal(t, len(batch.metadata), 2*(2+4+2)+1*(2+4+3))
+	assert.Equal(t, len(batch.metadata), 2*(1+4+2)+1*(1+4+3))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -795,10 +803,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.count\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"__temporality__": "Cumulative", "histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -809,10 +817,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.sum\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.sum\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -823,10 +831,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.min\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.min\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 		{
 			env:           "",
@@ -837,10 +845,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeGauge,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"http.server.duration0.max\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+			labels:        "{\"__name__\":\"http.server.duration0.max\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 			attrs:         map[string]string{"histogram.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 	}
 
@@ -855,10 +863,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeHistogram,
 			isMonotonic:   false,
 			unixMilli:     1727286182000,
-			labels:        fmt.Sprintf("{\"__name__\":\"http.server.duration0.bucket\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"%d\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}", i),
+			labels:        fmt.Sprintf("{\"__name__\":\"http.server.duration0.bucket\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"%d\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}", i),
 			attrs:         map[string]string{"histogram.attr_0": "1", "le": strconv.Itoa(i)},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		})
 	}
 
@@ -872,10 +880,10 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 		typ:           pmetric.MetricTypeHistogram,
 		isMonotonic:   false,
 		unixMilli:     1727286182000,
-		labels:        "{\"__name__\":\"http.server.duration0.bucket\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"+Inf\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+		labels:        "{\"__name__\":\"http.server.duration0.bucket\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"le\":\"+Inf\",\"histogram.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
 		attrs:         map[string]string{"histogram.attr_0": "1", "le": "+Inf"},
 		scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-		resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+		resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 	})
 
 	for idx, ts := range expectedTs {
@@ -945,10 +953,10 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 			typ:           pmetric.MetricTypeSum,
 			isMonotonic:   true,
 			unixMilli:     1727286182000,
-			labels:        "{\"__name__\":\"system.cpu.time0\",\"__resource.schema_url__\":\"resource.schema_url\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
+			labels:        "{\"__name__\":\"system.cpu.time0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
 			attrs:         map[string]string{"__temporality__": "Cumulative", "sum.attr_0": "1"},
 			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"__resource.schema_url__": "resource.schema_url", "resource.attr_0": "value0"},
+			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
 		},
 	}
 	assert.Equal(t, len(expectedTs), len(batch.ts))
@@ -1172,4 +1180,65 @@ func Test_prepareBatchExponentialHistogramWithNan(t *testing.T) {
 	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.NotNil(t, batch)
 	assert.Equal(t, 0, len(batch.samples))
+}
+
+func Test_shutdown(t *testing.T) {
+	conn, err := cmock.NewClickHouseNative(nil)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	id := uuid.New()
+	logger := zaptest.NewLogger(t)
+	conn.MatchExpectationsInOrder(false)
+	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)")                                                                                                                        //samples query
+	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")                //time series query
+	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //metadata query
+	conn.ExpectExec("insert into signoz_metrics.distributed_usage values ($1, $2, $3, $4, $5)")                                                                                                                                                                         // usage exporter query
+	conn.ExpectClose()
+	usageCollector := usage.NewUsageCollector(
+		id,
+		conn,
+		usage.Options{
+			ReportingInterval: 5 * time.Minute,
+		},
+		"signoz_metrics",
+		UsageExporter, logger)
+	chExporter, err := NewClickHouseExporter(
+		WithConn(conn),
+		WithUsageCollector(usageCollector),
+		WithExporterID(id),
+		WithEnableExpHist(true),
+		WithLogger(logger),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when creating new exporter", err)
+	}
+
+	// Send one metric before shutdown
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+	err = chExporter.PushMetrics(context.Background(), metrics)
+	if err != nil {
+		t.Fatalf("unexpected error pushing metrics: %v", err)
+	}
+
+	wg := new(sync.WaitGroup)
+	err = chExporter.Shutdown(context.Background())
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when shutting down exporter", err)
+	}
+	errChan := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errChan <- chExporter.PushMetrics(context.Background(), pmetric.NewMetrics())
+		}()
+	}
+	wg.Wait()
+	close(errChan)
+	for ok := range errChan {
+		assert.Error(t, ok)
+	}
 }

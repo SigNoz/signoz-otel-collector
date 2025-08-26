@@ -1,0 +1,25 @@
+type: signozmeter
+
+status:
+  class: connector
+  stability:
+    beta: [traces_to_metrics, metrics_to_metrics, logs_to_metrics]
+  
+tests:
+
+telemetry:
+  metrics:
+    connector.received.items.count:
+      description: Number of items received from the upstream pipeline
+      unit: "1"
+      enabled: true
+      sum:
+        value_type: int
+        monotonic: true
+    connector.produced.items.count:
+      description: Number of items produced from connector
+      unit: "1"
+      enabled: true
+      sum:
+        value_type: int
+        monotonic: true

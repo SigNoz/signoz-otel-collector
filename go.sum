@@ -1207,8 +1207,8 @@ github.com/go-task/slim-sprig/v3 v3.0.0/go.mod h1:W848ghGpv3Qj3dhTPRyJypKRiqCdHZ
 github.com/go-test/deep v1.0.2-0.20181118220953-042da051cf31/go.mod h1:wGDj63lr65AM2AQyKZd/NYHGb0R+1RLqB8NKt3aSFNA=
 github.com/go-test/deep v1.1.1 h1:0r/53hagsehfO4bzD2Pgr/+RgHqhmf+k1Bpse2cTu1U=
 github.com/go-test/deep v1.1.1/go.mod h1:5C2ZWiW0ErCdrYzpqxLbTX7MG14M9iiw8DgHncVwcsE=
-github.com/go-viper/mapstructure/v2 v2.2.1 h1:ZAaOCxANMuZx5RCeg0mBdEZk7DZasvvZIxtHqx8aGss=
-github.com/go-viper/mapstructure/v2 v2.2.1/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
+github.com/go-viper/mapstructure/v2 v2.3.0 h1:27XbWsHIqhbdR5TIC911OfYvgSaW93HM+dX7970Q7jk=
+github.com/go-viper/mapstructure/v2 v2.3.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/go-zookeeper/zk v1.0.4 h1:DPzxraQx7OrPyXq2phlGlNSIyWEsAox0RJmjTseMV6I=
 github.com/go-zookeeper/zk v1.0.4/go.mod h1:nOB03cncLtlp4t+UAkGSV+9beXP/akpekBwL+UX1Qcw=
 github.com/gobwas/glob v0.2.3 h1:A4xDbljILXROh+kObIiy5kIaPYD8e96x1tgBhUI5J+Y=
@@ -2599,6 +2599,8 @@ go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.128.0 h
 go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.128.0/go.mod h1:AQYR1OqioODfrIAbKFoS18HbOeAyw3/mbHBB5Ue9rgI=
 go.opentelemetry.io/collector/exporter/exportertest v0.128.0 h1:0fFdDuZZe5Fw4VvuzSSFx/WVoYZc9bQHJqds9IwA6O8=
 go.opentelemetry.io/collector/exporter/exportertest v0.128.0/go.mod h1:yu7HDFG00f25I6EhvxHm9JmDZiuF6fyNwtqBhyjdFX8=
+go.opentelemetry.io/collector/exporter/nopexporter v0.128.0 h1:1ACiZV/OTe1djpvsYhwG4TtYP00EvBeXB1V7NRKcJDY=
+go.opentelemetry.io/collector/exporter/nopexporter v0.128.0/go.mod h1:KNKsW2++TcN5cU3ihwHjkzfHL8pOu3T+/BRGdCEnzHQ=
 go.opentelemetry.io/collector/exporter/otlpexporter v0.128.0 h1:njMh1mjJimM/ctyECLRbBX9DmwM8FIikiMMg5hQHnmk=
 go.opentelemetry.io/collector/exporter/otlpexporter v0.128.0/go.mod h1:iv/ttkJ6p2kbAVY1D5r8qqCO278QDyBxidgIh3ldWWM=
 go.opentelemetry.io/collector/exporter/otlphttpexporter v0.128.0 h1:57HjnnCm7DLKOahB5/v7fwDEW+fn+Xy+2TE4k0r5fyc=

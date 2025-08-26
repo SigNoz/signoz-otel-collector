@@ -1,4 +1,4 @@
-package internal
+package fingerprint
 
 const (
 	InitialOffset uint64 = 14695981039346656037

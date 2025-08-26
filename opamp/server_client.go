@@ -6,7 +6,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -39,8 +38,8 @@ type serverClient struct {
 	configManager         *agentConfigManager
 	managerConfig         AgentManagerConfig
 	receivedInitialConfig []byte
+	runningNopConfig      atomic.Bool
 	instanceId            uuid.UUID
-	mux                   sync.Mutex
 }
 
 type NewServerClientOpts struct {
@@ -65,9 +64,10 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 			logger:      clientLogger,
 			isReloading: atomic.Bool{},
 		},
-		logger:        clientLogger,
-		configManager: configManager,
-		managerConfig: *args.Config,
+		logger:           clientLogger,
+		configManager:    configManager,
+		managerConfig:    *args.Config,
+		runningNopConfig: atomic.Bool{},
 	}
 	svrClient.createInstanceId()
 
@@ -138,11 +138,6 @@ func (s *serverClient) Start(ctx context.Context) error {
 		Callbacks: types.Callbacks{
 			OnConnect: func(ctx context.Context) {
 				s.logger.Info("Connected to the server. Applying default config.")
-
-				// Apply default config on connection
-				if err := s.reload(s.receivedInitialConfig); err != nil {
-					s.logger.Fatal("failed to reload with default config", zap.Error(err))
-				}
 			},
 			OnConnectFailed: func(ctx context.Context, err error) {
 				s.logger.Error("Failed to connect to the server: %v", zap.Error(err))
@@ -151,7 +146,14 @@ func (s *serverClient) Start(ctx context.Context) error {
 				s.logger.Error("Server returned an error response: %v", zap.String("", err.ErrorMessage))
 			},
 			GetEffectiveConfig: func(ctx context.Context) (*protobufs.EffectiveConfig, error) {
-				cfg, err := s.configManager.CreateEffectiveConfigMsg()
+				// if collector's running in Noop mode,
+				// override reading the copy.yaml; send default config
+				var override []byte
+				if s.runningNopConfig.Load() {
+					override = s.receivedInitialConfig
+				}
+
+				cfg, err := s.configManager.CreateEffectiveConfigMsg(override)
 				if err != nil {
 					return nil, err
 				}
@@ -183,6 +185,7 @@ func (s *serverClient) Start(ctx context.Context) error {
 	}
 
 	// Apply noop config
+	s.runningNopConfig.Store(true)
 	if err := s.reload(noopConfig); err != nil {
 		return fmt.Errorf("failed to start with noop config: %s", err)
 	}
@@ -206,9 +209,24 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 		k.Set("receivers.nop", map[string]any{})
 	}
 
-	// Delete all service.pipelines.*.receivers keys
+	if !k.Exists("exporters.nop") {
+		k.Set("exporters.nop", map[string]any{})
+	}
+
 	for _, key := range k.Keys() {
+		// Delete all service.pipelines.*.receivers keys
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".receivers") {
+			k.Delete(key)
+			k.Set(key, []any{"nop"})
+		}
+
+		// delete the processors
+		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".processors") {
+			k.Delete(key)
+		}
+
+		// delete the exporters
+		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".exporters") {
 			k.Delete(key)
 			k.Set(key, []any{"nop"})
 		}
@@ -259,6 +277,7 @@ func (s *serverClient) onRemoteConfigHandler(ctx context.Context, remoteConfig *
 	}
 
 	if changed {
+		s.runningNopConfig.Store(false)
 		if err := s.opampClient.UpdateEffectiveConfig(ctx); err != nil {
 			return fmt.Errorf("failed to update effective config: %w", err)
 		}

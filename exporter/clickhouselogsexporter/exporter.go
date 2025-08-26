@@ -16,7 +16,6 @@ package clickhouselogsexporter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -25,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -389,8 +390,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
 			logs := ld.ResourceLogs().At(i)
 			res := logs.Resource()
-			resBytes, _ := json.Marshal(res.Attributes().AsRaw())
-
+			resBytes, _ := getResourceAttributesByte(res)
 			resourcesMap := attributesToMap(res.Attributes(), true)
 
 			// we are using resourcesMap.StringData here as we are want everything to be string values.
