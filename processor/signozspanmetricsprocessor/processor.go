@@ -968,9 +968,6 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
 
-	p.logger.Info("Aggregating metrics for span", zap.String("span", span.Name()), zap.String("service", serviceName))
-	p.logger.Info("===> Temporality", zap.String("temporality", p.config.GetAggregationTemporality().String()))
-
 	if p.shouldSkip(serviceName, span, resourceAttr) {
 		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))
 		return
