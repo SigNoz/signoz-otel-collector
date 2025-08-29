@@ -906,4 +906,43 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1006,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "resource",
+					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "resource",
+					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name: "resource",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name: "resource",
+				},
+			},
+		},
+	},
 }

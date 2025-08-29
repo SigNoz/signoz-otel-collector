@@ -75,10 +75,12 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
+		resource,
 		scope_name,
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -439,6 +441,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return err
 					}
 
+					if len(resourcesMap.StringData) > 100 {
+						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -454,6 +460,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
+						resourcesMap.StringData,
 						resourcesMap.StringData,
 						scopeName,
 						scopeVersion,

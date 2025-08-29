@@ -155,6 +155,11 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	defer statement.Close()
 
 	for _, span := range batchSpans {
+
+		if len(span.ResourcesString) > 100 {
+			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
+		}
+
 		err = statement.Append(
 			span.TsBucketStart,
 			span.FingerPrint,
@@ -174,6 +179,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributeString,
 			span.AttributesNumber,
 			span.AttributesBool,
+			span.ResourcesString,
 			span.ResourcesString,
 			span.Events,
 			span.References,
