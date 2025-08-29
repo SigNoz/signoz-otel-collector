@@ -1205,6 +1205,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
+	start := time.Now()
+
 	// Send all statements in parallel
 	errC := make(chan error, 4)
 
@@ -1237,6 +1239,19 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			errs = append(errs, err)
 		}
 	}
+
+	tsLen := len(batch.ts)
+	samplesLen := len(batch.samples)
+	expHistLen := len(batch.expHist)
+	metaLen := len(batch.metadata)
+
+	c.logger.Info("time taken to write to all four tables",
+		zap.Int64("duration_ms", int64(time.Since(start).Milliseconds())),
+		zap.Int("ts_len", tsLen),
+		zap.Int("samples_len", samplesLen),
+		zap.Int("expHist_len", expHistLen),
+		zap.Int("meta_len", metaLen),
+	)
 
 	return errors.Join(errs...)
 }
