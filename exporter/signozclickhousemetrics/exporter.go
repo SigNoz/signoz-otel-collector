@@ -1025,6 +1025,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	}
 
 	writeSamples := func(ctx context.Context, samples []*sample) error {
+
+		lateSamples := make(map[string]int64)
+		maxLate := make(map[string]int64)
 		start := time.Now()
 		metrics := map[string]usage.Metric{}
 
@@ -1069,10 +1072,16 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if collectUsage {
 				usage.AddMetric(metrics, "default", 1, 0)
 			}
+			if time.Now().UnixMilli()-sample.unixMilli >= 60000 {
+				lateSamples[sample.metricName] += 1
+				maxLate[sample.metricName] = int64(math.Max(float64(maxLate[sample.metricName]), float64(time.Now().UnixMilli()-sample.unixMilli)))
+			}
 		}
 		for k, v := range metrics {
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
+
+		c.logger.Info("number of late samples by metric", zap.Any("lateSamples", lateSamples))
 		return statement.Send()
 	}
 
