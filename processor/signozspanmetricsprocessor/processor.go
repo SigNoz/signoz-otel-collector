@@ -87,9 +87,11 @@ func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time,
 	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
 }
 
-// AddTimeToKeyBuf writes the bucket timestamp prefix to the key buffer.
+// AddTimeToKeyBuf writes a time-bucket prefix to the key buffer.
+// It truncates the provided time to the configured bucket interval before writing.
 // If appendSeparator is true, it also adds the metric key separator.
-func (p *processorImp) AddTimeToKeyBuf(bucket time.Time, appendSeparator bool) {
+func (p *processorImp) AddTimeToKeyBuf(t time.Time, appendSeparator bool) {
+	bucket := t.Truncate(p.config.GetTimeBucketInterval())
 	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
 	if appendSeparator {
 		p.keyBuf.WriteString(metricKeySeparator)
@@ -99,12 +101,12 @@ func (p *processorImp) AddTimeToKeyBuf(bucket time.Time, appendSeparator bool) {
 // buildMetricKey builds a metric key with optional time bucketing based on temporality.
 // For delta temporality: prepends time bucket prefix
 // For cumulative temporality: no time bucketing (to avoid memory issues)
-func (p *processorImp) buildMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map, bucket time.Time) metricKey {
+func (p *processorImp) buildMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map) metricKey {
 	p.keyBuf.Reset()
 
 	// Only add time bucket prefix for delta temporality
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
-		p.AddTimeToKeyBuf(bucket, true)
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime(), true)
 	}
 
 	p.buildKey(p.keyBuf, serviceName, span, dimensions, resourceAttr)
@@ -114,12 +116,12 @@ func (p *processorImp) buildMetricKey(serviceName string, span ptrace.Span, dime
 // buildCustomMetricKey builds a custom metric key with optional time bucketing based on temporality.
 // For delta temporality: prepends time bucket prefix
 // For cumulative temporality: no time bucketing (to avoid memory issues)
-func (p *processorImp) buildCustomMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map, extraVals []string, bucket time.Time) metricKey {
+func (p *processorImp) buildCustomMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map, extraVals []string) metricKey {
 	p.keyBuf.Reset()
 
 	// Only add time bucket prefix for delta temporality
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
-		p.AddTimeToKeyBuf(bucket, true)
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime(), true)
 	}
 
 	buildCustomKey(p.keyBuf, serviceName, span, dimensions, resourceAttr, extraVals)
@@ -980,22 +982,19 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		latencyInMilliseconds = float64(endTime-startTime) / float64(time.Millisecond.Nanoseconds())
 	}
 
-	// Compute bucket from span start timestamp (only used for delta temporality)
-	bucket := startTime.AsTime().Truncate(p.config.GetTimeBucketInterval())
-
 	// Build key for latency metrics (with conditional time bucketing)
-	key := p.buildMetricKey(serviceName, span, p.dimensions, resourceAttr, bucket)
+	key := p.buildMetricKey(serviceName, span, p.dimensions, resourceAttr)
 	p.cache(serviceName, span, key, resourceAttr)
 	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
 	if p.config.EnableExpHistogram {
-		expKey := p.buildMetricKey(serviceName, span, p.expDimensions, resourceAttr, bucket)
+		expKey := p.buildMetricKey(serviceName, span, p.expDimensions, resourceAttr)
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
 		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
 	// Build key for call metrics (with conditional time bucketing)
-	callKey := p.buildMetricKey(serviceName, span, p.callDimensions, resourceAttr, bucket)
+	callKey := p.buildMetricKey(serviceName, span, p.callDimensions, resourceAttr)
 	p.callCache(serviceName, span, callKey, resourceAttr)
 	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
@@ -1004,7 +1003,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	if span.Kind() == ptrace.SpanKindClient && externalCallPresent {
 		extraVals := []string{remoteAddr}
-		externalCallKey := p.buildCustomMetricKey(serviceName, span, p.externalCallDimensions, resourceAttr, extraVals, bucket)
+		externalCallKey := p.buildCustomMetricKey(serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
 		extraDims := map[string]pcommon.Value{
 			"address": pcommon.NewValueStr(remoteAddr),
 		}
@@ -1014,7 +1013,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	_, dbCallPresent := spanAttr.Get("db.system")
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
-		dbCallKey := p.buildCustomMetricKey(serviceName, span, p.dbCallDimensions, resourceAttr, nil, bucket)
+		dbCallKey := p.buildCustomMetricKey(serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
 		p.updateDBHistogram(dbCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
