@@ -73,13 +73,10 @@ func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time,
 	s := string(k)
 	idx := strings.IndexByte(s, 0) // first separator
 	if idx <= 0 {
-		// No bucket prefix (cumulative temporality or back-compat); use processor start time and current time.
-		// This maintains the original behavior: StartTimestamp = processor start, Timestamp = now
 		return processorStartTime, pcommon.NewTimestampFromTime(now)
 	}
 	u, err := strconv.ParseInt(s[:idx], 10, 64)
 	if err != nil {
-		// Back-compat on parse failure; use processor start time and current time
 		return processorStartTime, pcommon.NewTimestampFromTime(now)
 	}
 	bucketStart := time.Unix(u, 0)
