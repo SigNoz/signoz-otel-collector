@@ -84,6 +84,11 @@ type Config struct {
 	// MetricsEmitInterval is the time period between when metrics are flushed or emitted to the configured MetricsExporter.
 	MetricsFlushInterval time.Duration `mapstructure:"metrics_flush_interval"`
 
+	// TimeBucketInterval is the time interval for bucketing spans based on their start timestamp.
+	// Spans are grouped into time buckets based on when they started, not when they are processed.
+	// Default is 1 minute.
+	TimeBucketInterval time.Duration `mapstructure:"time_bucket_interval"`
+
 	EnableExpHistogram bool `mapstructure:"enable_exp_histogram"`
 
 	MaxServicesToTrack             int `mapstructure:"max_services_to_track"`
@@ -97,4 +102,12 @@ func (c Config) GetAggregationTemporality() pmetric.AggregationTemporality {
 		return pmetric.AggregationTemporalityDelta
 	}
 	return pmetric.AggregationTemporalityCumulative
+}
+
+// GetTimeBucketInterval returns the configured time bucket interval, or the default if not set.
+func (c Config) GetTimeBucketInterval() time.Duration {
+	if c.TimeBucketInterval == 0 {
+		return defaultTimeBucketInterval
+	}
+	return c.TimeBucketInterval
 }

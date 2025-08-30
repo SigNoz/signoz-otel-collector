@@ -136,3 +136,17 @@ func TestGetAggregationTemporality(t *testing.T) {
 	cfg = &Config{}
 	assert.Equal(t, pmetric.AggregationTemporalityCumulative, cfg.GetAggregationTemporality())
 }
+
+func TestGetTimeBucketInterval(t *testing.T) {
+	cfg := &Config{}
+	// Should return default when not set
+	assert.Equal(t, defaultTimeBucketInterval, cfg.GetTimeBucketInterval())
+
+	// Should return configured value when set
+	cfg.TimeBucketInterval = 30 * time.Second
+	assert.Equal(t, 30*time.Second, cfg.GetTimeBucketInterval())
+
+	// Should return configured value when set to non-zero
+	cfg.TimeBucketInterval = 2 * time.Minute
+	assert.Equal(t, 2*time.Minute, cfg.GetTimeBucketInterval())
+}
