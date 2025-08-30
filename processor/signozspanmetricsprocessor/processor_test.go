@@ -1119,151 +1119,65 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	assert.True(t, found)
 }
 
-func TestTimeBucketedKeys(t *testing.T) {
-	// Tests end-to-end time-bucketed key generation and parsing for DELTA temporality.
-	// Verifies that:
-	// 1. Span start time is correctly truncated to time bucket boundary (e.g., 12:30:15 -> 12:30:00)
-	// 2. Time bucket prefix (Unix timestamp) is properly prepended to metric keys
-	// 3. parseBucketFromKeyOrNow correctly extracts bucket start/end times from prefixed keys
-	// This validates the core time bucketing functionality that enables timestamp-aware metrics
-	mexp := &mocks.MetricsExporter{}
-	tcon := &mocks.TracesConsumer{}
-	logger := zap.NewNop()
+func TestParseBucketFromKeyOrNow_Table(t *testing.T) {
+	interval := time.Minute
 
-	// Create processor with delta temporality (required for time bucketing)
-	processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
-	processor.config.TimeBucketInterval = time.Minute // 1 minute buckets
-
-	// Create a span with a specific start time
-	span := ptrace.NewSpan()
-	span.SetName("test-operation")
-	span.SetKind(ptrace.SpanKindServer)
-	span.Status().SetCode(ptrace.StatusCodeOk)
-
-	// Set start time to 12:30:15 (should bucket to 12:30:00)
-	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
-	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
-	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
-
-	resourceAttr := pcommon.NewMap()
-	serviceName := "test-service"
-
-	// Test that the key includes the bucket timestamp
-	processor.keyBuf.Reset()
-	processor.keyBuf.WriteString(strconv.FormatInt(startTime.Truncate(time.Minute).Unix(), 10))
-	processor.keyBuf.WriteString(metricKeySeparator)
-	processor.buildKey(processor.keyBuf, serviceName, span, nil, resourceAttr)
-	key := metricKey(processor.keyBuf.String())
-
-	// Verify the key starts with the bucket timestamp
-	expectedBucket := startTime.Truncate(time.Minute).Unix()
-	assert.True(t, strings.HasPrefix(string(key), strconv.FormatInt(expectedBucket, 10)))
-
-	// Test parsing the bucket from the key
-	testProcessorStartTime := pcommon.NewTimestampFromTime(time.Now().Add(-time.Hour)) // 1 hour ago
-	start, end := parseBucketFromKeyOrNow(key, time.Minute, time.Now(), testProcessorStartTime)
-	expectedStart := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute))
-	expectedEnd := pcommon.NewTimestampFromTime(startTime.Truncate(time.Minute).Add(time.Minute))
-
-	assert.Equal(t, expectedStart, start)
-	assert.Equal(t, expectedEnd, end)
-}
-
-func TestTimeBucketedKeysBackwardCompatibility(t *testing.T) {
-	// Tests backward compatibility for legacy metric keys that lack time bucket prefixes.
-	// Verifies that:
-	// 1. Keys without timestamp prefix are correctly identified (idx <= 0)
-	// 2. parseBucketFromKeyOrNow falls back to processor start time + current time
-	// 3. Legacy behavior is preserved: StartTimestamp = processor start, Timestamp = now
-	// This ensures existing deployments continue working after time bucketing feature introduction
-	config := &Config{
-		DimensionsCacheSize: 1000,
-		TimeBucketInterval:  time.Minute,
-	}
-
-	_ = &processorImp{
-		config: *config,
-		keyBuf: &bytes.Buffer{},
-	}
-
-	// Create a legacy key without time bucket prefix
-	legacyKey := metricKey("test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK")
-
-	// Test parsing with current time
+	// Fixed times to avoid flakiness
+	validSpanStart := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	validBucket := validSpanStart.Truncate(interval)
 	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
-	processorStartTime := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)) // 1.5 hours ago
-	start, end := parseBucketFromKeyOrNow(legacyKey, time.Minute, now, processorStartTime)
+	processorStart := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC))
 
-	// Should use processor start time and current time (not bucket computation)
-	expectedStart := processorStartTime
-	expectedEnd := pcommon.NewTimestampFromTime(now)
-
-	assert.Equal(t, expectedStart, start)
-	assert.Equal(t, expectedEnd, end)
-}
-
-func TestTimeBucketedKeysParseFailure(t *testing.T) {
-	// Tests graceful handling of malformed time bucket prefixes in metric keys.
-	// Verifies that:
-	// 1. Keys with non-numeric timestamp prefixes are detected as parse failures
-	// 2. parseBucketFromKeyOrNow falls back to processor start time + current time
-	// 3. Invalid keys don't crash the system but use safe fallback behavior
-	// This ensures robustness against corrupted or manually crafted metric keys
-	config := &Config{
-		DimensionsCacheSize: 1000,
-		TimeBucketInterval:  time.Minute,
-	}
-
-	_ = &processorImp{
-		config: *config,
-		keyBuf: &bytes.Buffer{},
-	}
-
-	// Create a malformed key with non-numeric prefix
+	// Keys
+	prefixedKey := metricKey(fmt.Sprintf("%d%s%s",
+		validBucket.Unix(),
+		metricKeySeparator,
+		"test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK",
+	))
+	legacyKey := metricKey("test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK")
 	malformedKey := metricKey("invalid\x00test-service\x00test-operation")
 
-	// Test parsing with current time
-	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
-	processorStartTime := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC)) // 1.5 hours ago
-	start, end := parseBucketFromKeyOrNow(malformedKey, time.Minute, now, processorStartTime)
-
-	// Should fallback to processor start time and current time (not bucket computation)
-	expectedStart := processorStartTime
-	expectedEnd := pcommon.NewTimestampFromTime(now)
-
-	assert.Equal(t, expectedStart, start)
-	assert.Equal(t, expectedEnd, end)
-}
-
-// Nikhil Mantri TODO: Remove this test, no value
-func TestAddTimeToKeyBuf(t *testing.T) {
-	// Tests the AddTimeToKeyBuf helper method that writes time bucket prefixes to metric keys.
-	// Verifies that:
-	// 1. Unix timestamp is correctly converted to string and written to buffer
-	// 2. Metric separator (\x00) is conditionally appended based on appendSeparator parameter
-	// 3. Buffer contents match expected format for time-bucketed metric keys
-	processor := &processorImp{
-		keyBuf: &bytes.Buffer{},
+	tests := []struct {
+		name      string
+		key       metricKey
+		now       time.Time
+		procStart pcommon.Timestamp
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{
+			name:      "Prefixed_Valid",
+			key:       prefixedKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: validBucket,
+			wantEnd:   validBucket.Add(interval),
+		},
+		{
+			name:      "Legacy_NoPrefix",
+			key:       legacyKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: processorStart.AsTime(),
+			wantEnd:   now,
+		},
+		{
+			name:      "Malformed_Prefix",
+			key:       malformedKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: processorStart.AsTime(),
+			wantEnd:   now,
+		},
 	}
 
-	// Create a specific time for testing (not truncated)
-	testTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
-	// Helper truncates to minute internally; expected is 12:30:00
-	expectedUnix := testTime.Truncate(time.Minute).Unix()
-
-	// Test with separator (appendSeparator = true)
-	processor.keyBuf.Reset()
-	expectedStringWithSeparator := strconv.FormatInt(expectedUnix, 10) + metricKeySeparator
-	processor.AddTimeToKeyBuf(testTime, true)
-	result := processor.keyBuf.String()
-	assert.Equal(t, expectedStringWithSeparator, result)
-
-	// Test without separator (appendSeparator = false)
-	processor.keyBuf.Reset()
-	expectedStringWithoutSeparator := strconv.FormatInt(expectedUnix, 10)
-	processor.AddTimeToKeyBuf(testTime, false)
-	result = processor.keyBuf.String()
-	assert.Equal(t, expectedStringWithoutSeparator, result)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			start, end := parseBucketFromKeyOrNow(tc.key, interval, tc.now, tc.procStart)
+			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantStart), start)
+			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantEnd), end)
+		})
+	}
 }
 
 func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
