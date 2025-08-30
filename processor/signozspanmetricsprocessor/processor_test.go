@@ -1119,7 +1119,7 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	assert.True(t, found)
 }
 
-func TestParseBucketFromKeyOrNow_Table(t *testing.T) {
+func TestParseBucketFromKeyOrNow(t *testing.T) {
 	interval := time.Minute
 
 	// Fixed times to avoid flakiness
