@@ -68,7 +68,7 @@ var (
 )
 
 // parseBucketFromKeyOrNow parses the time bucket prefix from a metric key and returns the bucket start and end timestamps.
-// If the key doesn't have a time bucket prefix (backward compatibility), it uses the processor start time and current time.
+// If the key doesn't have a time bucket prefix (in case of cumulative temporality), it uses the processor start time and current time.
 func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time, processorStartTime pcommon.Timestamp) (start, end pcommon.Timestamp) {
 	s := string(k)
 	idx := strings.IndexByte(s, 0) // first separator
@@ -87,12 +87,10 @@ func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time,
 // AddTimeToKeyBuf writes a time-bucket prefix to the key buffer.
 // It truncates the provided time to the configured bucket interval before writing.
 // If appendSeparator is true, it also adds the metric key separator.
-func (p *processorImp) AddTimeToKeyBuf(t time.Time, appendSeparator bool) {
+func (p *processorImp) AddTimeToKeyBuf(t time.Time) {
 	bucket := t.Truncate(p.config.GetTimeBucketInterval())
 	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
-	if appendSeparator {
-		p.keyBuf.WriteString(metricKeySeparator)
-	}
+	p.keyBuf.WriteString(metricKeySeparator)
 }
 
 // buildMetricKey builds a metric key with optional time bucketing based on temporality.
@@ -103,7 +101,7 @@ func (p *processorImp) buildMetricKey(serviceName string, span ptrace.Span, dime
 
 	// Only add time bucket prefix for delta temporality
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
-		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime(), true)
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime())
 	}
 
 	p.buildKey(p.keyBuf, serviceName, span, dimensions, resourceAttr)
@@ -118,7 +116,7 @@ func (p *processorImp) buildCustomMetricKey(serviceName string, span ptrace.Span
 
 	// Only add time bucket prefix for delta temporality
 	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
-		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime(), true)
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime())
 	}
 
 	buildCustomKey(p.keyBuf, serviceName, span, dimensions, resourceAttr, extraVals)
