@@ -69,6 +69,24 @@ func (p PrimitiveColumnType) String() string {
 	return string(p)
 }
 
+// JSONColumnType represent a JSON column type
+type JSONColumnType struct {
+	MaxDynamicPaths uint
+	MaxDynamicTypes uint
+}
+
+func (f JSONColumnType) String() string {
+	params := []string{}
+	if f.MaxDynamicPaths != 0 {
+		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", f.MaxDynamicPaths))
+	}
+	if f.MaxDynamicTypes != 0 {
+		params = append(params, fmt.Sprintf("max_dynamic_types=%d", f.MaxDynamicTypes))
+	}
+
+	return fmt.Sprintf("JSON(%s)", strings.Join(params, ", "))
+}
+
 // FixedStringColumnType represents a fixed string column type.
 // It is used to represent the fixed string column type in the column type.
 // Length is the length of the fixed string column type.
