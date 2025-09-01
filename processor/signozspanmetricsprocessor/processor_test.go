@@ -1119,7 +1119,7 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	assert.True(t, found)
 }
 
-func TestParseBucketFromKeyOrNow(t *testing.T) {
+func TestParseTimesFromKeyOrNow(t *testing.T) {
 	interval := time.Minute
 
 	// Fixed times to avoid flakiness
@@ -1151,7 +1151,7 @@ func TestParseBucketFromKeyOrNow(t *testing.T) {
 			now:       now,
 			procStart: processorStart,
 			wantStart: validBucket,
-			wantEnd:   validBucket.Add(interval),
+			wantEnd:   validBucket, // For delta: both start and end are bucket start
 		},
 		{
 			name:      "Legacy_NoPrefix",
@@ -1173,7 +1173,7 @@ func TestParseBucketFromKeyOrNow(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			start, end := parseBucketFromKeyOrNow(tc.key, interval, tc.now, tc.procStart)
+			start, end := parseTimesFromKeyOrNow(tc.key, interval, tc.now, tc.procStart)
 			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantStart), start)
 			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantEnd), end)
 		})
@@ -1353,8 +1353,8 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 						// Verify timestamps match expected bucket boundaries
 						assert.Equal(t, bucket1Start, startTime,
 							"StartTimestamp should match bucket start time for delta temporality")
-						assert.Equal(t, bucket1End, timestamp,
-							"Timestamp should match bucket end time for delta temporality")
+						assert.Equal(t, bucket1Start, timestamp,
+							"Timestamp should match bucket start time for delta temporality")
 
 						// Verify timestamps are NOT close to current time
 						now := time.Now()
@@ -1388,8 +1388,8 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 						// Verify timestamps match expected bucket boundaries
 						assert.Equal(t, bucket1Start, startTime,
 							"StartTimestamp should match bucket start time for delta temporality")
-						assert.Equal(t, bucket1End, timestamp,
-							"Timestamp should match bucket end time for delta temporality")
+						assert.Equal(t, bucket1Start, timestamp,
+							"Timestamp should match bucket start time for delta temporality")
 
 						// Verify data integrity
 						assert.Greater(t, dp.IntValue(), int64(0), "Sum should have value > 0")

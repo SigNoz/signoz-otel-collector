@@ -67,9 +67,11 @@ var (
 	}
 )
 
-// parseBucketFromKeyOrNow parses the time bucket prefix from a metric key and returns the bucket start and end timestamps.
-// If the key doesn't have a time bucket prefix (in case of cumulative temporality), it uses the processor start time and current time.
-func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time, processorStartTime pcommon.Timestamp) (start, end pcommon.Timestamp) {
+// parseTimesFromKeyOrNow parses the time bucket prefix from a metric key and returns the StartTimeUnixNano and TimeUnixNano fields for metrics.
+// Ref: https://opentelemetry.io/docs/specs/otel/metrics/data-model/#temporality .
+// If the key doesn't have a time bucket prefix (in case of cumulative temporality), it uses the processor start time as StartTimeUnixNano and current time as TimeUnixNano.
+// In case of delta temporality, it uses the start of the bucket as both StartTimeUnixNano & TimeUnixNano.
+func parseTimesFromKeyOrNow(k metricKey, interval time.Duration, now time.Time, processorStartTime pcommon.Timestamp) (start, end pcommon.Timestamp) {
 	s := string(k)
 	idx := strings.IndexByte(s, 0) // first separator
 	if idx <= 0 {
@@ -77,16 +79,16 @@ func parseBucketFromKeyOrNow(k metricKey, interval time.Duration, now time.Time,
 	}
 	u, err := strconv.ParseInt(s[:idx], 10, 64)
 	if err != nil {
+		// cumulative temporality: StartTimeUnixNano is processor start time, TimeUnixNano is current time
 		return processorStartTime, pcommon.NewTimestampFromTime(now)
 	}
 	bucketStart := time.Unix(u, 0)
-	bucketEnd := bucketStart.Add(interval)
-	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketEnd)
+	// delta temporality: start of the bucket is both StartTimeUnixNano & TimeUnixNano
+	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketStart)
 }
 
 // AddTimeToKeyBuf writes a time-bucket prefix to the key buffer.
 // It truncates the provided time to the configured bucket interval before writing.
-// If appendSeparator is true, it also adds the metric key separator.
 func (p *processorImp) AddTimeToKeyBuf(t time.Time) {
 	bucket := t.Truncate(p.config.GetTimeBucketInterval())
 	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
@@ -642,9 +644,13 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		// cumulative: start time stamp -> processor start, timestamp -> time.Now()
+
+		// delta: start time stamp -> start of the bucket, timestamp -> end of the bucket
+
 		dpLatency.SetStartTimestamp(start)
-		dpLatency.SetTimestamp(end)
+		dpLatency.SetTimestamp(start)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
 		dpLatency.BucketCounts().FromRaw(hist.bucketCounts)
 		dpLatency.SetCount(hist.count)
@@ -673,7 +679,7 @@ func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) erro
 
 	for key, hist := range p.expHistograms {
 		dp := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dp.SetStartTimestamp(start)
 		dp.SetTimestamp(end)
 		expoHistToExponentialDataPoint(hist.histogram, dp)
@@ -710,7 +716,7 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, metric := range p.dbCallHistograms {
 		dpDBCallSum := callSumDps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpDBCallSum.SetStartTimestamp(start)
 		dpDBCallSum.SetTimestamp(end)
 		dpDBCallSum.SetDoubleValue(metric.sum)
@@ -752,7 +758,7 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 	for key, metric := range p.externalCallHistograms {
 		dpExternalCallSum := callSumDps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpExternalCallSum.SetStartTimestamp(start)
 		dpExternalCallSum.SetTimestamp(end)
 		dpExternalCallSum.SetDoubleValue(metric.sum)
@@ -785,7 +791,7 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	for key, hist := range p.callHistograms {
 		dpCalls := dps.AppendEmpty()
-		start, end := parseBucketFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
 		dpCalls.SetStartTimestamp(start)
 		dpCalls.SetTimestamp(end)
 		dpCalls.SetIntValue(int64(hist.count))
