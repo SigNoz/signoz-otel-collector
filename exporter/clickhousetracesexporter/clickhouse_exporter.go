@@ -57,7 +57,6 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
-		resource,
 		events,
 		links,
 		response_status_code,
