@@ -645,10 +645,6 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
 		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
-		// cumulative: start time stamp -> processor start, timestamp -> time.Now()
-
-		// delta: start time stamp -> start of the bucket, timestamp -> end of the bucket
-
 		dpLatency.SetStartTimestamp(start)
 		dpLatency.SetTimestamp(start)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
