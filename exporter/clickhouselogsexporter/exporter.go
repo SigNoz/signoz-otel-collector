@@ -49,8 +49,6 @@ import (
 )
 
 const (
-	distributedLogsTable             = "distributed_logs"
-	distributedTagAttributes         = "distributed_tag_attributes"
 	distributedTagAttributesV2       = "distributed_tag_attributes_v2"
 	distributedLogsTableV2           = "distributed_logs_v2"
 	logsTableV2                      = "logs_v2"
@@ -59,6 +57,15 @@ const (
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
+	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
+		labels,
+		fingerprint,
+		seen_at_ts_bucket_start
+		) VALUES (
+			?,
+			?,
+			?
+	)`
 	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
 		ts_bucket_start,
 		resource_fingerprint,
@@ -75,10 +82,12 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
+		resource,
 		scope_name,
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -120,9 +129,10 @@ type statementSendDuration struct {
 }
 
 type clickhouseLogsExporter struct {
-	id              uuid.UUID
-	db              clickhouse.Conn
-	insertLogsSQLV2 string
+	id                    uuid.UUID
+	db                    clickhouse.Conn
+	insertLogsSQLV2       string
+	insertLogsResourceSQL string
 
 	logger *zap.Logger
 	cfg    *Config
@@ -149,20 +159,19 @@ type clickhouseLogsExporter struct {
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
 
-	insertLogsSQLV2 := renderInsertLogsSQLV2(cfg)
-
 	// view should be registered after exporter is initialized
 	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
 		return nil, err
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:   insertLogsSQLV2,
-		cfg:               cfg,
-		wg:                new(sync.WaitGroup),
-		closeChan:         make(chan struct{}),
-		maxDistinctValues: cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval: cfg.AttributesLimits.FetchKeysInterval,
+		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
+		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
+		cfg:                   cfg,
+		wg:                    new(sync.WaitGroup),
+		closeChan:             make(chan struct{}),
+		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -439,6 +448,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return err
 					}
 
+					if len(resourcesMap.StringData) > 100 {
+						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -454,6 +467,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
+						resourcesMap.StringData,
 						resourcesMap.StringData,
 						scopeName,
 						scopeVersion,
@@ -480,7 +494,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
-			fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceV2),
+			e.insertLogsResourceSQL,
 			driver.WithReleaseConnection(),
 		)
 		if err != nil {
@@ -747,4 +761,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 func renderInsertLogsSQLV2(_ *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
+}
+
+func renderInsertLogsResourceSQL(_ *Config) string {
+	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
 }
