@@ -8,7 +8,7 @@ ARG ARCH
 ARG USER_UID=10001
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates && \
+    apt-get install -y ca-certificates wget && \
     rm -rf /var/lib/apt/lists/*
 
 USER ${USER_UID}
