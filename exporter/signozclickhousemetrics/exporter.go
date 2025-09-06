@@ -1025,6 +1025,14 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	}
 
 	writeSamples := func(ctx context.Context, samples []*sample) error {
+
+		lateSamples := make(map[string]int64) // total late samples per metric (>=1m)
+		maxLate := make(map[string]int64)     // max lateness in ms per metric
+		// per-metric minute buckets: index 0 => [1m,2m), ..., index 8 => [9m,10m), index 9 => [10m, +inf)
+		lateBuckets := make(map[string][]int64) // map[metric][]int64(len=10)
+		// global minute buckets across all metrics (same indexing)
+		globalLateBuckets := make([]int64, 10)
+
 		start := time.Now()
 		metrics := map[string]usage.Metric{}
 
@@ -1069,10 +1077,42 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if collectUsage {
 				usage.AddMetric(metrics, "default", 1, 0)
 			}
+			// Lateness accounting
+			nowMs := time.Now().UnixMilli()
+			latenessMs := nowMs - sample.unixMilli
+			if latenessMs >= 60_000 {
+				lateSamples[sample.metricName] += 1
+				if latenessMs > maxLate[sample.metricName] {
+					maxLate[sample.metricName] = latenessMs
+				}
+				// Bucket by whole minutes late:
+				// mins = 1..9 map to indices 0..8; mins >= 10 map to index 9.
+				mins := int(latenessMs / 60_000)
+				if mins < 1 {
+					mins = 1
+				}
+				if mins > 10 {
+					mins = 10
+				}
+				idx := mins - 1
+				b, ok := lateBuckets[sample.metricName]
+				if !ok {
+					b = make([]int64, 10)
+					lateBuckets[sample.metricName] = b
+				}
+				b[idx]++
+				globalLateBuckets[idx]++
+			}
 		}
 		for k, v := range metrics {
 			stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
 		}
+
+		c.logger.Info("number of late samples by metric", zap.Any("lateSamples", lateSamples))
+		c.logger.Info("max lateness by metric (ms)", zap.Any("maxLate", maxLate))
+		// Bucket semantics: index 0 => [1m,2m), ..., index 8 => [9m,10m), index 9 => [10m, +inf)
+		c.logger.Info("late samples buckets (minutes)", zap.Any("per_metric", lateBuckets), zap.Int64s("global", globalLateBuckets))
+
 		return statement.Send()
 	}
 
