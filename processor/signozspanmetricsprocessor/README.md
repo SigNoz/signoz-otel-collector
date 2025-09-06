@@ -45,6 +45,53 @@ Each metric will have _at least_ the following dimensions because they are commo
 
 This processor lets traces to continue through the pipeline unmodified.
 
+## Time-Bucketed Keys (Timestamp-Aware Metrics)
+
+The processor supports time-bucketed keys that enable timestamp-aware metrics. **This feature is only applied when using DELTA temporality** to avoid memory issues with CUMULATIVE temporality. When enabled, spans are grouped into time buckets based on their start timestamp rather than when they are processed. This ensures that metrics align with the actual time when spans occurred, providing more accurate temporal correlation.
+
+### How it works
+
+1. **Conditional Time Bucketing**: Time bucketing is only applied for DELTA temporality. CUMULATIVE temporality uses traditional keys without time bucketing to prevent memory growth.
+2. **Time Bucketing**: For DELTA temporality, spans are grouped into time buckets based on their `StartTimestamp()` using the configured `time_bucket_interval`
+3. **Key Structure**: For DELTA temporality, time bucket information is prepended to metric keys: `<bucketStartUnix> | service | operation | span.kind | status.code | [dimensions...]`
+4. **Timestamp Alignment**: Metrics are exported with timestamps that reflect the actual time bucket when spans occurred
+5. **Backward Compatibility**: Legacy keys without time bucket prefixes are handled gracefully using current time
+
+### Benefits
+
+- **Temporal Accuracy**: Metrics appear at the correct time in dashboards, not when they were processed
+- **Late-Arriving Spans**: Spans that arrive minutes after generation are correctly attributed to their original time
+- **Correlation**: Better alignment between traces, metrics, and logs for debugging time-sensitive issues
+- **Memory Efficiency**: DELTA temporality with bounded memory usage per flush cycle, CUMULATIVE temporality avoids memory growth
+
+### Example Configuration
+
+```yaml
+# Delta temporality with time bucketing (recommended for timestamp-aware metrics)
+processors:
+  signozspanmetrics/delta:
+    time_bucket_interval: 1m  # 1 minute buckets
+    metrics_exporter: signozclickhousemetrics
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    metrics_flush_interval: 60s
+
+# Cumulative temporality (no time bucketing to prevent memory issues)
+processors:
+  signozspanmetrics/cumulative:
+    metrics_exporter: signozclickhousemetrics
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    metrics_flush_interval: 60s
+```
+
+### Behavioral Notes
+
+- **Delta Temporality**: Uses time-bucketed keys for timestamp-aware metrics with bounded memory usage
+- **Cumulative Temporality**: Uses traditional keys without time bucketing to prevent memory growth
+- **Start-Time Bucketing**: Spans are attributed to the bucket of their start time, even if they cross minute boundaries
+- **No Lateness Window**: All encountered buckets in the current cycle are exported immediately
+- **Memory Usage**: Bounded per cycle - one key per (series × minute) encountered, then reset
+- **Out-of-Order**: Older minute spans arriving in later cycles may cause out-of-order writes (acceptable for DELTA)
+
 The following settings are required:
 
 - `metrics_exporter`: the name of the exporter that this processor will write metrics to. This exporter **must** be present in a pipeline.
@@ -76,3 +123,9 @@ The following settings can be optionally configured:
 - `aggregation_temporality`: Defines the aggregation temporality of the generated metrics. 
   One of either `AGGREGATION_TEMPORALITY_CUMULATIVE` or `AGGREGATION_TEMPORALITY_DELTA`.
   - Default: `AGGREGATION_TEMPORALITY_CUMULATIVE`
+- `time_bucket_interval`: Defines the time interval for bucketing spans based on their start timestamp.
+  Spans are grouped into time buckets based on when they started, not when they are processed.
+  This enables timestamp-aware metrics that align with the actual time when spans occurred.
+  - Default: `1m` (1 minute)
+  - Example: `30s`, `2m`, `5m`
+  - **Note**: This feature is only applied for DELTA temporality to prevent memory issues with CUMULATIVE temporality.

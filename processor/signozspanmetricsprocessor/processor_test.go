@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -421,7 +422,8 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 	metricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 	callMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 	dbCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
-	externalCallMetricKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	externalCallMetricKeyToDimensions, _ := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
+	expHistogramKeyToDimensions, err := cache.NewCache[metricKey, pcommon.Map](DimensionsCacheSize)
 
 	defaultDimensions := []dimension{
 		// Set nil defaults to force a lookup for the attribute in the span.
@@ -477,6 +479,7 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 
 		startTimestamp:         pcommon.NewTimestampFromTime(time.Now()),
 		histograms:             make(map[metricKey]*histogramData),
+		expHistograms:          make(map[metricKey]*exponentialHistogram),
 		callHistograms:         make(map[metricKey]*histogramData),
 		dbCallHistograms:       make(map[metricKey]*histogramData),
 		externalCallHistograms: make(map[metricKey]*histogramData),
@@ -508,6 +511,7 @@ func newProcessorImp(mexp *mocks.MetricsExporter, tcon *mocks.TracesConsumer, de
 
 		keyBuf:                            new(bytes.Buffer),
 		metricKeyToDimensions:             metricKeyToDimensions,
+		expHistogramKeyToDimensions:       expHistogramKeyToDimensions,
 		callMetricKeyToDimensions:         callMetricKeyToDimensions,
 		dbCallMetricKeyToDimensions:       dbCallMetricKeyToDimensions,
 		externalCallMetricKeyToDimensions: externalCallMetricKeyToDimensions,
@@ -1113,4 +1117,426 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestParseTimesFromKeyOrNow(t *testing.T) {
+	interval := time.Minute
+
+	// Fixed times to avoid flakiness
+	validSpanStart := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	validBucket := validSpanStart.Truncate(interval)
+	now := time.Date(2024, 1, 1, 12, 30, 30, 0, time.UTC)
+	processorStart := pcommon.NewTimestampFromTime(time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC))
+
+	// Keys
+	prefixedKey := metricKey(fmt.Sprintf("%d%s%s",
+		validBucket.Unix(),
+		metricKeySeparator,
+		"test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK",
+	))
+	legacyKey := metricKey("test-service\x00test-operation\x00SPAN_KIND_SERVER\x00STATUS_CODE_OK")
+	malformedKey := metricKey("invalid\x00test-service\x00test-operation")
+
+	tests := []struct {
+		name      string
+		key       metricKey
+		now       time.Time
+		procStart pcommon.Timestamp
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{
+			name:      "Prefixed_Valid",
+			key:       prefixedKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: validBucket,
+			wantEnd:   validBucket, // For delta: both start and end are bucket start
+		},
+		{
+			name:      "Legacy_NoPrefix",
+			key:       legacyKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: processorStart.AsTime(),
+			wantEnd:   now,
+		},
+		{
+			name:      "Malformed_Prefix",
+			key:       malformedKey,
+			now:       now,
+			procStart: processorStart,
+			wantStart: processorStart.AsTime(),
+			wantEnd:   now,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			start, end := parseTimesFromKeyOrNow(tc.key, interval, tc.now, tc.procStart)
+			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantStart), start)
+			assert.Equal(t, pcommon.NewTimestampFromTime(tc.wantEnd), end)
+		})
+	}
+}
+
+func TestBuildMetricKeyConditionalTimeBucketing(t *testing.T) {
+	// testing example time
+	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	timeBucketInterval := time.Minute
+	// testing example span
+	span := ptrace.NewSpan()
+	span.SetName("test-operation")
+	span.SetKind(ptrace.SpanKindServer)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
+
+	resourceAttr := pcommon.NewMap()
+	serviceName := "test-service"
+
+	// Test Delta Temporality - should include time bucket prefix
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+
+	// initialize delta processor
+	deltaProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	deltaProcessor.config.TimeBucketInterval = timeBucketInterval
+
+	// function call to get a key from the function
+	deltaKey := deltaProcessor.buildMetricKey(serviceName, span, nil, resourceAttr)
+
+	// calculate the expected bucket timestamp
+	expectedBucket := startTime.Truncate(timeBucketInterval).Unix()
+
+	// verify the key starts with the bucket timestamp for delta temporality
+	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// initialize cumulative processor
+	cumulativeProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+	cumulativeProcessor.config.TimeBucketInterval = timeBucketInterval
+
+	// function call to get a key from the function
+	cumulativeKey := cumulativeProcessor.buildMetricKey(serviceName, span, nil, resourceAttr)
+
+	// verify the key does NOT start with the bucket timestamp for cumulative temporality
+	assert.False(t, strings.HasPrefix(string(cumulativeKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// verify the cumulative key starts with the service name
+	assert.True(t, strings.HasPrefix(string(cumulativeKey), serviceName))
+}
+
+func TestBuildCustomMetricKeyConditionalTimeBucketing(t *testing.T) {
+	// testing example time
+	startTime := time.Date(2024, 1, 1, 12, 30, 15, 0, time.UTC)
+	timeBucketInterval := time.Minute
+	// testing example span
+	span := ptrace.NewSpan()
+	span.SetName("test-operation")
+	span.SetKind(ptrace.SpanKindServer)
+	span.Status().SetCode(ptrace.StatusCodeOk)
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(startTime))
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(startTime.Add(100 * time.Millisecond)))
+
+	resourceAttr := pcommon.NewMap()
+	serviceName := "test-service"
+
+	extraVals := []string{"example.com:8080"}
+
+	// initialize delta processor
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+
+	deltaProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+	deltaProcessor.config.TimeBucketInterval = timeBucketInterval
+
+	// function call to get a key from the function
+	deltaKey := deltaProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals)
+
+	// calculate the expected bucket
+	expectedBucket := startTime.Truncate(timeBucketInterval).Unix()
+
+	// verify the key starts with the bucket timestamp for delta temporality
+	assert.True(t, strings.HasPrefix(string(deltaKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// initialize cumulative processor
+	cumulativeProcessor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+	cumulativeProcessor.config.TimeBucketInterval = timeBucketInterval
+
+	// function call to get a key from the function
+	cumulativeKey := cumulativeProcessor.buildCustomMetricKey(serviceName, span, nil, resourceAttr, extraVals)
+
+	// verify the key does NOT start with the bucket timestamp for cumulative temporality
+	assert.False(t, strings.HasPrefix(string(cumulativeKey), strconv.FormatInt(expectedBucket, 10)))
+
+	// The cumulative key should start with the service name
+	assert.True(t, strings.HasPrefix(string(cumulativeKey), serviceName))
+}
+
+func TestBuildMetricsTimestampAccuracy(t *testing.T) {
+	// Tests that buildMetrics() generates metrics with correct timestamps based on temporality mode.
+	// Verifies that:
+	// 1. DELTA temporality: metrics use bucket timestamps derived from span start times (timestamp-aware)
+	// 2. CUMULATIVE temporality: metrics use processor start time + current time (original behavior)
+	// 3. Timestamp values appear in final metric data points, not just during aggregation
+	// This validates the end-to-end timestamp accuracy for dashboard correlation and late-arriving spans
+
+	// Define time buckets for predictable testing
+	bucket1Start := time.Date(2024, 1, 1, 12, 30, 0, 0, time.UTC) // 12:30:00
+	bucket1End := bucket1Start.Add(time.Minute)                   // 12:31:00
+
+	t.Run("Delta_Uses_Bucket_Timestamps", func(t *testing.T) {
+		// Use existing helper function to create properly initialized processor
+		mexp := &mocks.MetricsExporter{}
+		tcon := &mocks.TracesConsumer{}
+		logger := zap.NewNop()
+
+		// Create processor with delta temporality
+		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
+
+		// Configure time bucketing
+		processor.config.TimeBucketInterval = time.Minute
+
+		// Create resource attributes
+		resourceAttr := pcommon.NewMap()
+		resourceAttr.PutStr("service.name", "test-service")
+		serviceName := "test-service"
+
+		// Create span with specific start time that will fall into bucket1
+		span := ptrace.NewSpan()
+		span.SetName("test-span")
+		span.SetKind(ptrace.SpanKindServer)
+		span.Status().SetCode(ptrace.StatusCodeOk)
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(15 * time.Second))) // 12:30:15
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(45 * time.Second)))   // 12:30:45
+
+		// Aggregate metrics for this span
+		processor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+
+		// Build metrics
+		metrics, err := processor.buildMetrics()
+		assert.NoError(t, err, "buildMetrics should not return error")
+
+		// Verify metrics structure
+		require.Equal(t, 1, metrics.ResourceMetrics().Len())
+		ilm := metrics.ResourceMetrics().At(0).ScopeMetrics()
+		require.Equal(t, 1, ilm.Len())
+		assert.Equal(t, "signozspanmetricsprocessor", ilm.At(0).Scope().Name())
+
+		// Get all metrics
+		allMetrics := ilm.At(0).Metrics()
+		require.Greater(t, allMetrics.Len(), 0, "Should have at least one metric")
+
+		// Verify timestamp accuracy for each metric
+		foundDeltaTimestamps := false
+		for i := 0; i < allMetrics.Len(); i++ {
+			metric := allMetrics.At(i)
+
+			switch metric.Type() {
+			case pmetric.MetricTypeHistogram:
+				histogram := metric.Histogram()
+				dps := histogram.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For delta temporality, timestamps should match bucket boundaries
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						// Verify timestamps match expected bucket boundaries
+						assert.Equal(t, bucket1Start, startTime,
+							"StartTimestamp should match bucket start time for delta temporality")
+						assert.Equal(t, bucket1Start, timestamp,
+							"Timestamp should match bucket start time for delta temporality")
+
+						// Verify timestamps are NOT close to current time
+						now := time.Now()
+						assert.False(t, timestamp.After(now.Add(-5*time.Second)) && timestamp.Before(now.Add(5*time.Second)),
+							"Timestamp should NOT be close to current time for delta temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.Count(), uint64(0), "Histogram should have count > 0")
+						assert.Greater(t, dp.Sum(), float64(0), "Histogram should have sum > 0")
+
+						foundDeltaTimestamps = true
+						t.Logf("Delta histogram - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+
+			case pmetric.MetricTypeSum:
+				sum := metric.Sum()
+				dps := sum.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For delta temporality, timestamps should match bucket boundaries
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						// Verify timestamps match expected bucket boundaries
+						assert.Equal(t, bucket1Start, startTime,
+							"StartTimestamp should match bucket start time for delta temporality")
+						assert.Equal(t, bucket1Start, timestamp,
+							"Timestamp should match bucket start time for delta temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.IntValue(), int64(0), "Sum should have value > 0")
+
+						foundDeltaTimestamps = true
+						t.Logf("Delta sum - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+			}
+		}
+
+		assert.True(t, foundDeltaTimestamps, "Should have found at least one data point with delta timestamps")
+	})
+
+	t.Run("Cumulative_Uses_Current_Time", func(t *testing.T) {
+		// Use existing helper function to create properly initialized processor
+		mexp := &mocks.MetricsExporter{}
+		tcon := &mocks.TracesConsumer{}
+		logger := zap.NewNop()
+
+		// Create processor with cumulative temporality
+		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
+
+		// Configure time bucketing (but it shouldn't be used for cumulative)
+		processor.config.TimeBucketInterval = time.Minute
+
+		// Create resource attributes
+		resourceAttr := pcommon.NewMap()
+		resourceAttr.PutStr("service.name", "test-service")
+		serviceName := "test-service"
+
+		// Create span with specific start time
+		span := ptrace.NewSpan()
+		span.SetName("cumulative-span")
+		span.SetKind(ptrace.SpanKindServer)
+		span.Status().SetCode(ptrace.StatusCodeOk)
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(15 * time.Second))) // 12:30:15
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(bucket1Start.Add(45 * time.Second)))   // 12:30:45
+
+		// Aggregate metrics for this span
+		processor.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+
+		// Record time before building metrics
+		beforeBuild := time.Now()
+
+		// Build metrics
+		metrics, err := processor.buildMetrics()
+		assert.NoError(t, err, "buildMetrics should not return error")
+
+		// Verify metrics structure
+		require.Equal(t, 1, metrics.ResourceMetrics().Len())
+		ilm := metrics.ResourceMetrics().At(0).ScopeMetrics()
+		require.Equal(t, 1, ilm.Len())
+
+		// Get all metrics
+		allMetrics := ilm.At(0).Metrics()
+		require.Greater(t, allMetrics.Len(), 0, "Should have at least one metric")
+
+		// Verify timestamp accuracy for each metric
+		foundCumulativeTimestamps := false
+		for i := 0; i < allMetrics.Len(); i++ {
+			metric := allMetrics.At(i)
+
+			switch metric.Type() {
+			case pmetric.MetricTypeHistogram:
+				histogram := metric.Histogram()
+				dps := histogram.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For cumulative temporality, timestamps should use processor start time and current time
+						// This is the correct behavior that matches the original main branch
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						processorStartTime := processor.startTimestamp.AsTime()
+
+						// StartTimestamp should be the processor start time
+						assert.Equal(t, processorStartTime, startTime,
+							"StartTimestamp should be processor start time for cumulative temporality")
+
+						// Timestamp should be close to current time (within a few seconds of beforeBuild)
+						assert.True(t, timestamp.After(beforeBuild.Add(-5*time.Second)) && timestamp.Before(beforeBuild.Add(5*time.Second)),
+							"Timestamp should be close to current time for cumulative temporality")
+
+						// Verify timestamps are NOT the span bucket times (from 2024)
+						assert.False(t, startTime.Equal(bucket1Start),
+							"StartTimestamp should NOT match span bucket start time for cumulative temporality")
+						assert.False(t, timestamp.Equal(bucket1End),
+							"Timestamp should NOT match span bucket end time for cumulative temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.Count(), uint64(0), "Histogram should have count > 0")
+						assert.Greater(t, dp.Sum(), float64(0), "Histogram should have sum > 0")
+
+						foundCumulativeTimestamps = true
+						t.Logf("Cumulative histogram - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+
+			case pmetric.MetricTypeSum:
+				sum := metric.Sum()
+				dps := sum.DataPoints()
+
+				for j := 0; j < dps.Len(); j++ {
+					dp := dps.At(j)
+
+					serviceNameAttr, hasService := dp.Attributes().Get("service.name")
+					require.True(t, hasService, "Data point should have service.name attribute")
+
+					if serviceNameAttr.Str() == serviceName {
+						// For cumulative temporality, timestamps should use processor start time and current time
+						// This is the correct behavior that matches the original main branch
+						startTime := dp.StartTimestamp().AsTime()
+						timestamp := dp.Timestamp().AsTime()
+
+						processorStartTime := processor.startTimestamp.AsTime()
+
+						// StartTimestamp should be the processor start time
+						assert.Equal(t, processorStartTime, startTime,
+							"StartTimestamp should be processor start time for cumulative temporality")
+
+						// Timestamp should be close to current time (within a few seconds of beforeBuild)
+						assert.True(t, timestamp.After(beforeBuild.Add(-5*time.Second)) && timestamp.Before(beforeBuild.Add(5*time.Second)),
+							"Timestamp should be close to current time for cumulative temporality")
+
+						// Verify timestamps are NOT the span bucket times (from 2024)
+						assert.False(t, startTime.Equal(bucket1Start),
+							"StartTimestamp should NOT match span bucket start time for cumulative temporality")
+						assert.False(t, timestamp.Equal(bucket1End),
+							"Timestamp should NOT match span bucket end time for cumulative temporality")
+
+						// Verify data integrity
+						assert.Greater(t, dp.IntValue(), int64(0), "Sum should have value > 0")
+
+						foundCumulativeTimestamps = true
+						t.Logf("Cumulative sum - StartTime: %v, EndTime: %v", startTime, timestamp)
+					}
+				}
+			}
+		}
+
+		assert.True(t, foundCumulativeTimestamps, "Should have found at least one data point with cumulative timestamps")
+	})
 }
