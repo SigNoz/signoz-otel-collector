@@ -2,8 +2,6 @@ package fingerprint
 
 import (
 	"sort"
-
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter/utils/gofuzz"
 )
 
 func NewLabelsAsJSONString(name string, ms ...map[string]string) string {
@@ -63,6 +61,5 @@ func marshalLabels(attrs map[string]string, b []byte) []byte {
 	}
 	b[len(b)-1] = '}' // replace last comma
 
-	gofuzz.AddToCorpus("json", b)
 	return b
 }

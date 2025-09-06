@@ -1,4 +1,4 @@
-type: signozclickhousemetrics
+type: clickhousesystemtablesreceiver
 
 status:
   class: receiver

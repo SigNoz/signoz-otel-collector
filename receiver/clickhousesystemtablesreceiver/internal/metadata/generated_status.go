@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	Type      = component.MustNewType("signozclickhousemetrics")
+	Type      = component.MustNewType("clickhousesystemtablesreceiver")
 	ScopeName = "github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 )
 
