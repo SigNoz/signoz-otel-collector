@@ -109,10 +109,8 @@ extensions:
 exporters:
   clickhousetraces:
     datasource: tcp://signoz-host:9000/?database=signoz_traces
-  clickhousemetricswrite:
-    endpoint: tcp://signoz-host:9000/?database=signoz_metrics
-    resource_to_telemetry_conversion:
-      enabled: true
+  signozclickhousemetrics:
+    dsn: tcp://signoz-host:9000/signoz_metrics
   clickhouselogsexporter:
     dsn: tcp://signoz-host:9000
     timeout: 10s
@@ -135,7 +133,7 @@ service:
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [batch]
-      exporters: [clickhousemetricswrite]
+      exporters: [signozclickhousemetrics]
     metrics/spanmetrics:
       receivers: [otlp/spanmetrics]
       exporters: [prometheus]

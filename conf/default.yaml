@@ -62,10 +62,8 @@ exporters:
       enabled: true
       queue_size: 100
       num_consumers: 5
-  clickhousemetricswrite:
-    endpoint: tcp://localhost:9000/signoz_metrics
-    resource_to_telemetry_conversion:
-      enabled: true
+  signozclickhousemetrics:
+    dsn: tcp://clickhouse:9000/signoz_metrics
   prometheus:
     endpoint: "0.0.0.0:8889"
 service:
@@ -78,7 +76,7 @@ service:
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [batch]
-      exporters: [clickhousemetricswrite]
+      exporters: [signozclickhousemetrics]
     metrics/spanmetrics:
       receivers: [otlp/spanmetrics]
       exporters: [prometheus]
