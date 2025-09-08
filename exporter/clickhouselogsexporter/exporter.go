@@ -619,7 +619,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 			datatype,
 		)
 	}
-	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
+	e.keysCache.Set(cacheKey, struct{}{}, 1*time.Minute)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToTagStatement(
