@@ -332,7 +332,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 					if err != nil {
 						return fmt.Errorf("could not append span to tagKey Statement to batch due to error: %w", err)
 					}
-					w.keysCache.Set(mapOfSpanAttributeKey, struct{}{}, 24*time.Hour)
+					w.keysCache.Set(mapOfSpanAttributeKey, struct{}{}, ttlcache.DefaultTTL)
 				} else {
 					w.logger.Debug("attribute key already present in cache, skipping", zap.String("key", mapOfSpanAttributeKey))
 				}

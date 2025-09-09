@@ -619,7 +619,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 			datatype,
 		)
 	}
-	e.keysCache.Set(cacheKey, struct{}{}, 24*time.Hour)
+	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToTagStatement(
@@ -639,13 +639,13 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 
 		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.TagDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		err := tagStatementV2.Append(
 			unixMilli,
 			attrKey,
@@ -663,12 +663,14 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
+
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
+
 		err := tagStatementV2.Append(
 			unixMilli,
 			numKey,
@@ -685,13 +687,14 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
 
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
 		err := tagStatementV2.Append(
 			unixMilli,
 			boolKey,
