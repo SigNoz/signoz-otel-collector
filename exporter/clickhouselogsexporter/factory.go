@@ -75,6 +75,7 @@ func createLogsExporter(
 	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 	)
 	go keysCache.Start()
 
