@@ -635,11 +635,11 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 
 		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.TagDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
