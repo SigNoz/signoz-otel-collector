@@ -230,4 +230,164 @@ ORDER BY name ASC`,
 			},
 		},
 	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "path_types",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "last_seen", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Indexes: []Index{
+					{Name: "path_minmax", Expression: "path", Type: "minmax", Granularity: 1},
+					{Name: "type_set", Expression: "type", Type: "set(25)", Granularity: 4},
+					{Name: "last_seen_minmax", Expression: "last_seen", Type: "minmax", Granularity: 1},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     "(path, type)",
+						PartitionBy: "toDate(last_seen / 1000000000)",
+						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_path_types",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "last_seen", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_logs",
+					Table:       "path_types",
+					ShardingKey: "cityHash64(path, type)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "body_promoted_paths",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Indexes: []Index{
+					{Name: "path_minmax", Expression: "path", Type: "minmax", Granularity: 1},
+					{Name: "created_at_minmax", Expression: "created_at", Type: "minmax", Granularity: 1},
+				},
+				Engine: MergeTree{
+					OrderBy:     "(path, created_at)",
+					PartitionBy: "toDate(created_at / 1000000000)",
+					Settings: TableSettings{
+						{Name: "index_granularity", Value: "8192"},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_body_promoted_paths",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_logs",
+					Table:       "body_promoted_paths",
+					ShardingKey: "cityHash64(path)",
+				},
+			},
+			AlterTableModifySettings{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Settings: TableSettings{
+					{Name: "object_serialization_version", Value: "'v3'"},
+					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "body_v2",
+					Type:  JSONColumnType{MaxDynamicPaths: 0},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "body_v2",
+					Type:  JSONColumnType{MaxDynamicPaths: 0},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body_v2",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body_v2",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "promoted"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "body_v2"},
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "path_types",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_path_types",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "body_promoted_paths",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_body_promoted_paths",
+			},
+		},
+	},
 }

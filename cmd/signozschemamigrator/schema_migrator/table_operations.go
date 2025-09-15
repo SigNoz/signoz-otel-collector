@@ -374,3 +374,58 @@ func (a AlterTableModifyTTL) ToSQL() string {
 	}
 	return sql.String()
 }
+
+// AlterTableModifySettings is used to modify table-level settings.
+// It is used to represent the ALTER TABLE MODIFY SETTING statement in the SQL.
+type AlterTableModifySettings struct {
+	cluster string
+
+	Database string
+	Table    string
+	Settings TableSettings
+}
+
+// OnCluster is used to specify the cluster on which the operation should be performed.
+func (a AlterTableModifySettings) OnCluster(cluster string) Operation {
+	a.cluster = cluster
+	return &a
+}
+
+func (a AlterTableModifySettings) WithReplication() Operation {
+	// no-op
+	return &a
+}
+
+func (a AlterTableModifySettings) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
+func (a AlterTableModifySettings) IsMutation() bool {
+	// Modifying table settings is not a mutation. It simply updates the metadata of the table.
+	return false
+}
+
+func (a AlterTableModifySettings) IsIdempotent() bool {
+	// Modifying table settings is idempotent.
+	return true
+}
+
+func (a AlterTableModifySettings) IsLightweight() bool {
+	// Modifying table settings is lightweight.
+	return true
+}
+
+func (a AlterTableModifySettings) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("ALTER TABLE ")
+	sql.WriteString(a.Database)
+	sql.WriteString(".")
+	sql.WriteString(a.Table)
+	if a.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(a.cluster)
+	}
+	sql.WriteString(" MODIFY SETTING ")
+	sql.WriteString(a.Settings.ToSQL())
+	return sql.String()
+}

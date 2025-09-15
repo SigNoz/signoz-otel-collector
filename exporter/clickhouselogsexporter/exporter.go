@@ -77,7 +77,8 @@ const (
 		trace_flags,
 		severity_text,
 		severity_number,
-		body,
+		body_v2,
+		promoted,
 		attributes_string,
 		attributes_number,
 		attributes_bool,
@@ -452,6 +453,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
 
+					bodyRaw := r.Body().AsRaw()
+					if _, ok := bodyRaw.(map[string]any); !ok {
+						return fmt.Errorf("body is not a map[string]any")
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -463,7 +469,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						uint32(r.Flags()),
 						r.SeverityText(),
 						uint8(r.SeverityNumber()),
-						getStringifiedBody(r.Body()),
+						bodyRaw,
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
