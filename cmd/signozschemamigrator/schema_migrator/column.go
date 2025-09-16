@@ -71,17 +71,22 @@ func (p PrimitiveColumnType) String() string {
 
 // JSONColumnType represent a JSON column type
 type JSONColumnType struct {
-	MaxDynamicPaths uint
-	MaxDynamicTypes uint
+	MaxDynamicPaths *uint
+	MaxDynamicTypes *uint
+	Columns         []Column
 }
 
 func (f JSONColumnType) String() string {
 	params := []string{}
-	if f.MaxDynamicPaths != 0 {
+	if f.MaxDynamicPaths != nil {
 		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", f.MaxDynamicPaths))
 	}
-	if f.MaxDynamicTypes != 0 {
+	if f.MaxDynamicTypes != nil {
 		params = append(params, fmt.Sprintf("max_dynamic_types=%d", f.MaxDynamicTypes))
+	}
+
+	for _, column := range f.Columns {
+		params = append(params, "%s %s", column.Name, column.Type.String())
 	}
 
 	return fmt.Sprintf("JSON(%s)", strings.Join(params, ", "))

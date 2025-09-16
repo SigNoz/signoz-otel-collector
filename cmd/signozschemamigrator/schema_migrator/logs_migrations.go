@@ -1,5 +1,7 @@
 package schemamigrator
 
+import "github.com/SigNoz/signoz-otel-collector/utils"
+
 var LogsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
@@ -199,7 +201,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPtr[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -208,7 +210,7 @@ ORDER BY name ASC`,
 				Table:    "distributed_logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPtr[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -316,8 +318,13 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name:  "body_v2",
-					Type:  JSONColumnType{MaxDynamicPaths: 0},
+					Name: "body_v2",
+					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPtr[uint](0),
+						Columns: []Column{
+							{Name: "message", Type: ColumnTypeString},
+						},
+					},
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
@@ -328,8 +335,13 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name:  "body_v2",
-					Type:  JSONColumnType{MaxDynamicPaths: 0},
+					Name: "body_v2",
+					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPtr[uint](0),
+						Columns: []Column{
+							{Name: "message", Type: ColumnTypeString},
+						},
+					},
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
@@ -387,6 +399,30 @@ ORDER BY name ASC`,
 			DropTableOperation{
 				Database: "signoz_logs",
 				Table:    "distributed_body_promoted_paths",
+			},
+		},
+	},
+	{
+		MigrationID: 1006,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_message_idx",
+					Expression:  "lower(body_v2.message)",
+					Type:        "ngrambf_v1(4, 60000, 5, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_message_idx",
+				},
 			},
 		},
 	},

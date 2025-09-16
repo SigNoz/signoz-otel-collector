@@ -96,3 +96,7 @@ func IsJSON(v any) bool {
 
 	return false
 }
+
+func ToPtr[T any](v T) *T {
+	return &v
+}
