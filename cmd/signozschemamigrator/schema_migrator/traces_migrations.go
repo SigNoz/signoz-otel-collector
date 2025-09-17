@@ -945,4 +945,202 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1007,
+		UpItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_messaging_calls_mv_v2",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_db_calls_mv_v2",
+			},
+		},
+		DownItems: []Operation{
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "dependency_graph_minutes_db_calls_mv_v2",
+				DestTable: "dependency_graph_minutes_v2",
+				Query: `SELECT
+							resource_string_service$$name AS src,
+							attribute_string_db$$system AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(duration_nano)) AS duration_quantiles_state,
+							countIf(status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(timestamp) AS timestamp,
+							resources_string['deployment.environment'] AS deployment_environment,
+							resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3
+						WHERE (dest != '') AND (kind != 2)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "dependency_graph_minutes_messaging_calls_mv_v2",
+				DestTable: "dependency_graph_minutes_v2",
+				Query: `SELECT
+							resource_string_service$$name  AS src,
+							attribute_string_messaging$$system AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(duration_nano)) AS duration_quantiles_state,
+							countIf(status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(timestamp) AS timestamp,
+							resources_string['deployment.environment'] AS deployment_environment,
+							resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3
+						WHERE (dest != '') AND (kind != 2)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+		},
+	},
+	{
+		MigrationID: 1008,
+		UpItems: []Operation{
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "dependency_graph_minutes_db_and_message_mv_v2",
+				DestTable: "dependency_graph_minutes_v2",
+				Query: `SELECT
+							resource_string_service$$name AS src,
+							dest,
+							quantilesState(0.5,0.75,0.9,0.95,0.99)(toFloat64(duration_nano)) AS duration_quantiles_state,
+							countIf(status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(timestamp) AS timestamp,
+							resources_string['deployment.environment'] AS deployment_environment,
+							resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3
+						ARRAY JOIN arrayFilter(x -> x != '', [
+							attribute_string_db$$system,
+							attribute_string_messaging$$system
+						]) AS dest
+						WHERE kind != 2
+						GROUP BY timestamp, src, dest, deployment_environment, k8s_cluster_name, k8s_namespace_name`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "dependency_graph_minutes_service_calls_mv_v2",
+				Query: `SELECT
+							CAST(A.service AS LowCardinality(String)) AS src,
+							CAST(B.resource_string_service$$name AS LowCardinality(String)) AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(B.duration_nano)) AS duration_quantiles_state,
+							countIf(B.status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(B.timestamp) AS timestamp,
+							B.resources_string['deployment.environment'] AS deployment_environment,
+							B.resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							B.resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM 
+						(
+							SELECT span_id, resource_string_service$$name AS service
+							FROM signoz_traces.signoz_index_v3
+						) AS A
+						INNER JOIN signoz_traces.signoz_index_v3 AS B
+							ON A.span_id = B.parent_span_id
+						WHERE A.service != B.resource_string_service$$name
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "trace_summary_mv",
+				Query: `SELECT
+							trace_id,
+							timestamp AS start,
+							timestamp AS end,
+							toUInt64(1) AS num_spans
+						FROM signoz_traces.signoz_index_v3;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "sub_root_operations",
+				Query: `SELECT
+							CAST(A.name AS LowCardinality(String)) AS name,
+							CAST(A.resource_string_service$$name AS LowCardinality(String)) AS serviceName
+						FROM
+						(
+							SELECT
+								span_id,
+								resource_string_service$$name AS service
+							FROM signoz_traces.signoz_index_v3
+						) AS B
+						INNER JOIN signoz_traces.signoz_index_v3 AS A
+							ON A.parent_span_id = B.span_id
+						WHERE A.resource_string_service$$name != B.service
+						GROUP BY
+							name,
+							serviceName;`,
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "dependency_graph_minutes_db_and_message_mv_v2",
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "dependency_graph_minutes_service_calls_mv_v2",
+				Query: `SELECT
+							A.resource_string_service$$name AS src,
+							B.resource_string_service$$name AS dest,
+							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(B.duration_nano)) AS duration_quantiles_state,
+							countIf(B.status_code = 2) AS error_count,
+							count(*) AS total_count,
+							toStartOfMinute(B.timestamp) AS timestamp,
+							B.resources_string['deployment.environment'] AS deployment_environment,
+							B.resources_string['k8s.cluster.name'] AS k8s_cluster_name,
+							B.resources_string['k8s.namespace.name'] AS k8s_namespace_name
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.span_id = B.parent_span_id)
+						GROUP BY
+							timestamp,
+							src,
+							dest,
+							deployment_environment,
+							k8s_cluster_name,
+							k8s_namespace_name`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "trace_summary_mv",
+				Query: `SELECT
+							trace_id,
+							min(timestamp) AS start,
+							max(timestamp) AS end,
+							toUInt64(count()) AS num_spans
+						FROM signoz_traces.signoz_index_v3
+						GROUP BY trace_id;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_traces",
+				ViewName: "sub_root_operations",
+				Query: `SELECT DISTINCT
+							name,
+							resource_string_service$$name as serviceName
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.parent_span_id = B.span_id)`,
+			},
+		},
+	},
 }
