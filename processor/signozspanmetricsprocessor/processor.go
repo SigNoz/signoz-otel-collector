@@ -897,6 +897,14 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
 
+	if span.StartTimestamp().AsTime().Before(time.Now().Add(-15 * 24 * time.Hour)) {
+		p.logger.Warn("span from old zaman",
+			zap.String("span", span.Name()),
+			zap.String("service", serviceName),
+			zap.Time("timestamp", span.StartTimestamp().AsTime()),
+		)
+	}
+
 	if p.shouldSkip(serviceName, span, resourceAttr) {
 		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))
 		return
