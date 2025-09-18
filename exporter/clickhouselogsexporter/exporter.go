@@ -56,6 +56,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
+	distributedPromotedPaths         = "distributed_promoted_paths"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -184,14 +185,17 @@ type clickhouseLogsExporter struct {
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 
-	shouldSkipKeyValue        atomic.Value // stores map[string]shouldSkipKey
-	maxDistinctValues         int
-	fetchKeysInterval         time.Duration
-	fetchShouldSkipKeysTicker *time.Ticker
+	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
+	maxDistinctValues  int
+	fetchKeysInterval  time.Duration
+	shutdownFunc       []func() error
 
 	// used to drop logs older than the retention period.
-	minAcceptedTs                        atomic.Value
-	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
+	minAcceptedTs atomic.Value
+
+	// promotedPaths holds a set of JSON paths that should be promoted.
+	// Accessed via atomic.Value to allow lock-free reads on hot path.
+	promotedPaths atomic.Value // stores map[string]struct{}
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -219,20 +223,22 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-	e.fetchShouldSkipKeysTicker = time.NewTicker(e.fetchKeysInterval)
-	e.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
 
 	e.wg.Add(2)
 
 	go func() {
 		defer e.wg.Done()
-		e.doFetchShouldSkipKeys() // Immediate first fetch
-		e.fetchShouldSkipKeys()   // Start ticker routine
+		e.fetchShouldSkipKeys() // Start ticker routine
 	}()
 	go func() {
 		defer e.wg.Done()
-		e.updateMinAcceptedTs()
 		e.fetchShouldUpdateMinAcceptedTs()
+	}()
+	// start promoted paths fetcher
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		e.fetchPromotedPaths()
 	}()
 	return nil
 }
@@ -265,25 +271,76 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 }
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
+	ticker := time.NewTicker(e.fetchKeysInterval)
+	e.shutdownFunc = append(e.shutdownFunc, func() error {
+		ticker.Stop()
+		return nil
+	})
+
+	e.doFetchShouldSkipKeys() // Immediate first fetch
 	for {
 		select {
 		case <-e.closeChan:
 			return
-		case <-e.fetchShouldSkipKeysTicker.C:
+		case <-ticker.C:
 			e.doFetchShouldSkipKeys()
 		}
 	}
+}
+
+// fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
+func (e *clickhouseLogsExporter) fetchPromotedPaths() {
+	// initialize with empty map so reads do not need nil checks
+	if e.promotedPaths.Load() == nil {
+		e.promotedPaths.Store(map[string]struct{}{})
+	}
+
+	ticker := time.NewTicker(1 * time.Minute)
+	e.shutdownFunc = append(e.shutdownFunc, func() error {
+		ticker.Stop()
+		return nil
+	})
+
+	e.doFetchPromotedPaths() // Immediate first fetch
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-ticker.C:
+			e.doFetchPromotedPaths()
+		}
+	}
+}
+
+func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
+	query := fmt.Sprintf(`SELECT path FROM %s.%s SETTINGS max_threads = 1`, databaseName, distributedPromotedPaths)
+	e.logger.Debug("fetching promoted paths", zap.String("query", query))
+
+	rows := []struct {
+		Path string `ch:"path"`
+	}{}
+	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+		e.logger.Error("error while fetching promoted paths", zap.Error(err))
+		return
+	}
+	updated := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		if r.Path == "" {
+			continue
+		}
+		updated[r.Path] = struct{}{}
+	}
+	e.promotedPaths.Store(updated)
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
-	if e.fetchShouldSkipKeysTicker != nil {
-		e.fetchShouldSkipKeysTicker.Stop()
-	}
-	if e.fetchShouldUpdateMinAcceptedTsTicker != nil {
-		e.fetchShouldUpdateMinAcceptedTsTicker.Stop()
+	for _, shutdownFunc := range e.shutdownFunc {
+		if err := shutdownFunc(); err != nil {
+			return err
+		}
 	}
 	if e.usageCollector != nil {
 		// TODO: handle error
@@ -321,11 +378,18 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 }
 
 func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
+	ticker := time.NewTicker(10 * time.Minute)
+	e.shutdownFunc = append(e.shutdownFunc, func() error {
+		ticker.Stop()
+		return nil
+	})
+
+	e.updateMinAcceptedTs()
 	for {
 		select {
 		case <-e.closeChan:
 			return
-		case <-e.fetchShouldUpdateMinAcceptedTsTicker.C:
+		case <-ticker.C:
 			e.updateMinAcceptedTs()
 		}
 	}
