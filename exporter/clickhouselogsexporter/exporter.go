@@ -411,13 +411,15 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	recordStream := make(chan *Record, cap(e.limiter))
 	defer close(recordStream)
 
+	producerCtx, producerCtxCancel := context.WithCancel(ctx)
+	defer producerCtxCancel()
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
 	group.Go(func() error {
 		for {
 			select {
-			case <-groupCtx.Done():
+			case <-groupCtx.Done(): // process cancelled by producer error
 				return nil
 			case <-e.closeChan:
 				return errors.New("shutdown has been called")
@@ -472,6 +474,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 				// aggregate metrics
 				usage.AddMetric(metrics, rec.metricsTenant, rec.metricsCount, rec.metricsSize)
+			case <-producerCtx.Done(): // producer finished
+				return nil
 			}
 		}
 	})
@@ -584,6 +588,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				})
 			}
 		}
+
+		// producer finished; Consumer can exit after consuming the buffer; without this group.Wait can not exit
+		producerCtxCancel()
 	}
 
 	err = group.Wait()
