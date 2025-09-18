@@ -132,9 +132,6 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	return nil
 }
 
-// api.parameters.list.search -> maps are flattened
-//
-// api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
 // bitmasks for compact aggregation
 const (
 	maskString       uint16 = 1 << 0
@@ -149,6 +146,10 @@ const (
 	maskArrayJSON    uint16 = 1 << 9
 )
 
+// api.parameters.list.search -> maps are flattened
+//
+// api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
+//
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
 func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, setType func(path string, mask uint16)) error {
 	switch val.Type() {
@@ -230,7 +231,6 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 
 // persistTypes writes the collected types to the ClickHouse database
 func (e *jsonTypeExporter) persistTypes(ctx context.Context, types *sync.Map) error {
-	return nil
 	// Prepare the SQL statement
 	tableName := "signoz_logs.distributed_path_types"
 	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", tableName)
