@@ -956,6 +956,14 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "dependency_graph_minutes_db_calls_mv_v2",
 			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "root_operations",
+			},
+			DropTableOperation{
+				Database: "signoz_traces",
+				Table:    "sub_root_operations",
+			},
 		},
 		DownItems: []Operation{
 			CreateMaterializedViewOperation{
@@ -1005,6 +1013,26 @@ var TracesMigrations = []SchemaMigrationRecord{
 							deployment_environment,
 							k8s_cluster_name,
 							k8s_namespace_name`,
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "root_operations",
+				DestTable: "top_level_operations",
+				Query: `SELECT DISTINCT
+							name,
+							resource_string_service$$name AS serviceName
+						FROM signoz_traces.signoz_index_v3
+						WHERE parent_span_id = ''`,
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "sub_root_operations",
+				DestTable: "top_level_operations",
+				Query: `SELECT DISTINCT
+							name,
+							resource_string_service$$name as serviceName
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.parent_span_id = B.span_id)`,
 			},
 		},
 	},
@@ -1072,12 +1100,22 @@ var TracesMigrations = []SchemaMigrationRecord{
 							toUInt64(1) AS num_spans
 						FROM signoz_traces.signoz_index_v3;`,
 			},
-			ModifyQueryMaterializedViewOperation{
-				Database: "signoz_traces",
-				ViewName: "sub_root_operations",
-				Query: `SELECT
-							CAST(A.name AS LowCardinality(String)) AS name,
-							CAST(A.resource_string_service$$name AS LowCardinality(String)) AS serviceName
+			CreateMaterializedViewOperation{
+				Database:  "signoz_traces",
+				ViewName:  "top_level_operations_mv",
+				DestTable: "top_level_operations",
+				Query: `
+						SELECT
+							name,
+							resource_string_service$$name AS serviceName
+						FROM signoz_traces.signoz_index_v3
+						WHERE parent_span_id = ''
+						
+						UNION ALL
+						
+						SELECT
+							A.name AS name,
+							A.resource_string_service$$name AS serviceName
 						FROM
 						(
 							SELECT
@@ -1087,10 +1125,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 						) AS B
 						INNER JOIN signoz_traces.signoz_index_v3 AS A
 							ON A.parent_span_id = B.span_id
-						WHERE A.resource_string_service$$name != B.service
-						GROUP BY
-							name,
-							serviceName;`,
+						WHERE A.resource_string_service$$name != B.service`,
 			},
 		},
 		DownItems: []Operation{
@@ -1132,14 +1167,9 @@ var TracesMigrations = []SchemaMigrationRecord{
 						FROM signoz_traces.signoz_index_v3
 						GROUP BY trace_id;`,
 			},
-			ModifyQueryMaterializedViewOperation{
+			DropTableOperation{
 				Database: "signoz_traces",
-				ViewName: "sub_root_operations",
-				Query: `SELECT DISTINCT
-							name,
-							resource_string_service$$name as serviceName
-						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
-						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.parent_span_id = B.span_id)`,
+				Table:    "top_level_operations_mv",
 			},
 		},
 	},
