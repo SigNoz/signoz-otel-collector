@@ -1,3 +1,4 @@
+// (moved below package/imports)
 // Copyright 2020, OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,6 +142,7 @@ type Record struct {
 	severityText  string
 	severityNum   uint8
 	body          pcommon.Value
+	promoted      pcommon.Value
 	scopeName     string
 	scopeVersion  string
 
@@ -193,9 +195,8 @@ type clickhouseLogsExporter struct {
 	// used to drop logs older than the retention period.
 	minAcceptedTs atomic.Value
 
-	// promotedPaths holds a set of JSON paths that should be promoted.
-	// Accessed via atomic.Value to allow lock-free reads on hot path.
-	promotedPaths atomic.Value // stores map[string]struct{}
+	// promotedTrie is a trie built from promotedPaths for single-pass extraction.
+	promotedTrie atomic.Value // stores *promotedTrieNode
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -290,11 +291,6 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
-	// initialize with empty map so reads do not need nil checks
-	if e.promotedPaths.Load() == nil {
-		e.promotedPaths.Store(map[string]struct{}{})
-	}
-
 	ticker := time.NewTicker(1 * time.Minute)
 	e.shutdownFunc = append(e.shutdownFunc, func() error {
 		ticker.Stop()
@@ -330,7 +326,8 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 		}
 		updated[r.Path] = struct{}{}
 	}
-	e.promotedPaths.Store(updated)
+	// rebuild trie for single-pass extraction
+	e.promotedTrie.Store(buildPromotedTrie(updated))
 }
 
 // Shutdown will shutdown the exporter.
@@ -517,6 +514,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
+					rec.promoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -613,6 +611,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return fmt.Errorf("body is not a map[string]any")
 					}
 
+					// promoted paths extraction using cached set and trie
+					var trie *promotedTrieNode
+					if tv := e.promotedTrie.Load(); tv != nil {
+						trie = tv.(*promotedTrieNode)
+					}
+					promoted := buildPromotedAndPruneBody(body, trie)
+
 					// metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
@@ -629,6 +634,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						severityText:       record.SeverityText(),
 						severityNum:        uint8(record.SeverityNumber()),
 						body:               body,
+						promoted:           promoted,
 						scopeName:          scopeName,
 						scopeVersion:       scopeVersion,
 						resourceLabelsJSON: resourceJson,
@@ -863,6 +869,21 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		}
 	}
 	return nil
+}
+
+// buildPromotedAndPruneBody walks through provided promoted paths and constructs promoted map,
+// mutating body in place to remove extracted entries.
+func buildPromotedAndPruneBody(body pcommon.Value, trie *promotedTrieNode) pcommon.Value {
+	promoted := pcommon.NewValueMap()
+	if body.Type() != pcommon.ValueTypeMap {
+		return promoted
+	}
+	if trie != nil {
+		walkBodyWithTrie(body, trie, promoted)
+		return promoted
+	}
+	// If no trie available, return empty promoted map
+	return promoted
 }
 
 func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response attributeMap) {
