@@ -79,14 +79,14 @@ type JSONColumnType struct {
 func (f JSONColumnType) String() string {
 	params := []string{}
 	if f.MaxDynamicPaths != nil {
-		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", f.MaxDynamicPaths))
+		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", *f.MaxDynamicPaths))
 	}
 	if f.MaxDynamicTypes != nil {
-		params = append(params, fmt.Sprintf("max_dynamic_types=%d", f.MaxDynamicTypes))
+		params = append(params, fmt.Sprintf("max_dynamic_types=%d", *f.MaxDynamicTypes))
 	}
 
 	for _, column := range f.Columns {
-		params = append(params, "%s %s", column.Name, column.Type.String())
+		params = append(params, fmt.Sprintf("%s %s", column.Name, column.Type.String()))
 	}
 
 	return fmt.Sprintf("JSON(%s)", strings.Join(params, ", "))
