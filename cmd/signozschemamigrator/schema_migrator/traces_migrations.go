@@ -952,8 +952,8 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				ViewName: "dependency_graph_minutes_service_calls_mv_v2",
 				Query: `SELECT
-							CAST(A.service AS LowCardinality(String)) AS src,
-							CAST(B.resource_string_service$$name AS LowCardinality(String)) AS dest,
+							A.resource_string_service$$name AS src,
+							B.resource_string_service$$name AS dest,
 							quantilesState(0.5, 0.75, 0.9, 0.95, 0.99)(toFloat64(B.duration_nano)) AS duration_quantiles_state,
 							countIf(B.status_code = 2) AS error_count,
 							count(*) AS total_count,
@@ -961,15 +961,9 @@ var TracesMigrations = []SchemaMigrationRecord{
 							B.resources_string['deployment.environment'] AS deployment_environment,
 							B.resources_string['k8s.cluster.name'] AS k8s_cluster_name,
 							B.resources_string['k8s.namespace.name'] AS k8s_namespace_name
-						FROM 
-						(
-							SELECT span_id, resource_string_service$$name AS service
-							FROM signoz_traces.signoz_index_v3 WHERE span_id != ''
-						) AS A
-						INNER JOIN signoz_traces.signoz_index_v3 AS B
-							ON A.span_id = B.parent_span_id
-						WHERE A.service != B.resource_string_service$$name
-						AND B.span_id != ''
+						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
+						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.span_id = B.parent_span_id)
+							AND B.span_id != '' AND A.span_id != ''
 						GROUP BY
 							timestamp,
 							src,
@@ -1004,7 +998,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 							B.resources_string['k8s.namespace.name'] AS k8s_namespace_name
 						FROM signoz_traces.signoz_index_v3 AS A, signoz_traces.signoz_index_v3 AS B
 						WHERE (A.resource_string_service$$name != B.resource_string_service$$name) AND (A.span_id = B.parent_span_id)
-						AND B.span_id != ''
 						GROUP BY
 							timestamp,
 							src,
