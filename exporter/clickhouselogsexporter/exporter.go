@@ -141,8 +141,8 @@ type Record struct {
 	traceFlags    uint32
 	severityText  string
 	severityNum   uint8
-	body          pcommon.Value
-	promoted      pcommon.Value
+	body          string
+	promoted      string
 	scopeName     string
 	scopeVersion  string
 
@@ -475,8 +475,13 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 	// records channel and limiter
 	recordStream := make(chan *Record, cap(e.limiter))
+	// ensure recordStream is closed in all scenarios (producer completes or errgroup cancels)
+	var closeOnce sync.Once
+	closeRecordStream := func() { closeOnce.Do(func() { close(recordStream) }) }
+	defer closeRecordStream()
 	// wait for all producer goroutines to finish sending before closing channel
 	var producersWG sync.WaitGroup
+
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
@@ -567,11 +572,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 				// acquire limiter slot
 				select {
-				case e.limiter <- struct{}{}:
 				case <-groupCtx.Done():
-					return nil
+					continue // to reach group.Wait()
 				case <-e.closeChan:
 					return errors.New("shutdown has been called")
+				case e.limiter <- struct{}{}:
 				}
 
 				producersWG.Add(1)
@@ -635,8 +640,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						traceFlags:         uint32(record.Flags()),
 						severityText:       record.SeverityText(),
 						severityNum:        uint8(record.SeverityNumber()),
-						body:               body,
-						promoted:           promoted,
+						body:               getStringifiedBody(body),
+						promoted:           getStringifiedBody(promoted),
 						scopeName:          scopeName,
 						scopeVersion:       scopeVersion,
 						resourceLabelsJSON: resourceJson,
@@ -650,12 +655,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					select {
-					case recordStream <- rec:
-						return nil
 					case <-groupCtx.Done():
 						return nil
 					case <-e.closeChan:
 						return errors.New("shutdown has been called")
+					case recordStream <- rec:
+						return nil
 					}
 				})
 			}
@@ -665,7 +670,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	// Close the record stream only after all producers finish
 	go func() {
 		producersWG.Wait()
-		close(recordStream)
+		closeRecordStream()
 	}()
 
 	err = group.Wait()
@@ -934,4 +939,15 @@ func renderInsertLogsSQLV2(_ *Config) string {
 
 func renderInsertLogsResourceSQL(_ *Config) string {
 	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
+}
+
+func getStringifiedBody(body pcommon.Value) string {
+	var strBody string
+	switch body.Type() {
+	case pcommon.ValueTypeBytes:
+		strBody = string(body.Bytes().AsRaw())
+	default:
+		strBody = body.AsString()
+	}
+	return strBody
 }
