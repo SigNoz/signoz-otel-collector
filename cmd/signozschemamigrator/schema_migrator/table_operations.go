@@ -376,7 +376,7 @@ func (a AlterTableModifyTTL) ToSQL() string {
 }
 
 type AlterTableDropTTL struct {
-	cluster string
+	cluster  string
 	Database string
 	Table    string
 }
@@ -419,6 +419,6 @@ func (a AlterTableDropTTL) ToSQL() string {
 		sql.WriteString(" ON CLUSTER ")
 		sql.WriteString(a.cluster)
 	}
-	sql.WriteString(" REMOVE TTL ")
+	sql.WriteString(" REMOVE TTL")
 	return sql.String()
 }
