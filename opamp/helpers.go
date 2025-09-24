@@ -71,7 +71,7 @@ func WaitForEndpoint(endpoint string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	waitForPortToListen(port)
+	_ = waitForPortToListen(port)
 }
 
 // fileHash returns the SHA256 hash of the file at the given path.

@@ -26,7 +26,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		exp.prepareBatch(context.Background(), metrics)
 	}
-	exp.Shutdown(context.Background())
+	_ = exp.Shutdown(context.Background())
 }
 
 func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
@@ -57,7 +57,7 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
 		assert.Equal(t, sample.value, curSample.value)
 	}
-	exp.Shutdown(context.Background())
+	_ = exp.Shutdown(context.Background())
 }
 
 func Test_prepareBatchSumWithNan(t *testing.T) {
@@ -66,7 +66,7 @@ func Test_prepareBatchSumWithNan(t *testing.T) {
 	require.NoError(t, err)
 	batch := exp.prepareBatch(context.Background(), metrics)
 	assert.Equal(t, 0, len(batch.samples))
-	exp.Shutdown(context.Background())
+	_ = exp.Shutdown(context.Background())
 }
 
 func Test_shutdown(t *testing.T) {

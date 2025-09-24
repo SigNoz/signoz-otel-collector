@@ -45,7 +45,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -67,7 +67,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("nested", "nestedkey")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("nested", "nestedkey")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -89,7 +89,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("nested", "key2")
 				return cfg
 			}(),
@@ -111,7 +111,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewAttributeField("key2")
 				return cfg
 			}(),
@@ -133,7 +133,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField()}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField()}
 				cfg.To = entry.NewAttributeField("one", "two")
 				return cfg
 			}(),
@@ -158,7 +158,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField()}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField()}
 				cfg.To = entry.NewResourceField("one", "two")
 				return cfg
 			}(),
@@ -183,7 +183,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("key")}
 				cfg.To = entry.NewBodyField("key2")
 				return cfg
 			}(),
@@ -210,7 +210,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("key")}
 				cfg.To = entry.NewResourceField("key2")
 				return cfg
 			}(),
@@ -231,7 +231,7 @@ func TestBuildAndProcess(t *testing.T) {
 			false,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewBodyField("nested")
 				return cfg
 			}(),
@@ -250,7 +250,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewAttributeField()
 				return cfg
 			}(),
@@ -262,7 +262,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 				cfg.To = entry.NewResourceField()
 				return cfg
 			}(),
@@ -274,7 +274,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{entry.NewAttributeField("nonexistentkey")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("nonexistentkey")}
 				cfg.To = entry.NewResourceField("key2")
 				return cfg
 			}(),

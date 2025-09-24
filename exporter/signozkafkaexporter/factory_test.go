@@ -139,7 +139,7 @@ func TestCreateMetricExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				exporter.Shutdown(context.Background())
+				_ = exporter.Shutdown(context.Background())
 			}
 		})
 	}
@@ -221,7 +221,7 @@ func TestCreateLogExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				exporter.Shutdown(context.Background())
+				_ = exporter.Shutdown(context.Background())
 			}
 		})
 	}
@@ -303,7 +303,7 @@ func TestCreateTraceExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				exporter.Shutdown(context.Background())
+				_ = exporter.Shutdown(context.Background())
 			}
 		})
 	}
