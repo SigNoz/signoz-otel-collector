@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.13.0"
+	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -73,7 +73,7 @@ func makeJaegerProtoReferences(
 // TODO: Find a better package for this function.
 func ServiceNameForResource(resource pcommon.Resource) string {
 
-	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
+	service, found := resource.Attributes().Get(string(conventions.ServiceNameKey))
 	if !found {
 		return "<nil-service-name>"
 	}

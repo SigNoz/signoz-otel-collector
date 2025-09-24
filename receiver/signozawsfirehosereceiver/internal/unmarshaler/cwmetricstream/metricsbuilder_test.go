@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	conventions "go.opentelemetry.io/collector/semconv/v1.13.0"
+	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
 const (
@@ -28,7 +28,7 @@ func TestToSemConvAttributeKey(t *testing.T) {
 	}{
 		"WithValidKey": {
 			key:  "InstanceId",
-			want: conventions.AttributeServiceInstanceID,
+			want: string(conventions.ServiceInstanceIDKey),
 		},
 		"WithInvalidKey": {
 			key:  "CustomDimension",
@@ -142,21 +142,21 @@ func TestResourceMetricsBuilder(t *testing.T) {
 		"WithAwsNamespace": {
 			namespace: "AWS/EC2",
 			wantAttributes: map[string]string{
-				attributeAWSCloudWatchMetricStreamName: testStreamName,
-				conventions.AttributeCloudAccountID:    testAccountID,
-				conventions.AttributeCloudRegion:       testRegion,
-				conventions.AttributeServiceName:       "EC2",
-				conventions.AttributeServiceNamespace:  "AWS",
+				attributeAWSCloudWatchMetricStreamName:  testStreamName,
+				string(conventions.CloudAccountIDKey):   testAccountID,
+				string(conventions.CloudRegionKey):      testRegion,
+				string(conventions.ServiceNameKey):      "EC2",
+				string(conventions.ServiceNamespaceKey): "AWS",
 			},
 		},
 		"WithCustomNamespace": {
 			namespace: "CustomNamespace",
 			wantAttributes: map[string]string{
-				attributeAWSCloudWatchMetricStreamName: testStreamName,
-				conventions.AttributeCloudAccountID:    testAccountID,
-				conventions.AttributeCloudRegion:       testRegion,
-				conventions.AttributeServiceName:       "CustomNamespace",
-				conventions.AttributeServiceNamespace:  "",
+				attributeAWSCloudWatchMetricStreamName:  testStreamName,
+				string(conventions.CloudAccountIDKey):   testAccountID,
+				string(conventions.CloudRegionKey):      testRegion,
+				string(conventions.ServiceNameKey):      "CustomNamespace",
+				string(conventions.ServiceNamespaceKey): "",
 			},
 		},
 	}

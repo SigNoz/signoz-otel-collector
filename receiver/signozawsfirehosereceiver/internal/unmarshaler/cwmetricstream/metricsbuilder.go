@@ -10,7 +10,7 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	conventions "go.opentelemetry.io/collector/semconv/v1.13.0"
+	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
 const (
@@ -66,14 +66,14 @@ func (rmb *resourceMetricsBuilder) AddMetric(metric cWMetric) {
 // setAttributes creates a pcommon.Resource from the fields in the resourceMetricsBuilder.
 func (rmb *resourceAttributes) setAttributes(resource pcommon.Resource) {
 	attributes := resource.Attributes()
-	attributes.PutStr(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
-	attributes.PutStr(conventions.AttributeCloudAccountID, rmb.accountID)
-	attributes.PutStr(conventions.AttributeCloudRegion, rmb.region)
+	attributes.PutStr(string(conventions.CloudProviderKey), conventions.CloudProviderAWS.Value.AsString())
+	attributes.PutStr(string(conventions.CloudAccountIDKey), rmb.accountID)
+	attributes.PutStr(string(conventions.CloudRegionKey), rmb.region)
 	serviceNamespace, serviceName := toServiceAttributes(rmb.namespace)
 	if serviceNamespace != "" {
-		attributes.PutStr(conventions.AttributeServiceNamespace, serviceNamespace)
+		attributes.PutStr(string(conventions.ServiceNamespaceKey), serviceNamespace)
 	}
-	attributes.PutStr(conventions.AttributeServiceName, serviceName)
+	attributes.PutStr(string(conventions.ServiceNameKey), serviceName)
 	attributes.PutStr(attributeAWSCloudWatchMetricStreamName, rmb.metricStreamName)
 }
 
@@ -82,7 +82,7 @@ func (rmb *resourceAttributes) setAttributes(resource pcommon.Resource) {
 // service name with an empty service namespace
 func toServiceAttributes(namespace string) (serviceNamespace, serviceName string) {
 	index := strings.Index(namespace, namespaceDelimiter)
-	if index != -1 && strings.EqualFold(namespace[:index], conventions.AttributeCloudProviderAWS) {
+	if index != -1 && strings.EqualFold(namespace[:index], conventions.CloudProviderAWS.Value.AsString()) {
 		return namespace[:index], namespace[index+1:]
 	}
 	return "", namespace
@@ -163,7 +163,7 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 func ToSemConvAttributeKey(key string) string {
 	switch key {
 	case dimensionInstanceID:
-		return conventions.AttributeServiceInstanceID
+		return string(conventions.ServiceInstanceIDKey)
 	default:
 		return key
 	}
@@ -172,7 +172,7 @@ func ToSemConvAttributeKey(key string) string {
 // make metrics more easily searchable.
 func otlpMetricName(metricNamespace, metricName, statName string) string {
 	// adding an aws_ prefix allows for quickly scoping down to aws metrics
-	nameParts := []string{conventions.AttributeCloudProviderAWS}
+	nameParts := []string{conventions.CloudProviderAWS.Value.AsString()}
 
 	// including ns allows for distinguishing between metrics with same
 	// name across multiple namespaces/services
@@ -181,7 +181,7 @@ func otlpMetricName(metricNamespace, metricName, statName string) string {
 	for _, p := range nsParts {
 		// ignore "AWS" in namespaces like "AWS/EC2" to avoid having
 		// final names like aws_aws_ec2_CPUUtilization
-		if strings.ToLower(p) != conventions.AttributeCloudProviderAWS && len(p) > 0 {
+		if strings.ToLower(p) != conventions.CloudProviderAWS.Value.AsString() && len(p) > 0 {
 			nameParts = append(nameParts, p)
 		}
 	}
