@@ -274,7 +274,7 @@ func TestBuildAndProcess(t *testing.T) {
 			true,
 			func() *Config {
 				cfg := NewConfig()
-				cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("nonexistentkey")}
+				cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("nonexistentkey")}
 				cfg.To = entry.NewResourceField("key2")
 				return cfg
 			}(),
