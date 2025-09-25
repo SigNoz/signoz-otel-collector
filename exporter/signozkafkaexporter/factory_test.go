@@ -139,7 +139,8 @@ func TestCreateMetricExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				_ = exporter.Shutdown(context.Background())
+				err = exporter.Shutdown(context.Background())
+				assert.NoError(t, err, "Must not error during shutdown")
 			}
 		})
 	}
@@ -221,7 +222,8 @@ func TestCreateLogExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				_ = exporter.Shutdown(context.Background())
+				err = exporter.Shutdown(context.Background())
+				assert.NoError(t, err, "Must not error during shutdown")
 			}
 		})
 	}
@@ -303,7 +305,8 @@ func TestCreateTraceExporter(t *testing.T) {
 
 			// Clean up the producer if created
 			if tc.cleanup && exporter != nil {
-				_ = exporter.Shutdown(context.Background())
+				err = exporter.Shutdown(context.Background())
+				assert.NoError(t, err, "Must not error during shutdown")
 			}
 		})
 	}

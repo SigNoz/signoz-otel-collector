@@ -37,12 +37,14 @@ func TestParseConfig(t *testing.T) {
 func TestParseConfigAddsID(t *testing.T) {
 	// make a copy of the file
 	func() {
-		_ = copy("./testdata/agent-id.yaml", "./testdata/agent-id-copy.yaml")
+		err := copy("./testdata/agent-id.yaml", "./testdata/agent-id-copy.yaml")
+		assert.NoError(t, err, "failed to copy file")
 	}()
 
 	// restore the original file
 	defer func() {
-		_ = copy("./testdata/agent-id-copy.yaml", "./testdata/agent-id.yaml")
+		err := copy("./testdata/agent-id-copy.yaml", "./testdata/agent-id.yaml")
+		assert.NoError(t, err, "failed to restore original file")
 		os.Remove("./testdata/agent-id-copy.yaml")
 	}()
 

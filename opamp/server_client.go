@@ -206,18 +206,27 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 	}
 
 	if !k.Exists("receivers.nop") {
-		_ = k.Set("receivers.nop", map[string]any{})
+		err := k.Set("receivers.nop", map[string]any{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to set nop receiver: %s", err)
+		}
 	}
 
 	if !k.Exists("exporters.nop") {
-		_ = k.Set("exporters.nop", map[string]any{})
+		err := k.Set("exporters.nop", map[string]any{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to set nop exporter: %s", err)
+		}
 	}
 
 	for _, key := range k.Keys() {
 		// Delete all service.pipelines.*.receivers keys
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".receivers") {
 			k.Delete(key)
-			_ = k.Set(key, []any{"nop"})
+			err := k.Set(key, []any{"nop"})
+			if err != nil {
+				return nil, fmt.Errorf("failed to set nop receiver: %s", err)
+			}
 		}
 
 		// delete the processors
@@ -228,7 +237,10 @@ func (s *serverClient) initialNopConfig() ([]byte, error) {
 		// delete the exporters
 		if strings.HasPrefix(key, "service.pipelines.") && strings.HasSuffix(key, ".exporters") {
 			k.Delete(key)
-			_ = k.Set(key, []any{"nop"})
+			err := k.Set(key, []any{"nop"})
+			if err != nil {
+				return nil, fmt.Errorf("failed to set nop exporter: %s", err)
+			}
 		}
 	}
 
