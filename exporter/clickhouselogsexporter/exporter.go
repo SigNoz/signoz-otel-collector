@@ -618,12 +618,17 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return fmt.Errorf("body is not a map[string]any")
 					}
 
+					// Work on a local mutable copy of the body to avoid mutating
+					// the shared pdata across goroutines.
+					mutableBody := pcommon.NewValueMap()
+					body.CopyTo(mutableBody)
+
 					// promoted paths extraction using cached set
 					promotedSet := map[string]struct{}{}
 					if v := e.promotedPaths.Load(); v != nil {
 						promotedSet = v.(map[string]struct{})
 					}
-					promoted := buildPromotedAndPruneBody(body, promotedSet)
+					promoted := buildPromotedAndPruneBody(mutableBody, promotedSet)
 
 					// metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
@@ -640,7 +645,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						traceFlags:         uint32(record.Flags()),
 						severityText:       record.SeverityText(),
 						severityNum:        uint8(record.SeverityNumber()),
-						body:               getStringifiedBody(body),
+						body:               getStringifiedBody(mutableBody),
 						promoted:           getStringifiedBody(promoted),
 						scopeName:          scopeName,
 						scopeVersion:       scopeVersion,
