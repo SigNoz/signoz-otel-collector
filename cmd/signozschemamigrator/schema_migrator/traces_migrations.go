@@ -1017,4 +1017,41 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1008,
+		UpItems: []Operation{
+			// Add timestamp column to span_attributes_keys table
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "span_attributes_keys",
+				Column: Column{
+					Name:    "timestamp",
+					Type:    DateTimeColumnType{},
+					Default: "toDateTime(now())",
+				},
+			},
+			// Set TTL on span_attributes_keys to match signoz_spans table (15 days)
+			AlterTableModifyTTL{
+				Database: "signoz_traces",
+				Table:    "span_attributes_keys",
+				TTL:      "timestamp + INTERVAL 15 DAY",
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: false,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "span_attributes_keys",
+				Column: Column{
+					Name: "timestamp",
+				},
+			},
+			AlterTableDropTTL{
+				Database: "signoz_traces",
+				Table:    "span_attributes_keys",
+			},
+		},
+	},
 }
