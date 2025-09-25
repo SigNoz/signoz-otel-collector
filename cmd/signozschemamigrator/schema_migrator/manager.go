@@ -267,6 +267,7 @@ func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Conte
 	return nil
 }
 
+//nolint:unused
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
 	should, err := m.shouldRunSquashed(ctx, "signoz_logs")

@@ -30,7 +30,7 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "spanid",
 				Expect: func() *Config {
-					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_span_id")}
+					parseFrom := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("app_span_id")}
 					cfg := signozstanzahelper.SpanIDConfig{}
 					cfg.ParseFrom = &parseFrom
 
@@ -42,7 +42,7 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "traceid",
 				Expect: func() *Config {
-					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_trace_id")}
+					parseFrom := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("app_trace_id")}
 					cfg := signozstanzahelper.TraceIDConfig{}
 					cfg.ParseFrom = &parseFrom
 
@@ -54,7 +54,7 @@ func TestConfig(t *testing.T) {
 			{
 				Name: "trace_flags",
 				Expect: func() *Config {
-					parseFrom := signozstanzaentry.Field{signozstanzaentry.NewBodyField("app_trace_flags_id")}
+					parseFrom := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("app_trace_flags_id")}
 					cfg := signozstanzahelper.TraceFlagsConfig{}
 					cfg.ParseFrom = &parseFrom
 

@@ -244,8 +244,8 @@ func TestTimeParser(t *testing.T) {
 		},
 	}
 
-	rootField := signozstanzaentry.Field{signozstanzaentry.NewBodyField()}
-	someField := signozstanzaentry.Field{signozstanzaentry.NewBodyField("some_field")}
+	rootField := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField()}
+	someField := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -411,8 +411,8 @@ func TestTimeEpochs(t *testing.T) {
 		},
 	}
 
-	rootField := signozstanzaentry.Field{entry.NewBodyField()}
-	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
+	rootField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField()}
+	someField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -473,8 +473,8 @@ func TestTimeErrors(t *testing.T) {
 		},
 	}
 
-	rootField := signozstanzaentry.Field{entry.NewBodyField()}
-	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
+	rootField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField()}
+	someField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

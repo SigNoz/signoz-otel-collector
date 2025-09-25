@@ -205,8 +205,8 @@ func TestSeverityParser(t *testing.T) {
 		},
 	}
 
-	rootField := signozstanzaentry.Field{entry.NewBodyField()}
-	someField := signozstanzaentry.Field{entry.NewBodyField("some_field")}
+	rootField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField()}
+	someField := signozstanzaentry.Field{FieldInterface: entry.NewBodyField("some_field")}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

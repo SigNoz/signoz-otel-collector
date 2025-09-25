@@ -20,7 +20,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "body_to_body",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 					cfg.To = entry.NewBodyField("key2")
 					return cfg
 				}(),
@@ -29,7 +29,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "body_to_attribute",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{signozstanzaentry.NewBodyField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("key")}
 					cfg.To = entry.NewAttributeField("key2")
 					return cfg
 				}(),
@@ -38,7 +38,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "attribute_to_resource",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("key")}
 					cfg.To = entry.NewResourceField("key2")
 					return cfg
 				}(),
@@ -47,7 +47,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "attribute_to_body",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("key")}
 					cfg.To = entry.NewBodyField("key2")
 					return cfg
 				}(),
@@ -56,7 +56,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "attribute_to_nested_attribute",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewAttributeField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("key")}
 					cfg.To = entry.NewAttributeField("one", "two", "three")
 					return cfg
 				}(),
@@ -65,7 +65,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "resource_to_nested_resource",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					cfg.From = signozstanzaentry.Field{entry.NewResourceField("key")}
+					cfg.From = signozstanzaentry.Field{FieldInterface: entry.NewResourceField("key")}
 					cfg.To = entry.NewResourceField("one", "two", "three")
 					return cfg
 				}(),

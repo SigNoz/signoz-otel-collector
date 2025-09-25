@@ -31,11 +31,11 @@ func TestLoadConfig(t *testing.T) {
 					Builder: func() *regex.Config {
 						cfg := regex.NewConfig()
 						cfg.Regex = "^(?P<time>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}) (?P<sev>[A-Z]*) (?P<msg>.*)$"
-						sevField := signozstanzaentry.Field{entry.NewAttributeField("sev")}
+						sevField := signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("sev")}
 						sevCfg := signozstanzahelper.NewSeverityConfig()
 						sevCfg.ParseFrom = &sevField
 						cfg.SeverityConfig = &sevCfg
-						timeField := signozstanzaentry.Field{entry.NewAttributeField("time")}
+						timeField := signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("time")}
 						timeCfg := signozstanzahelper.NewTimeParser()
 						timeCfg.Layout = "%Y-%m-%d %H:%M:%S"
 						timeCfg.ParseFrom = &timeField

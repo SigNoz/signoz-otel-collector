@@ -30,7 +30,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_strptime",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
+					from := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					cfg.LayoutType = "strptime"
 					cfg.Layout = "%Y-%m-%d"
@@ -41,7 +41,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_gotime",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
+					from := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					cfg.LayoutType = "gotime"
 					cfg.Layout = "2006-01-02"

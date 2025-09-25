@@ -174,7 +174,7 @@ func TestParser(t *testing.T) {
 		{
 			"with_timestamp",
 			func(p *Config) {
-				parseFrom := signozstanzaentry.Field{entry.NewAttributeField("timestamp")}
+				parseFrom := signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("timestamp")}
 				p.TimeParser = &signozstanzahelper.TimeParser{
 					ParseFrom:  &parseFrom,
 					LayoutType: "epoch",
@@ -197,7 +197,7 @@ func TestParser(t *testing.T) {
 			"with_scope",
 			func(p *Config) {
 				p.ScopeNameParser = &signozstanzahelper.ScopeNameParser{
-					ParseFrom: signozstanzaentry.Field{entry.NewAttributeField("logger_name")},
+					ParseFrom: signozstanzaentry.Field{FieldInterface: entry.NewAttributeField("logger_name")},
 				}
 			},
 			&entry.Entry{

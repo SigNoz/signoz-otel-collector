@@ -23,7 +23,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
-	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/metadata"
 )
@@ -56,7 +56,7 @@ func createDefaultConfig() component.Config {
 
 func createTracesProcessor(ctx context.Context, params processor.Settings, cfg component.Config, nextConsumer consumer.Traces) (processor.Traces, error) {
 	var instanceID string
-	serviceInstanceId, ok := params.Resource.Attributes().Get(semconv.AttributeServiceInstanceID)
+	serviceInstanceId, ok := params.Resource.Attributes().Get(string(semconv.ServiceInstanceIDKey))
 	if ok {
 		instanceID = serviceInstanceId.AsString()
 	} else {
