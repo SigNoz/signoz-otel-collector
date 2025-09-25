@@ -226,8 +226,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-
-	e.wg.Add(2)
+	e.wg.Add(3)
 
 	go func() {
 		defer e.wg.Done()
@@ -237,12 +236,11 @@ func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host)
 		defer e.wg.Done()
 		e.fetchShouldUpdateMinAcceptedTs()
 	}()
-	// start promoted paths fetcher
-	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
 		e.fetchPromotedPaths()
 	}()
+
 	return nil
 }
 
@@ -333,6 +331,8 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 		}
 		updated[r.Path] = struct{}{}
 	}
+
+	e.promotedPaths.Store(updated)
 }
 
 // Shutdown will shutdown the exporter.
