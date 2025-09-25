@@ -37,18 +37,15 @@ func Test_prepareBatchSumWithNoRecordedValue(t *testing.T) {
 	assert.NotNil(t, batch)
 	expectedSamples := []sample{
 		{
-			temporality:   pmetric.AggregationTemporalityCumulative,
-			metricName:    "system.cpu.time0",
-			unixMilli:     1727286182000,
-			value:         0,
-			description:   "cpu time of the host",
-			unit:          "s",
-			typ:           pmetric.MetricTypeSum,
-			isMonotonic:   true,
-			labels:        "{\"__name__\":\"system.cpu.time0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
-			attrs:         map[string]string{"__temporality__": "Cumulative", "sum.attr_0": "1"},
-			scopeAttrs:    map[string]string{"__scope.name__": "go.signoz.io/app/reader", "__scope.schema_url__": "scope.schema_url", "__scope.version__": "1.0.0", "scope.attr_0": "value0"},
-			resourceAttrs: map[string]string{"resource.attr_0": "value0"},
+			temporality: pmetric.AggregationTemporalityCumulative,
+			metricName:  "system.cpu.time0",
+			unixMilli:   1727286182000,
+			value:       0,
+			description: "cpu time of the host",
+			unit:        "s",
+			typ:         pmetric.MetricTypeSum,
+			isMonotonic: true,
+			labels:      "{\"__name__\":\"system.cpu.time0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Cumulative\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\",\"sum.attr_0\":\"1\"}",
 		},
 	}
 	assert.Equal(t, len(expectedSamples), len(batch.samples))
@@ -79,7 +76,7 @@ func Test_shutdown(t *testing.T) {
 	}
 
 	conn.MatchExpectationsInOrder(false)
-	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, attrs, scope_attrs, resource_attrs, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
+	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
 	conn.ExpectClose()
 	exporter, err := NewClickHouseExporter(zaptest.NewLogger(t), &Config{DSN: "tcp://localhost:9000?database=default"})
 	defaultConn := exporter.conn

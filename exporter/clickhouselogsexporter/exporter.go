@@ -18,8 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,8 +49,6 @@ import (
 )
 
 const (
-	distributedLogsTable             = "distributed_logs"
-	distributedTagAttributes         = "distributed_tag_attributes"
 	distributedTagAttributesV2       = "distributed_tag_attributes_v2"
 	distributedLogsTableV2           = "distributed_logs_v2"
 	logsTableV2                      = "logs_v2"
@@ -61,6 +57,15 @@ const (
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
+	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
+		labels,
+		fingerprint,
+		seen_at_ts_bucket_start
+		) VALUES (
+			?,
+			?,
+			?
+	)`
 	insertLogsSQLTemplateV2 = `INSERT INTO %s.%s (
 		ts_bucket_start,
 		resource_fingerprint,
@@ -77,10 +82,12 @@ const (
 		attributes_number,
 		attributes_bool,
 		resources_string,
+		resource,
 		scope_name,
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -122,9 +129,10 @@ type statementSendDuration struct {
 }
 
 type clickhouseLogsExporter struct {
-	id              uuid.UUID
-	db              clickhouse.Conn
-	insertLogsSQLV2 string
+	id                    uuid.UUID
+	db                    clickhouse.Conn
+	insertLogsSQLV2       string
+	insertLogsResourceSQL string
 
 	logger *zap.Logger
 	cfg    *Config
@@ -151,20 +159,19 @@ type clickhouseLogsExporter struct {
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
 
-	insertLogsSQLV2 := renderInsertLogsSQLV2(cfg)
-
 	// view should be registered after exporter is initialized
 	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
 		return nil, err
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:   insertLogsSQLV2,
-		cfg:               cfg,
-		wg:                new(sync.WaitGroup),
-		closeChan:         make(chan struct{}),
-		maxDistinctValues: cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval: cfg.AttributesLimits.FetchKeysInterval,
+		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
+		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
+		cfg:                   cfg,
+		wg:                    new(sync.WaitGroup),
+		closeChan:             make(chan struct{}),
+		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -266,34 +273,12 @@ type DBResponseTTL struct {
 }
 
 func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("fetching min accepted ts")
+	e.logger.Info("Updating min accepted ts")
 
-	ctx := context.Background()
-	var delTTL uint64 = 0
-	var dbResp []DBResponseTTL
-	q := fmt.Sprintf("SELECT engine_full FROM system.tables WHERE name='%s' and database='%s'", logsTableV2, databaseName)
-	err := e.db.Select(ctx, &dbResp, q)
-	if err != nil {
-		e.logger.Error("error while fetching ttl", zap.Error(err))
-		return
-	}
-	if len(dbResp) == 0 {
-		e.logger.Error("ttl not found")
-		return
-	}
+	var delTTL uint64 = 15
 
-	deleteTTLExp := regexp.MustCompile(`toIntervalSecond\(([0-9]*)\)`)
-	m := deleteTTLExp.FindStringSubmatch(dbResp[0].EngineFull)
-	if len(m) > 1 {
-		seconds_int, err := strconv.Atoi(m[1])
-		if err != nil {
-			e.logger.Error("error while converting ttl to int", zap.Error(err))
-			return
-		}
-		delTTL = uint64(seconds_int)
-	}
-
-	acceptedDateTime := time.Now().Add(-(time.Duration(delTTL) * time.Second))
+	seconds := delTTL * 24 * 60 * 60
+	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
 	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
@@ -388,8 +373,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		for i := 0; i < ld.ResourceLogs().Len(); i++ {
 			logs := ld.ResourceLogs().At(i)
 			res := logs.Resource()
-			resBytes, _ := json.Marshal(res.Attributes().AsRaw())
-
+			resBytes, _ := getResourceAttributesByte(res)
 			resourcesMap := attributesToMap(res.Attributes(), true)
 
 			// we are using resourcesMap.StringData here as we are want everything to be string values.
@@ -464,6 +448,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return err
 					}
 
+					if len(resourcesMap.StringData) > 100 {
+						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
+					}
+
 					err = insertLogsStmtV2.Append(
 						uint64(lBucketStart),
 						fp,
@@ -479,6 +467,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						attrsMap.StringData,
 						attrsMap.NumberData,
 						attrsMap.BoolData,
+						resourcesMap.StringData,
 						resourcesMap.StringData,
 						scopeName,
 						scopeVersion,
@@ -505,7 +494,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 		insertResourcesStmtV2, err = e.db.PrepareBatch(
 			ctx,
-			fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceV2),
+			e.insertLogsResourceSQL,
 			driver.WithReleaseConnection(),
 		)
 		if err != nil {
@@ -646,6 +635,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -656,7 +646,6 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		err := tagStatementV2.Append(
 			unixMilli,
 			attrKey,
@@ -674,12 +663,14 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
+
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
+
 		err := tagStatementV2.Append(
 			unixMilli,
 			numKey,
@@ -696,13 +687,14 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
 
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
 		err := tagStatementV2.Append(
 			unixMilli,
 			boolKey,
@@ -772,4 +764,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 func renderInsertLogsSQLV2(_ *Config) string {
 	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
+}
+
+func renderInsertLogsResourceSQL(_ *Config) string {
+	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
 }

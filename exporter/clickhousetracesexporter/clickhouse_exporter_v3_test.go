@@ -378,6 +378,97 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					"service.name":     "test_service",
 					"num":              "10",
 				},
+				BillableResourcesString: map[string]string{
+					"mymap.map_double": "20.5",
+					"mymap.map_key":    "map_val",
+					"service.name":     "test_service",
+					"num":              "10",
+				},
+
+				HttpUrl:            "http://test.com",
+				HttpMethod:         "GET",
+				HttpHost:           "test.com",
+				DBName:             "test_db",
+				DBOperation:        "test_operation",
+				ResponseStatusCode: "200",
+
+				IsRemote:    "unknown",
+				HasError:    false,
+				References:  `[{"refType":"CHILD_OF"}]`,
+				ServiceName: "test_service",
+			},
+			wantErr: false,
+		},
+		{
+			name: "test_structured_span_with_signoz_resources",
+			args: args{
+				bucketStart: 0,
+				fingerprint: "test_fingerprint",
+				otelSpan: func() ptrace.Span {
+					span := ptrace.NewSpan()
+					span.SetName("test_span")
+					attrs := span.Attributes()
+					attrs.PutStr("test_key", "test_value")
+					attrs.PutStr("http.url", "http://test.com")
+					attrs.PutStr("http.method", "GET")
+					attrs.PutStr("http.host", "test.com")
+					attrs.PutStr("db.name", "test_db")
+					attrs.PutStr("db.operation", "test_operation")
+					attrs.PutStr("http.status_code", "200")
+					span.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)))
+					span.SetEndTimestamp(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)))
+					span.SetKind(ptrace.SpanKindServer)
+					span.SetTraceID(pcommon.NewTraceIDEmpty())
+					span.SetSpanID(pcommon.NewSpanIDEmpty())
+					return span
+				}(),
+				ServiceName: "test_service",
+				resource: func() pcommon.Resource {
+					resource := pcommon.NewResource()
+					resource.Attributes().PutStr("service.name", "test_service")
+					// this resource shouldn't show up in the final generated span
+					resource.Attributes().PutStr("signoz.workspace.internal.test", "test_internal")
+					resource.Attributes().PutInt("num", 10)
+					v := resource.Attributes().PutEmptyMap("mymap")
+					v.PutStr("map_key", "map_val")
+					v.PutDouble("map_double", 20.5)
+					return resource
+				}(),
+				config: storageConfig{},
+			},
+			want: &SpanV3{
+				TsBucketStart:     0,
+				FingerPrint:       "test_fingerprint",
+				StartTimeUnixNano: uint64(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)).AsTime().UnixNano()),
+				DurationNano:      0,
+				Name:              "test_span",
+				Kind:              2,
+				SpanKind:          "Server",
+				StatusCodeString:  "Unset",
+				AttributeString: map[string]string{
+					"db.name":          "test_db",
+					"db.operation":     "test_operation",
+					"http.host":        "test.com",
+					"http.method":      "GET",
+					"http.status_code": "200",
+					"http.url":         "http://test.com",
+					"test_key":         "test_value",
+				},
+				AttributesNumber: map[string]float64{},
+				AttributesBool:   map[string]bool{},
+				ResourcesString: map[string]string{
+					"mymap.map_double":               "20.5",
+					"mymap.map_key":                  "map_val",
+					"service.name":                   "test_service",
+					"num":                            "10",
+					"signoz.workspace.internal.test": "test_internal",
+				},
+				BillableResourcesString: map[string]string{
+					"mymap.map_double": "20.5",
+					"mymap.map_key":    "map_val",
+					"service.name":     "test_service",
+					"num":              "10",
+				},
 
 				HttpUrl:            "http://test.com",
 				HttpMethod:         "GET",
@@ -413,6 +504,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				!reflect.DeepEqual(got.AttributesNumber, tt.want.AttributesNumber) ||
 				!reflect.DeepEqual(got.AttributesBool, tt.want.AttributesBool) ||
 				!reflect.DeepEqual(got.ResourcesString, tt.want.ResourcesString) ||
+				!reflect.DeepEqual(got.BillableResourcesString, tt.want.BillableResourcesString) ||
 				got.ServiceName != tt.want.ServiceName ||
 				got.HttpUrl != tt.want.HttpUrl ||
 				got.HttpMethod != tt.want.HttpMethod ||
@@ -438,6 +530,7 @@ func testWriterOptions() []WriterOption {
 	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 	)
 	go keysCache.Start()
 

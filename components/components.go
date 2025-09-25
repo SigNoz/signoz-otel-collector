@@ -172,7 +172,6 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
-	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousemetricsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
@@ -322,7 +321,6 @@ func Components() (otelcol.Factories, error) {
 		carbonexporter.NewFactory(),
 		cassandraexporter.NewFactory(),
 		clickhouselogsexporter.NewFactory(),
-		clickhousemetricsexporter.NewFactory(),
 		signozclickhousemetrics.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
 		debugexporter.NewFactory(),
