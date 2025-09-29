@@ -1070,13 +1070,11 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				usage.AddMetric(metrics, "default", 1, 0)
 			}
 		}
-		errSlice := make([]error, 0)
 		for k, v := range metrics {
-			errSlice = append(errSlice, stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size))))
-		}
-		err = errors.Join(errSlice...)
-		if err != nil {
-			return err
+			err = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, c.exporterID.String())}, ExporterSigNozSentMetricPoints.M(int64(v.Count)), ExporterSigNozSentMetricPointsBytes.M(int64(v.Size)))
+			if err != nil {
+				c.logger.Error("error recording usage metric", zap.Error(err))
+			}
 		}
 		return statement.Send()
 	}
