@@ -379,3 +379,35 @@ func TestAlterTableModifyTTL(t *testing.T) {
 		})
 	}
 }
+
+func TestAlterTableDropTTL(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "alter-table-drop-ttl",
+			op: AlterTableDropTTL{
+				Database: "db",
+				Table:    "table",
+			},
+			want: "ALTER TABLE db.table REMOVE TTL",
+		},
+		{
+			name: "alter-table-drop-ttl-with-cluster",
+			op: AlterTableDropTTL{
+				Database: "db",
+				Table:    "table",
+				cluster:  "cluster",
+			},
+			want: "ALTER TABLE db.table ON CLUSTER cluster REMOVE TTL",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
