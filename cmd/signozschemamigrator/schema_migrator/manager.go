@@ -534,14 +534,22 @@ func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]Distri
 
 	for i := 0; i < 10; i++ {
 		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+			m.logger.Error("Failed to fetch distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
+
 			if exception, ok := err.(*clickhouse.Exception); ok {
+				m.logger.Error("ClickHouse exception was received", zap.Any("exception", exception), zap.Int("attempt", i+1))
 				if exception.Code == 999 {
 					// An expection with No node was thrown while querying the distributed_ddl_queue. Retry the ddl queue again
-					if strings.Contains(exception.Message, "No Node") {
+					if strings.Contains(exception.Error(), "No Node") {
 						m.logger.Error("A retryable exception was received", zap.Error(err), zap.Int("attempt", i+1))
 						continue
 					}
 				}
+			}
+
+			if strings.Contains(err.Error(), "No Node") {
+				m.logger.Error("A retryable exception was received", zap.Error(err), zap.Int("attempt", i+1))
+				continue
 			}
 
 			return nil, err
