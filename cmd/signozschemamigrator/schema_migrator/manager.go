@@ -532,6 +532,7 @@ func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]Distri
 	var ddlQueue []DistributedDDLQueue
 	query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
 
+	// 10 attempts is an arbitrary number. If we don't get the DDL queue after 10 attempts, we give up.
 	for i := 0; i < 10; i++ {
 		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
 			if exception, ok := err.(*clickhouse.Exception); ok {
