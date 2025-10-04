@@ -532,7 +532,7 @@ func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]Distri
 	var ddlQueue []DistributedDDLQueue
 	query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
 			if exception, ok := err.(*clickhouse.Exception); ok {
 				if exception.Code == 999 {
