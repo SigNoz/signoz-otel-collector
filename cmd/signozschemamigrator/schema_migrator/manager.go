@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -502,11 +503,12 @@ func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 		if m.backoff.NextBackOff() == backoff.Stop {
 			return errors.New("backoff stopped")
 		}
-		query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
-		var ddlQueue []DistributedDDLQueue
-		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+
+		ddlQueue, err := m.getDistributedDDLQueue(ctx)
+		if err != nil {
 			return err
 		}
+
 		if len(ddlQueue) != 0 {
 			m.logger.Info("Waiting for distributed DDL queue to be completed", zap.Int("count", len(ddlQueue)))
 			for _, ddl := range ddlQueue {
@@ -524,6 +526,32 @@ func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 		break
 	}
 	return nil
+}
+
+func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]DistributedDDLQueue, error) {
+	var ddlQueue []DistributedDDLQueue
+	query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
+
+	for range 5 {
+		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+			if exception, ok := err.(*clickhouse.Exception); ok {
+				if exception.Code == 999 {
+					// An expection with No node was thrown while querying the distributed_ddl_queue. Retry the ddl queue again
+					if strings.Contains(exception.Message, "No Node") {
+						m.logger.Error("A retryable exception was received", zap.Error(err))
+						continue
+					}
+				}
+			}
+
+			return nil, err
+		}
+
+		// If no exception was thrown, break the loop
+		break
+	}
+
+	return ddlQueue, nil
 }
 
 func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, conn clickhouse.Conn, db, table string) error {
