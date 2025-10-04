@@ -534,24 +534,20 @@ func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]Distri
 
 	for i := 0; i < 10; i++ {
 		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
-			m.logger.Error("Failed to fetch distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
-
 			if exception, ok := err.(*clickhouse.Exception); ok {
-				m.logger.Error("ClickHouse exception was received", zap.Any("exception", exception), zap.Int("attempt", i+1))
 				if exception.Code == 999 {
-					// An expection with No node was thrown while querying the distributed_ddl_queue. Retry the ddl queue again
+					// ClickHouse DDLWorker is cleaning up entries in the distributed_ddl_queue before we can query it. This leads to the exception:
+					// code: 999, message: Coordination error: No node, path /clickhouse/signoz-clickhouse/task_queue/ddl/query-000000<some 4 digit number>/finished
+
+					// It looks like this exception is safe to retry on.
 					if strings.Contains(exception.Error(), "No node") {
-						m.logger.Error("A retryable exception was received", zap.Error(err), zap.Int("attempt", i+1))
+						m.logger.Error("A retryable exception was received while fetching distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
 						continue
 					}
 				}
 			}
 
-			if strings.Contains(err.Error(), "No node") {
-				m.logger.Error("A retryable exception was received", zap.Error(err), zap.Int("attempt", i+1))
-				continue
-			}
-
+			m.logger.Error("Failed to fetch distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
 			return nil, err
 		}
 
