@@ -30,7 +30,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_from_simple",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
+					from := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					return cfg
 				}(),
@@ -39,7 +39,7 @@ func TestUnmarshal(t *testing.T) {
 				Name: "parse_with_preset",
 				Expect: func() *Config {
 					cfg := NewConfig()
-					from := signozstanzaentry.Field{signozstanzaentry.NewBodyField("from")}
+					from := signozstanzaentry.Field{FieldInterface: signozstanzaentry.NewBodyField("from")}
 					cfg.ParseFrom = &from
 					cfg.Preset = "http"
 					return cfg
