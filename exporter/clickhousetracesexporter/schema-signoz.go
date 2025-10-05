@@ -70,7 +70,7 @@ func (t *TraceModel) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddBool("hasError", t.HasError)
 	enc.AddString("statusMessage", t.StatusMessage)
 	enc.AddString("statusCodeString", t.StatusCodeString)
-	enc.AddArray("references", &t.References)
+	_ = enc.AddArray("references", &t.References)
 	enc.AddString("tagMap", fmt.Sprintf("%v", t.TagMap))
 	enc.AddString("event", fmt.Sprintf("%v", t.Events))
 	return nil
@@ -166,7 +166,10 @@ type SpanV3 struct {
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
-	ResourcesString map[string]string `json:"resources_string,omitempty"`
+	ResourcesString map[string]string `json:"-"`
+	// billable resource contains filtered keys from resources string which needs to be billed
+	// It is using same key as resources_string to keep the billing calculation unchanged
+	BillableResourcesString map[string]string `json:"resources_string,omitempty"`
 
 	// for events
 	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
@@ -236,8 +239,8 @@ func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("statusCodeString", s.StatusCodeString)
 	enc.AddString("errorID", s.ErrorID)
 	enc.AddString("errorGroupID", s.ErrorGroupID)
-	enc.AddObject("errorEvent", &s.ErrorEvent)
-	enc.AddObject("traceModel", &s.TraceModel)
+	_ = enc.AddObject("errorEvent", &s.ErrorEvent)
+	_ = enc.AddObject("traceModel", &s.TraceModel)
 	enc.AddString("event", fmt.Sprintf("%v", s.Events))
 
 	return nil

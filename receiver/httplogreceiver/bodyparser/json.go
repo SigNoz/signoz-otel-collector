@@ -2,10 +2,11 @@ package bodyparser
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -153,9 +154,9 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 }
 
 func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
-	switch value.(type) {
+	switch value := value.(type) {
 	case string:
-		attrs.PutStr(key, value.(string))
+		attrs.PutStr(key, value)
 	case int, int8, int16, int32, int64:
 		attrs.PutInt(key, value.(int64))
 	case uint, uint8, uint16, uint32, uint64:
@@ -163,7 +164,7 @@ func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
 	case float32, float64:
 		attrs.PutDouble(key, value.(float64))
 	case bool:
-		attrs.PutBool(key, value.(bool))
+		attrs.PutBool(key, value)
 	default:
 		// ignoring the error for now
 		bytes, _ := json.Marshal(value)

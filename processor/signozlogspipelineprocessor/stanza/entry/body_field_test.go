@@ -2,10 +2,11 @@
 package signozstanzaentry
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/goccy/go-json"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/stretchr/testify/require"

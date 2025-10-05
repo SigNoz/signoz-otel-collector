@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -17,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-json"
+
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -128,7 +130,7 @@ func TestFirehoseRequest(t *testing.T) {
 		"WithInvalidBody": {
 			body:           "{ test: ",
 			wantStatusCode: http.StatusBadRequest,
-			wantErr:        errors.New("json: cannot unmarshal string into Go value of type signozawsfirehosereceiver.firehoseRequest"),
+			wantErr:        errors.New("invalid character '\"' looking for beginning of value"),
 		},
 		"WithNoRecords": {
 			body:           testFirehoseRequest(testFirehoseRequestID, noRecords),
@@ -212,7 +214,7 @@ func TestFirehoseRequest(t *testing.T) {
 // testFirehoseReceiver is a convenience function for creating a test firehoseReceiver
 func testFirehoseReceiver(config *Config, consumer firehoseConsumer) *firehoseReceiver {
 	return &firehoseReceiver{
-		settings: receivertest.NewNopSettings(),
+		settings: receivertest.NewNopSettings(metadata.Type),
 		config:   config,
 		consumer: consumer,
 	}

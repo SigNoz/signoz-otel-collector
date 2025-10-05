@@ -1,0 +1,8 @@
+signozmeter/default_config:
+signozmeter/custom_dimensions:
+  dimensions:
+    - name: k8s.namespace.name
+    - name: k8s.node.id
+    - name: ingestion.key
+signozmeter/custom_metrics_flush_interval:
+  metrics_flush_interval: 60000000000

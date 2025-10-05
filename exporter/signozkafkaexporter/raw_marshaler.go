@@ -4,8 +4,9 @@
 package signozkafkaexporter // import "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter"
 
 import (
-	"encoding/json"
 	"errors"
+
+	"github.com/goccy/go-json"
 
 	"github.com/Shopify/sarama"
 	"go.opentelemetry.io/collector/pdata/pcommon"

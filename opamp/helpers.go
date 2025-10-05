@@ -1,6 +1,7 @@
 package opamp
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // GetAvailableLocalAddress finds an available local port and returns an endpoint
@@ -68,7 +71,10 @@ func WaitForEndpoint(endpoint string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	waitForPortToListen(port)
+	err = waitForPortToListen(port)
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
 
 // fileHash returns the SHA256 hash of the file at the given path.
@@ -93,4 +99,22 @@ func copy(src, dest string) error {
 	}
 
 	return nil
+}
+
+type Logger struct {
+	*zap.SugaredLogger
+}
+
+func NewWrappedLogger(sugar *zap.SugaredLogger) *Logger {
+	return &Logger{
+		SugaredLogger: sugar,
+	}
+}
+
+func (l *Logger) Debugf(ctx context.Context, format string, args ...interface{}) {
+	l.SugaredLogger.Debugf(format, args...)
+}
+
+func (l *Logger) Errorf(ctx context.Context, format string, args ...interface{}) {
+	l.SugaredLogger.Errorf(format, args...)
 }

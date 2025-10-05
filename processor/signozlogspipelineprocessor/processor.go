@@ -5,15 +5,18 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
+	"math"
+	"runtime"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/pipeline"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/extension/experimental/storage"
+	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
@@ -30,9 +33,14 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
+	concurrency := int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
+
+	telemetrySettings.Logger.Info("logspipeline concurrency set to ", zap.Int("num", concurrency))
+
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
 
+		limiter:         make(chan struct{}, concurrency),
 		processorConfig: processorConfig,
 		stanzaPipeline:  stanzaPipeline,
 	}, nil
@@ -44,8 +52,8 @@ type logsPipelineProcessor struct {
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-
-	shutdownFns []component.ShutdownFunc
+	limiter         chan struct{}
+	shutdownFns     []component.ShutdownFunc
 }
 
 // Collector starting up
@@ -92,11 +100,26 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 	entries := plogToEntries(ld)
 
-	for _, e := range entries {
-		if err := p.firstOp.Process(ctx, e); err != nil {
+	process := func(ctx context.Context, entry *entry.Entry) {
+		if err := p.firstOp.Process(ctx, entry); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
 	}
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	for _, entry := range entries {
+		p.limiter <- struct{}{}
+		group.Go(func() error {
+			defer func() {
+				<-p.limiter
+			}()
+			process(groupCtx, entry)
+			return nil // not returning error to avoid cancelling groupCtx
+		})
+	}
+
+	// wait for the group execution
+	_ = group.Wait()
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
@@ -111,7 +134,6 @@ func plogToEntries(src plog.Logs) []*entry.Entry {
 	result := []*entry.Entry{}
 	for rlIdx := 0; rlIdx < src.ResourceLogs().Len(); rlIdx++ {
 		resourceLogs := src.ResourceLogs().At(rlIdx)
-		resourceAttribs := resourceLogs.Resource().Attributes().AsRaw()
 
 		for slIdx := 0; slIdx < resourceLogs.ScopeLogs().Len(); slIdx++ {
 			scopeLogs := resourceLogs.ScopeLogs().At(slIdx)
@@ -120,10 +142,10 @@ func plogToEntries(src plog.Logs) []*entry.Entry {
 				record := scopeLogs.LogRecords().At(lrIdx)
 				entry := entry.Entry{}
 				entry.ScopeName = scopeLogs.Scope().Name()
-				entry.Resource = resourceAttribs
+				// each entry has separate reference for Resource Tags since these're used in processor, Resource tags can be transformed based on user's pipelines
+				entry.Resource = resourceLogs.Resource().Attributes().AsRaw()
 				convertFrom(record, &entry)
 				result = append(result, &entry)
-
 			}
 		}
 	}

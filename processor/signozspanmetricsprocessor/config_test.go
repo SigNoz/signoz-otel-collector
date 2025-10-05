@@ -30,6 +30,8 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor/internal/metadata"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -95,7 +97,7 @@ func TestLoadConfig(t *testing.T) {
 			factories.Receivers[component.MustNewType("otlp")] = otlpreceiver.NewFactory()
 			factories.Receivers[component.MustNewType("jaeger")] = jaegerreceiver.NewFactory()
 
-			factories.Processors[component.MustNewType(typeStr)] = NewFactory()
+			factories.Processors[metadata.Type] = NewFactory()
 			factories.Processors[component.MustNewType("batch")] = batchprocessor.NewFactory()
 
 			factories.Exporters[component.MustNewType("otlp")] = otlpexporter.NewFactory()
@@ -118,7 +120,7 @@ func TestLoadConfig(t *testing.T) {
 					MaxServicesToTrack:             tc.wantMaxServicesToTrack,
 					MaxOperationsToTrackPerService: tc.wantMaxOperationsToTrackPerService,
 				},
-				cfg.Processors[component.NewID(component.MustNewType(typeStr))],
+				cfg.Processors[component.NewID(metadata.Type)],
 			)
 		})
 	}
@@ -133,4 +135,18 @@ func TestGetAggregationTemporality(t *testing.T) {
 
 	cfg = &Config{}
 	assert.Equal(t, pmetric.AggregationTemporalityCumulative, cfg.GetAggregationTemporality())
+}
+
+func TestGetTimeBucketInterval(t *testing.T) {
+	cfg := &Config{}
+	// Should return default when not set
+	assert.Equal(t, defaultTimeBucketInterval, cfg.GetTimeBucketInterval())
+
+	// Should return configured value when set
+	cfg.TimeBucketInterval = 30 * time.Second
+	assert.Equal(t, 30*time.Second, cfg.GetTimeBucketInterval())
+
+	// Should return configured value when set to non-zero
+	cfg.TimeBucketInterval = 2 * time.Minute
+	assert.Equal(t, 2*time.Minute, cfg.GetTimeBucketInterval())
 }

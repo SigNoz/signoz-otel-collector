@@ -33,9 +33,9 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
-	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -72,6 +72,7 @@ type SpanWriter struct {
 
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
+	done                      chan struct{}
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -84,6 +85,7 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 		attributeKeyTable: defaultAttributeKeyTable,
 		indexTableV3:      defaultIndexTableV3,
 		resourceTableV3:   defaultResourceTableV3,
+		done:              make(chan struct{}),
 	}
 	for _, option := range options {
 		option(writer)
@@ -127,8 +129,13 @@ func (e *SpanWriter) doFetchShouldSkipKeys() {
 }
 
 func (e *SpanWriter) fetchShouldSkipKeys() {
-	for range e.fetchShouldSkipKeysTicker.C {
-		e.doFetchShouldSkipKeys()
+	for {
+		select {
+		case <-e.done:
+			return
+		case <-e.fetchShouldSkipKeysTicker.C:
+			e.doFetchShouldSkipKeys()
+		}
 	}
 }
 
@@ -145,7 +152,14 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
+	defer statement.Close()
+
 	for _, span := range batchSpans {
+
+		if len(span.ResourcesString) > 100 {
+			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
+		}
+
 		err = statement.Append(
 			span.TsBucketStart,
 			span.FingerPrint,
@@ -165,6 +179,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributeString,
 			span.AttributesNumber,
 			span.AttributesBool,
+			span.ResourcesString,
 			span.ResourcesString,
 			span.Events,
 			span.References,
@@ -214,6 +229,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for error table: %w", err)
 	}
+	defer statement.Close()
 
 	for _, span := range batchSpans {
 		for _, errorEvent := range span.ErrorEvents {
@@ -227,10 +243,10 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 				span.TraceId,
 				span.SpanId,
 				span.ServiceName,
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionType],
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionMessage],
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionStacktrace],
-				stringToBool(errorEvent.Event.AttributeMap[semconv.AttributeExceptionEscaped]),
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionTypeKey)],
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionMessageKey)],
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionStacktraceKey)],
+				stringToBool(errorEvent.Event.AttributeMap[string(semconv.ExceptionEscapedKey)]),
 				span.ResourcesString,
 			)
 			if err != nil {
@@ -268,10 +284,14 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
 	}
+	defer tagKeyStatement.Close()
+
 	tagStatementV2, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTableV2), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes table v2 due to error: %w", err)
 	}
+	defer tagStatementV2.Close()
+
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
 	mapOfSpanAttributeKeys := make(map[string]struct{})
 
@@ -329,7 +349,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			if spanAttribute.DataType == "string" {
 
 				if _, ok := shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle error
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -341,7 +362,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 			} else if spanAttribute.DataType == "float64" {
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle error
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -352,7 +374,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 				}
 			} else if spanAttribute.DataType == "bool" {
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
-					err = tagStatementV2.Append(
+					// TODO: handle erroe
+					_ = tagStatementV2.Append(
 						unixMilli,
 						spanAttribute.Key,
 						spanAttribute.TagType,
@@ -371,17 +394,20 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 		// name, kind, kind_string, status_code_string, status_code
 		if _, ok := mapOfSpanFields[span.Name]; !ok {
 			mapOfSpanFields[span.Name] = struct{}{}
-			tagStatementV2.Append(unixMilli, "name", utils.TagTypeSpanField, utils.TagDataTypeString, span.Name, nil)
+			// TODO: handle error
+			_ = tagStatementV2.Append(unixMilli, "name", utils.TagTypeSpanField, utils.TagDataTypeString, span.Name, nil)
 		}
 		if _, ok := mapOfSpanFields[span.SpanKind]; !ok {
 			mapOfSpanFields[span.SpanKind] = struct{}{}
-			tagStatementV2.Append(unixMilli, "kind_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.SpanKind, nil)
-			tagStatementV2.Append(unixMilli, "kind", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.Kind))
+			// TODO: handle error
+			_ = tagStatementV2.Append(unixMilli, "kind_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.SpanKind, nil)
+			_ = tagStatementV2.Append(unixMilli, "kind", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.Kind))
 		}
 		if _, ok := mapOfSpanFields[span.StatusCodeString]; !ok {
 			mapOfSpanFields[span.StatusCodeString] = struct{}{}
-			tagStatementV2.Append(unixMilli, "status_code_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.StatusCodeString, nil)
-			tagStatementV2.Append(unixMilli, "status_code", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.StatusCode))
+			// TODO: handle error
+			_ = tagStatementV2.Append(unixMilli, "status_code_string", utils.TagTypeSpanField, utils.TagDataTypeString, span.StatusCodeString, nil)
+			_ = tagStatementV2.Append(unixMilli, "status_code", utils.TagTypeSpanField, utils.TagDataTypeNumber, nil, float64(span.StatusCode))
 		}
 	}
 
@@ -488,6 +514,7 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 	if err != nil {
 		return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 	}
+	defer insertResourcesStmtV3.Close()
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
@@ -496,7 +523,8 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 				w.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
 				continue
 			}
-			insertResourcesStmtV3.Append(
+			// TODO: handle error
+			_ = insertResourcesStmtV3.Append(
 				resourceLabels,
 				fingerprint,
 				bucketTs,
@@ -526,8 +554,22 @@ func stringToBool(s string) bool {
 	return strings.ToLower(s) == "true"
 }
 
+func (w *SpanWriter) Stop() {
+	if w.fetchShouldSkipKeysTicker != nil {
+		w.fetchShouldSkipKeysTicker.Stop()
+	}
+	if w.keysCache != nil {
+		w.keysCache.Stop()
+	}
+	if w.rfCache != nil {
+		w.rfCache.Stop()
+	}
+	close(w.done)
+}
+
 // Close closes the writer
 func (w *SpanWriter) Close() error {
+	w.Stop()
 	if w.db != nil {
 		return w.db.Close()
 	}

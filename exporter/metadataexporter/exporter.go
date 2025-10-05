@@ -260,14 +260,29 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 	return nil
 }
 
-func (e *metadataExporter) Shutdown(_ context.Context) error {
+func (e *metadataExporter) Shutdown(ctx context.Context) error {
 	e.set.Logger.Info("shutting down metadata exporter")
-	e.tracesTracker.Close()
-	e.metricsTracker.Close()
-	e.logsTracker.Close()
+
 	e.logTagValueCountCtxCancel()
 	e.tracesTagValueCountCtxCancel()
 	e.metricsTagValueCountCtxCancel()
+
+	e.tracesTracker.Close()
+	e.metricsTracker.Close()
+	e.logsTracker.Close()
+
+	if e.keyCache != nil {
+		if err := e.keyCache.Close(ctx); err != nil {
+			e.set.Logger.Error("failed to close key cache", zap.Error(err))
+		}
+	}
+
+	if e.conn != nil {
+		if err := e.conn.Close(); err != nil {
+			e.set.Logger.Error("failed to close clickhouse connection", zap.Error(err))
+		}
+	}
+
 	return nil
 }
 
@@ -572,7 +587,8 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		}
 
 		for _, nr := range newRecords {
-			stmt.Append(
+			// TODO: handle error
+			_ = stmt.Append(
 				nr.roundedSixHrsUnixMilli,
 				ds,
 				nr.resourceFingerprint,
@@ -655,6 +671,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 		return nil
 	}
+	defer stmt.Close()
 
 	totalSpans := 0
 	records := make([]writeToStatementBatchRecord, 0)
@@ -688,6 +705,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					spanAttrs[attrKey] = v.AsRaw()
 					return true
 				})
+				spanAttrs["name"] = span.Name()
 
 				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
 				filteredSpanAttrs := e.filterAttrs(ctx, flattenedSpanAttrs, pipeline.SignalTraces.String())
@@ -725,6 +743,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 		return nil
 	}
+	defer stmt.Close()
 
 	totalDps := 0
 	records := make([]writeToStatementBatchRecord, 0)
@@ -822,6 +841,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil
 	}
+	defer stmt.Close()
 
 	totalLogRecords := 0
 	records := make([]writeToStatementBatchRecord, 0)

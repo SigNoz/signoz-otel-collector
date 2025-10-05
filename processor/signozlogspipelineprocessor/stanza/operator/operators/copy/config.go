@@ -46,7 +46,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
-	if c.From == (signozstanzaentry.Field{entry.NewNilField()}) {
+	if c.From == (signozstanzaentry.Field{FieldInterface: entry.NewNilField()}) {
 		return nil, fmt.Errorf("copy: missing from field")
 	}
 

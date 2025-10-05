@@ -26,18 +26,15 @@ import (
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
-)
 
-const (
-	// The value of "type" key in configuration.
-	typeStr = "clickhousetraces"
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter/internal/metadata"
 )
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig: exporterhelper.NewDefaultTimeoutConfig(),
-		QueueConfig:   exporterhelper.NewDefaultQueueConfig(),
-		BackOffConfig: configretry.NewDefaultBackOffConfig(),
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
@@ -48,9 +45,9 @@ func createDefaultConfig() component.Config {
 // NewFactory creates a factory for Logging exporter
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		component.MustNewType(typeStr),
+		metadata.Type,
 		createDefaultConfig,
-		exporter.WithTraces(createTracesExporter, component.StabilityLevelUndefined),
+		exporter.WithTraces(createTracesExporter, metadata.TracesStability),
 	)
 }
 
@@ -70,23 +67,24 @@ func createTracesExporter(
 	id := uuid.New()
 
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
-	keysCache := ttlcache.New[string, struct{}](
+	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 	)
 	go keysCache.Start()
 
 	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
 	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
 	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-	rfCache := ttlcache.New[string, struct{}](
+	rfCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](distributedTracesResourceV2Seconds*time.Second),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 		ttlcache.WithCapacity[string, struct{}](100000),
 	)
 	go rfCache.Start()
 
-	meter := params.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter")
+	meter := params.MeterProvider.Meter(metadata.ScopeName)
 	writerOpts := []WriterOption{
 		WithClickHouseClient(client),
 		WithLogger(params.Logger),
@@ -106,14 +104,14 @@ func createTracesExporter(
 		return nil, err
 	}
 
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		params,
 		cfg,
 		exporter.pushTraceData,
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
-		exporterhelper.WithQueue(c.QueueConfig),
+		exporterhelper.WithQueue(c.QueueBatchConfig),
 		exporterhelper.WithRetry(c.BackOffConfig))
 }
 
@@ -123,7 +121,7 @@ func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, err
 		return nil, err
 	}
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxIdleConnections := cfg.QueueConfig.NumConsumers + 1
+	maxIdleConnections := cfg.QueueBatchConfig.NumConsumers + 1
 	if options.MaxIdleConns < maxIdleConnections {
 		options.MaxIdleConns = maxIdleConnections
 		options.MaxOpenConns = maxIdleConnections + 5

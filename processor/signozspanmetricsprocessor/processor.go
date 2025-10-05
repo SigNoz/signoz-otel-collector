@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,7 @@ const (
 	resourcePrefix             = "resource_"
 	overflowServiceName        = "overflow_service"
 	overflowOperation          = "overflow_operation"
+	defaultTimeBucketInterval  = time.Minute
 )
 
 var (
@@ -64,6 +66,64 @@ var (
 		2, 4, 6, 8, 10, 50, 100, 200, 400, 800, 1000, 1400, 2000, 5000, 10_000, 15_000,
 	}
 )
+
+// parseTimesFromKeyOrNow parses the time bucket prefix from a metric key and returns the StartTimeUnixNano and TimeUnixNano fields for metrics.
+// Ref: https://opentelemetry.io/docs/specs/otel/metrics/data-model/#temporality .
+// If the key doesn't have a time bucket prefix (in case of cumulative temporality), it uses the processor start time as StartTimeUnixNano and current time as TimeUnixNano.
+// In case of delta temporality, it uses the start of the bucket as both StartTimeUnixNano & TimeUnixNano.
+func parseTimesFromKeyOrNow(k metricKey, interval time.Duration, now time.Time, processorStartTime pcommon.Timestamp) (start, end pcommon.Timestamp) {
+	s := string(k)
+	idx := strings.IndexByte(s, 0) // first separator
+	if idx <= 0 {
+		return processorStartTime, pcommon.NewTimestampFromTime(now)
+	}
+	u, err := strconv.ParseInt(s[:idx], 10, 64)
+	if err != nil {
+		// cumulative temporality: StartTimeUnixNano is processor start time, TimeUnixNano is current time
+		return processorStartTime, pcommon.NewTimestampFromTime(now)
+	}
+	bucketStart := time.Unix(u, 0)
+	// delta temporality: start of the bucket is both StartTimeUnixNano & TimeUnixNano
+	return pcommon.NewTimestampFromTime(bucketStart), pcommon.NewTimestampFromTime(bucketStart)
+}
+
+// AddTimeToKeyBuf writes a time-bucket prefix to the key buffer.
+// It truncates the provided time to the configured bucket interval before writing.
+func (p *processorImp) AddTimeToKeyBuf(t time.Time) {
+	bucket := t.Truncate(p.config.GetTimeBucketInterval())
+	p.keyBuf.WriteString(strconv.FormatInt(bucket.Unix(), 10))
+	p.keyBuf.WriteString(metricKeySeparator)
+}
+
+// buildMetricKey builds a metric key with optional time bucketing based on temporality.
+// For delta temporality: prepends time bucket prefix
+// For cumulative temporality: no time bucketing (to avoid memory issues)
+func (p *processorImp) buildMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map) metricKey {
+	p.keyBuf.Reset()
+
+	// Only add time bucket prefix for delta temporality
+	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime())
+	}
+
+	p.buildKey(p.keyBuf, serviceName, span, dimensions, resourceAttr)
+	return metricKey(p.keyBuf.String())
+}
+
+// buildCustomMetricKey builds a custom metric key with optional time bucketing based on temporality.
+// For delta temporality: prepends time bucket prefix
+// For cumulative temporality: no time bucketing (to avoid memory issues)
+func (p *processorImp) buildCustomMetricKey(serviceName string, span ptrace.Span, dimensions []dimension, resourceAttr pcommon.Map, extraVals []string) metricKey {
+	p.keyBuf.Reset()
+
+	// Only add time bucket prefix for delta temporality
+	if p.config.GetAggregationTemporality() == pmetric.AggregationTemporalityDelta {
+		p.AddTimeToKeyBuf(span.StartTimestamp().AsTime())
+	}
+
+	buildCustomKey(p.keyBuf, serviceName, span, dimensions, resourceAttr, extraVals)
+	return metricKey(p.keyBuf.String())
+}
 
 type exemplarData struct {
 	traceID pcommon.TraceID
@@ -127,6 +187,7 @@ type processorImp struct {
 	ticker  *clock.Ticker
 	done    chan struct{}
 	started bool
+	wg      sync.WaitGroup
 
 	shutdownOnce sync.Once
 
@@ -198,6 +259,11 @@ func (h *exponentialHistogram) Observe(value float64) {
 func newProcessor(logger *zap.Logger, instanceID string, config component.Config, ticker *clock.Ticker) (*processorImp, error) {
 	logger.Info("Building signozspanmetricsprocessor with config", zap.Any("config", config))
 	pConfig := config.(*Config)
+
+	// Set default time bucket interval if not specified
+	if pConfig.TimeBucketInterval == 0 {
+		pConfig.TimeBucketInterval = defaultTimeBucketInterval
+	}
 
 	bounds := defaultLatencyHistogramBucketsMs
 	if pConfig.LatencyHistogramBuckets != nil {
@@ -417,7 +483,9 @@ func (p *processorImp) Start(ctx context.Context, host component.Host) error {
 	p.logger.Info("Started signozspanmetricsprocessor")
 
 	p.started = true
+	p.wg.Add(1)
 	go func() {
+		defer p.wg.Done()
 		for {
 			select {
 			case <-p.done:
@@ -438,10 +506,11 @@ func (p *processorImp) Shutdown(ctx context.Context) error {
 		if p.started {
 			p.logger.Info("Stopping ticker")
 			p.ticker.Stop()
-			p.done <- struct{}{}
+			close(p.done)
 			p.started = false
 		}
 	})
+	p.wg.Wait()
 	return nil
 }
 
@@ -572,16 +641,17 @@ func (p *processorImp) collectLatencyMetrics(ilm pmetric.ScopeMetrics) error {
 	mLatency.SetEmptyHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mLatency.Histogram().DataPoints()
 	dps.EnsureCapacity(len(p.histograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.histograms {
 		dpLatency := dps.AppendEmpty()
-		dpLatency.SetStartTimestamp(p.startTimestamp)
-		dpLatency.SetTimestamp(timestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		dpLatency.SetStartTimestamp(start)
+		dpLatency.SetTimestamp(end)
 		dpLatency.ExplicitBounds().FromRaw(p.latencyBounds)
 		dpLatency.BucketCounts().FromRaw(hist.bucketCounts)
 		dpLatency.SetCount(hist.count)
 		dpLatency.SetSum(hist.sum)
-		setExemplars(hist.exemplarsData, timestamp, dpLatency.Exemplars())
+		setExemplars(hist.exemplarsData, end, dpLatency.Exemplars())
 
 		dimensions, err := p.getDimensionsByMetricKey(key)
 		if err != nil {
@@ -602,11 +672,12 @@ func (p *processorImp) collectExpHistogramMetrics(ilm pmetric.ScopeMetrics) erro
 	mExpLatency.SetEmptyExponentialHistogram().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mExpLatency.ExponentialHistogram().DataPoints()
 	dps.EnsureCapacity(len(p.expHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.expHistograms {
 		dp := dps.AppendEmpty()
-		dp.SetStartTimestamp(p.startTimestamp)
-		dp.SetTimestamp(timestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		dp.SetStartTimestamp(start)
+		dp.SetTimestamp(end)
 		expoHistToExponentialDataPoint(hist.histogram, dp)
 		dimensions, err := p.getDimensionsByExpHistogramKey(key)
 		if err != nil {
@@ -638,16 +709,17 @@ func (p *processorImp) collectDBCallMetrics(ilm pmetric.ScopeMetrics) error {
 
 	callSumDps.EnsureCapacity(len(p.dbCallHistograms))
 	callCountDps.EnsureCapacity(len(p.dbCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, metric := range p.dbCallHistograms {
 		dpDBCallSum := callSumDps.AppendEmpty()
-		dpDBCallSum.SetStartTimestamp(p.startTimestamp)
-		dpDBCallSum.SetTimestamp(timestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		dpDBCallSum.SetStartTimestamp(start)
+		dpDBCallSum.SetTimestamp(end)
 		dpDBCallSum.SetDoubleValue(metric.sum)
 
 		dpDBCallCount := callCountDps.AppendEmpty()
-		dpDBCallCount.SetStartTimestamp(p.startTimestamp)
-		dpDBCallCount.SetTimestamp(timestamp)
+		dpDBCallCount.SetStartTimestamp(start)
+		dpDBCallCount.SetTimestamp(end)
 		dpDBCallCount.SetIntValue(int64(metric.count))
 
 		dimensions, err := p.getDimensionsByDBCallMetricKey(key)
@@ -679,16 +751,17 @@ func (p *processorImp) collectExternalCallMetrics(ilm pmetric.ScopeMetrics) erro
 
 	callSumDps.EnsureCapacity(len(p.externalCallHistograms))
 	callCountDps.EnsureCapacity(len(p.externalCallHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, metric := range p.externalCallHistograms {
 		dpExternalCallSum := callSumDps.AppendEmpty()
-		dpExternalCallSum.SetStartTimestamp(p.startTimestamp)
-		dpExternalCallSum.SetTimestamp(timestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		dpExternalCallSum.SetStartTimestamp(start)
+		dpExternalCallSum.SetTimestamp(end)
 		dpExternalCallSum.SetDoubleValue(metric.sum)
 
 		dpExternalCallCount := callCountDps.AppendEmpty()
-		dpExternalCallCount.SetStartTimestamp(p.startTimestamp)
-		dpExternalCallCount.SetTimestamp(timestamp)
+		dpExternalCallCount.SetStartTimestamp(start)
+		dpExternalCallCount.SetTimestamp(end)
 		dpExternalCallCount.SetIntValue(int64(metric.count))
 
 		dimensions, err := p.getDimensionsByExternalCallMetricKey(key)
@@ -711,11 +784,12 @@ func (p *processorImp) collectCallMetrics(ilm pmetric.ScopeMetrics) error {
 	mCalls.Sum().SetAggregationTemporality(p.config.GetAggregationTemporality())
 	dps := mCalls.Sum().DataPoints()
 	dps.EnsureCapacity(len(p.callHistograms))
-	timestamp := pcommon.NewTimestampFromTime(time.Now())
+
 	for key, hist := range p.callHistograms {
 		dpCalls := dps.AppendEmpty()
-		dpCalls.SetStartTimestamp(p.startTimestamp)
-		dpCalls.SetTimestamp(timestamp)
+		start, end := parseTimesFromKeyOrNow(key, p.config.GetTimeBucketInterval(), time.Now(), p.startTimestamp)
+		dpCalls.SetStartTimestamp(start)
+		dpCalls.SetTimestamp(end)
 		dpCalls.SetIntValue(int64(hist.count))
 
 		dimensions, err := p.getDimensionsByCallMetricKey(key)
@@ -904,24 +978,20 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	if endTime > startTime {
 		latencyInMilliseconds = float64(endTime-startTime) / float64(time.Millisecond.Nanoseconds())
 	}
-	// Always reset the buffer before re-using.
-	p.keyBuf.Reset()
-	p.buildKey(p.keyBuf, serviceName, span, p.dimensions, resourceAttr)
-	key := metricKey(p.keyBuf.String())
+
+	// Build key for latency metrics (with conditional time bucketing)
+	key := p.buildMetricKey(serviceName, span, p.dimensions, resourceAttr)
 	p.cache(serviceName, span, key, resourceAttr)
 	p.updateHistogram(key, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
 	if p.config.EnableExpHistogram {
-		p.keyBuf.Reset()
-		p.buildKey(p.keyBuf, serviceName, span, p.expDimensions, resourceAttr)
-		expKey := metricKey(p.keyBuf.String())
+		expKey := p.buildMetricKey(serviceName, span, p.expDimensions, resourceAttr)
 		p.expHistogramCache(serviceName, span, expKey, resourceAttr)
 		p.updateExpHistogram(expKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
-	p.keyBuf.Reset()
-	p.buildKey(p.keyBuf, serviceName, span, p.callDimensions, resourceAttr)
-	callKey := metricKey(p.keyBuf.String())
+	// Build key for call metrics (with conditional time bucketing)
+	callKey := p.buildMetricKey(serviceName, span, p.callDimensions, resourceAttr)
 	p.callCache(serviceName, span, callKey, resourceAttr)
 	p.updateCallHistogram(callKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 
@@ -930,9 +1000,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	if span.Kind() == ptrace.SpanKindClient && externalCallPresent {
 		extraVals := []string{remoteAddr}
-		p.keyBuf.Reset()
-		buildCustomKey(p.keyBuf, serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
-		externalCallKey := metricKey(p.keyBuf.String())
+		externalCallKey := p.buildCustomMetricKey(serviceName, span, p.externalCallDimensions, resourceAttr, extraVals)
 		extraDims := map[string]pcommon.Value{
 			"address": pcommon.NewValueStr(remoteAddr),
 		}
@@ -942,9 +1010,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 
 	_, dbCallPresent := spanAttr.Get("db.system")
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
-		p.keyBuf.Reset()
-		buildCustomKey(p.keyBuf, serviceName, span, p.dbCallDimensions, resourceAttr, nil)
-		dbCallKey := metricKey(p.keyBuf.String())
+		dbCallKey := p.buildCustomMetricKey(serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
 		p.updateDBHistogram(dbCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
@@ -1175,11 +1241,14 @@ func concatDimensionValue(dest *bytes.Buffer, value string, prefixSep bool) {
 func (p *processorImp) buildKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, optionalDims []dimension, resourceAttrs pcommon.Map) {
 	spanName := span.Name()
 	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
-		p.logger.Warn("Too many services to track, using overflow service name", zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
+		p.logger.Warn("Too many services to track, using overflow service name",
+			zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
 		serviceName = overflowServiceName
 	}
 	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
-		p.logger.Warn("Too many operations to track, using overflow operation name", zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService))
+		p.logger.Warn("Too many operations to track, using overflow operation name",
+			zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService),
+			zap.String("serviceName", serviceName))
 		spanName = overflowOperation
 	}
 	concatDimensionValue(dest, serviceName, false)

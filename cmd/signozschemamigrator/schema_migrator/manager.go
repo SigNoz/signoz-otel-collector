@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+
+	"net/netip"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/cenkalti/backoff/v4"
@@ -24,16 +27,19 @@ var (
 	ErrFailedToRunSquashedMigrations    = errors.New("failed to run squashed migrations")
 	ErrFailedToCreateSchemaMigrationsV2 = errors.New("failed to create schema_migrations_v2 table")
 	ErrDistributionQueueError           = errors.New("distribution_queue has entries with error_count != 0 or is_blocked = 1")
-	dbs                                 = []string{"signoz_traces", "signoz_metrics", "signoz_logs", "signoz_metadata", "signoz_analytics"}
-	legacyMigrationsTable               = "schema_migrations"
-	signozLogsDB                        = "signoz_logs"
-	signozMetricsDB                     = "signoz_metrics"
-	signozTracesDB                      = "signoz_traces"
-	signozMetadataDB                    = "signoz_metadata"
-	signozAnalyticsDB                   = "signoz_analytics"
-	inProgressStatus                    = "in-progress"
-	finishedStatus                      = "finished"
-	failedStatus                        = "failed"
+
+	legacyMigrationsTable = "schema_migrations"
+	signozLogsDB          = "signoz_logs"
+	signozMetricsDB       = "signoz_metrics"
+	signozTracesDB        = "signoz_traces"
+	signozMetadataDB      = "signoz_metadata"
+	signozAnalyticsDB     = "signoz_analytics"
+	signozMeterDB         = "signoz_meter"
+	dbs                   = []string{signozTracesDB, signozMetricsDB, signozLogsDB, signozMetadataDB, signozAnalyticsDB, signozMeterDB}
+
+	inProgressStatus = "in-progress"
+	finishedStatus   = "finished"
+	failedStatus     = "failed"
 )
 
 type Mutation struct {
@@ -199,6 +205,14 @@ func (m *MigrationManager) Bootstrap() error {
 		}
 	}
 
+	for _, migration := range V2MigrationTablesMeter {
+		for _, item := range migration.UpItems {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, signozMeterDB, true); err != nil {
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
+			}
+		}
+	}
+
 	m.logger.Info("Created schema migrations tables")
 	return nil
 }
@@ -231,6 +245,30 @@ func (m *MigrationManager) shouldRunSquashed(ctx context.Context, db string) (bo
 	return count == 0 && !didMigrateV2, nil
 }
 
+func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Context) error {
+	m.logger.Info("Checking if should run squashed migrations for logs")
+	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
+	if err != nil {
+		return err
+	}
+	// if the legacy migrations table exists, we don't need to run the custom retention migrations
+	if !should {
+		m.logger.Info("skipping custom retention migrations")
+		return nil
+	}
+	m.logger.Info("Running custom retention migrations for logs")
+	for _, migration := range CustomRetentionLogsMigrations {
+		for _, item := range migration.UpItems {
+			if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
+				return err
+			}
+		}
+	}
+	m.logger.Info("Custom retention migrations for logs completed")
+	return nil
+}
+
+//nolint:unused
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
 	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
@@ -300,7 +338,7 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 
 func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 	m.logger.Info("Running squashed migrations")
-	if err := m.runSquashedMigrationsForLogs(ctx); err != nil {
+	if err := m.runCustomRetentionMigrationsForLogs(ctx); err != nil {
 		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
 	if err := m.runSquashedMigrationsForMetrics(ctx); err != nil {
@@ -337,7 +375,14 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 		if err := rows.Scan(&hostAddr, &port); err != nil {
 			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 		}
-		hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+
+		addr, err := netip.ParseAddr(hostAddr)
+		if err != nil {
+			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+		}
+
+		addrPort := netip.AddrPortFrom(addr, port)
+		hostAddrs[addrPort.String()] = struct{}{}
 	}
 
 	if len(hostAddrs) != 0 {
@@ -361,7 +406,14 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 				if err := rows.Scan(&hostAddr, &port); err != nil {
 					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 				}
-				hostAddrs[fmt.Sprintf("%s:%d", hostAddr, port)] = struct{}{}
+
+				addr, err := netip.ParseAddr(hostAddr)
+				if err != nil {
+					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+				}
+
+				addrPort := netip.AddrPortFrom(addr, port)
+				hostAddrs[addrPort.String()] = struct{}{}
 			}
 			break
 		}
@@ -452,11 +504,12 @@ func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 		if m.backoff.NextBackOff() == backoff.Stop {
 			return errors.New("backoff stopped")
 		}
-		query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
-		var ddlQueue []DistributedDDLQueue
-		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+
+		ddlQueue, err := m.getDistributedDDLQueue(ctx)
+		if err != nil {
 			return err
 		}
+
 		if len(ddlQueue) != 0 {
 			m.logger.Info("Waiting for distributed DDL queue to be completed", zap.Int("count", len(ddlQueue)))
 			for _, ddl := range ddlQueue {
@@ -474,6 +527,37 @@ func (m *MigrationManager) WaitDistributedDDLQueue(ctx context.Context) error {
 		break
 	}
 	return nil
+}
+
+func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]DistributedDDLQueue, error) {
+	var ddlQueue []DistributedDDLQueue
+	query := "SELECT entry, cluster, query, host, port, status, exception_code FROM system.distributed_ddl_queue WHERE status != 'Finished'"
+
+	// 10 attempts is an arbitrary number. If we don't get the DDL queue after 10 attempts, we give up.
+	for i := 0; i < 10; i++ {
+		if err := m.conn.Select(ctx, &ddlQueue, query); err != nil {
+			if exception, ok := err.(*clickhouse.Exception); ok {
+				if exception.Code == 999 {
+					// ClickHouse DDLWorker is cleaning up entries in the distributed_ddl_queue before we can query it. This leads to the exception:
+					// code: 999, message: Coordination error: No node, path /clickhouse/signoz-clickhouse/task_queue/ddl/query-000000<some 4 digit number>/finished
+
+					// It looks like this exception is safe to retry on.
+					if strings.Contains(exception.Error(), "No node") {
+						m.logger.Error("A retryable exception was received while fetching distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
+						continue
+					}
+				}
+			}
+
+			m.logger.Error("Failed to fetch distributed DDL queue", zap.Error(err), zap.Int("attempt", i+1))
+			return nil, err
+		}
+
+		// If no exception was thrown, break the loop
+		break
+	}
+
+	return ddlQueue, nil
 }
 
 func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, conn clickhouse.Conn, db, table string) error {
@@ -671,6 +755,19 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
+	for _, migration := range MeterMigrations {
+		if !m.shouldRunMigration(signozMeterDB, migration.MigrationID, upVersions) {
+			continue
+		}
+		for _, item := range migration.UpItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -725,6 +822,19 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 		for _, item := range migration.DownItems {
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozAnalyticsDB, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, migration := range MeterMigrations {
+		if !m.shouldRunMigration(signozMeterDB, migration.MigrationID, downVersions) {
+			continue
+		}
+		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
 					return err
 				}
 			}

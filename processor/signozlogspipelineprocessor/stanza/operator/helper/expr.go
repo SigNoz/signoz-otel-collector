@@ -4,12 +4,11 @@
 package signozstanzahelper
 
 import (
-	"fmt"
 	"os"
-	"reflect"
 	"sync"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/vm"
@@ -20,31 +19,11 @@ var envPool = sync.Pool{
 	New: func() any {
 		return map[string]any{
 			"os_env_func": os.Getenv,
-			"typeOf": func(v any) string { // custom function to detect type in expressions
-				t := reflect.TypeOf(v)
-				if t == nil {
-					return "nil"
-				}
-
-				switch t.Kind() {
-				case reflect.String:
-					return "string"
-				case reflect.Map:
-					if t.Key().Kind() == reflect.String {
-						return "map[string]any"
-					}
-					return "map"
-				case reflect.Slice, reflect.Array:
-					return "array"
-				case reflect.Bool:
-					return "bool"
-				case reflect.Int, reflect.Int64:
-					return "int"
-				case reflect.Float64:
-					return "float"
-				default:
-					return fmt.Sprintf("Unhandled Type[%T]", v)
-				}
+			"isJSON": func(v any) bool {
+				return utils.IsJSON(v)
+			},
+			"unquote": func(v any) string {
+				return utils.Unquote(v.(string))
 			},
 		}
 	},
@@ -60,6 +39,9 @@ func GetExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool) map[string]any {
 	env["timestamp"] = e.Timestamp
 	env["severity_text"] = e.SeverityText
 	env["severity_number"] = int(e.Severity)
+	env["trace_id"] = e.TraceID
+	env["span_id"] = e.SpanID
+	env["trace_flags"] = e.TraceFlags
 
 	if forExprWithBodyFieldRef {
 		env["body_map"] = signozstanzaentry.ParseBodyJson(e)

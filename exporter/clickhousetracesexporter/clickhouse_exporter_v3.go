@@ -3,13 +3,15 @@ package clickhousetracesexporter
 import (
 	"context"
 	"crypto/md5"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-json"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -17,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.27.0"
+	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -71,7 +73,7 @@ func makeJaegerProtoReferences(
 // TODO: Find a better package for this function.
 func ServiceNameForResource(resource pcommon.Resource) string {
 
-	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
+	service, found := resource.Attributes().Get(string(conventions.ServiceNameKey))
 	if !found {
 		return "<nil-service-name>"
 	}
@@ -248,6 +250,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	}
 
 	resourceAttrs := map[string]string{}
+	billableResourceAttrs := map[string]string{}
 
 	otelSpan.Attributes().Range(func(k string, v pcommon.Value) bool {
 		attrMap.add(k, v)
@@ -256,11 +259,15 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	})
 
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
+		isBillable := !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k)
 		if v.Type() == pcommon.ValueTypeMap {
 			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
 			for tempKey, tempVal := range result {
 				strVal := fmt.Sprintf("%v", tempVal)
 				resourceAttrs[tempKey] = strVal
+				if isBillable {
+					billableResourceAttrs[tempKey] = strVal
+				}
 				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
 					Key:         tempKey,
 					TagType:     "resource",
@@ -271,6 +278,9 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 			}
 		} else {
 			resourceAttrs[k] = v.AsString()
+			if isBillable {
+				billableResourceAttrs[k] = v.AsString()
+			}
 			attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
 				Key:         k,
 				TagType:     "resource",
@@ -315,7 +325,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
 
-		ResourcesString: resourceAttrs,
+		ResourcesString:         resourceAttrs,
+		BillableResourcesString: billableResourceAttrs,
 
 		ServiceName: ServiceName,
 

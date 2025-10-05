@@ -2,11 +2,12 @@ package clickhousesystemtablesreceiver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -348,7 +349,8 @@ func (ql *QueryLog) toLogRecord() (plog.LogRecord, error) {
 				for _, pe := range ps.AsRaw() {
 					elems = append(elems, fmt.Sprintf("%v", pe))
 				}
-				pval.FromRaw(strings.Join(elems, ","))
+				// TODO: handle error
+				_ = pval.FromRaw(strings.Join(elems, ","))
 				pval.CopyTo(lr.Attributes().PutEmpty(attrName))
 			} else if pval.Type() == pcommon.ValueTypeMap {
 				pm := pval.Map()
@@ -394,7 +396,8 @@ func pcommonValue(v any) pcommon.Value {
 		pVal.SetStr(timeV.Format(time.RFC3339))
 
 	} else {
-		pVal.FromRaw(v)
+		// TODO: handle error
+		_ = pVal.FromRaw(v)
 	}
 
 	return pVal

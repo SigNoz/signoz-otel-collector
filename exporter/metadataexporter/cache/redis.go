@@ -368,3 +368,10 @@ func (c *RedisKeyCache) debugKey(ctx context.Context, key string) error {
 	c.logger.Debug("set cardinality", zap.String("key", key), zap.Int64("cardinality", card))
 	return nil
 }
+
+func (c *RedisKeyCache) Close(ctx context.Context) error {
+	if c.redisClient != nil {
+		return c.redisClient.Close()
+	}
+	return nil
+}

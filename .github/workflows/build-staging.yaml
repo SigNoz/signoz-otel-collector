@@ -58,6 +58,7 @@ jobs:
     needs: prepare
     with:
       PRIMUS_REF: main
+      GO_VERSION: 1.23
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
       GO_BUILD_FLAGS: ""
       DOCKER_BASE_IMAGES: '{"debian":"debian:bookworm-slim"}'
@@ -70,6 +71,7 @@ jobs:
     needs: prepare
     with:
       PRIMUS_REF: main
+      GO_VERSION: 1.23
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
       GO_BUILD_FLAGS: ""
@@ -78,7 +80,7 @@ jobs:
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: gcp
   staging:
-    if: ${{ github.event.ref == 'refs/heads/main' }}
+    if: ${{ contains(github.event.label.name, 'staging:') || github.event.ref == 'refs/heads/main' }}
     uses: signoz/primus.workflows/.github/workflows/github-trigger.yaml@main
     secrets: inherit
     needs: [prepare, signoz-otel-collector, signoz-schema-migrator]
@@ -88,4 +90,4 @@ jobs:
       GITHUB_SILENT: true
       GITHUB_REPOSITORY_NAME: charts-saas-v3-staging
       GITHUB_EVENT_NAME: releaser
-      GITHUB_EVENT_PAYLOAD: '{"deployment": "staging", "otelcol_version": "${{ needs.prepare.outputs.version }}"}'
+      GITHUB_EVENT_PAYLOAD: "{\"deployment\": \"${{ needs.prepare.outputs.deployment }}\", \"otelcol_version\": \"${{ needs.prepare.outputs.version }}\"}"

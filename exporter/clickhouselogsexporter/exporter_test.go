@@ -13,9 +13,12 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
 )
 
 func eventually(t *testing.T, f func() bool) {
@@ -24,16 +27,17 @@ func eventually(t *testing.T, f func() bool) {
 
 func testOptions() []LogExporterOption {
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
-	keysCache := ttlcache.New[string, struct{}](
+	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 	)
 	go keysCache.Start()
 
 	// resource fingerprint cache is used to avoid duplicate inserts for the same resource fingerprint.
 	// the ttl is set to the same as the bucket rounded value i.e 1800 seconds.
 	// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-	rfCache := ttlcache.New[string, struct{}](
+	rfCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](distributedLogsResourceV2Seconds*time.Second),
 		ttlcache.WithDisableTouchOnHit[string, struct{}](),
 		ttlcache.WithCapacity[string, struct{}](100000),
@@ -42,7 +46,7 @@ func testOptions() []LogExporterOption {
 
 	return []LogExporterOption{
 		WithLogger(zap.NewNop()),
-		WithMeter(noop.NewMeterProvider().Meter("github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter")),
+		WithMeter(noop.NewMeterProvider().Meter(metadata.ScopeName)),
 		WithKeysCache(keysCache),
 		WithRFCache(rfCache),
 	}
@@ -90,9 +94,14 @@ func TestExporterInit(t *testing.T) {
 	rows := cmock.NewRows(cols, [][]interface{}{{"key1", "string", "string", 2, 1}, {"key2", "number", "number", 1, 2}})
 
 	mock.ExpectSelect(".*SETTINGS max_threads = 2").WillReturnRows(rows)
+	mock.ExpectClose()
 
 	exporter := setupTestExporter(t, mock)
-	exporter.Start(context.Background(), nil)
+	err = exporter.Start(context.Background(), nil)
+	assert.Nil(t, err)
+
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil
@@ -125,6 +134,7 @@ func TestExporterPushLogsData(t *testing.T) {
 
 	// make sure usage is inserted on shutdown
 	mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+	mock.ExpectClose()
 
 	exporter := setupTestExporter(t, mock)
 
@@ -135,9 +145,51 @@ func TestExporterPushLogsData(t *testing.T) {
 		t.Fatalf("failed to push logs data: %v", err)
 	}
 
-	exporter.Shutdown(context.Background())
+	err = exporter.Shutdown(context.Background())
+	assert.Nil(t, err)
 
 	eventually(t, func() bool {
 		return mock.ExpectationsWereMet() == nil
 	})
+}
+
+func TestGetResourceAttributesByte(t *testing.T) {
+	tests := []struct {
+		name      string
+		attribute string
+		pass      bool
+	}{
+		{
+			name:      "add_signoz_resource_attribute",
+			attribute: "signoz.workspace.internal.test",
+			pass:      true,
+		},
+		{
+			name:      "add_non_signoz_resource_attribute",
+			attribute: "nonsignoz.internal.test",
+			pass:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			plogs := plogsgen.Generate(plogsgen.WithResourceAttributeCount(10))
+
+			// get the base expected value
+			withoutSigNozAttrs, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
+			require.NoError(t, err)
+
+			// add the provided attributeand get the actual value
+			plogs.ResourceLogs().At(0).Resource().Attributes().PutStr(tc.attribute, "test")
+			WithNewAttribute, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
+			require.NoError(t, err)
+
+			if tc.pass {
+				assert.Equal(t, withoutSigNozAttrs, WithNewAttribute)
+			} else {
+				assert.NotEqual(t, withoutSigNozAttrs, WithNewAttribute)
+			}
+
+		})
+	}
 }

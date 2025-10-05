@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
@@ -26,7 +27,7 @@ type baseClient struct {
 	logger  *zap.Logger
 
 	reloadMux   sync.Mutex
-	isReloading bool
+	isReloading atomic.Bool
 }
 
 // Error returns the error channel
@@ -53,7 +54,7 @@ func (c *baseClient) ensureRunning() {
 			c.logger.Info("Collector is stopped")
 			return
 		case <-time.After(c.coll.PollInterval):
-			if c.coll.GetState() == otelcol.StateClosed && !c.isReloading {
+			if c.coll.GetState() == otelcol.StateClosed && !c.isReloading.Load() {
 				c.err <- fmt.Errorf("collector stopped unexpectedly")
 			}
 		}
