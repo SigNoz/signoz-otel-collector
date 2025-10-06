@@ -831,6 +831,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			NegativeValues: negative,
 			ZeroCount:      float64(dp.ZeroCount()),
 		}
+		c.logger.Info("debug sketch", zap.String("sketch", dd.Debug()))
 
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
