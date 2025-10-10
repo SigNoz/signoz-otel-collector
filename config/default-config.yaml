@@ -40,6 +40,7 @@ processors:
     dimensions_cache_size: 100000
     aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
     enable_exp_histogram: true
+    drop_spans_older_than: 24h
     dimensions:
       - name: service.namespace
         default: default
