@@ -968,10 +968,10 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
 
-	// Drop late-arriving spans older than the configured staleness window
-	if window := p.config.GetDropSpansOlderThan(); window > 0 {
-		cutoff := time.Now().Add(-window)
-		if span.StartTimestamp().AsTime().Before(cutoff) {
+	// Drop late-arriving spans older than the configured staleness spanDropWindow
+	if spanDropWindow := p.config.GetDropSpansOlderThan(); spanDropWindow > 0 {
+		lastPermissibleSpanTime := time.Now().Add(-spanDropWindow)
+		if span.StartTimestamp().AsTime().Before(lastPermissibleSpanTime) {
 			p.logger.Debug("Dropping stale span", zap.String("span", span.Name()), zap.String("service", serviceName))
 			return
 		}
