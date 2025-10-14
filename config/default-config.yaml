@@ -89,19 +89,22 @@ exporters:
       num_consumers: 5
   signozclickhousemetrics:
     dsn: tcp://localhost:9000/signoz_metrics
+    enable_exp_hist: true
   prometheus:
     endpoint: "0.0.0.0:8889"
+  file:
+    path: /Users/nikhilmantrisignoz/signozprojects/notes/otel-out/telemetry.json
 service:
   extensions: [zpages]
   pipelines:
     traces:
       receivers: [jaeger, otlp]
       processors: [signozspanmetrics/delta, batch]
-      exporters: [clickhousetraces]
+      exporters: [clickhousetraces, file]
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [batch]
-      exporters: [signozclickhousemetrics]
+      exporters: [signozclickhousemetrics, file]
     metrics/spanmetrics:
       receivers: [otlp/spanmetrics]
       exporters: [prometheus]
