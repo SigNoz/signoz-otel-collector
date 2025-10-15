@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/SigNoz/signoz-otel-collector/utils/set"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -133,7 +133,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 	got := map[string][]string{}
 	typeSet.types.Range(func(key, value interface{}) bool {
 		path := key.(string)
-		cs := value.(*set.ConcurrentSet[string])
+		cs := value.(*utils.ConcurrentSet[string])
 		types := cs.Keys()
 		sort.Strings(types)
 		got[path] = types

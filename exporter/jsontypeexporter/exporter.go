@@ -8,8 +8,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	"github.com/SigNoz/signoz-otel-collector/utils/set"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -26,12 +26,12 @@ type jsonTypeExporter struct {
 }
 
 type TypeSet struct {
-	types sync.Map // map[string]*set.ConcurrentSet[string]
+	types sync.Map // map[string]*utils.ConcurrentSet[string]
 }
 
 func (t *TypeSet) Insert(path string, mask uint16) {
-	actual, _ := t.types.LoadOrStore(path, set.WithCapacity[string](3))
-	cs := actual.(*set.ConcurrentSet[string])
+	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
+	cs := actual.(*utils.ConcurrentSet[string])
 	// expand mask to strings
 	if mask&maskString != 0 {
 		cs.Insert(StringType)
@@ -160,21 +160,28 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 	switch val.Type() {
 	case pcommon.ValueTypeMap:
 		m := val.Map()
-		m.Range(func(k string, v pcommon.Value) bool {
+		m.Range(func(key string, value pcommon.Value) bool {
 			select {
 			case <-ctx.Done():
 				return false
 			default:
 			}
-			path := prefix + "." + k
-			if prefix == "" {
-				path = k
-			} else if inArray {
-				path = prefix + k
+
+			// if high cardinality, skip the key
+			if keycheck.IsCardinal(key) {
+				return true
 			}
-			if err := e.analyzePValue(ctx, path, false, v, typeSet); err != nil {
+
+			path := prefix + "." + key
+			if prefix == "" {
+				path = key
+			} else if inArray {
+				path = prefix + key
+			}
+			if err := e.analyzePValue(ctx, path, false, value, typeSet); err != nil {
 				return false
 			}
+
 			return true
 		})
 		return nil
@@ -252,7 +259,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 	// Iterate through all collected types and insert them
 	typeSet.types.Range(func(key, value interface{}) bool {
 		path := key.(string)
-		typeSet := value.(*set.ConcurrentSet[string])
+		typeSet := value.(*utils.ConcurrentSet[string])
 
 		// Get all types for this path
 		types := typeSet.Keys()
