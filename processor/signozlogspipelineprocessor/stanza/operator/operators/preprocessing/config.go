@@ -24,23 +24,23 @@ func NewConfig() *Config {
 // NewConfigWithID creates a new JSON parser config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
-		ParserConfig: signozstanzahelper.NewParserConfig(operatorID, operatorType),
+		TransformerConfig: signozstanzahelper.NewTransformerConfig(operatorID, operatorType),
 	}
 }
 
 // Config is the configuration of a JSON parser operator.
 type Config struct {
-	signozstanzahelper.ParserConfig `mapstructure:",squash"`
+	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
 }
 
 // Build will build a JSON parser operator.
 func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error) {
-	parserOperator, err := c.ParserConfig.Build(set)
+	transformerOperator, err := c.TransformerConfig.Build(set)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Processor{
-		ParserOperator: parserOperator,
+		TransformerOperator: transformerOperator,
 	}, nil
 }

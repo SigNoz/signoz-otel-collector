@@ -11,12 +11,12 @@ import (
 )
 
 type Processor struct {
-	signozstanzahelper.ParserOperator
+	signozstanzahelper.TransformerOperator
 }
 
 // Process will parse an entry for JSON.
 func (p *Processor) Process(ctx context.Context, entry *entry.Entry) error {
-	return p.ParserOperator.ProcessWith(ctx, entry, p.parse)
+	return p.TransformerOperator.ProcessWith(ctx, entry, p.transform)
 }
 
 func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
@@ -24,21 +24,22 @@ func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) er
 }
 
 // preprocess log body
-func (p *Processor) parse(value any) (any, error) {
+func (p *Processor) transform(entry *entry.Entry) error {
 	parsedValue := make(map[string]any)
-	switch v := value.(type) {
+	switch v := entry.Body.(type) {
 	case string:
 		// Unquote JSON strings if possible
 		err := sonic.Unmarshal([]byte(utils.Unquote(v)), &parsedValue)
 		if err != nil { // failed to marshal as JSON; return as is
-			return value, nil
+			return  nil
 		}
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
 		parsedValue = v
 	default:
-		return nil, fmt.Errorf("type %T cannot be parsed as JSON", value)
+		return  fmt.Errorf("type %T cannot be parsed as JSON", v)
 	}
 
-	return parsedValue, nil
+	entry.Body = parsedValue
+	return nil
 }
