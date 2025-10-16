@@ -29,6 +29,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -142,6 +143,7 @@ type Record struct {
 	severityText  string
 	severityNum   uint8
 	body          string
+	bodyv2        string
 	promoted      string
 	scopeName     string
 	scopeVersion  string
@@ -614,21 +616,29 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					body := record.Body()
-					if body.Type() != pcommon.ValueTypeMap {
-						return fmt.Errorf("body is not a map[string]any")
-					}
+					promoted := pcommon.NewValueMap()
+					bodyv2 := pcommon.NewValueMap()
+					if body.Type() == pcommon.ValueTypeMap {
+						// Work on a local mutable copy of the body to avoid mutating
+						// the shared pdata across goroutines.
+						mutableBody := pcommon.NewValueMap()
+						body.CopyTo(mutableBody)
 
-					// Work on a local mutable copy of the body to avoid mutating
-					// the shared pdata across goroutines.
-					mutableBody := pcommon.NewValueMap()
-					body.CopyTo(mutableBody)
+						// promoted paths extraction using cached set
+						promotedSet := map[string]struct{}{}
+						if v := e.promotedPaths.Load(); v != nil {
+							promotedSet = v.(map[string]struct{})
+						}
 
-					// promoted paths extraction using cached set
-					promotedSet := map[string]struct{}{}
-					if v := e.promotedPaths.Load(); v != nil {
-						promotedSet = v.(map[string]struct{})
+						// set values to promoted and bodyv2
+						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
+						bodyv2 = mutableBody
+
+						// set body to empty string if body column compatibility is disabled
+						if !constants.BodyColumnCompatibilityEnabled {
+							body = pcommon.NewValueEmpty()
+						}
 					}
-					promoted := buildPromotedAndPruneBody(mutableBody, promotedSet)
 
 					// metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
@@ -645,7 +655,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						traceFlags:         uint32(record.Flags()),
 						severityText:       record.SeverityText(),
 						severityNum:        uint8(record.SeverityNumber()),
-						body:               getStringifiedBody(mutableBody),
+						body:               getStringifiedBody(body),
+						bodyv2:             getStringifiedBody(bodyv2),
 						promoted:           getStringifiedBody(promoted),
 						scopeName:          scopeName,
 						scopeVersion:       scopeVersion,

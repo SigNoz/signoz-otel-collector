@@ -30,10 +30,8 @@ func (p *Processor) parse(value any) (any, error) {
 	case string:
 		// Unquote JSON strings if possible
 		err := sonic.Unmarshal([]byte(utils.Unquote(v)), &parsedValue)
-		if err != nil { // failed to marshal as JSON; wrap as message
-			parsedValue = map[string]any{
-				"message": v,
-			}
+		if err != nil { // failed to marshal as JSON; return as is
+			return value, nil
 		}
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
