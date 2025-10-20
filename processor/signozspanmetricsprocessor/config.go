@@ -94,7 +94,7 @@ type Config struct {
 	MaxServicesToTrack             int `mapstructure:"max_services_to_track"`
 	MaxOperationsToTrackPerService int `mapstructure:"max_operations_to_track_per_service"`
 
-	// SkipSpansOlderThan defines the staleness window for dropping late-arriving spans.
+	// SkipSpansOlderThan defines the staleness window for skipping late-arriving spans.
 	// Spans with start time older than now - SkipSpansOlderThan are skipped.
 	// Default is 24 hours if not set.
 	SkipSpansOlderThan time.Duration `mapstructure:"skip_spans_older_than"`
