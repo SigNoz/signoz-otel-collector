@@ -1296,7 +1296,7 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 		// Create processor with delta temporality
 		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
 		// Prevent staleness guard from dropping this backdated test span (2024)
-		processor.config.DropSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
+		processor.config.SkipSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
 
 		// Configure time bucketing
 		processor.config.TimeBucketInterval = time.Minute
@@ -1415,7 +1415,7 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 		// Create processor with cumulative temporality
 		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
 		// Prevent staleness guard from dropping this backdated test span (2024)
-		processor.config.DropSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
+		processor.config.SkipSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
 
 		// Configure time bucketing (but it shouldn't be used for cumulative)
 		processor.config.TimeBucketInterval = time.Minute
@@ -1545,9 +1545,9 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 	})
 }
 
-// Tests the drop_spans_older_than staleness guard: spans older than the configured
+// Tests the skip_spans_older_than staleness guard: spans older than the configured
 // window are skipped before any aggregation; boundary and recent spans are accepted.
-func TestDropSpansOlderThan(t *testing.T) {
+func TestSkipSpansOlderThan(t *testing.T) {
 	// Common setup
 	mexp := &mocks.MetricsExporter{}
 	tcon := &mocks.TracesConsumer{}
@@ -1560,9 +1560,9 @@ func TestDropSpansOlderThan(t *testing.T) {
 	window := 24 * time.Hour
 	now := time.Now()
 
-	t.Run("Delta_Drops_Stale_Spans", func(t *testing.T) {
+	t.Run("Delta_Skips_Stale_Spans", func(t *testing.T) {
 		p := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
-		p.config.DropSpansOlderThan = window
+		p.config.SkipSpansOlderThan = window
 
 		span := ptrace.NewSpan()
 		span.SetName("stale-delta")
@@ -1573,16 +1573,16 @@ func TestDropSpansOlderThan(t *testing.T) {
 
 		p.aggregateMetricsForSpan(serviceName, span, resourceAttr)
 
-		// Nothing should be aggregated
+		// Nothing should be aggregated (since the span is stale)
 		require.Equal(t, 0, len(p.histograms))
 		require.Equal(t, 0, len(p.callHistograms))
 		require.Equal(t, 0, len(p.dbCallHistograms))
 		require.Equal(t, 0, len(p.externalCallHistograms))
 	})
 
-	t.Run("Delta_Accepts_Boundary_Span", func(t *testing.T) {
+	t.Run("Delta_Accepts_Recent_Span", func(t *testing.T) {
 		p := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
-		p.config.DropSpansOlderThan = window
+		p.config.SkipSpansOlderThan = window
 
 		span := ptrace.NewSpan()
 		span.SetName("boundary-delta")
@@ -1598,9 +1598,9 @@ func TestDropSpansOlderThan(t *testing.T) {
 		require.NotEqual(t, 0, len(p.callHistograms))
 	})
 
-	t.Run("Cumulative_Drops_Stale_Spans", func(t *testing.T) {
+	t.Run("Cumulative_Skips_Stale_Spans", func(t *testing.T) {
 		p := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
-		p.config.DropSpansOlderThan = window
+		p.config.SkipSpansOlderThan = window
 
 		span := ptrace.NewSpan()
 		span.SetName("stale-cumulative")
@@ -1618,7 +1618,7 @@ func TestDropSpansOlderThan(t *testing.T) {
 	// For cumulative temporality, boundary spans should be accepted just like delta
 	t.Run("Cumulative_Accepts_Boundary_Span", func(t *testing.T) {
 		p := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
-		p.config.DropSpansOlderThan = window
+		p.config.SkipSpansOlderThan = window
 
 		span := ptrace.NewSpan()
 		span.SetName("boundary-cumulative")
