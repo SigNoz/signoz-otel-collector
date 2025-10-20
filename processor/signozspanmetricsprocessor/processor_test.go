@@ -1295,7 +1295,7 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 
 		// Create processor with delta temporality
 		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_DELTA", logger, nil)
-		// Prevent staleness guard from dropping this backdated test span (2024)
+		// Prevent staleness guard from skipping this backdated test span (2024)
 		processor.config.SkipSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
 
 		// Configure time bucketing
@@ -1414,7 +1414,7 @@ func TestBuildMetricsTimestampAccuracy(t *testing.T) {
 
 		// Create processor with cumulative temporality
 		processor := newProcessorImp(mexp, tcon, nil, "AGGREGATION_TEMPORALITY_CUMULATIVE", logger, nil)
-		// Prevent staleness guard from dropping this backdated test span (2024)
+		// Prevent staleness guard from skipping this backdated test span (2024)
 		processor.config.SkipSpansOlderThan = 100 * 365 * 24 * time.Hour // setting for 100 years
 
 		// Configure time bucketing (but it shouldn't be used for cumulative)
