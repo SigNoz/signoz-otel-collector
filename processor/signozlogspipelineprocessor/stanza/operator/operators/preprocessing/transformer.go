@@ -44,7 +44,11 @@ func (p *Processor) transform(entry *entry.Entry) error {
 		return fmt.Errorf("type %T cannot be parsed as JSON", v)
 	}
 
-	// alphabetically apply
+	// set parsed value to body
+	entry.Body = parsedValue
+
+	messageField := signozstanzaentry.NewBodyField("message")
+	// add first found msg compatible field to body
 	for _, fieldName := range msgCompatibleFields {
 		field := signozstanzaentry.NewBodyField(fieldName)
 		val, ok := entry.Get(field)
@@ -55,7 +59,12 @@ func (p *Processor) transform(entry *entry.Entry) error {
 		if !ok {
 			continue
 		}
-		entry.Set(field, strValue)
+		err := entry.Set(messageField, strValue)
+		if err != nil {
+			return err
+		}
+		entry.Delete(field)
+		break
 	}
 
 	return nil
