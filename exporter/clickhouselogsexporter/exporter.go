@@ -81,6 +81,7 @@ const (
 		trace_flags,
 		severity_text,
 		severity_number,
+		body,
 		body_v2,
 		promoted,
 		attributes_string,
@@ -92,6 +93,7 @@ const (
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -524,6 +526,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
+					rec.bodyv2,
 					rec.promoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
@@ -635,7 +638,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						bodyv2 = mutableBody
 
 						// set body to empty string if body column compatibility is disabled
-						if !constants.BodyColumnCompatibilityEnabled {
+						if constants.BodyColumnCompatibilityDisabled {
 							body = pcommon.NewValueEmpty()
 						}
 					}
