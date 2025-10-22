@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -26,10 +27,14 @@ type jsonTypeExporter struct {
 }
 
 type TypeSet struct {
-	types sync.Map // map[string]*utils.ConcurrentSet[string]
+	types   sync.Map // map[string]*utils.ConcurrentSet[string]
+	mu      sync.Mutex
+	counter atomic.Int64
 }
 
 func (t *TypeSet) Insert(path string, mask uint16) {
+	t.counter.Add(1)
+
 	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
 	cs := actual.(*utils.ConcurrentSet[string])
 	// expand mask to strings
@@ -102,7 +107,11 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// per-batch type registry with bitmask aggregation
-	types := TypeSet{}
+	types := TypeSet{
+		mu:      sync.Mutex{},
+		counter: atomic.Int64{},
+		types:   sync.Map{},
+	}
 
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		rl := ld.ResourceLogs().At(i)
@@ -119,17 +128,23 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 					if err := e.analyzePValue(groupCtx, "", false, lr.Body(), &types); err != nil {
 						return err
 					}
-					return nil // not returning error to avoid cancelling groupCtx
+
+
+					return e.persistTypes(groupCtx, &types, false) 
 				})
 			}
 		}
 	}
 
 	// wait for the group execution
-	_ = group.Wait()
+	err := group.Wait()
+	if err != nil {
+		e.logger.Error("Failed to analyze log records", zap.Error(err))
+		return err
+	}
 
 	// Persist collected types to database
-	if err := e.persistTypes(ctx, &types); err != nil {
+	if err := e.persistTypes(ctx, &types, true); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
 	}
@@ -242,7 +257,13 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 }
 
 // persistTypes writes the collected types to the ClickHouse database
-func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) error {
+func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, flush bool) error {
+	if !flush && typeSet.counter.Load() < 10_000 {
+		return nil
+	}
+
+	typeSet.mu.Lock()
+	defer typeSet.mu.Unlock()
 	// Prepare the SQL statement
 	tableName := "signoz_logs.distributed_path_types"
 	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", tableName)
@@ -291,5 +312,6 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 		zap.Int("count", insertedCount),
 		zap.String("table", tableName))
 
+	typeSet.counter.Store(0) // reset the counter
 	return nil
 }
