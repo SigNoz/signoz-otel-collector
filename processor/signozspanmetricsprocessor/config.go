@@ -93,6 +93,11 @@ type Config struct {
 
 	MaxServicesToTrack             int `mapstructure:"max_services_to_track"`
 	MaxOperationsToTrackPerService int `mapstructure:"max_operations_to_track_per_service"`
+
+	// SkipSpansOlderThan defines the staleness window for skipping late-arriving spans.
+	// Spans with start time older than now - SkipSpansOlderThan are skipped.
+	// Default is 24 hours if not set.
+	SkipSpansOlderThan time.Duration `mapstructure:"skip_spans_older_than"`
 }
 
 // GetAggregationTemporality converts the string value given in the config into a AggregationTemporality.
@@ -110,4 +115,12 @@ func (c Config) GetTimeBucketInterval() time.Duration {
 		return defaultTimeBucketInterval
 	}
 	return c.TimeBucketInterval
+}
+
+// GetSkipSpansOlderThan returns the configured staleness window or a default of 24 hours.
+func (c Config) GetSkipSpansOlderThan() time.Duration {
+	if c.SkipSpansOlderThan <= 0 {
+		return defaultSkipSpansOlderThan
+	}
+	return c.SkipSpansOlderThan
 }
