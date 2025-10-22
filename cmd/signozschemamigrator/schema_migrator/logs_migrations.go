@@ -243,11 +243,6 @@ ORDER BY name ASC`,
 					{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "last_seen", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
-				Indexes: []Index{
-					{Name: "path_minmax", Expression: "path", Type: "minmax", Granularity: 1},
-					{Name: "type_set", Expression: "type", Type: "set(25)", Granularity: 4},
-					{Name: "last_seen_minmax", Expression: "last_seen", Type: "minmax", Granularity: 1},
-				},
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
 						OrderBy:     "(path, type)",
@@ -280,10 +275,6 @@ ORDER BY name ASC`,
 				Columns: []Column{
 					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Indexes: []Index{
-					{Name: "path_minmax", Expression: "path", Type: "minmax", Granularity: 1},
-					{Name: "created_at_minmax", Expression: "created_at", Type: "minmax", Granularity: 1},
 				},
 				Engine: MergeTree{
 					OrderBy:     "(path, created_at)",
