@@ -18,11 +18,8 @@ func buildPromotedAndPruneBody(body pcommon.Value, promotedPaths map[string]stru
 	pm := promoted.Map()
 	for path := range promotedPaths {
 		// For each path, extract with literal preference at every level
-		extractSinglePath(bm, pm, path, path)
+		handleSinglePath(bm, pm, path, path)
 	}
-
-	// After extraction, group remaining dotted literal siblings into nested structures
-	groupDottedLiterals(bm)
 
 	// Clean up empty maps that were created during extraction
 	cleanupEmptyMaps(bm)
@@ -30,9 +27,9 @@ func buildPromotedAndPruneBody(body pcommon.Value, promotedPaths map[string]stru
 	return promoted
 }
 
-// extractSinglePath walks the map according to remainingPath and extracts the value into promotedMap at fullPath.
+// handleSinglePath walks the map according to remainingPath and extracts the value into promotedMap at fullPath.
 // Literal preference: at the current map level, if a literal key equal to remainingPath exists, use it and stop descending.
-func extractSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath string, remainingPath string) {
+func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath string, remainingPath string) {
 	// Prefer literal match of the entire remaining path at this level
 	if v, ok := bodyMap.Get(remainingPath); ok {
 		dst := promotedMap.PutEmpty(fullPath)
@@ -90,66 +87,7 @@ func extractSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath st
 
 	if v, ok := bodyMap.Get(head); ok && v.Type() == pcommon.ValueTypeMap {
 		// Recurse into nested map
-		extractSinglePath(v.Map(), promotedMap, fullPath, tail)
-	}
-}
-
-// groupDottedLiterals groups remaining dotted literal keys into nested structures
-func groupDottedLiterals(bodyMap pcommon.Map) {
-	// First, recursively process nested maps
-	bodyMap.Range(func(k string, v pcommon.Value) bool {
-		if v.Type() == pcommon.ValueTypeMap {
-			groupDottedLiterals(v.Map())
-		}
-		return true
-	})
-
-	// Find all dotted literal keys and group them by prefix
-	prefixGroups := make(map[string][]string)
-	var keysToRemove []string
-
-	bodyMap.Range(func(k string, v pcommon.Value) bool {
-		if dot := strings.IndexByte(k, '.'); dot != -1 {
-			prefix := k[:dot]
-			prefixGroups[prefix] = append(prefixGroups[prefix], k)
-		}
-		return true
-	})
-
-	// For each prefix group, create a nested map and move the keys
-	for prefix, keys := range prefixGroups {
-		if len(keys) == 0 {
-			continue
-		}
-
-		// Check if there's already a map at this prefix
-		if existing, ok := bodyMap.Get(prefix); ok && existing.Type() == pcommon.ValueTypeMap {
-			// Merge into existing map
-			for _, k := range keys {
-				if v, ok := bodyMap.Get(k); ok {
-					suffix := k[len(prefix)+1:]
-					dst := existing.Map().PutEmpty(suffix)
-					v.CopyTo(dst)
-					keysToRemove = append(keysToRemove, k)
-				}
-			}
-		} else {
-			// Create new nested map
-			nested := bodyMap.PutEmptyMap(prefix)
-			for _, k := range keys {
-				if v, ok := bodyMap.Get(k); ok {
-					suffix := k[len(prefix)+1:]
-					dst := nested.PutEmpty(suffix)
-					v.CopyTo(dst)
-					keysToRemove = append(keysToRemove, k)
-				}
-			}
-		}
-	}
-
-	// Remove the original dotted keys
-	for _, k := range keysToRemove {
-		bodyMap.Remove(k)
+		handleSinglePath(v.Map(), promotedMap, fullPath, tail)
 	}
 }
 

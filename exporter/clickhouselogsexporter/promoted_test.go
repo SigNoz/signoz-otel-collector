@@ -139,9 +139,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"message": "test log",
 				"user": map[string]interface{}{
 					"email": "john@example.com",
-					"address": map[string]interface{}{
-						"street": "123 Main St",
-					},
+					"address.street": "123 Main St",
 				},
 			},
 			expectedPromoted: map[string]interface{}{
