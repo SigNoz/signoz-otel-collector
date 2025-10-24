@@ -19,6 +19,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const (
+	DistributedPathTypesTableName = "signoz_logs.distributed_path_types"
+)
+
 type jsonTypeExporter struct {
 	config  *Config
 	logger  *zap.Logger
@@ -265,8 +269,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 	typeSet.mu.Lock()
 	defer typeSet.mu.Unlock()
 	// Prepare the SQL statement
-	tableName := "signoz_logs.distributed_path_types"
-	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", tableName)
+	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", DistributedPathTypesTableName)
 
 	statement, err := e.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
@@ -310,7 +313,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 
 	e.logger.Debug("Successfully persisted types to database",
 		zap.Int("count", insertedCount),
-		zap.String("table", tableName))
+		zap.String("table", DistributedPathTypesTableName))
 
 	typeSet.counter.Store(0) // reset the counter
 	return nil

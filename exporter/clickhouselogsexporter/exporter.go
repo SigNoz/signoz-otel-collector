@@ -202,8 +202,8 @@ type clickhouseLogsExporter struct {
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
-	promotedPaths atomic.Value // stores map[string]struct{}
-
+	promotedPaths             atomic.Value // stores map[string]struct{}
+	promotedPathsSyncInterval time.Duration
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -214,14 +214,15 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
-		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
-		cfg:                   cfg,
-		wg:                    new(sync.WaitGroup),
-		closeChan:             make(chan struct{}),
-		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
-		limiter:               make(chan struct{}, utils.Concurrency()),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg),
+		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
+		cfg:                       cfg,
+		wg:                        new(sync.WaitGroup),
+		closeChan:                 make(chan struct{}),
+		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
+		promotedPathsSyncInterval: time.Duration(cfg.PromotedPathsSyncInterval) * time.Minute,
+		limiter:                   make(chan struct{}, utils.Concurrency()),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -301,7 +302,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 		e.promotedPaths.Store(map[string]struct{}{})
 	}
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
 	e.shutdownFunc = append(e.shutdownFunc, func() error {
 		ticker.Stop()
 		return nil
@@ -629,10 +630,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						body.CopyTo(mutableBody)
 
 						// promoted paths extraction using cached set
-						promotedSet := map[string]struct{}{}
-						if v := e.promotedPaths.Load(); v != nil {
-							promotedSet = v.(map[string]struct{})
-						}
+						promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
 						// set values to promoted and bodyv2
 						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)

@@ -2,10 +2,9 @@ package json
 
 import (
 	"context"
-	"fmt"
 	"sort"
+	"strings"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/bytedance/sonic"
@@ -33,7 +32,11 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	switch v := entry.Body.(type) {
 	case string:
 		// Unquote JSON strings if possible
-		err := sonic.Unmarshal([]byte(utils.Unquote(v)), &parsedValue)
+		unquoted := utils.Unquote(v)
+		if !(strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}")) {
+			return nil
+		}
+		err := sonic.Unmarshal([]byte(unquoted), &parsedValue)
 		if err != nil { // failed to marshal as JSON; return as is
 			return nil
 		}
@@ -41,31 +44,32 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	case map[string]any:
 		parsedValue = v
 	default:
-		return fmt.Errorf("type %T cannot be parsed as JSON", v)
+		return nil // return nil to avoid erroring out the pipeline
 	}
 
 	// set parsed value to body
 	entry.Body = parsedValue
 
-	messageField := signozstanzaentry.NewBodyField("message")
-	// add first found msg compatible field to body
-	for _, fieldName := range msgCompatibleFields {
-		field := signozstanzaentry.NewBodyField(fieldName)
-		val, ok := entry.Get(field)
-		if !ok {
-			continue
-		}
-		strValue, ok := val.(string)
-		if !ok {
-			continue
-		}
-		err := entry.Set(messageField, strValue)
-		if err != nil {
-			return err
-		}
-		entry.Delete(field)
-		break
-	}
+	// TODO: Enable preprocessing mapping for different fields in PipelinesV2
+	// messageField := signozstanzaentry.NewBodyField("message")
+	// // add first found msg compatible field to body
+	// for _, fieldName := range msgCompatibleFields {
+	// 	field := signozstanzaentry.NewBodyField(fieldName)
+	// 	val, ok := entry.Get(field)
+	// 	if !ok {
+	// 		continue
+	// 	}
+	// 	strValue, ok := val.(string)
+	// 	if !ok {
+	// 		continue
+	// 	}
+	// 	err := entry.Set(messageField, strValue)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	entry.Delete(field)
+	// 	break
+	// }
 
 	return nil
 }

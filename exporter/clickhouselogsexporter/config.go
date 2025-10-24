@@ -39,8 +39,10 @@ type Config struct {
 	DSN          string `mapstructure:"dsn"`
 	UseNewSchema bool   `mapstructure:"use_new_schema"`
 
-	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
+	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
+	PromotedPathsSyncInterval int    `mapstructure:"promoted_paths_sync_interval"`
 }
+
 
 var (
 	errConfigNoDSN = errors.New("dsn must be specified")
@@ -51,5 +53,9 @@ func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
+	if cfg.PromotedPathsSyncInterval <= 0 {
+		cfg.PromotedPathsSyncInterval = 5
+	}
+
 	return err
 }
