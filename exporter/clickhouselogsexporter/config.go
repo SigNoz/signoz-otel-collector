@@ -40,9 +40,8 @@ type Config struct {
 	UseNewSchema bool   `mapstructure:"use_new_schema"`
 
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
-	PromotedPathsSyncInterval int    `mapstructure:"promoted_paths_sync_interval"`
+	PromotedPathsSyncInterval int              `mapstructure:"promoted_paths_sync_interval_in_minutes"`
 }
-
 
 var (
 	errConfigNoDSN = errors.New("dsn must be specified")
