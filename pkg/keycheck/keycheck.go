@@ -73,6 +73,8 @@ func processKeySegments(key string) bool {
 // isRandomSegment checks if a single segment appears to be randomly generated
 func isRandomSegment(segment string) bool {
 	switch {
+	case len(segment) > MaxKeyLength:
+		return true
 	case uuidRegex.MatchString(segment):
 		return true
 	case hexRegex.MatchString(segment):
@@ -80,6 +82,8 @@ func isRandomSegment(segment string) bool {
 	case isBase64String(segment):
 		return true
 	case timestampRegex.MatchString(segment):
+		return true
+	case isULID(segment):
 		return true
 	}
 	return false
@@ -122,4 +126,26 @@ func containsNonAlpha(s string) bool {
 		}
 	}
 	return false
+}
+
+
+// isULID checks if string matches ULID pattern
+func isULID(s string) bool {
+	// ULID is 26 characters, base32 encoded
+	if len(s) != 26 {
+		return false
+	}
+
+	// Check if it's base32 (A-Z, 0-9, excluding I, L, O, U)
+	for _, char := range s {
+		if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+			return false
+		}
+		// Exclude I, L, O, U
+		if char == 'I' || char == 'L' || char == 'O' || char == 'U' {
+			return false
+		}
+	}
+
+	return true
 }
