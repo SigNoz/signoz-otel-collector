@@ -330,7 +330,7 @@ func (dg *DataGenerator) randomDetails() map[string]interface{} {
 	details := map[string]interface{}{}
 
 	// Product block
-	if dg.randomBool() || dg.randomBool() {
+	if dg.randomBoolN(2) {
 		product := map[string]interface{}{
 			"contextId":         fmt.Sprintf("%x", rand.Int63()),
 			"fileName":          dg.randomFromPool([]string{"abc_webhook_trigger.js", "main.go", "service.py"}),
@@ -440,6 +440,15 @@ func (dg *DataGenerator) randomDetails() map[string]interface{} {
 
 func (dg *DataGenerator) randomBool() bool {
 	return dg.rand.Intn(2) == 0
+}
+
+func (dg *DataGenerator) randomBoolN(power int) bool {
+	prob := dg.rand.Intn(2) == 0
+	if power <= 1 {
+		return prob
+	}
+
+	return prob && dg.randomBoolN(power-1)
 }
 
 func (dg *DataGenerator) randomInt(min, max int) int {
