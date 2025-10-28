@@ -28,6 +28,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -56,6 +57,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
+	distributedPromotedPaths         = "distributed_promoted_paths"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -79,6 +81,8 @@ const (
 		severity_text,
 		severity_number,
 		body,
+		body_v2,
+		promoted,
 		attributes_string,
 		attributes_number,
 		attributes_bool,
@@ -88,6 +92,8 @@ const (
 		scope_version,
 		scope_string
 		) VALUES (
+			?,
+			?,
 			?,
 			?,
 			?,
@@ -139,6 +145,8 @@ type Record struct {
 	severityText  string
 	severityNum   uint8
 	body          string
+	bodyv2        string
+	promoted      string
 	scopeName     string
 	scopeVersion  string
 
@@ -190,6 +198,11 @@ type clickhouseLogsExporter struct {
 
 	// used to drop logs older than the retention period.
 	minAcceptedTs atomic.Value
+
+	// promotedPaths holds a set of JSON paths that should be promoted.
+	// Accessed via atomic.Value to allow lock-free reads on hot path.
+	promotedPaths             atomic.Value // stores map[string]struct{}
+	promotedPathsSyncInterval time.Duration
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -200,14 +213,15 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
-		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
-		cfg:                   cfg,
-		wg:                    new(sync.WaitGroup),
-		closeChan:             make(chan struct{}),
-		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
-		limiter:               make(chan struct{}, utils.Concurrency()),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg),
+		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
+		cfg:                       cfg,
+		wg:                        new(sync.WaitGroup),
+		closeChan:                 make(chan struct{}),
+		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
+		promotedPathsSyncInterval: time.Duration(cfg.PromotedPathsSyncInterval) * time.Minute,
+		limiter:                   make(chan struct{}, utils.Concurrency()),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -217,7 +231,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-	e.wg.Add(2)
+	e.wg.Add(3)
 
 	go func() {
 		defer e.wg.Done()
@@ -227,6 +241,11 @@ func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host)
 		defer e.wg.Done()
 		e.fetchShouldUpdateMinAcceptedTs()
 	}()
+	go func() {
+		defer e.wg.Done()
+		e.fetchPromotedPaths()
+	}()
+
 	return nil
 }
 
@@ -273,6 +292,52 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 			e.doFetchShouldSkipKeys()
 		}
 	}
+}
+
+// fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
+func (e *clickhouseLogsExporter) fetchPromotedPaths() {
+	// initialize with empty map so reads do not need nil checks
+	if e.promotedPaths.Load() == nil {
+		e.promotedPaths.Store(map[string]struct{}{})
+	}
+
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
+	e.shutdownFunc = append(e.shutdownFunc, func() error {
+		ticker.Stop()
+		return nil
+	})
+
+	e.doFetchPromotedPaths() // Immediate first fetch
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-ticker.C:
+			e.doFetchPromotedPaths()
+		}
+	}
+}
+
+func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
+	query := fmt.Sprintf(`SELECT path FROM %s.%s SETTINGS max_threads = 1`, databaseName, distributedPromotedPaths)
+	e.logger.Debug("fetching promoted paths", zap.String("query", query))
+
+	rows := []struct {
+		Path string `ch:"path"`
+	}{}
+	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+		e.logger.Error("error while fetching promoted paths", zap.Error(err))
+		return
+	}
+	updated := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		if r.Path == "" {
+			continue
+		}
+		updated[r.Path] = struct{}{}
+	}
+
+	e.promotedPaths.Store(updated)
 }
 
 // Shutdown will shutdown the exporter.
@@ -462,6 +527,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
+					rec.bodyv2,
+					rec.promoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -553,6 +620,26 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					}
 
 					body := record.Body()
+					promoted := pcommon.NewValueMap()
+					bodyv2 := pcommon.NewValueMap()
+					if body.Type() == pcommon.ValueTypeMap {
+						// Work on a local mutable copy of the body to avoid mutating
+						// the shared pdata across goroutines.
+						mutableBody := pcommon.NewValueMap()
+						body.CopyTo(mutableBody)
+
+						// promoted paths extraction using cached set
+						promotedSet := e.promotedPaths.Load().(map[string]struct{})
+
+						// set values to promoted and bodyv2
+						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
+						bodyv2 = mutableBody
+
+						// set body to empty string if body column compatibility is disabled
+						if constants.BodyColumnCompatibilityDisabled {
+							body = pcommon.NewValueEmpty()
+						}
+					}
 
 					// metrics
 					tenant := usage.GetTenantNameFromResource(logs.Resource())
@@ -570,6 +657,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						severityText:       record.SeverityText(),
 						severityNum:        uint8(record.SeverityNumber()),
 						body:               getStringifiedBody(body),
+						bodyv2:             getStringifiedBody(bodyv2),
+						promoted:           getStringifiedBody(promoted),
 						scopeName:          scopeName,
 						scopeVersion:       scopeVersion,
 						resourceLabelsJSON: resourceJson,
