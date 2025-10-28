@@ -536,7 +536,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						return nil
 					}
 
-					// id
 					id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(ts)))
 					if err != nil {
 						return fmt.Errorf("IdGenError:%w", err)
