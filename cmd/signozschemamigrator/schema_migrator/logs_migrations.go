@@ -1,5 +1,7 @@
 package schemamigrator
 
+import "github.com/SigNoz/signoz-otel-collector/utils"
+
 var LogsMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
@@ -199,7 +201,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPtr[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -208,7 +210,7 @@ ORDER BY name ASC`,
 				Table:    "distributed_logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPtr[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -226,6 +228,201 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name: "resource",
+				},
+			},
+		},
+	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "path_types",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "last_seen", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     "(path, type)",
+						PartitionBy: "toDate(last_seen / 1000000000)",
+						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_path_types",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "last_seen", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_logs",
+					Table:       "path_types",
+					ShardingKey: "cityHash64(path, type)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "promoted_paths",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: MergeTree{
+					OrderBy:     "(path, created_at)",
+					PartitionBy: "toDate(created_at / 1000000000)",
+					Settings: TableSettings{
+						{Name: "index_granularity", Value: "8192"},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_promoted_paths",
+				Columns: []Column{
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_logs",
+					Table:       "promoted_paths",
+					ShardingKey: "cityHash64(path)",
+				},
+			},
+			AlterTableModifySettings{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Settings: TableSettings{
+					{Name: "object_serialization_version", Value: "'v3'"},
+					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name: "body_v2",
+					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPtr[uint](0),
+						Columns: []Column{
+							{Name: "message", Type: ColumnTypeString},
+						},
+					},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name: "body_v2",
+					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPtr[uint](0),
+						Columns: []Column{
+							{Name: "message", Type: ColumnTypeString},
+						},
+					},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body_v2",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body_v2",
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_message_idx_ngram",
+					Expression:  "lower(body_v2.message)",
+					Type:        "ngrambf_v1(4, 60000, 5, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_message_idx_token",
+					Expression:  "lower(body_v2.message)",
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "promoted"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "body_v2"},
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "path_types",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_path_types",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "promoted_paths",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_promoted_paths",
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_message_idx_ngram",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_message_idx_token",
 				},
 			},
 		},
