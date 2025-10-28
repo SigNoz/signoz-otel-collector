@@ -1,4 +1,3 @@
-// (moved below package/imports)
 // Copyright 2020, OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -689,7 +688,16 @@ func send(statement driver.Batch, tableName string, durationCh chan<- statementS
 	}
 }
 
-//
+func getStringifiedBody(body pcommon.Value) string {
+	var strBody string
+	switch body.Type() {
+	case pcommon.ValueTypeBytes:
+		strBody = string(body.Bytes().AsRaw())
+	default:
+		strBody = body.AsString()
+	}
+	return strBody
+}
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	attributeKeysStmt driver.Batch,
@@ -738,6 +746,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -748,7 +757,6 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		err := tagStatementV2.Append(
 			unixMilli,
 			attrKey,
@@ -766,12 +774,12 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
 		err := tagStatementV2.Append(
 			unixMilli,
 			numKey,
@@ -868,15 +876,4 @@ func renderInsertLogsSQLV2(_ *Config) string {
 
 func renderInsertLogsResourceSQL(_ *Config) string {
 	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
-}
-
-func getStringifiedBody(body pcommon.Value) string {
-	var strBody string
-	switch body.Type() {
-	case pcommon.ValueTypeBytes:
-		strBody = string(body.Bytes().AsRaw())
-	default:
-		strBody = body.AsString()
-	}
-	return strBody
 }
