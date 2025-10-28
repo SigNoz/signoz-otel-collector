@@ -5,13 +5,14 @@ import (
 	"sort"
 	"strings"
 
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/bytedance/sonic"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
-var msgCompatibleFields = []string{"msg", "log", "log.message", "log.msg", "log.log"}
+var msgCompatibleFields = []string{"msg"}
 
 type Processor struct {
 	signozstanzahelper.TransformerOperator
@@ -50,26 +51,25 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	// set parsed value to body
 	entry.Body = parsedValue
 
-	// TODO: Enable preprocessing mapping for different fields in PipelinesV2
-	// messageField := signozstanzaentry.NewBodyField("message")
-	// // add first found msg compatible field to body
-	// for _, fieldName := range msgCompatibleFields {
-	// 	field := signozstanzaentry.NewBodyField(fieldName)
-	// 	val, ok := entry.Get(field)
-	// 	if !ok {
-	// 		continue
-	// 	}
-	// 	strValue, ok := val.(string)
-	// 	if !ok {
-	// 		continue
-	// 	}
-	// 	err := entry.Set(messageField, strValue)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	entry.Delete(field)
-	// 	break
-	// }
+	messageField := signozstanzaentry.NewBodyField("message")
+	// add first found msg compatible field to body
+	for _, fieldName := range msgCompatibleFields {
+		field := signozstanzaentry.NewBodyField(fieldName)
+		val, ok := entry.Get(field)
+		if !ok {
+			continue
+		}
+		strValue, ok := val.(string)
+		if !ok {
+			continue
+		}
+		err := entry.Set(messageField, strValue)
+		if err != nil {
+			return err
+		}
+		entry.Delete(field)
+		break
+	}
 
 	return nil
 }
