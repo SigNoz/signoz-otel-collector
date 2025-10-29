@@ -1,4 +1,3 @@
-// (moved below package/imports)
 // Copyright 2020, OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,6 +51,8 @@ import (
 )
 
 const (
+	MessagePath                      = "message"
+	MessageExistsPath                = "_x_signoz_message_exists"
 	distributedTagAttributesV2       = "distributed_tag_attributes_v2"
 	distributedLogsTableV2           = "distributed_logs_v2"
 	logsTableV2                      = "logs_v2"
@@ -232,21 +233,9 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-	e.wg.Add(3)
-
-	go func() {
-		defer e.wg.Done()
-		e.fetchShouldSkipKeys() // Start ticker routine
-	}()
-	go func() {
-		defer e.wg.Done()
-		e.fetchShouldUpdateMinAcceptedTs()
-	}()
-	go func() {
-		defer e.wg.Done()
-		e.fetchPromotedPaths()
-	}()
-
+	e.fetchShouldSkipKeys() // Start ticker routine
+	e.fetchShouldUpdateMinAcceptedTs()
+	e.fetchPromotedPaths()
 	return nil
 }
 
@@ -285,14 +274,18 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	})
 
 	e.doFetchShouldSkipKeys() // Immediate first fetch
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.doFetchShouldSkipKeys()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchShouldSkipKeys()
+			}
 		}
-	}
+	}()
 }
 
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
@@ -309,14 +302,18 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	})
 
 	e.doFetchPromotedPaths() // Immediate first fetch
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.doFetchPromotedPaths()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchPromotedPaths()
+			}
 		}
-	}
+	}()
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
@@ -393,14 +390,18 @@ func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
 	})
 
 	e.updateMinAcceptedTs()
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.updateMinAcceptedTs()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.updateMinAcceptedTs()
+			}
 		}
-	}
+	}()
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -600,10 +601,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						ts = ots
 					}
 					if ts < oldestAllowedTs {
+						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
 						return nil
 					}
 
-					// id
 					id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(ts)))
 					if err != nil {
 						return fmt.Errorf("IdGenError:%w", err)
@@ -628,6 +629,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						// the shared pdata across goroutines.
 						mutableBody := pcommon.NewValueMap()
 						body.CopyTo(mutableBody)
+
+						// add flag for message existence
+						_, exists := mutableBody.Map().Get(MessagePath)
+						mutableBody.Map().PutBool(MessageExistsPath, exists)
 
 						// promoted paths extraction using cached set
 						promotedSet := e.promotedPaths.Load().(map[string]struct{})
@@ -778,7 +783,16 @@ func send(statement driver.Batch, tableName string, durationCh chan<- statementS
 	}
 }
 
-//
+func getStringifiedBody(body pcommon.Value) string {
+	var strBody string
+	switch body.Type() {
+	case pcommon.ValueTypeBytes:
+		strBody = string(body.Bytes().AsRaw())
+	default:
+		strBody = body.AsString()
+	}
+	return strBody
+}
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	attributeKeysStmt driver.Batch,
@@ -827,6 +841,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -837,7 +852,6 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
 		err := tagStatementV2.Append(
 			unixMilli,
 			attrKey,
@@ -855,12 +869,12 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
 		err := tagStatementV2.Append(
 			unixMilli,
 			numKey,
@@ -877,13 +891,14 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
 
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
 		err := tagStatementV2.Append(
 			unixMilli,
 			boolKey,
@@ -957,15 +972,4 @@ func renderInsertLogsSQLV2(_ *Config) string {
 
 func renderInsertLogsResourceSQL(_ *Config) string {
 	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
-}
-
-func getStringifiedBody(body pcommon.Value) string {
-	var strBody string
-	switch body.Type() {
-	case pcommon.ValueTypeBytes:
-		strBody = string(body.Bytes().AsRaw())
-	default:
-		strBody = body.AsString()
-	}
-	return strBody
 }
