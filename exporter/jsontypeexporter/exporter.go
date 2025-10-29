@@ -195,11 +195,14 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			default:
 			}
 
+			contains := e.keyCache.Contains(key)
 			// if high cardinality, skip the key
-			if !e.keyCache.Contains(key) && keycheck.IsCardinal(key) {
+			if !contains && keycheck.IsCardinal(key) {
 				return true
 			}
-			e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+			if !contains {
+				e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+			}
 
 			path := prefix + "." + key
 			if prefix == "" {
