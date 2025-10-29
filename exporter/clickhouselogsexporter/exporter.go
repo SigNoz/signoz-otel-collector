@@ -233,6 +233,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeys() // Start ticker routine
 	e.fetchShouldUpdateMinAcceptedTs()
+	e.fetchPromotedPaths()
 	return nil
 }
 
@@ -299,14 +300,18 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	})
 
 	e.doFetchPromotedPaths() // Immediate first fetch
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.doFetchPromotedPaths()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchPromotedPaths()
+			}
 		}
-	}
+	}()
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
