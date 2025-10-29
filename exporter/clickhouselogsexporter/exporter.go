@@ -217,16 +217,8 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-	e.wg.Add(2)
-
-	go func() {
-		defer e.wg.Done()
-		e.fetchShouldSkipKeys() // Start ticker routine
-	}()
-	go func() {
-		defer e.wg.Done()
-		e.fetchShouldUpdateMinAcceptedTs()
-	}()
+	e.fetchShouldSkipKeys() // Start ticker routine
+	e.fetchShouldUpdateMinAcceptedTs()
 	return nil
 }
 
@@ -265,14 +257,18 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	})
 
 	e.doFetchShouldSkipKeys() // Immediate first fetch
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.doFetchShouldSkipKeys()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchShouldSkipKeys()
+			}
 		}
-	}
+	}()
 }
 
 // Shutdown will shutdown the exporter.
@@ -327,14 +323,18 @@ func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
 	})
 
 	e.updateMinAcceptedTs()
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-ticker.C:
-			e.updateMinAcceptedTs()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.updateMinAcceptedTs()
+			}
 		}
-	}
+	}()
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
