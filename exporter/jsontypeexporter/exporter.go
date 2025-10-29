@@ -11,6 +11,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -28,6 +29,9 @@ type jsonTypeExporter struct {
 	logger  *zap.Logger
 	limiter chan struct{}
 	conn    clickhouse.Conn
+	// this cache doesn't contains full paths, only keys from different levels
+	// it is used to avoid checking if a key is high cardinality or not for every log record
+	keyCache *lru.Cache[string, struct{}]
 }
 
 type TypeSet struct {
@@ -86,11 +90,17 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}
 
+	keyCache, err := lru.New[string, struct{}](100000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key cache: %w", err)
+	}
+
 	return &jsonTypeExporter{
-		config:  &cfg,
-		logger:  set.Logger,
-		limiter: make(chan struct{}, utils.Concurrency()),
-		conn:    conn,
+		config:   &cfg,
+		logger:   set.Logger,
+		limiter:  make(chan struct{}, utils.Concurrency()),
+		conn:     conn,
+		keyCache: keyCache,
 	}, nil
 }
 
@@ -133,8 +143,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 						return err
 					}
 
-
-					return e.persistTypes(groupCtx, &types, false) 
+					return e.persistTypes(groupCtx, &types, false)
 				})
 			}
 		}
@@ -187,9 +196,10 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			}
 
 			// if high cardinality, skip the key
-			if keycheck.IsCardinal(key) {
+			if !e.keyCache.Contains(key) && keycheck.IsCardinal(key) {
 				return true
 			}
+			e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
 
 			path := prefix + "." + key
 			if prefix == "" {
@@ -243,7 +253,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			typeSet.Insert(prefix, prev)
 		}
 		return nil
-	case pcommon.ValueTypeStr:
+	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		typeSet.Insert(prefix, maskString)
 		return nil
 	case pcommon.ValueTypeBool:
