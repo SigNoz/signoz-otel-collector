@@ -312,8 +312,8 @@ ORDER BY name ASC`,
 					Name: "body_v2",
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPtr[uint](0),
-						Columns: []Column{
-							{Name: "message", Type: ColumnTypeString},
+						Columns:         []Column{
+							// {Name: "message", Type: ColumnTypeString},
 						},
 					},
 					Codec: "ZSTD(1)",
@@ -329,8 +329,8 @@ ORDER BY name ASC`,
 					Name: "body_v2",
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPtr[uint](0),
-						Columns: []Column{
-							{Name: "message", Type: ColumnTypeString},
+						Columns:         []Column{
+							// {Name: "message", Type: ColumnTypeString},
 						},
 					},
 					Codec: "ZSTD(1)",
@@ -373,16 +373,26 @@ ORDER BY name ASC`,
 					Granularity: 1,
 				},
 			},
-			AlterTableAddIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name:        "body_v2_message_idx_token",
-					Expression:  "lower(body_v2.message)",
-					Type:        "tokenbf_v1(10000, 2, 0)",
-					Granularity: 1,
-				},
-			},
+			// InsertIntoTable{
+			// 	Database: "signoz_logs",
+			// 	Table:    "logs_v2",
+			// 	Columns: []Column{
+			// 		{Name: "body_v2_message_idx_ngram", Type: ColumnTypeString},
+			// 	},
+			// 	Values: [][]interface{}{
+			// 		{},
+			// 	},
+			// },
+			// AlterTableAddIndex{
+			// 	Database: "signoz_logs",
+			// 	Table:    "logs_v2",
+			// 	Index: Index{
+			// 		Name:        "body_v2_message_idx_token",
+			// 		Expression:  "lower(body_v2.message)",
+			// 		Type:        "tokenbf_v1(10000, 2, 0)",
+			// 		Granularity: 1,
+			// 	},
+			// },
 		},
 		DownItems: []Operation{
 			AlterTableDropColumn{
@@ -411,20 +421,20 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_promoted_paths",
 			},
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: "body_v2_message_idx_ngram",
-				},
-			},
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: "body_v2_message_idx_token",
-				},
-			},
+			// AlterTableDropIndex{
+			// 	Database: "signoz_logs",
+			// 	Table:    "logs_v2",
+			// 	Index: Index{
+			// 		Name: "body_v2_message_idx_ngram",
+			// 	},
+			// },
+			// AlterTableDropIndex{
+			// 	Database: "signoz_logs",
+			// 	Table:    "logs_v2",
+			// 	Index: Index{
+			// 		Name: "body_v2_message_idx_token",
+			// 	},
+			// },
 		},
 	},
 }
