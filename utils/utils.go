@@ -105,3 +105,23 @@ func ToPtr[T any](v T) *T {
 func Concurrency() int {
 	return int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
 }
+
+func TrimCommonPrefixSuffix(a, b string) (string, string) {
+	// Find common prefix
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+
+	// Find common suffix
+	j := 0
+	for j < len(a)-i && j < len(b)-i && a[len(a)-1-j] == b[len(b)-1-j] {
+		j++
+	}
+
+	// Ensure UTF-8 correctness when slicing (if needed)
+	aMid := a[i : len(a)-j]
+	bMid := b[i : len(b)-j]
+
+	return aMid, bMid
+}
