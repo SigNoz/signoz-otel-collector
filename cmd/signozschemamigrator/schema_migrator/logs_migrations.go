@@ -1,6 +1,10 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/utils"
+import (
+	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 var LogsMigrations = []SchemaMigrationRecord{
 	{
@@ -276,11 +280,13 @@ ORDER BY name ASC`,
 					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
-				Engine: MergeTree{
-					OrderBy:     "(path, created_at)",
-					PartitionBy: "toDate(created_at / 1000000000)",
-					Settings: TableSettings{
-						{Name: "index_granularity", Value: "8192"},
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     "path",
+						PartitionBy: "toDate(created_at / 1000000000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+						},
 					},
 				},
 			},
@@ -312,9 +318,6 @@ ORDER BY name ASC`,
 					Name: "body_v2",
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPtr[uint](0),
-						Columns:         []Column{
-							// {Name: "message", Type: ColumnTypeString},
-						},
 					},
 					Codec: "ZSTD(1)",
 				},
@@ -329,9 +332,6 @@ ORDER BY name ASC`,
 					Name: "body_v2",
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPtr[uint](0),
-						Columns:         []Column{
-							// {Name: "message", Type: ColumnTypeString},
-						},
 					},
 					Codec: "ZSTD(1)",
 				},
@@ -363,36 +363,34 @@ ORDER BY name ASC`,
 					Name: "body_v2",
 				},
 			},
+			InsertIntoTable{
+				Database: "signoz_logs",
+				Table:    "distributed_promoted_paths",
+				Columns:  []string{"path", "created_at"},
+				Values: [][]any{
+					{"message", time.Now().UnixMilli()},
+				},
+			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        "body_v2_message_idx_ngram",
-					Expression:  "lower(body_v2.message)",
+					Name:        JSONSubColumnIndexName("promoted.message", IndexTypeTokenBF),
+					Expression:  JSONSubColumnIndexExpr("promoted.message"),
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        JSONSubColumnIndexName("promoted.message", IndexTypeNGramBF),
+					Expression:  JSONSubColumnIndexExpr("promoted.message"),
 					Type:        "ngrambf_v1(4, 60000, 5, 0)",
 					Granularity: 1,
 				},
 			},
-			// InsertIntoTable{
-			// 	Database: "signoz_logs",
-			// 	Table:    "logs_v2",
-			// 	Columns: []Column{
-			// 		{Name: "body_v2_message_idx_ngram", Type: ColumnTypeString},
-			// 	},
-			// 	Values: [][]interface{}{
-			// 		{},
-			// 	},
-			// },
-			// AlterTableAddIndex{
-			// 	Database: "signoz_logs",
-			// 	Table:    "logs_v2",
-			// 	Index: Index{
-			// 		Name:        "body_v2_message_idx_token",
-			// 		Expression:  "lower(body_v2.message)",
-			// 		Type:        "tokenbf_v1(10000, 2, 0)",
-			// 		Granularity: 1,
-			// 	},
-			// },
 		},
 		DownItems: []Operation{
 			AlterTableDropColumn{
@@ -421,20 +419,20 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_promoted_paths",
 			},
-			// AlterTableDropIndex{
-			// 	Database: "signoz_logs",
-			// 	Table:    "logs_v2",
-			// 	Index: Index{
-			// 		Name: "body_v2_message_idx_ngram",
-			// 	},
-			// },
-			// AlterTableDropIndex{
-			// 	Database: "signoz_logs",
-			// 	Table:    "logs_v2",
-			// 	Index: Index{
-			// 		Name: "body_v2_message_idx_token",
-			// 	},
-			// },
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: JSONSubColumnIndexName("promoted.message", IndexTypeNGramBF),
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: JSONSubColumnIndexName("promoted.message", IndexTypeTokenBF),
+				},
+			},
 		},
 	},
 }
