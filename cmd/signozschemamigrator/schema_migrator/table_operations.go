@@ -375,6 +375,54 @@ func (a AlterTableModifyTTL) ToSQL() string {
 	return sql.String()
 }
 
+type AlterTableDropTTL struct {
+	cluster  string
+	Database string
+	Table    string
+}
+
+// OnCluster is used to specify the cluster on which the operation should be performed.
+// This is useful when the operation is to be performed on a cluster setup.
+func (a AlterTableDropTTL) OnCluster(cluster string) Operation {
+	a.cluster = cluster
+	return &a
+}
+
+func (a AlterTableDropTTL) WithReplication() Operation {
+	// no-op
+	return &a
+}
+
+func (a AlterTableDropTTL) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
+func (a AlterTableDropTTL) IsMutation() bool {
+	return false
+}
+
+func (a AlterTableDropTTL) IsIdempotent() bool {
+	return true
+}
+
+func (a AlterTableDropTTL) IsLightweight() bool {
+	return true
+}
+
+func (a AlterTableDropTTL) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("ALTER TABLE ")
+	sql.WriteString(a.Database)
+	sql.WriteString(".")
+	sql.WriteString(a.Table)
+	if a.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(a.cluster)
+	}
+	sql.WriteString(" REMOVE TTL")
+	return sql.String()
+}
+
 // AlterTableModifySettings is used to modify table-level settings.
 // It is used to represent the ALTER TABLE MODIFY SETTING statement in the SQL.
 type AlterTableModifySettings struct {

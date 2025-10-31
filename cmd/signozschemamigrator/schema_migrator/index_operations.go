@@ -1,8 +1,18 @@
 package schemamigrator
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
+
+type IndexType string
+
+const (
+	IndexTypeTokenBF IndexType = "tokenbf_v1"
+	IndexTypeNGramBF IndexType = "ngrambf_v1"
 )
 
 // Index is used to represent an index in the SQL.
@@ -261,4 +271,23 @@ func (a AlterTableClearIndex) ToSQL() string {
 		sql.WriteString(a.Partition)
 	}
 	return sql.String()
+}
+
+func JSONSubColumnIndexName(column string, index IndexType) string {
+	return fmt.Sprintf("`%s_String_%s`", column, index)
+}
+
+func JSONSubColumnIndexExpr(column string) string {
+	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", column)
+}
+
+// Returns the subcolumn name from the index expression
+// If the expression is not a JSON subcolumn index expression, returns an error
+func UnfoldJSONSubColumnIndexExpr(expr string) (string, error) {
+	format := JSONSubColumnIndexExpr("")
+	expr, format = utils.TrimCommonPrefixSuffix(expr, format)
+	if format != "" {
+		return "", fmt.Errorf("format mismatch: %s != %s", expr, format)
+	}
+	return expr, nil
 }

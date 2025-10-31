@@ -312,7 +312,7 @@ func (c Column) ToSQL() string {
 }
 
 func (c Column) IsJSONColumn() bool {
-	return strings.HasPrefix(c.Type.String(), "JSON(")
+	return strings.HasPrefix(c.Type.String(), "JSON(") || c.Type.String() == "JSON"
 }
 
 type ColumnSetting struct {

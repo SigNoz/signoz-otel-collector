@@ -51,8 +51,6 @@ import (
 )
 
 const (
-	MessagePath                      = "message"
-	MessageExistsPath                = "_x_signoz_message_exists"
 	distributedTagAttributesV2       = "distributed_tag_attributes_v2"
 	distributedLogsTableV2           = "distributed_logs_v2"
 	logsTableV2                      = "logs_v2"
@@ -629,10 +627,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						// the shared pdata across goroutines.
 						mutableBody := pcommon.NewValueMap()
 						body.CopyTo(mutableBody)
-
-						// add flag for message existence
-						_, exists := mutableBody.Map().Get(MessagePath)
-						mutableBody.Map().PutBool(MessageExistsPath, exists)
 
 						// promoted paths extraction using cached set
 						promotedSet := e.promotedPaths.Load().(map[string]struct{})
