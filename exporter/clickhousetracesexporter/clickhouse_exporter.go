@@ -16,12 +16,15 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"sync/atomic"
+	"time"
 
 	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats/view"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
@@ -113,6 +116,10 @@ type clickhouseTracesExporter struct {
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
 	logger         *zap.Logger
+
+	// used to drop traces older than the certain period.
+	minAcceptedTs                        atomic.Value
+	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
 }
 
 type storageConfig struct {
@@ -133,9 +140,10 @@ func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOpt
 		config: storageConfig{
 			lowCardinalExceptionGrouping: cfg.LowCardinalExceptionGrouping,
 		},
-		wg:        new(sync.WaitGroup),
-		closeChan: make(chan struct{}),
-		logger:    settings.Logger,
+		wg:                                   new(sync.WaitGroup),
+		closeChan:                            make(chan struct{}),
+		logger:                               settings.Logger,
+		fetchShouldUpdateMinAcceptedTsTicker: time.NewTicker(10 * time.Minute),
 	}
 
 	for _, opt := range exporterOpts {
@@ -143,6 +151,40 @@ func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOpt
 	}
 
 	return &exporter, nil
+}
+
+func (s *clickhouseTracesExporter) Start(ctx context.Context, host component.Host) error {
+	s.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
+
+	s.wg.Add(1)
+
+	go func() {
+		defer s.wg.Done()
+		s.updateMinAcceptedTs()
+		s.fetchShouldUpdateMinAcceptedTs()
+	}()
+	return nil
+}
+
+func (e *clickhouseTracesExporter) updateMinAcceptedTs() {
+	e.logger.Info("Updating min accepted ts in traces exporter")
+
+	var daysOfOldDataAllowed uint64 = 7
+
+	seconds := daysOfOldDataAllowed * 24 * 60 * 60
+	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
+	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
+}
+
+func (e *clickhouseTracesExporter) fetchShouldUpdateMinAcceptedTs() {
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-e.fetchShouldUpdateMinAcceptedTsTicker.C:
+			e.updateMinAcceptedTs()
+		}
+	}
 }
 
 func (s *clickhouseTracesExporter) pushTraceData(ctx context.Context, td ptrace.Traces) error {
@@ -153,6 +195,10 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 
 	close(s.closeChan)
 	s.wg.Wait()
+
+	if s.fetchShouldUpdateMinAcceptedTsTicker != nil {
+		s.fetchShouldUpdateMinAcceptedTsTicker.Stop()
+	}
 
 	if s.usageCollector != nil {
 		s.logger.Info("Stopping usage collector")

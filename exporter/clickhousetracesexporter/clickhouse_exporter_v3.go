@@ -357,6 +357,11 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	s.wg.Add(1)
 	defer s.wg.Done()
 
+	oldestAllowedTs := uint64(0)
+	if s.minAcceptedTs.Load() != nil {
+		oldestAllowedTs = s.minAcceptedTs.Load().(uint64)
+	}
+
 	resourcesSeen := map[int64]map[string]string{}
 
 	select {
@@ -393,6 +398,12 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
+
+					ts := uint64(span.StartTimestamp())
+					if ts < oldestAllowedTs {
+						s.logger.Info("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
+						continue
+					}
 
 					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), distributedTracesResourceV2Seconds)
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
