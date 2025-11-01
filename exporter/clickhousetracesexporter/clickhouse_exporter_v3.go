@@ -401,7 +401,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 					ts := uint64(span.StartTimestamp())
 					if ts < oldestAllowedTs {
-						s.logger.Info("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
+						s.logger.Info("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs), zap.Any("rs_attrs", resourceJson))
 						continue
 					}
 
