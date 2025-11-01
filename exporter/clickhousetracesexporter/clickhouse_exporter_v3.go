@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-json"
 
@@ -398,10 +399,22 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
-
 					ts := uint64(span.StartTimestamp())
 					if ts < oldestAllowedTs {
-						s.logger.Debug("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs), zap.Any("spanResourceAttributes", resourceJson))
+						s.logger.Info("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs), zap.Any("spanResourceAttributes", rs.Resource().Attributes().AsRaw()),
+							zap.String("start_timestamp", span.StartTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("end_timestamp", span.EndTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("spanName", span.Name()),
+							zap.String("traceId", utils.TraceIDToHexOrEmptyString(span.TraceID())),
+							zap.String("spanID", utils.SpanIDToHexOrEmptyString(span.SpanID())),
+							zap.String("parent_span_id", utils.SpanIDToHexOrEmptyString(span.ParentSpanID())),
+							zap.String("kind", span.Kind().String()),
+							zap.String("span_kind", span.Kind().String()),
+							zap.String("status_code", span.Status().Code().String()),
+							zap.String("status_message", span.Status().Message()),
+							zap.String("status_code_string", span.Status().Code().String()),
+							zap.Any("attributes", span.Attributes().AsRaw()),
+						)
 						continue
 					}
 
