@@ -358,10 +358,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	oldestAllowedTs := uint64(0)
-	if s.minAcceptedTs.Load() != nil {
-		oldestAllowedTs = s.minAcceptedTs.Load().(uint64)
-	}
+	oldestAllowedTs := time.Now().Add(-time.Duration(s.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano()
 
 	resourcesSeen := map[int64]map[string]string{}
 
@@ -400,20 +397,21 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
 					ts := uint64(span.StartTimestamp())
-					if ts < oldestAllowedTs {
-						s.logger.Debug("skipping span", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs), zap.Any("spanResourceAttributes", rs.Resource().Attributes().AsRaw()),
-							zap.String("start_timestamp", span.StartTimestamp().AsTime().Format(time.RFC3339)),
-							zap.String("end_timestamp", span.EndTimestamp().AsTime().Format(time.RFC3339)),
-							zap.String("spanName", span.Name()),
-							zap.String("traceId", utils.TraceIDToHexOrEmptyString(span.TraceID())),
-							zap.String("spanID", utils.SpanIDToHexOrEmptyString(span.SpanID())),
+					if ts < uint64(oldestAllowedTs) {
+						s.logger.Debug(
+							"skipping span outside allowed time window",
+							zap.Uint64("start_ts", ts),
+							zap.Int64("oldest_allowed_ts", oldestAllowedTs),
+							zap.String("service_name", serviceName),
+							zap.String("span_name", span.Name()),
+							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),
+							zap.String("span_id", utils.SpanIDToHexOrEmptyString(span.SpanID())),
 							zap.String("parent_span_id", utils.SpanIDToHexOrEmptyString(span.ParentSpanID())),
-							zap.String("kind", span.Kind().String()),
+							zap.String("start_time", span.StartTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("end_time", span.EndTimestamp().AsTime().Format(time.RFC3339)),
 							zap.String("span_kind", span.Kind().String()),
 							zap.String("status_code", span.Status().Code().String()),
 							zap.String("status_message", span.Status().Message()),
-							zap.String("status_code_string", span.Status().Code().String()),
-							zap.Any("attributes", span.Attributes().AsRaw()),
 						)
 						continue
 					}

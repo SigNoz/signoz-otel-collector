@@ -109,7 +109,6 @@ func createTracesExporter(
 		params,
 		cfg,
 		exporter.pushTraceData,
-		exporterhelper.WithStart(exporter.Start),
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
 		exporterhelper.WithQueue(c.QueueBatchConfig),
