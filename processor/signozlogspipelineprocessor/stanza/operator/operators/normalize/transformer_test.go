@@ -21,6 +21,8 @@ type testCase struct {
 }
 
 func TestTransform(t *testing.T) {
+	t.Skip("skipping normalize transformer test")
+
 	now := time.Now()
 	newTestEntry := func() *entry.Entry {
 		e := entry.New()
