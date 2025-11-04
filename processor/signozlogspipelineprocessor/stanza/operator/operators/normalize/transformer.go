@@ -26,7 +26,7 @@ func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) er
 	return p.ProcessBatchWith(ctx, entries, p.Process)
 }
 
-// preprocess log body
+// normalize log body
 func (p *Processor) transform(entry *entry.Entry) error {
 	parsedValue := make(map[string]any)
 	switch v := entry.Body.(type) {
