@@ -49,7 +49,9 @@ func (f *jsonTypeExporterFactory) createLogsExporter(
 		&oCfg,
 		exp.pushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
+		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
-		exporterhelper.WithStart(exp.start),
-		exporterhelper.WithShutdown(exp.shutdown))
+		exporterhelper.WithStart(exp.Start),
+		exporterhelper.WithShutdown(exp.Shutdown))
 }

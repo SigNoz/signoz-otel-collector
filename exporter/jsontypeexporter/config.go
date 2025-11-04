@@ -28,8 +28,9 @@ type Config struct {
 var _ component.Config = (*Config)(nil)
 
 const (
-	defaultMaxDepthTraverse        = 10000
+	defaultMaxDepthTraverse        = 22
 	defaultMaxArrayElementsAllowed = 100
+	defaultMaxKeysAtLevel          = 1024
 )
 
 var (

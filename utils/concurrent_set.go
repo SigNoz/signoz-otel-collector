@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"maps"
 	"sync"
 )
 
@@ -37,27 +36,8 @@ func (s *ConcurrentSet[T]) Insert(k T) {
 	s.set[k] = struct{}{}
 }
 
-func (s *ConcurrentSet[T]) Delete(k T) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.set, k)
-}
-
 func (s *ConcurrentSet[T]) Len() int {
 	return len(s.set)
-}
-
-func (s *ConcurrentSet[T]) Contains(k T) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.set[k]
-	return ok
-}
-
-func (s *ConcurrentSet[T]) Clone() *ConcurrentSet[T] {
-	return &ConcurrentSet[T]{
-		set: maps.Clone(s.set),
-	}
 }
 
 func (s *ConcurrentSet[T]) Keys() []T {
@@ -73,29 +53,8 @@ func (s *ConcurrentSet[T]) Keys() []T {
 	return keys
 }
 
-func (s *ConcurrentSet[T]) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	clear(s.set)
-}
-
-func (s *ConcurrentSet[T]) Empty() bool {
-	return s.Len() == 0
-}
-
 func (s *ConcurrentSet[T]) String() string {
 	return fmt.Sprint(s.Keys())
-}
-
-func (s *ConcurrentSet[T]) Iter(continueFn func(k T) bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for k := range s.set {
-		if !continueFn(k) {
-			break
-		}
-	}
 }
 
 func (s *ConcurrentSet[T]) ToSlice() []T {

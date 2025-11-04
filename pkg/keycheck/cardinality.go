@@ -1,21 +1,11 @@
 package keycheck
 
-import (
-	"regexp"
-)
-
-var (
-	ipAddressRegex = regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$`)
-)
-
 func IsCardinal(key string) bool {
 	// whole string cases
 	switch {
 	case containsDigits(key):
 		return true
 	case hasNonAllowedSymbols(key):
-		return true
-	case ipAddressRegex.MatchString(key):
 		return true
 	}
 
@@ -28,7 +18,8 @@ func containsDigits(s string) bool {
 		return false
 	}
 
-	// Check if all characters are digits
+	// Check if any character is a digit
+	// TODO: check for better patterns which are okay to be considered as non cardinal across customer ecosystem
 	for _, char := range s {
 		if char >= '0' && char <= '9' {
 			return true

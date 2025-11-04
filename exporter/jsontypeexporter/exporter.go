@@ -60,12 +60,12 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 	}, nil
 }
 
-func (e *jsonTypeExporter) start(ctx context.Context, host component.Host) error {
+func (e *jsonTypeExporter) Start(ctx context.Context, host component.Host) error {
 	e.logger.Info("JSON Type exporter started")
 	return nil
 }
 
-func (e *jsonTypeExporter) shutdown(ctx context.Context) error {
+func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 	e.logger.Info("JSON Type exporter shutdown")
 	if e.conn != nil {
 		return e.conn.Close()
@@ -135,6 +135,11 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 	switch val.Type() {
 	case pcommon.ValueTypeMap:
 		m := val.Map()
+		// skip if map contains too many keys
+		if m.Len() > defaultMaxKeysAtLevel {
+			return nil
+		}
+
 		m.Range(func(key string, value pcommon.Value) bool {
 			select {
 			case <-ctx.Done():
@@ -178,14 +183,14 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			var cur uint16
 			switch el.Type() {
 			case pcommon.ValueTypeMap:
-				// analyze first object deeply for path discovery
+				// analyze object deeply for path discovery
 				if err := e.analyzePValue(ctx, prefix+":", true, el, typeSet, level+1); err != nil {
 					return err
 				}
 				cur = maskArrayJSON
 			case pcommon.ValueTypeSlice:
 				return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
-			case pcommon.ValueTypeStr:
+			case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 				cur = maskArrayString
 			case pcommon.ValueTypeBool:
 				cur = maskArrayBool
@@ -239,6 +244,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 	now := time.Now().UnixNano()
 	insertedCount := 0
 
+	var iterErr error
 	// Iterate through all collected types and insert them
 	typeSet.types.Range(func(key, value interface{}) bool {
 		path := key.(string)
@@ -247,8 +253,8 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 		// Get all types for this path
 		types := typeSet.Keys()
 		for _, typeStr := range types {
-			err := statement.Append(path, typeStr, now)
-			if err != nil {
+			iterErr = statement.Append(path, typeStr, now)
+			if iterErr != nil {
 				e.logger.Error("Failed to append type to batch",
 					zap.String("path", path),
 					zap.String("type", typeStr),
@@ -259,6 +265,9 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 		}
 		return true
 	})
+	if iterErr != nil {
+		return fmt.Errorf("failed to append types to batch: %w", iterErr)
+	}
 
 	if insertedCount == 0 {
 		e.logger.Debug("No types to persist")

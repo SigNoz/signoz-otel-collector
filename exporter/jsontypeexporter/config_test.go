@@ -25,4 +25,6 @@ func TestLoadConfig(t *testing.T) {
 
 	// Check that the config was loaded successfully
 	assert.NotNil(t, cfg)
+	assert.Equal(t, *(cfg.(*Config).MaxDepthTraverse), 100)
+	assert.Equal(t, *(cfg.(*Config).MaxArrayElementsAllowed), 5)
 }
