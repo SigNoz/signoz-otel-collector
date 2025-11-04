@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/bytedance/sonic"
@@ -51,25 +50,26 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	// set parsed value to body
 	entry.Body = parsedValue
 
-	messageField := signozstanzaentry.NewBodyField("message")
-	// add first found msg compatible field to body
-	for _, fieldName := range msgCompatibleFields {
-		field := signozstanzaentry.NewBodyField(fieldName)
-		val, ok := entry.Get(field)
-		if !ok {
-			continue
-		}
-		strValue, ok := val.(string)
-		if !ok {
-			continue
-		}
-		err := entry.Set(messageField, strValue)
-		if err != nil {
-			return err
-		}
-		entry.Delete(field)
-		break
-	}
+	// TODO: re-enable in PipelinesV2
+	// messageField := signozstanzaentry.NewBodyField("message")
+	// // add first found msg compatible field to body
+	// for _, fieldName := range msgCompatibleFields {
+	// 	field := signozstanzaentry.NewBodyField(fieldName)
+	// 	val, ok := entry.Get(field)
+	// 	if !ok {
+	// 		continue
+	// 	}
+	// 	strValue, ok := val.(string)
+	// 	if !ok {
+	// 		continue
+	// 	}
+	// 	err := entry.Set(messageField, strValue)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	entry.Delete(field)
+	// 	break
+	// }
 
 	return nil
 }
