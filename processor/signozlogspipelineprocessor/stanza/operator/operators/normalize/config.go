@@ -10,13 +10,13 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 )
 
-const operatorType = "preprocessor"
+const operatorType = "normalize"
 
 func init() {
 	signozlogspipelinestanzaoperator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
-// NewConfig creates a new JSON parser config with default values
+// NewConfig creates a new normalize config with default values
 func NewConfig() *Config {
 	return NewConfigWithID(operatorType)
 }
