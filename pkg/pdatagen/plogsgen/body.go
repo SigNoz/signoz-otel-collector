@@ -26,7 +26,7 @@ type BatchData struct {
 type BatchRow struct {
 	ID        uint64
 	Timestamp uint64
-	Body      map[string]any
+	Body      any
 }
 
 // PathGenerator generates unique meaningful paths
@@ -195,19 +195,123 @@ func (pg *PathGenerator) generatePath() string {
 	return result
 }
 
-// generateNewPathStructure generates a completely new path structure with random depth and different roots
-func (pg *PathGenerator) generateNewPathStructure() {
-	// Clear used paths to allow new structures
-	pg.usedPaths = make(map[string]bool)
-}
-
 // generateUniquePaths creates unique paths with the current path structure
 func (pg *PathGenerator) generateUniquePaths(count int) []string {
+	pg.usedPaths = make(map[string]bool)
 	paths := make([]string, count)
 	for i := 0; i < count; i++ {
 		paths[i] = pg.generateUniquePath()
 	}
 	return paths
+}
+
+var (
+	// Word pools for generating seven-word messages
+	// Using different categories to ensure variety but allow some overlap
+	adjectives = []string{
+		"quick", "slow", "fast", "bright", "dark", "large", "small", "hot", "cold", "warm",
+		"cool", "soft", "hard", "smooth", "rough", "sharp", "dull", "clean", "dirty", "fresh",
+		"old", "new", "young", "ancient", "modern", "simple", "complex", "easy", "difficult",
+		"safe", "dangerous", "quiet", "loud", "calm", "wild", "gentle", "strong", "weak",
+		"heavy", "light", "thick", "thin", "wide", "narrow", "deep", "shallow", "high", "low",
+	}
+
+	nouns = []string{
+		"system", "process", "service", "application", "database", "server", "client", "user",
+		"admin", "manager", "operator", "engineer", "developer", "analyst", "designer", "tester",
+		"data", "information", "message", "request", "response", "event", "log", "error", "warning",
+		"notification", "alert", "report", "document", "file", "record", "entry", "transaction",
+		"session", "connection", "network", "protocol", "interface", "component", "module", "function",
+		"method", "algorithm", "pattern", "structure", "format", "schema", "template", "model",
+	}
+
+	verbs = []string{
+		"processes", "handles", "manages", "controls", "monitors", "tracks", "analyzes", "generates",
+		"creates", "updates", "deletes", "modifies", "transforms", "converts", "validates", "verifies",
+		"authenticates", "authorizes", "encrypts", "decrypts", "compresses", "decompresses", "synchronizes",
+		"replicates", "backups", "restores", "migrates", "deploys", "configures", "initializes", "terminates",
+		"starts", "stops", "pauses", "resumes", "schedules", "executes", "runs", "performs", "implements",
+		"supports", "maintains", "repairs", "fixes", "optimizes", "improves", "enhances", "extends",
+	}
+
+	objects = []string{
+		"requests", "responses", "events", "logs", "errors", "warnings", "notifications", "alerts",
+		"reports", "documents", "files", "records", "entries", "transactions", "sessions", "connections",
+		"data", "information", "messages", "packets", "frames", "buffers", "caches", "queues",
+		"tables", "databases", "schemas", "templates", "models", "patterns", "algorithms", "functions",
+		"services", "applications", "systems", "processes", "threads", "tasks", "jobs", "operations",
+	}
+
+	locations = []string{
+		"locally", "remotely", "globally", "regionally", "centrally", "distributed", "clustered",
+		"replicated", "mirrored", "backed", "cached", "stored", "archived", "indexed", "sorted",
+		"filtered", "aggregated", "processed", "transformed", "validated", "verified", "authenticated",
+		"authorized", "encrypted", "compressed", "synchronized", "migrated", "deployed", "configured",
+		"initialized", "terminated", "scheduled", "executed", "performed", "implemented", "supported",
+	}
+
+	conditions = []string{
+		"successfully", "efficiently", "securely", "reliably", "accurately", "precisely", "correctly",
+		"properly", "appropriately", "adequately", "sufficiently", "effectively", "optimally", "perfectly",
+		"completely", "thoroughly", "carefully", "cautiously", "safely", "smoothly", "seamlessly",
+		"automatically", "manually", "dynamically", "statically", "temporarily", "permanently", "immediately",
+		"gradually", "incrementally", "periodically", "continuously", "constantly", "frequently", "occasionally",
+	}
+
+	contexts = []string{
+		"in production", "during testing", "while debugging", "for monitoring", "with logging", "via API",
+		"through interface", "across network", "within system", "between services", "among components",
+		"over protocol", "under load", "at scale", "on demand", "by schedule", "as needed", "when required",
+		"if necessary", "unless specified", "except errors", "including warnings", "excluding failures",
+		"plus metadata", "minus overhead", "times performance", "divided by capacity", "modulo constraints",
+	}
+)
+
+// MessageGenerator generates seven-word messages with controlled randomness
+type MessageGenerator struct {
+	rand *rand.Rand
+}
+
+// NewMessageGenerator creates a new message generator
+func NewMessageGenerator(seed int64) *MessageGenerator {
+	return &MessageGenerator{
+		rand: rand.New(rand.NewSource(seed)),
+	}
+}
+
+// generateSevenWordMessage creates a seven-word message with low but non-zero probability of matching
+func (mg *MessageGenerator) generateSevenWordMessage(rowID uint64) string {
+	// Use rowID to influence randomness but allow some overlap
+	// This creates deterministic patterns that occasionally repeat
+
+	// Create a deterministic but varied seed based on rowID
+	seed := int64(rowID) + int64(rowID%1000) // Add some variation
+
+	// Generate seven words using different pools
+	words := make([]string, 7)
+
+	// Word 1: Adjective (deterministic based on rowID)
+	words[0] = adjectives[int(rowID)%len(adjectives)]
+
+	// Word 2: Noun (slightly more random)
+	words[1] = nouns[int(seed)%len(nouns)]
+
+	// Word 3: Verb (based on rowID with some variation)
+	words[2] = verbs[int(rowID*3+uint64(seed))%len(verbs)]
+
+	// Word 4: Object (more random)
+	words[3] = objects[int(seed*7+int64(rowID))%len(objects)]
+
+	// Word 5: Location (deterministic pattern)
+	words[4] = locations[int(rowID/10)%len(locations)]
+
+	// Word 6: Condition (random with some rowID influence)
+	words[5] = conditions[int(seed*11+int64(rowID*2))%len(conditions)]
+
+	// Word 7: Context (most random)
+	words[6] = contexts[int(seed*13+int64(rowID*5))%len(contexts)]
+
+	return strings.Join(words, " ")
 }
 
 // DataGenerator generates random data
@@ -216,6 +320,7 @@ type DataGenerator struct {
 	batchSize     int
 	maxPathPerLog int
 	pathGenerator *PathGenerator
+	msgGen        *MessageGenerator
 }
 
 func NewDataGenerator(batchSize, maxPathPerLog int) *DataGenerator {
@@ -227,6 +332,7 @@ func NewDataGenerator(batchSize, maxPathPerLog int) *DataGenerator {
 		},
 		batchSize:     batchSize,
 		maxPathPerLog: maxPathPerLog,
+		msgGen:        NewMessageGenerator(time.Now().UnixNano()),
 	}
 }
 
@@ -244,7 +350,7 @@ func (dg *DataGenerator) randomType() string {
 		"Array(Nullable(Bool))",
 		"Array(JSON)",
 		"Tuple(Nullable(String), Nullable(Int64))",
-		// "Tuple(Nullable(Float64), Nullable(Bool))", // disabled due to some issue with JSON column
+		"Tuple(Nullable(Float64), Nullable(Bool))",
 		"Tuple(Nullable(String), Nullable(Int64), Nullable(Float64), Nullable(Bool))",
 		"Tuple(JSON(), Nullable(String), Nullable(Int64), JSON())",
 		"JSON",
@@ -465,8 +571,7 @@ func (dg *DataGenerator) generateValueForType(dataType string, rowID uint64) int
 
 	switch dataType {
 	case "String":
-		// Use rowID to create deterministic but varied strings
-		return fmt.Sprintf("value_%d_%d", rowID, dg.rand.Int63n(1000))
+		return dg.msgGen.generateSevenWordMessage(rowID)
 	case "Int64":
 		// Use rowID as base and add some randomness
 		return int64(rowID) + dg.rand.Int63n(1000)
@@ -563,38 +668,47 @@ func (dg *DataGenerator) GenerateBatch() (*BatchData, error) {
 
 	// Generate initial paths for this batch
 	paths := dg.pathGenerator.generateUniquePaths(dg.maxPathPerLog)
+	// Generate column types for THIS record (random types every record)
+	columnTypes := make([]string, len(paths))
+	setTypes := func() {
+		for i := range paths {
+			columnTypes[i] = dg.randomType()
+			// special case for message column to be String type
+			if paths[i] == "message" && dg.randomBool() {
+				columnTypes[i] = "String"
+			}
+		}
+	}
+	setTypes()
 
 	for id := uint64(0); id < uint64(dg.batchSize); id++ {
 		// Generate new path structure every 1000 records
 		if id%1000 == 0 {
-			dg.pathGenerator.generateNewPathStructure()
-			paths = dg.pathGenerator.generateUniquePaths(dg.maxPathPerLog)
+			paths = dg.pathGenerator.generateUniquePaths(rand.Intn(dg.maxPathPerLog-1) + 1)
+			setTypes()
+		} else if dg.randomBool() {
+			setTypes()
 		}
-
-		// Generate column types for THIS record (random types every record)
-		columnTypes := make([]string, len(paths))
-		for i := range paths {
-			columnTypes[i] = dg.randomType()
-		}
-
-		// Generate timestamp (nanoseconds)
-		timestamp := uint64(time.Now().UnixNano())
-		// Generate payload - this is the source of truth
-		payload := make(map[string]any)
-
-		// Generate column values directly based on the types for THIS record
-		columnValues := make([]interface{}, len(paths))
-		for i, dataType := range columnTypes {
-			// Generate value directly for the type, no extraction needed
-			value := dg.generateValueForType(dataType, id)
-			columnValues[i] = value
-			payload[paths[i]] = value
-		}
-
 		row := BatchRow{
 			ID:        id,
-			Timestamp: timestamp,
-			Body:      payload,
+			Timestamp: uint64(time.Now().UnixNano()),
+		}
+
+		if dg.randomBoolN(10) {
+			row.Body = dg.msgGen.generateSevenWordMessage(id)
+		} else {
+			// Generate payload - this is the source of truth
+			payload := make(map[string]any)
+
+			// Generate column values directly based on the types for THIS record
+			columnValues := make([]interface{}, len(paths))
+			for i, dataType := range columnTypes {
+				// Generate value directly for the type, no extraction needed
+				value := dg.generateValueForType(dataType, id)
+				columnValues[i] = value
+				payload[paths[i]] = value
+			}
+			row.Body = payload
 		}
 
 		batchData.Rows = append(batchData.Rows, row)
