@@ -181,7 +181,7 @@ const (
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
 func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet, level int) error {
 	// skip if level is greater than the allowed limit + 1 (for the primary type analysis at last level)
-	if level > e.config.MaxDepthTraverse+1 {
+	if level > *e.config.MaxDepthTraverse+1 {
 		return nil
 	}
 
