@@ -21,6 +21,7 @@ import (
 
 const (
 	DistributedPathTypesTableName = "signoz_logs.distributed_path_types"
+	defaultKeyCacheSize           = 10_000
 )
 
 type jsonTypeExporter struct {
@@ -31,46 +32,6 @@ type jsonTypeExporter struct {
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
 	keyCache *lru.Cache[string, struct{}]
-}
-
-type TypeSet struct {
-	types sync.Map // map[string]*utils.ConcurrentSet[string]
-}
-
-func (t *TypeSet) Insert(path string, mask uint16) {
-	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
-	cs := actual.(*utils.ConcurrentSet[string])
-	// expand mask to strings
-	if mask&maskString != 0 {
-		cs.Insert(StringType)
-	}
-	if mask&maskInt != 0 {
-		cs.Insert(IntType)
-	}
-	if mask&maskFloat != 0 {
-		cs.Insert(Float64Type)
-	}
-	if mask&maskBool != 0 {
-		cs.Insert(BooleanType)
-	}
-	if mask&maskArrayString != 0 {
-		cs.Insert(ArrayString)
-	}
-	if mask&maskArrayInt != 0 {
-		cs.Insert(ArrayInt)
-	}
-	if mask&maskArrayFloat != 0 {
-		cs.Insert(ArrayFloat64)
-	}
-	if mask&maskArrayBool != 0 {
-		cs.Insert(ArrayBoolean)
-	}
-	if mask&maskArrayJSON != 0 {
-		cs.Insert(ArrayJSON)
-	}
-	if mask&maskArrayDynamic != 0 {
-		cs.Insert(ArrayDynamic)
-	}
 }
 
 func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
@@ -85,7 +46,7 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}
 
-	keyCache, err := lru.New[string, struct{}](100000)
+	keyCache, err := lru.New[string, struct{}](defaultKeyCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key cache: %w", err)
 	}
@@ -160,27 +121,13 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	return nil
 }
 
-// bitmasks for compact aggregation
-const (
-	maskString       uint16 = 1 << 0
-	maskInt          uint16 = 1 << 1
-	maskFloat        uint16 = 1 << 2
-	maskBool         uint16 = 1 << 3
-	maskArrayDynamic uint16 = 1 << 4
-	maskArrayBool    uint16 = 1 << 5
-	maskArrayFloat   uint16 = 1 << 6
-	maskArrayInt     uint16 = 1 << 7
-	maskArrayString  uint16 = 1 << 8
-	maskArrayJSON    uint16 = 1 << 9
-)
-
 // api.parameters.list.search -> maps are flattened
 //
 // api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
 //
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
 func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet, level int) error {
-	// skip if level is greater than the allowed limit + 1 (for the primary type analysis at last level)
+	// skip if level is greater than the allowed limit + 1 (+1 for the primary type analysis at last level)
 	if level > *e.config.MaxDepthTraverse+1 {
 		return nil
 	}
