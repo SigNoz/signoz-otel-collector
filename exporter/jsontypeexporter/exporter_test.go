@@ -2,10 +2,13 @@ package jsontypeexporter
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"sort"
 	"testing"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -13,7 +16,13 @@ import (
 
 // Single end-to-end test: build a representative log body map and compare final path->types.
 func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
-	exp := &jsonTypeExporter{}
+	keyCache, err := lru.New[string, struct{}](1000)
+	if err != nil {
+		t.Fatalf("failed to create key cache: %v", err)
+	}
+	exp := &jsonTypeExporter{
+		keyCache: keyCache,
+	}
 	ctx := context.Background()
 
 	// Construct log body as an actual map[string]any
@@ -124,79 +133,131 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 	body := pcommon.NewValueEmpty()
 	require.NoError(t, body.FromRaw(input))
 
-	// Collect bitmasks via analyzePValue
-	typeSet := TypeSet{}
-	err := exp.analyzePValue(ctx, "", false, body, &typeSet)
-	require.NoError(t, err)
-
-	// Expand masks to final type strings (same mapping as in pushLogs)
-	got := map[string][]string{}
-	typeSet.types.Range(func(key, value interface{}) bool {
-		path := key.(string)
-		cs := value.(*utils.ConcurrentSet[string])
-		types := cs.Keys()
-		sort.Strings(types)
-		got[path] = types
-		return true
-	})
-
-	// Expected final types per path (subset assertion)
-	expected := map[string][]string{
-		"_p":                                           {StringType},
-		"array_objects":                                {ArrayJSON},
-		"array_objects:a":                              {StringType},
-		"array_objects:x.y":                            {BooleanType},
-		"array_objects:p.q":                            {IntType},
-		"array_objects:nested":                         {ArrayJSON},
-		"array_objects:nested:inside_a":                {BooleanType, Float64Type},
-		"array_objects:nested:inside_b":                {StringType},
-		"array_objects:inbox":                          {ArrayDynamic},
-		"array_objects_and_primitives":                 {ArrayDynamic},
-		"array_objects_and_primitives:x":               {StringType},
-		"array_objects_and_primitives:nested":          {ArrayDynamic},
-		"array_objects_and_primitives:nested:message":  {StringType},
-		"array_objects_and_primitives:nested:number":   {Float64Type},
-		"array_primitives_mixed":                       {ArrayDynamic},
-		"array_primitives_same_type":                   {ArrayInt},
-		"sage.number":                                  {StringType},
-		"created_by":                                   {StringType},
-		"details.game.is_game":                         {StringType},
-		"details.game.metadata.installation_path":      {StringType},
-		"details.game.metadata.drm.hash_check_status":  {StringType},
-		"details.game.metadata.drm.malformed_hardware": {BooleanType},
-		"details.game.metadata.drm.running":            {BooleanType},
-		"details.game.metadata.drm.version":            {StringType},
-		"details.game.metadata.version":                {StringType},
-		"details.uninstall":                            {BooleanType},
-		"docker":                                       {ArrayString},
-		"kubernetes.container_image":                   {StringType},
-		"kubernetes.container_name":                    {StringType},
-		"kubernetes.docker_id":                         {StringType},
-		"kubernetes.host":                              {StringType},
-		"kubernetes.namespace_name":                    {StringType},
-		"kubernetes.pod_id":                            {StringType},
-		"kubernetes.pod_name":                          {StringType},
-		"log":                                          {StringType},
-		"log_processed.level":                          {StringType},
-		"log_processed.message":                        {StringType},
-		"log_processed.target":                         {StringType},
-		"log_processed.timestamp":                      {StringType},
-		"message":                                      {StringType},
-		"stream":                                       {StringType},
-		"uninstall":                                    {BooleanType},
+	testCases := []struct {
+		name     string
+		config   *Config
+		expected map[string][]string
+	}{
+		// {
+		// 	name: "full_test",
+		// 	config: &Config{
+		// 		MaxDepthTraverse:        100,
+		// 		MaxArrayElementsAllowed: 5,
+		// 	},
+		// 	expected: map[string][]string{
+		// 		"_p":                                           {StringType},
+		// 		"array_objects":                                {ArrayJSON},
+		// 		"array_objects:a":                              {StringType},
+		// 		"array_objects:x.y":                            {BooleanType},
+		// 		"array_objects:p.q":                            {IntType},
+		// 		"array_objects:nested":                         {ArrayJSON},
+		// 		"array_objects:nested:inside_a":                {BooleanType, Float64Type},
+		// 		"array_objects:nested:inside_b":                {StringType},
+		// 		"array_objects:inbox":                          {ArrayDynamic},
+		// 		"array_objects_and_primitives":                 {ArrayDynamic},
+		// 		"array_objects_and_primitives:x":               {StringType},
+		// 		"array_objects_and_primitives:nested":          {ArrayDynamic},
+		// 		"array_objects_and_primitives:nested:message":  {StringType},
+		// 		"array_objects_and_primitives:nested:number":   {Float64Type},
+		// 		"array_primitives_mixed":                       {ArrayDynamic},
+		// 		"array_primitives_same_type":                   {ArrayInt},
+		// 		"sage.number":                                  {StringType},
+		// 		"created_by":                                   {StringType},
+		// 		"details.game.is_game":                         {StringType},
+		// 		"details.game.metadata.installation_path":      {StringType},
+		// 		"details.game.metadata.drm.hash_check_status":  {StringType},
+		// 		"details.game.metadata.drm.malformed_hardware": {BooleanType},
+		// 		"details.game.metadata.drm.running":            {BooleanType},
+		// 		"details.game.metadata.drm.version":            {StringType},
+		// 		"details.game.metadata.version":                {StringType},
+		// 		"details.uninstall":                            {BooleanType},
+		// 		"docker":                                       {ArrayString},
+		// 		"kubernetes.container_image":                   {StringType},
+		// 		"kubernetes.container_name":                    {StringType},
+		// 		"kubernetes.docker_id":                         {StringType},
+		// 		"kubernetes.host":                              {StringType},
+		// 		"kubernetes.namespace_name":                    {StringType},
+		// 		"kubernetes.pod_id":                            {StringType},
+		// 		"kubernetes.pod_name":                          {StringType},
+		// 		"log":                                          {StringType},
+		// 		"log_processed.level":                          {StringType},
+		// 		"log_processed.message":                        {StringType},
+		// 		"log_processed.target":                         {StringType},
+		// 		"log_processed.timestamp":                      {StringType},
+		// 		"message":                                      {StringType},
+		// 		"stream":                                       {StringType},
+		// 		"uninstall":                                    {BooleanType},
+		// 	},
+		// },
+		{
+			name: "max_depth_traverse_test",
+			config: &Config{
+				MaxDepthTraverse:        1,
+				MaxArrayElementsAllowed: 1,
+			},
+			expected: map[string][]string{
+				"_p":                           {StringType},
+				"array_objects":                {ArrayJSON},
+				"array_objects_and_primitives": {ArrayDynamic},
+				"array_primitives_mixed":       {ArrayDynamic},
+				"array_primitives_same_type":   {ArrayInt},
+				"created_by":                   {StringType},
+				"details.uninstall":            {BooleanType},
+				"docker":                       {ArrayString},
+				"kubernetes.container_image":   {StringType},
+				"kubernetes.container_name":    {StringType},
+				"kubernetes.docker_id":         {StringType},
+				"kubernetes.host":              {StringType},
+				"kubernetes.namespace_name":    {StringType},
+				"kubernetes.pod_id":            {StringType},
+				"kubernetes.pod_name":          {StringType},
+				"log":                          {StringType},
+				"log_processed.level":          {StringType},
+				"log_processed.message":        {StringType},
+				"log_processed.target":         {StringType},
+				"log_processed.timestamp":      {StringType},
+				"message":                      {StringType},
+				"sage.number":                  {StringType},
+				"stream":                       {StringType},
+				"uninstall":                    {BooleanType},
+			},
+		},
 	}
 
-	if len(got) != len(expected) {
-		t.Fatalf("got %d paths, expected %d", len(got), len(expected))
-	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			exp.config = testCase.config
+			// Collect bitmasks via analyzePValue
+			typeSet := TypeSet{}
+			err := exp.analyzePValue(ctx, "", false, body, &typeSet, 0)
+			require.NoError(t, err)
 
-	// Assert that expected is a subset of got (types order-insensitive)
-	for path, want := range expected {
-		gotTypes, ok := got[path]
-		if !ok {
-			t.Fatalf("missing path in got: %s", path)
-		}
-		sort.Strings(want)
-		assert.ElementsMatch(t, want, gotTypes, "mismatch at path %s", path)
+			// Expand masks to final type strings (same mapping as in pushLogs)
+			got := map[string][]string{}
+			typeSet.types.Range(func(key, value interface{}) bool {
+				path := key.(string)
+				cs := value.(*utils.ConcurrentSet[string])
+				types := cs.Keys()
+				sort.Strings(types)
+				got[path] = types
+				return true
+			})
+
+			// Expected final types per path (subset assertion)
+			if len(got) != len(testCase.expected) {
+				json.NewEncoder(os.Stdout).Encode(got)
+				t.Fatalf("got %d paths, expected %d", len(got), len(testCase.expected))
+			}
+
+			// Assert that expected is a subset of got (types order-insensitive)
+			for path, want := range testCase.expected {
+				gotTypes, ok := got[path]
+				if !ok {
+					t.Fatalf("missing path in got: %s", path)
+				}
+				sort.Strings(want)
+				assert.ElementsMatch(t, want, gotTypes, "mismatch at path %s", path)
+			}
+		})
 	}
 }

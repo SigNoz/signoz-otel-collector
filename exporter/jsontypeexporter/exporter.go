@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -35,14 +34,10 @@ type jsonTypeExporter struct {
 }
 
 type TypeSet struct {
-	types   sync.Map // map[string]*utils.ConcurrentSet[string]
-	mu      sync.Mutex
-	counter atomic.Int64
+	types sync.Map // map[string]*utils.ConcurrentSet[string]
 }
 
 func (t *TypeSet) Insert(path string, mask uint16) {
-	t.counter.Add(1)
-
 	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
 	cs := actual.(*utils.ConcurrentSet[string])
 	// expand mask to strings
@@ -122,9 +117,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 
 	// per-batch type registry with bitmask aggregation
 	types := TypeSet{
-		mu:      sync.Mutex{},
-		counter: atomic.Int64{},
-		types:   sync.Map{},
+		types: sync.Map{},
 	}
 
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
@@ -133,17 +126,19 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 			sl := rl.ScopeLogs().At(j)
 			for k := 0; k < sl.LogRecords().Len(); k++ {
 				lr := sl.LogRecords().At(k)
+				// skip if body is not a map
+				body := lr.Body()
+				if body.Type() != pcommon.ValueTypeMap {
+					continue
+				}
 				// analyze body using pcommon.Value directly
 				e.limiter <- struct{}{}
 				group.Go(func() error {
 					defer func() {
 						<-e.limiter
 					}()
-					if err := e.analyzePValue(groupCtx, "", false, lr.Body(), &types); err != nil {
-						return err
-					}
 
-					return e.persistTypes(groupCtx, &types, false)
+					return e.analyzePValue(groupCtx, "", false, body, &types, 0)
 				})
 			}
 		}
@@ -157,7 +152,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 
 	// Persist collected types to database
-	if err := e.persistTypes(ctx, &types, true); err != nil {
+	if err := e.persistTypes(ctx, &types); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
 	}
@@ -184,7 +179,12 @@ const (
 // api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
 //
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
-func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet) error {
+func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet, level int) error {
+	// skip if level is greater than the allowed limit + 1 (for the primary type analysis at last level)
+	if level > e.config.MaxDepthTraverse+1 {
+		return nil
+	}
+
 	switch val.Type() {
 	case pcommon.ValueTypeMap:
 		m := val.Map()
@@ -210,7 +210,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			} else if inArray {
 				path = prefix + key
 			}
-			if err := e.analyzePValue(ctx, path, false, value, typeSet); err != nil {
+			if err := e.analyzePValue(ctx, path, false, value, typeSet, level+1); err != nil {
 				return false
 			}
 
@@ -227,7 +227,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 			switch el.Type() {
 			case pcommon.ValueTypeMap:
 				// analyze first object deeply for path discovery
-				if err := e.analyzePValue(ctx, prefix+":", true, el, typeSet); err != nil {
+				if err := e.analyzePValue(ctx, prefix+":", true, el, typeSet, level+1); err != nil {
 					return err
 				}
 				cur = maskArrayJSON
@@ -274,13 +274,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 }
 
 // persistTypes writes the collected types to the ClickHouse database
-func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, flush bool) error {
-	if !flush && typeSet.counter.Load() < 10_000 {
-		return nil
-	}
-
-	typeSet.mu.Lock()
-	defer typeSet.mu.Unlock()
+func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) error {
 	// Prepare the SQL statement
 	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", DistributedPathTypesTableName)
 
@@ -328,6 +322,5 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 		zap.Int("count", insertedCount),
 		zap.String("table", DistributedPathTypesTableName))
 
-	typeSet.counter.Store(0) // reset the counter
 	return nil
 }
