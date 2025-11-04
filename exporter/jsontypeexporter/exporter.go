@@ -166,6 +166,11 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inA
 		return nil
 	case pcommon.ValueTypeSlice:
 		s := val.Slice()
+		// skip this slice since it contains too many elements
+		if s.Len() > *e.config.MaxArrayElementsAllowed {
+			return nil
+		}
+
 		var prev uint16
 		mixed := false
 		for i := 0; i < s.Len(); i++ {
