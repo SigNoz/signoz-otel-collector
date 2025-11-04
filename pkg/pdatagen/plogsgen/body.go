@@ -671,6 +671,7 @@ func (dg *DataGenerator) GenerateBatch() (*BatchData, error) {
 	// Generate column types for THIS record (random types every record)
 	columnTypes := make([]string, len(paths))
 	setTypes := func() {
+		columnTypes = make([]string, len(paths))
 		for i := range paths {
 			columnTypes[i] = dg.randomType()
 			// special case for message column to be String type
