@@ -2,7 +2,6 @@ package json
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
@@ -11,7 +10,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
-var msgCompatibleFields = []string{"msg"}
+// var msgCompatibleFields = []string{"msg"}
 
 type Processor struct {
 	signozstanzahelper.TransformerOperator
@@ -74,6 +73,6 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	return nil
 }
 
-func init() {
-	sort.Strings(msgCompatibleFields)
-}
+// func init() {
+// 	sort.Strings(msgCompatibleFields)
+// }
