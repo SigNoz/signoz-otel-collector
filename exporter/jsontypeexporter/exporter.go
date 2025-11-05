@@ -22,6 +22,8 @@ import (
 const (
 	DistributedPathTypesTableName = "signoz_logs.distributed_path_types"
 	defaultKeyCacheSize           = 10_000
+	ArraySeparator                = "[]."
+	ArraySuffix                   = "[]"
 )
 
 type jsonTypeExporter struct {
@@ -99,7 +101,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 						<-e.limiter
 					}()
 
-					return e.analyzePValue(groupCtx, "", false, body, &types, 0)
+					return e.analyzePValue(groupCtx, body, &types)
 				})
 			}
 		}
@@ -123,111 +125,119 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 
 // api.parameters.list.search -> maps are flattened
 //
-// api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
+// api.routes[].kubernetes.container_name -> []. is used as nestedness indicator in Arrays
 //
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
-func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet, level int) error {
-	// skip if level is greater than the allowed limit + 1 (+1 for the primary type analysis at last level)
-	if level > *e.config.MaxDepthTraverse+1 {
-		return nil
-	}
-
-	switch val.Type() {
-	case pcommon.ValueTypeMap:
-		m := val.Map()
-		// skip if map contains too many keys
-		if m.Len() > defaultMaxKeysAtLevel {
+func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value, typeSet *TypeSet) error {
+	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
+	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
+		// skip if level is greater than the allowed limit
+		shouldSkipNesting := level >= *e.config.MaxDepthTraverse
+		// If current value is a container (map/array) and we've exceeded depth, do not descend further
+		// else just analyze the value type
+		if shouldSkipNesting && (val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
 			return nil
 		}
 
-		m.Range(func(key string, value pcommon.Value) bool {
-			select {
-			case <-ctx.Done():
-				return false
-			default:
+		switch val.Type() {
+		case pcommon.ValueTypeMap:
+			m := val.Map()
+			// skip if map contains too many keys
+			if m.Len() > defaultMaxKeysAtLevel {
+				return nil
 			}
 
-			contains := e.keyCache.Contains(key)
-			// if high cardinality, skip the key
-			if !contains && keycheck.IsCardinal(key) {
-				return true
-			}
-			if !contains {
-				e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
-			}
-
-			path := prefix + "." + key
-			if prefix == "" {
-				path = key
-			} else if inArray {
-				path = prefix + key
-			}
-			if err := e.analyzePValue(ctx, path, false, value, typeSet, level+1); err != nil {
-				return false
-			}
-
-			return true
-		})
-		return nil
-	case pcommon.ValueTypeSlice:
-		s := val.Slice()
-		// skip this slice since it contains too many elements
-		if s.Len() > *e.config.MaxArrayElementsAllowed {
-			return nil
-		}
-
-		var prev uint16
-		mixed := false
-		for i := 0; i < s.Len(); i++ {
-			el := s.At(i)
-			var cur uint16
-			switch el.Type() {
-			case pcommon.ValueTypeMap:
-				// analyze object deeply for path discovery
-				if err := e.analyzePValue(ctx, prefix+":", true, el, typeSet, level+1); err != nil {
-					return err
+			m.Range(func(key string, value pcommon.Value) bool {
+				select {
+				case <-ctx.Done():
+					return false
+				default:
 				}
-				cur = maskArrayJSON
-			case pcommon.ValueTypeSlice:
-				return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
-			case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-				cur = maskArrayString
-			case pcommon.ValueTypeBool:
-				cur = maskArrayBool
-			case pcommon.ValueTypeDouble:
-				cur = maskArrayFloat
-			case pcommon.ValueTypeInt:
-				cur = maskArrayInt
-			default:
-				return fmt.Errorf("unknown element type in array at path: %s", prefix)
+
+				contains := e.keyCache.Contains(key)
+				// if high cardinality, skip the key
+				if !contains && keycheck.IsCardinal(key) {
+					return true
+				}
+				if !contains {
+					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+				}
+
+				path := prefix + "." + key
+				if prefix == "" {
+					path = key
+				}
+				if err := closure(ctx, path, value, typeSet, level+1); err != nil {
+					return false
+				}
+
+				return true
+			})
+			return nil
+		case pcommon.ValueTypeSlice:
+			s := val.Slice()
+			// skip this slice since it contains too many elements
+			if s.Len() > *e.config.MaxArrayElementsAllowed {
+				return nil
 			}
-			if i > 0 && cur != prev {
-				mixed = true
-				break
+
+			var prev uint16
+			mixed := false
+			for i := 0; i < s.Len(); i++ {
+				el := s.At(i)
+				var cur uint16
+				switch el.Type() {
+				case pcommon.ValueTypeMap:
+					// When traversing into array element objects, do not increase depth level.
+					// This ensures fields like `array[].a` are discoverable at the same depth budget
+					// as their parent array, aligning depth semantics with expected behavior.
+					if err := closure(ctx, prefix+ArraySuffix, el, typeSet, level); err != nil {
+						return err
+					}
+					cur = maskArrayJSON
+				case pcommon.ValueTypeSlice:
+					return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
+				case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+					cur = maskArrayString
+				case pcommon.ValueTypeBool:
+					cur = maskArrayBool
+				case pcommon.ValueTypeDouble:
+					cur = maskArrayFloat
+				case pcommon.ValueTypeInt:
+					cur = maskArrayInt
+				default:
+					return fmt.Errorf("unknown element type in array at path: %s", prefix)
+				}
+				if i > 0 && cur != prev {
+					mixed = true
+					break
+				}
+				prev = cur
 			}
-			prev = cur
+			if mixed {
+				typeSet.Insert(prefix, maskArrayDynamic)
+			} else if prev != 0 {
+				typeSet.Insert(prefix, prev)
+			}
+			return nil
+		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+			typeSet.Insert(prefix, maskString)
+			return nil
+		case pcommon.ValueTypeBool:
+			typeSet.Insert(prefix, maskBool)
+			return nil
+		case pcommon.ValueTypeDouble:
+			typeSet.Insert(prefix, maskFloat)
+			return nil
+		case pcommon.ValueTypeInt:
+			typeSet.Insert(prefix, maskInt)
+			return nil
+		default:
+			return fmt.Errorf("unknown type at path: %s", prefix)
 		}
-		if mixed {
-			typeSet.Insert(prefix, maskArrayDynamic)
-		} else if prev != 0 {
-			typeSet.Insert(prefix, prev)
-		}
-		return nil
-	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-		typeSet.Insert(prefix, maskString)
-		return nil
-	case pcommon.ValueTypeBool:
-		typeSet.Insert(prefix, maskBool)
-		return nil
-	case pcommon.ValueTypeDouble:
-		typeSet.Insert(prefix, maskFloat)
-		return nil
-	case pcommon.ValueTypeInt:
-		typeSet.Insert(prefix, maskInt)
-		return nil
-	default:
-		return fmt.Errorf("unknown type at path: %s", prefix)
 	}
+
+	return closure(ctx, "", val, typeSet, 0)
 }
 
 // persistTypes writes the collected types to the ClickHouse database
