@@ -3,6 +3,7 @@ package jsontypeexporter
 import (
 	"errors"
 
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -17,9 +18,20 @@ type Config struct {
 
 	// DSN is the ClickHouse server Data Source Name.
 	DSN string `mapstructure:"dsn"`
+
+	// MaxDepthTraverse is the maximum depth of the JSON object to traverse.
+	MaxDepthTraverse *int `mapstructure:"max_depth_traverse"`
+	// MaxArrayElementsAllowed is the maximum number of elements in an array allowed or to be skipped.
+	MaxArrayElementsAllowed *int `mapstructure:"max_array_elements_allowed"`
 }
 
 var _ component.Config = (*Config)(nil)
+
+const (
+	defaultMaxDepthTraverse        = 22
+	defaultMaxArrayElementsAllowed = 100
+	defaultMaxKeysAtLevel          = 1024
+)
 
 var (
 	errConfigNoDSN = errors.New("dsn must be specified")
@@ -39,6 +51,20 @@ func (cfg *Config) Validate() error {
 	}
 	if validationErr := cfg.BackOffConfig.Validate(); validationErr != nil {
 		err = multierr.Append(err, validationErr)
+	}
+
+	if cfg.MaxDepthTraverse == nil {
+		cfg.MaxDepthTraverse = utils.ToPointer(defaultMaxDepthTraverse)
+	}
+	if cfg.MaxArrayElementsAllowed == nil {
+		cfg.MaxArrayElementsAllowed = utils.ToPointer(defaultMaxArrayElementsAllowed)
+	}
+
+	if *cfg.MaxDepthTraverse < 1 {
+		err = multierr.Append(err, errors.New("max_depth_traverse must be greater than 0"))
+	}
+	if *cfg.MaxArrayElementsAllowed < 1 {
+		err = multierr.Append(err, errors.New("max_array_elements_allowed must be greater than 0"))
 	}
 	return err
 }

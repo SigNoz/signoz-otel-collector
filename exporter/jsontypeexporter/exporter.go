@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -22,6 +21,9 @@ import (
 
 const (
 	DistributedPathTypesTableName = "signoz_logs.distributed_path_types"
+	defaultKeyCacheSize           = 10_000
+	ArraySeparator                = "[]."
+	ArraySuffix                   = "[]"
 )
 
 type jsonTypeExporter struct {
@@ -32,50 +34,6 @@ type jsonTypeExporter struct {
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
 	keyCache *lru.Cache[string, struct{}]
-}
-
-type TypeSet struct {
-	types   sync.Map // map[string]*utils.ConcurrentSet[string]
-	mu      sync.Mutex
-	counter atomic.Int64
-}
-
-func (t *TypeSet) Insert(path string, mask uint16) {
-	t.counter.Add(1)
-
-	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
-	cs := actual.(*utils.ConcurrentSet[string])
-	// expand mask to strings
-	if mask&maskString != 0 {
-		cs.Insert(StringType)
-	}
-	if mask&maskInt != 0 {
-		cs.Insert(IntType)
-	}
-	if mask&maskFloat != 0 {
-		cs.Insert(Float64Type)
-	}
-	if mask&maskBool != 0 {
-		cs.Insert(BooleanType)
-	}
-	if mask&maskArrayString != 0 {
-		cs.Insert(ArrayString)
-	}
-	if mask&maskArrayInt != 0 {
-		cs.Insert(ArrayInt)
-	}
-	if mask&maskArrayFloat != 0 {
-		cs.Insert(ArrayFloat64)
-	}
-	if mask&maskArrayBool != 0 {
-		cs.Insert(ArrayBoolean)
-	}
-	if mask&maskArrayJSON != 0 {
-		cs.Insert(ArrayJSON)
-	}
-	if mask&maskArrayDynamic != 0 {
-		cs.Insert(ArrayDynamic)
-	}
 }
 
 func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
@@ -90,7 +48,7 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}
 
-	keyCache, err := lru.New[string, struct{}](100000)
+	keyCache, err := lru.New[string, struct{}](defaultKeyCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key cache: %w", err)
 	}
@@ -104,12 +62,12 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 	}, nil
 }
 
-func (e *jsonTypeExporter) start(ctx context.Context, host component.Host) error {
+func (e *jsonTypeExporter) Start(ctx context.Context, host component.Host) error {
 	e.logger.Info("JSON Type exporter started")
 	return nil
 }
 
-func (e *jsonTypeExporter) shutdown(ctx context.Context) error {
+func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 	e.logger.Info("JSON Type exporter shutdown")
 	if e.conn != nil {
 		return e.conn.Close()
@@ -122,9 +80,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 
 	// per-batch type registry with bitmask aggregation
 	types := TypeSet{
-		mu:      sync.Mutex{},
-		counter: atomic.Int64{},
-		types:   sync.Map{},
+		types: sync.Map{},
 	}
 
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
@@ -133,17 +89,19 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 			sl := rl.ScopeLogs().At(j)
 			for k := 0; k < sl.LogRecords().Len(); k++ {
 				lr := sl.LogRecords().At(k)
+				// skip if body is not a map
+				body := lr.Body()
+				if body.Type() != pcommon.ValueTypeMap {
+					continue
+				}
 				// analyze body using pcommon.Value directly
 				e.limiter <- struct{}{}
 				group.Go(func() error {
 					defer func() {
 						<-e.limiter
 					}()
-					if err := e.analyzePValue(groupCtx, "", false, lr.Body(), &types); err != nil {
-						return err
-					}
 
-					return e.persistTypes(groupCtx, &types, false)
+					return e.analyzePValue(groupCtx, body, &types)
 				})
 			}
 		}
@@ -157,7 +115,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 
 	// Persist collected types to database
-	if err := e.persistTypes(ctx, &types, true); err != nil {
+	if err := e.persistTypes(ctx, &types); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
 	}
@@ -165,122 +123,139 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	return nil
 }
 
-// bitmasks for compact aggregation
-const (
-	maskString       uint16 = 1 << 0
-	maskInt          uint16 = 1 << 1
-	maskFloat        uint16 = 1 << 2
-	maskBool         uint16 = 1 << 3
-	maskArrayDynamic uint16 = 1 << 4
-	maskArrayBool    uint16 = 1 << 5
-	maskArrayFloat   uint16 = 1 << 6
-	maskArrayInt     uint16 = 1 << 7
-	maskArrayString  uint16 = 1 << 8
-	maskArrayJSON    uint16 = 1 << 9
-)
-
 // api.parameters.list.search -> maps are flattened
 //
-// api.routes:kubernetes.container_name -> : is used as nestedness indicator in Arrays
+// api.routes[].kubernetes.container_name -> []. is used as nestedness indicator in Arrays
 //
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
-func (e *jsonTypeExporter) analyzePValue(ctx context.Context, prefix string, inArray bool, val pcommon.Value, typeSet *TypeSet) error {
-	switch val.Type() {
-	case pcommon.ValueTypeMap:
-		m := val.Map()
-		m.Range(func(key string, value pcommon.Value) bool {
-			select {
-			case <-ctx.Done():
-				return false
-			default:
-			}
-
-			contains := e.keyCache.Contains(key)
-			// if high cardinality, skip the key
-			if !contains && keycheck.IsCardinal(key) {
-				return true
-			}
-			if !contains {
-				e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
-			}
-
-			path := prefix + "." + key
-			if prefix == "" {
-				path = key
-			} else if inArray {
-				path = prefix + key
-			}
-			if err := e.analyzePValue(ctx, path, false, value, typeSet); err != nil {
-				return false
-			}
-
-			return true
-		})
-		return nil
-	case pcommon.ValueTypeSlice:
-		s := val.Slice()
-		var prev uint16
-		mixed := false
-		for i := 0; i < s.Len(); i++ {
-			el := s.At(i)
-			var cur uint16
-			switch el.Type() {
-			case pcommon.ValueTypeMap:
-				// analyze first object deeply for path discovery
-				if err := e.analyzePValue(ctx, prefix+":", true, el, typeSet); err != nil {
-					return err
-				}
-				cur = maskArrayJSON
-			case pcommon.ValueTypeSlice:
-				return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
-			case pcommon.ValueTypeStr:
-				cur = maskArrayString
-			case pcommon.ValueTypeBool:
-				cur = maskArrayBool
-			case pcommon.ValueTypeDouble:
-				cur = maskArrayFloat
-			case pcommon.ValueTypeInt:
-				cur = maskArrayInt
-			default:
-				return fmt.Errorf("unknown element type in array at path: %s", prefix)
-			}
-			if i > 0 && cur != prev {
-				mixed = true
-				break
-			}
-			prev = cur
+func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value, typeSet *TypeSet) error {
+	generatePath := func(prefix string, key string) string {
+		if prefix == "" {
+			return key
 		}
-		if mixed {
-			typeSet.Insert(prefix, maskArrayDynamic)
-		} else if prev != 0 {
-			typeSet.Insert(prefix, prev)
+
+		if keycheck.IsBacktickRequired(key) {
+			key = "`" + key + "`"
 		}
-		return nil
-	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-		typeSet.Insert(prefix, maskString)
-		return nil
-	case pcommon.ValueTypeBool:
-		typeSet.Insert(prefix, maskBool)
-		return nil
-	case pcommon.ValueTypeDouble:
-		typeSet.Insert(prefix, maskFloat)
-		return nil
-	case pcommon.ValueTypeInt:
-		typeSet.Insert(prefix, maskInt)
-		return nil
-	default:
-		return fmt.Errorf("unknown type at path: %s", prefix)
+
+		return prefix + "." + key
 	}
+
+	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
+	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
+		// skip if level is greater than the allowed limit
+		shouldSkipNesting := level >= *e.config.MaxDepthTraverse
+		// If current value is a container (map/array) and we've exceeded depth, do not descend further
+		// else just analyze the value type
+		if shouldSkipNesting && (val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
+			return nil
+		}
+
+		switch val.Type() {
+		case pcommon.ValueTypeMap:
+			m := val.Map()
+			// skip if map contains too many keys
+			if m.Len() > defaultMaxKeysAtLevel {
+				return nil
+			}
+
+			var iterErr error
+			m.Range(func(key string, value pcommon.Value) bool {
+				select {
+				case <-ctx.Done():
+					return false
+				default:
+				}
+
+				contains := e.keyCache.Contains(key)
+				// if high cardinality, skip the key
+				if !contains && keycheck.IsCardinal(key) {
+					return true
+				}
+				if !contains {
+					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+				}
+
+				if err := closure(ctx, generatePath(prefix, key), value, typeSet, level+1); err != nil {
+					iterErr = err
+					return false
+				}
+
+				return true
+			})
+			if iterErr != nil {
+				return iterErr
+			}
+
+			return nil
+		case pcommon.ValueTypeSlice:
+			s := val.Slice()
+			// skip this slice since it contains too many elements
+			if s.Len() > *e.config.MaxArrayElementsAllowed {
+				return nil
+			}
+
+			var prev uint16
+			mixed := false
+			for i := 0; i < s.Len(); i++ {
+				el := s.At(i)
+				var cur uint16
+				switch el.Type() {
+				case pcommon.ValueTypeMap:
+					// When traversing into array element objects, do not increase depth level.
+					// This ensures fields like `array[].a` are discoverable at the same depth budget
+					// as their parent array, aligning depth semantics with expected behavior.
+					if err := closure(ctx, prefix+ArraySuffix, el, typeSet, level); err != nil {
+						return err
+					}
+					cur = maskArrayJSON
+				case pcommon.ValueTypeSlice:
+					return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
+				case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+					cur = maskArrayString
+				case pcommon.ValueTypeBool:
+					cur = maskArrayBool
+				case pcommon.ValueTypeDouble:
+					cur = maskArrayFloat
+				case pcommon.ValueTypeInt:
+					cur = maskArrayInt
+				default:
+					return fmt.Errorf("unknown element type in array at path: %s", prefix)
+				}
+				if i > 0 && cur != prev {
+					mixed = true
+					break
+				}
+				prev = cur
+			}
+			if mixed {
+				typeSet.Insert(prefix, maskArrayDynamic)
+			} else if prev != 0 {
+				typeSet.Insert(prefix, prev)
+			}
+			return nil
+		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+			typeSet.Insert(prefix, maskString)
+			return nil
+		case pcommon.ValueTypeBool:
+			typeSet.Insert(prefix, maskBool)
+			return nil
+		case pcommon.ValueTypeDouble:
+			typeSet.Insert(prefix, maskFloat)
+			return nil
+		case pcommon.ValueTypeInt:
+			typeSet.Insert(prefix, maskInt)
+			return nil
+		default:
+			return fmt.Errorf("unknown type at path: %s", prefix)
+		}
+	}
+
+	return closure(ctx, "", val, typeSet, 0)
 }
 
 // persistTypes writes the collected types to the ClickHouse database
-func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, flush bool) error {
-	if !flush && typeSet.counter.Load() < 10_000 {
-		return nil
-	}
-
-	typeSet.mu.Lock()
-	defer typeSet.mu.Unlock()
+func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) error {
 	// Prepare the SQL statement
 	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", DistributedPathTypesTableName)
 
@@ -293,6 +268,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 	now := time.Now().UnixNano()
 	insertedCount := 0
 
+	var iterErr error
 	// Iterate through all collected types and insert them
 	typeSet.types.Range(func(key, value interface{}) bool {
 		path := key.(string)
@@ -301,8 +277,8 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 		// Get all types for this path
 		types := typeSet.Keys()
 		for _, typeStr := range types {
-			err := statement.Append(path, typeStr, now)
-			if err != nil {
+			iterErr = statement.Append(path, typeStr, now)
+			if iterErr != nil {
 				e.logger.Error("Failed to append type to batch",
 					zap.String("path", path),
 					zap.String("type", typeStr),
@@ -313,6 +289,9 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 		}
 		return true
 	})
+	if iterErr != nil {
+		return fmt.Errorf("failed to append types to batch: %w", iterErr)
+	}
 
 	if insertedCount == 0 {
 		e.logger.Debug("No types to persist")
@@ -328,6 +307,5 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet, f
 		zap.Int("count", insertedCount),
 		zap.String("table", DistributedPathTypesTableName))
 
-	typeSet.counter.Store(0) // reset the counter
 	return nil
 }

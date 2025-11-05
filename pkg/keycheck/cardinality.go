@@ -1,11 +1,14 @@
 package keycheck
 
 import (
-	"regexp"
+	"slices"
+	"strings"
 )
 
 var (
-	ipAddressRegex = regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$`)
+	// the whitelist of allowed symbols only (no letters or numbers)
+	JSONKeyAllowedSymbols   = []string{"_", ".", ":", "@", "-"}
+	BacktickRequiredSymbols = []string{":", "@", "-"}
 )
 
 func IsCardinal(key string) bool {
@@ -15,11 +18,17 @@ func IsCardinal(key string) bool {
 		return true
 	case hasNonAllowedSymbols(key):
 		return true
-	case ipAddressRegex.MatchString(key):
-		return true
 	}
 
 	return processKeySegments(key)
+}
+
+func IsBacktickRequired(key string) bool {
+	return strings.ContainsAny(key, strings.Join(BacktickRequiredSymbols, ""))
+}
+
+func CleanBackticks(key string) string {
+	return strings.ReplaceAll(key, "`", "")
 }
 
 // containsDigits checks if string contains digits
@@ -28,7 +37,8 @@ func containsDigits(s string) bool {
 		return false
 	}
 
-	// Check if all characters are digits
+	// Check if any character is a digit
+	// TODO: check for better patterns which are okay to be considered as non cardinal across customer ecosystem
 	for _, char := range s {
 		if char >= '0' && char <= '9' {
 			return true
@@ -38,12 +48,6 @@ func containsDigits(s string) bool {
 }
 
 func hasNonAllowedSymbols(s string) bool {
-	// Define the whitelist of allowed symbols only (no letters or numbers)
-	allowedSymbols := map[rune]bool{
-		'_': true, // underscore only for now
-		'.': true, // dot only for now
-	}
-
 	// Check each character in the string
 	for _, char := range s {
 		// Allow letters (a-z, A-Z)
@@ -55,7 +59,7 @@ func hasNonAllowedSymbols(s string) bool {
 			continue
 		}
 		// For symbols, check if they're in the allowed symbols whitelist
-		if !allowedSymbols[char] {
+		if !slices.Contains(JSONKeyAllowedSymbols, string(char)) {
 			return true
 		}
 	}

@@ -2,7 +2,7 @@ type: jsontypeexporter
 status:
   class: exporter
   stability:
-    stable: [logs]
+    alpha: [logs]
 
 tests:
   skip_lifecycle: true
