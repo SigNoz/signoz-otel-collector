@@ -1,62 +1,46 @@
 // Brought in as is from opentelemetry-collector-contrib
 
-package copy
+package json
 
 import (
-	"fmt"
-
 	"go.opentelemetry.io/collector/component"
 
-	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 )
 
-const operatorType = "copy"
+const operatorType = "normalize"
 
 func init() {
 	signozlogspipelinestanzaoperator.Register(operatorType, func() operator.Builder { return NewConfig() })
 }
 
-// NewConfig creates a new copy operator config with default values
+// NewConfig creates a new normalize config with default values
 func NewConfig() *Config {
 	return NewConfigWithID(operatorType)
 }
 
-// NewConfigWithID creates a new copy operator config with default values
+// NewConfigWithID creates a new JSON parser config with default values
 func NewConfigWithID(operatorID string) *Config {
 	return &Config{
 		TransformerConfig: signozstanzahelper.NewTransformerConfig(operatorID, operatorType),
 	}
 }
 
-// Config is the configuration of a copy operator
+// Config is the configuration of a JSON parser operator.
 type Config struct {
 	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
-	From                                 signozstanzaentry.Field `mapstructure:"from"`
-	To                                   entry.Field             `mapstructure:"to"`
 }
 
-// Build will build a copy operator from the supplied configuration
+// Build will build a JSON parser operator.
 func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error) {
 	transformerOperator, err := c.TransformerConfig.Build(set)
 	if err != nil {
 		return nil, err
 	}
 
-	if c.From == (signozstanzaentry.Field{FieldInterface: entry.NewNilField()}) {
-		return nil, fmt.Errorf("copy: missing from field")
-	}
-
-	if c.To == entry.NewNilField() {
-		return nil, fmt.Errorf("copy: missing to field")
-	}
-
-	return &Transformer{
+	return &Processor{
 		TransformerOperator: transformerOperator,
-		From:                c.From,
-		To:                  c.To,
 	}, nil
 }

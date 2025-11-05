@@ -59,6 +59,7 @@ const (
 	overflowServiceName        = "overflow_service"
 	overflowOperation          = "overflow_operation"
 	defaultTimeBucketInterval  = time.Minute
+	defaultSkipSpansOlderThan  = 24 * time.Hour
 )
 
 var (
@@ -966,6 +967,14 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 }
 
 func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map) {
+	// Skip late-arriving spans older than the configured staleness spanSkipWindow
+	if spanSkipWindow := p.config.GetSkipSpansOlderThan(); spanSkipWindow > 0 {
+		lastPermissibleSpanTime := time.Now().Add(-spanSkipWindow)
+		if span.StartTimestamp().AsTime().Before(lastPermissibleSpanTime) {
+			p.logger.Debug("Skipping stale span", zap.String("span", span.Name()), zap.String("service", serviceName))
+			return
+		}
+	}
 
 	if p.shouldSkip(serviceName, span, resourceAttr) {
 		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-json"
 
@@ -19,7 +20,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.27.0"
+	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -73,7 +74,7 @@ func makeJaegerProtoReferences(
 // TODO: Find a better package for this function.
 func ServiceNameForResource(resource pcommon.Resource) string {
 
-	service, found := resource.Attributes().Get(conventions.AttributeServiceName)
+	service, found := resource.Attributes().Get(string(conventions.ServiceNameKey))
 	if !found {
 		return "<nil-service-name>"
 	}
@@ -357,6 +358,8 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	s.wg.Add(1)
 	defer s.wg.Done()
 
+	oldestAllowedTs := time.Now().Add(-time.Duration(s.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano()
+
 	resourcesSeen := map[int64]map[string]string{}
 
 	select {
@@ -393,6 +396,25 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
+					ts := uint64(span.StartTimestamp())
+					if ts < uint64(oldestAllowedTs) {
+						s.logger.Debug(
+							"skipping span outside allowed time window",
+							zap.Uint64("start_ts", ts),
+							zap.Int64("oldest_allowed_ts", oldestAllowedTs),
+							zap.String("service_name", serviceName),
+							zap.String("span_name", span.Name()),
+							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),
+							zap.String("span_id", utils.SpanIDToHexOrEmptyString(span.SpanID())),
+							zap.String("parent_span_id", utils.SpanIDToHexOrEmptyString(span.ParentSpanID())),
+							zap.String("start_time", span.StartTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("end_time", span.EndTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("span_kind", span.Kind().String()),
+							zap.String("status_code", span.Status().Code().String()),
+							zap.String("status_message", span.Status().Message()),
+						)
+						continue
+					}
 
 					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), distributedTracesResourceV2Seconds)
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {

@@ -33,9 +33,9 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/pipeline"
-	semconv "go.opentelemetry.io/collector/semconv/v1.13.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
 
@@ -243,10 +243,10 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 				span.TraceId,
 				span.SpanId,
 				span.ServiceName,
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionType],
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionMessage],
-				errorEvent.Event.AttributeMap[semconv.AttributeExceptionStacktrace],
-				stringToBool(errorEvent.Event.AttributeMap[semconv.AttributeExceptionEscaped]),
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionTypeKey)],
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionMessageKey)],
+				errorEvent.Event.AttributeMap[string(semconv.ExceptionStacktraceKey)],
+				stringToBool(errorEvent.Event.AttributeMap[string(semconv.ExceptionEscapedKey)]),
 				span.ResourcesString,
 			)
 			if err != nil {
