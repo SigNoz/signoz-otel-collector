@@ -415,10 +415,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 	// records channel and limiter
 	recordStream := make(chan *Record, cap(e.limiter))
-	
+
 	// ensure recordStream is closed in all scenarios (producer completes or errgroup cancels)
 	// Case 1: Producer completes successfully; consumer will not exit until channel is closed
-	//  and hence closing the channel is required to allow the consumer to exit else code will be 
+	//  and hence closing the channel is required to allow the consumer to exit else code will be
 	//  stuck at group.Wait() waiting forever for consumer to exit
 	// Case 2: Error occurr in either producer or consumer; both will exit with the help of groupCtx.Done()
 	//  and channel will get closed by defer closeRecordStream()
@@ -429,6 +429,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	// if Channel closed before all producers finish, we will get a panic of send on closed channel
 	var producersWG sync.WaitGroup
 
+	// Why SetLimit(utils.Concurrency()) is not used?
+	// because we want to limit the number of producers but the Consumer is also part of same errgroup
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
