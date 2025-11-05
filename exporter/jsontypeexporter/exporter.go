@@ -129,6 +129,18 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 //
 // analyzePValue walks OTel pcommon.Value without converting to Go maps/slices, minimizing allocations.
 func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value, typeSet *TypeSet) error {
+	generatePath := func(prefix string, key string) string {
+		if prefix == "" {
+			return key
+		}
+
+		if keycheck.IsBacktickRequired(key) {
+			key = "`" + key + "`"
+		}
+
+		return prefix + "." + key
+	}
+
 	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
 	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
 		// skip if level is greater than the allowed limit
@@ -147,6 +159,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 				return nil
 			}
 
+			var iterErr error
 			m.Range(func(key string, value pcommon.Value) bool {
 				select {
 				case <-ctx.Done():
@@ -163,16 +176,17 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
 				}
 
-				path := prefix + "." + key
-				if prefix == "" {
-					path = key
-				}
-				if err := closure(ctx, path, value, typeSet, level+1); err != nil {
+				if err := closure(ctx, generatePath(prefix, key), value, typeSet, level+1); err != nil {
+					iterErr = err
 					return false
 				}
 
 				return true
 			})
+			if iterErr != nil {
+				return iterErr
+			}
+
 			return nil
 		case pcommon.ValueTypeSlice:
 			s := val.Slice()

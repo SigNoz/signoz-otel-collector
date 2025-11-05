@@ -1,5 +1,16 @@
 package keycheck
 
+import (
+	"slices"
+	"strings"
+)
+
+var (
+	// the whitelist of allowed symbols only (no letters or numbers)
+	JSONKeyAllowedSymbols   = []string{"_", ".", ":", "@", "-"}
+	BacktickRequiredSymbols = []string{":", "@", "-"}
+)
+
 func IsCardinal(key string) bool {
 	// whole string cases
 	switch {
@@ -10,6 +21,14 @@ func IsCardinal(key string) bool {
 	}
 
 	return processKeySegments(key)
+}
+
+func IsBacktickRequired(key string) bool {
+	return strings.ContainsAny(key, strings.Join(BacktickRequiredSymbols, ""))
+}
+
+func CleanBackticks(key string) string {
+	return strings.ReplaceAll(key, "`", "")
 }
 
 // containsDigits checks if string contains digits
@@ -29,12 +48,6 @@ func containsDigits(s string) bool {
 }
 
 func hasNonAllowedSymbols(s string) bool {
-	// Define the whitelist of allowed symbols only (no letters or numbers)
-	allowedSymbols := map[rune]bool{
-		'_': true, // underscore only for now
-		'.': true, // dot only for now
-	}
-
 	// Check each character in the string
 	for _, char := range s {
 		// Allow letters (a-z, A-Z)
@@ -46,7 +59,7 @@ func hasNonAllowedSymbols(s string) bool {
 			continue
 		}
 		// For symbols, check if they're in the allowed symbols whitelist
-		if !allowedSymbols[char] {
+		if !slices.Contains(JSONKeyAllowedSymbols, string(char)) {
 			return true
 		}
 	}

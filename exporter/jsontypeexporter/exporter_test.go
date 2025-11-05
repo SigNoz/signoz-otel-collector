@@ -97,6 +97,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				"is_game":          "false",
 				"marked_favourite": true,
 				"play_time_hours":  5.5,
+				"beta-tester":      true,
 				"metadata": map[string]any{
 					"installation_path": "/opt/games/witcher3",
 					"drm": map[string]any{
@@ -168,6 +169,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				"array_primitives_same_type":                      {ArrayInt},
 				"sage.number":                                     {StringType},
 				"created_by":                                      {StringType},
+				"details.game.`beta-tester`":                      {BooleanType},
 				"details.game.is_game":                            {StringType},
 				"details.game.marked_favourite":                   {BooleanType},
 				"details.game.play_time_hours":                    {Float64Type},

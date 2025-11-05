@@ -188,7 +188,7 @@ func Test_hasNonAllowedSymbols(t *testing.T) {
 	}{
 		{
 			name: "Non allowed symbols",
-			key:  "value-test",
+			key:  "value#test",
 			want: true,
 		},
 		{
@@ -202,9 +202,14 @@ func Test_hasNonAllowedSymbols(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "Non allowed symbols - x2",
+			name: "Allowed symbols - x2",
 			key:  ":ball",
-			want: true,
+			want: false,
+		},
+		{
+			name: "Allowed symbols - x3",
+			key:  "@ball",
+			want: false,
 		},
 	}
 	for _, tt := range tests {
