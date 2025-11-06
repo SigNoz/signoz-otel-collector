@@ -125,7 +125,6 @@ type attributeMap struct {
 }
 
 // Record represents a prepared log record, ready to be appended to ClickHouse batches.
-// Note: no ClickHouse batch is touched outside the consumer goroutine.
 type Record struct {
 	// batch columns
 	tsBucketStart uint64
@@ -142,17 +141,12 @@ type Record struct {
 	scopeName     string
 	scopeVersion  string
 
-	// for tag statements and resource-fingerprint table
-	resourceLabelsJSON string
-
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
 	attrsMap    attributeMap
 	logFields   attributeMap
-
-	// metrics delta
-	recordSize int64
+	recordSize  int64
 }
 
 type statementSendDuration struct {
@@ -462,13 +456,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
 				}
 
-				// aggregate RF
-				bucket := int64(rec.tsBucketStart)
-				if _, ok := resourcesSeen[bucket]; !ok {
-					resourcesSeen[bucket] = map[string]string{}
-				}
-				resourcesSeen[bucket][rec.resourceLabelsJSON] = rec.resourceFP
-
 				// aggregate metrics
 				tenant := usage.GetTenantNameFromResource()
 				usage.AddMetric(metrics, tenant, 1, rec.recordSize)
@@ -499,7 +486,7 @@ producerIteration:
 			for k := 0; k < records.Len(); k++ {
 				record := records.At(k)
 
-				// acquire limiter slot
+				// block the execution until we acquire limiter slot
 				select {
 				case <-groupCtx.Done():
 					break producerIteration // immidiately break the producer loop and reach group.Wait()
@@ -548,39 +535,30 @@ producerIteration:
 
 					body := record.Body()
 
-					// metrics
+					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
-					rec := &Record{
-						tsBucketStart:      uint64(lBucketStart),
-						resourceFP:         fp,
-						ts:                 ts,
-						ots:                ots,
-						id:                 id.String(),
-						traceID:            utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:             utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:         uint32(record.Flags()),
-						severityText:       record.SeverityText(),
-						severityNum:        uint8(record.SeverityNumber()),
-						body:               getStringifiedBody(body),
-						scopeName:          scopeName,
-						scopeVersion:       scopeVersion,
-						resourceLabelsJSON: resourceJson,
-						resourceMap:        resourcesMap,
-						scopeMap:           scopeMap,
-						attrsMap:           attrsMap,
-						logFields:          attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:         int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+					recordStream <- &Record{
+						tsBucketStart: uint64(lBucketStart),
+						resourceFP:    fp,
+						ts:            ts,
+						ots:           ots,
+						id:            id.String(),
+						traceID:       utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:        utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:    uint32(record.Flags()),
+						severityText:  record.SeverityText(),
+						severityNum:   uint8(record.SeverityNumber()),
+						body:          getStringifiedBody(body),
+						scopeName:     scopeName,
+						scopeVersion:  scopeVersion,
+						resourceMap:   resourcesMap,
+						scopeMap:      scopeMap,
+						attrsMap:      attrsMap,
+						logFields:     attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:    int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
-
-					select {
-					case <-groupCtx.Done():
-						return nil
-					case <-e.closeChan:
-						return errors.New("shutdown has been called")
-					case recordStream <- rec:
-						return nil
-					}
+					return nil
 				})
 			}
 		}
