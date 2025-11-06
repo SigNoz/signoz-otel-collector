@@ -173,6 +173,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/jsontypeexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
@@ -326,6 +327,7 @@ func Components() (otelcol.Factories, error) {
 		debugexporter.NewFactory(),
 		fileexporter.NewFactory(),
 		googlecloudpubsubexporter.NewFactory(),
+		jsontypeexporter.NewFactory(),
 		kafkaexporter.NewFactory(),
 		loadbalancingexporter.NewFactory(),
 		metadataexporter.NewFactory(),
