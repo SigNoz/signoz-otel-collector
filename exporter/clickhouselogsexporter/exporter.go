@@ -421,7 +421,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	//  and hence closing the channel is required to allow the consumer to exit else code will be
 	//  stuck at group.Wait() waiting forever for consumer to exit when the last batch of concurrent logs have been sent in the channel
 	// Case 2: Error occurr in either producer or consumer; both will exit with the help of groupCtx.Done()
-	//  and channel will get closed by defer closeRecordStream()
+	//  and channel will get closed by after waiting for producerWG
+	// Case 3: Error occurred in producer loop, outside the errgroup, defer closeRecordStream() will be called
+	//  for closing the channel
 	var closeOnce sync.Once
 	closeRecordStream := func() { closeOnce.Do(func() { close(recordStream) }) }
 	defer closeRecordStream()
