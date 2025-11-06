@@ -607,6 +607,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	}
 
 	// Close the record stream only after all producers finish
+	// this is async so we block on group.Wait() and catch any error from the producer/consumer
 	go func() {
 		producersWG.Wait()
 		closeRecordStream()
