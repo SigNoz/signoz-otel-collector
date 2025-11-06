@@ -277,6 +277,7 @@ func JSONSubColumnIndexName(column string, index IndexType) string {
 	return fmt.Sprintf("`%s_String_%s`", column, index)
 }
 
+// TODO: Use keycheck for checking BackTicks requirement and alter the expr accordingly
 func JSONSubColumnIndexExpr(column string) string {
 	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", column)
 }
