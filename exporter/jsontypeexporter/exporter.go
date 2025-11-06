@@ -2,6 +2,7 @@ package jsontypeexporter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -33,7 +34,8 @@ type jsonTypeExporter struct {
 	conn    clickhouse.Conn
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
-	keyCache *lru.Cache[string, struct{}]
+	keyCache  *lru.Cache[string, struct{}]
+	closeChan chan struct{}
 }
 
 func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
@@ -54,11 +56,12 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 	}
 
 	return &jsonTypeExporter{
-		config:   &cfg,
-		logger:   set.Logger,
-		limiter:  make(chan struct{}, utils.Concurrency()),
-		conn:     conn,
-		keyCache: keyCache,
+		config:    &cfg,
+		logger:    set.Logger,
+		limiter:   make(chan struct{}, utils.Concurrency()),
+		conn:      conn,
+		keyCache:  keyCache,
+		closeChan: make(chan struct{}),
 	}, nil
 }
 
@@ -68,6 +71,7 @@ func (e *jsonTypeExporter) Start(ctx context.Context, host component.Host) error
 }
 
 func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
+	close(e.closeChan)
 	e.logger.Info("JSON Type exporter shutdown")
 	if e.conn != nil {
 		return e.conn.Close()
@@ -76,6 +80,12 @@ func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 }
 
 func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
+	select {
+	case <-e.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+	}
+
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// per-batch type registry with bitmask aggregation
@@ -83,6 +93,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 		types: sync.Map{},
 	}
 
+logIteration:
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		rl := ld.ResourceLogs().At(i)
 		for j := 0; j < rl.ScopeLogs().Len(); j++ {
@@ -94,13 +105,17 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 				if body.Type() != pcommon.ValueTypeMap {
 					continue
 				}
-				// analyze body using pcommon.Value directly
-				e.limiter <- struct{}{}
+				select {
+				case <-groupCtx.Done():
+					break logIteration // jump immidiately to group.Wait()
+				case e.limiter <- struct{}{}:
+				}
 				group.Go(func() error {
 					defer func() {
 						<-e.limiter
 					}()
 
+					// analyze body using pcommon.Value directly
 					return e.analyzePValue(groupCtx, body, &types)
 				})
 			}

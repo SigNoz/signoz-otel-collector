@@ -6,7 +6,8 @@ import (
 )
 
 var (
-	// the whitelist of allowed symbols only (no letters or numbers)
+	// The whitelist of allowed symbols only (no letters or numbers)
+	// Note: Backticks can never be allowed to exist in a key from User's source
 	JSONKeyAllowedSymbols   = []string{"_", ".", ":", "@", "-"}
 	BacktickRequiredSymbols = []string{":", "@", "-"}
 )

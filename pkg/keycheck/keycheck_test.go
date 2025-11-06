@@ -145,77 +145,39 @@ func Test_IsRandomKey(t *testing.T) {
 
 func Test_IsCardinal(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		want bool
+		key        string
+		isCardinal bool
 	}{
 		{
-			name: "Non allowed symbols",
-			key:  "value-test",
-			want: true,
+			key:        "value-test",
+			isCardinal: false,
 		},
 		{
-			name: "Non allowed symbols",
-			key:  "value@test",
-			want: true,
+			key:        "value@test",
+			isCardinal: false,
 		},
 		{
-			name: "allowed symbols",
-			key:  "value_test",
-			want: false,
+			key:        "value:test",
+			isCardinal: false,
 		},
 		{
-			name: "Digit",
-			key:  "value1",
-			want: true,
+			key:        "value_test",
+			isCardinal: false,
+		},
+		{
+			key:        "value1",
+			isCardinal: true,
+		},
+		{
+			key:        "value`",
+			isCardinal: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsCardinal(tt.key); got != tt.want {
-				t.Errorf("IsCardinal() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_hasNonAllowedSymbols(t *testing.T) {
-	tests := []struct {
-		name string
-		key  string
-		want bool
-	}{
-		{
-			name: "Non allowed symbols",
-			key:  "value#test",
-			want: true,
-		},
-		{
-			name: "Allowed symbols",
-			key:  "value_test",
-			want: false,
-		},
-		{
-			name: "Dot allowed symbol",
-			key:  "value.hash",
-			want: false,
-		},
-		{
-			name: "Allowed symbols - x2",
-			key:  ":ball",
-			want: false,
-		},
-		{
-			name: "Allowed symbols - x3",
-			key:  "@ball",
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := hasNonAllowedSymbols(tt.key); got != tt.want {
-				t.Errorf("hasNonAllowedSymbols() = %v, want %v", got, tt.want)
+		t.Run(tt.key, func(t *testing.T) {
+			if got := IsCardinal(tt.key); got != tt.isCardinal {
+				t.Errorf("IsCardinal() = %v, want %v", got, tt.isCardinal)
 			}
 		})
 	}
