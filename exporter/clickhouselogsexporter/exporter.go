@@ -175,13 +175,11 @@ type clickhouseLogsExporter struct {
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 
-	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
-	maxDistinctValues  int
-	fetchKeysInterval  time.Duration
-	shutdownFuncs      []func() error
-
-	// used to drop logs older than the retention period.
-	minAcceptedTs atomic.Value
+	shouldSkipKeyValue    atomic.Value // stores map[string]shouldSkipKey
+	maxDistinctValues     int
+	fetchKeysInterval     time.Duration
+	shutdownFuncs         []func() error
+	maxAllowedDataAgeDays uint64
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -200,6 +198,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
 		limiter:               make(chan struct{}, utils.Concurrency()),
+		maxAllowedDataAgeDays: 15,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -292,20 +291,6 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	return nil
 }
 
-type DBResponseTTL struct {
-	EngineFull string `ch:"engine_full"`
-}
-
-func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("Updating min accepted ts")
-
-	var delTTL uint64 = 15
-
-	seconds := delTTL * 24 * 60 * 60
-	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
-	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
-}
-
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -331,10 +316,7 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
-	oldestAllowedTs := uint64(0)
-	if e.minAcceptedTs.Load() != nil {
-		oldestAllowedTs = e.minAcceptedTs.Load().(uint64)
-	}
+	oldestAllowedTs := uint64(time.Now().Add(-time.Duration(e.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano())
 
 	start := time.Now()
 	chLen := 5
