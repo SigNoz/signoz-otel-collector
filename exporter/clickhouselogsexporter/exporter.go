@@ -178,7 +178,7 @@ type clickhouseLogsExporter struct {
 	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
 	maxDistinctValues  int
 	fetchKeysInterval  time.Duration
-	shutdownFunc       []func() error
+	shutdownFuncs      []func() error
 
 	// used to drop logs older than the retention period.
 	minAcceptedTs atomic.Value
@@ -242,7 +242,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	ticker := time.NewTicker(e.fetchKeysInterval)
-	e.shutdownFunc = append(e.shutdownFunc, func() error {
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 		ticker.Stop()
 		return nil
 	})
@@ -266,8 +266,8 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
-	for _, shutdownFunc := range e.shutdownFunc {
-		if err := shutdownFunc(); err != nil {
+	for _, shutdownFuncs := range e.shutdownFuncs {
+		if err := shutdownFuncs(); err != nil {
 			return err
 		}
 	}
@@ -356,7 +356,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	default:
 	}
 
-	// Run consumer in current goroutine to return error properly
 	// Prepare batches first
 	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
 	if err != nil {
