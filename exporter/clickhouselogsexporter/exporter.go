@@ -152,9 +152,7 @@ type Record struct {
 	logFields   attributeMap
 
 	// metrics delta
-	metricsTenant string
-	metricsCount  int64
-	metricsSize   int64
+	recordSize int64
 }
 
 type statementSendDuration struct {
@@ -472,7 +470,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				resourcesSeen[bucket][rec.resourceLabelsJSON] = rec.resourceFP
 
 				// aggregate metrics
-				usage.AddMetric(metrics, rec.metricsTenant, rec.metricsCount, rec.metricsSize)
+				tenant := usage.GetTenantNameFromResource()
+				usage.AddMetric(metrics, tenant, 1, rec.recordSize)
 			}
 		}
 	})
@@ -533,8 +532,14 @@ producerIteration:
 					lBucketStart := tsBucket(int64(ts/1000000000), distributedLogsResourceV2Seconds)
 
 					// fingerprint for resourceJson
-					fp := fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
-
+					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
+						resourcesSeen[int64(lBucketStart)] = map[string]string{}
+					}
+					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
+					if !exists {
+						fp = fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
+						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
+					}
 					attrsMap := attributesToMap(record.Attributes(), false)
 
 					if len(resourcesMap.StringData) > 100 {
@@ -544,7 +549,6 @@ producerIteration:
 					body := record.Body()
 
 					// metrics
-					tenant := usage.GetTenantNameFromResource(logs.Resource())
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
 					rec := &Record{
@@ -566,9 +570,7 @@ producerIteration:
 						scopeMap:           scopeMap,
 						attrsMap:           attrsMap,
 						logFields:          attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						metricsTenant:      tenant,
-						metricsCount:       1,
-						metricsSize:        int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						recordSize:         int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
 
 					select {
