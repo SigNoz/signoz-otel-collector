@@ -218,7 +218,6 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeys() // Start ticker routine
-	e.fetchShouldUpdateMinAcceptedTs()
 	return nil
 }
 
@@ -315,28 +314,6 @@ func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
 	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
 }
 
-func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
-	ticker := time.NewTicker(10 * time.Minute)
-	e.shutdownFunc = append(e.shutdownFunc, func() error {
-		ticker.Stop()
-		return nil
-	})
-
-	e.updateMinAcceptedTs()
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		for {
-			select {
-			case <-e.closeChan:
-				return
-			case <-ticker.C:
-				e.updateMinAcceptedTs()
-			}
-		}
-	}()
-}
-
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -370,17 +347,21 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	start := time.Now()
 	chLen := 5
 
-	// Single-threaded ClickHouse batch owner (consumer)
 	var insertLogsStmtV2 driver.Batch
 	var insertResourcesStmtV2 driver.Batch
 	var tagStatementV2 driver.Batch
 	var attributeKeysStmt driver.Batch
 	var resourceKeysStmt driver.Batch
 
-	// Consumer: owns ClickHouse batches and appends from records
 	var shouldSkipKeys map[string]shouldSkipKey
 	if e.shouldSkipKeyValue.Load() != nil {
 		shouldSkipKeys = e.shouldSkipKeyValue.Load().(map[string]shouldSkipKey)
+	}
+
+	select {
+	case <-e.closeChan:
+		return errors.New("shutdown has been called")
+	default:
 	}
 
 	// Run consumer in current goroutine to return error properly
@@ -441,8 +422,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			select {
 			case <-groupCtx.Done(): // process cancelled by producer error
 				return nil
-			case <-e.closeChan:
-				return errors.New("shutdown has been called")
 			case rec, open := <-recordStream:
 				if !open {
 					return nil
@@ -499,6 +478,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	})
 
 	// Producer: iterate logs and spawn workers limited by e.limiter
+producerIteration:
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
@@ -523,9 +503,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				// acquire limiter slot
 				select {
 				case <-groupCtx.Done():
-					continue // to reach group.Wait()
-				case <-e.closeChan:
-					return errors.New("shutdown has been called")
+					break producerIteration // immidiately break the producer loop and reach group.Wait()
 				case e.limiter <- struct{}{}:
 				}
 
