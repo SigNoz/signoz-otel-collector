@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -123,6 +124,31 @@ type attributeMap struct {
 	BoolData   map[string]bool
 }
 
+// Record represents a prepared log record, ready to be appended to ClickHouse batches.
+type Record struct {
+	// batch columns
+	tsBucketStart uint64
+	resourceFP    string
+	ts            uint64
+	ots           uint64
+	id            string
+	traceID       string
+	spanID        string
+	traceFlags    uint32
+	severityText  string
+	severityNum   uint8
+	body          string
+	scopeName     string
+	scopeVersion  string
+
+	// attribute/tag maps to be appended by the single consumer
+	resourceMap attributeMap
+	scopeMap    attributeMap
+	attrsMap    attributeMap
+	logFields   attributeMap
+	recordSize  int64
+}
+
 type statementSendDuration struct {
 	Name     string
 	duration time.Duration
@@ -139,6 +165,8 @@ type clickhouseLogsExporter struct {
 
 	usageCollector *usage.UsageCollector
 
+	limiter chan struct{}
+
 	wg        *sync.WaitGroup
 	closeChan chan struct{}
 
@@ -147,14 +175,11 @@ type clickhouseLogsExporter struct {
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 
-	shouldSkipKeyValue        atomic.Value // stores map[string]shouldSkipKey
-	maxDistinctValues         int
-	fetchKeysInterval         time.Duration
-	fetchShouldSkipKeysTicker *time.Ticker
-
-	// used to drop logs older than the retention period.
-	minAcceptedTs                        atomic.Value
-	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
+	shouldSkipKeyValue    atomic.Value // stores map[string]shouldSkipKey
+	maxDistinctValues     int
+	fetchKeysInterval     time.Duration
+	shutdownFuncs         []func() error
+	maxAllowedDataAgeDays uint64
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
@@ -172,6 +197,8 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		closeChan:             make(chan struct{}),
 		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
+		limiter:               make(chan struct{}, utils.Concurrency()),
+		maxAllowedDataAgeDays: 15,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -181,21 +208,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
-	e.fetchShouldSkipKeysTicker = time.NewTicker(e.fetchKeysInterval)
-	e.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
-
-	e.wg.Add(2)
-
-	go func() {
-		defer e.wg.Done()
-		e.doFetchShouldSkipKeys() // Immediate first fetch
-		e.fetchShouldSkipKeys()   // Start ticker routine
-	}()
-	go func() {
-		defer e.wg.Done()
-		e.updateMinAcceptedTs()
-		e.fetchShouldUpdateMinAcceptedTs()
-	}()
+	e.fetchShouldSkipKeys() // Start ticker routine
 	return nil
 }
 
@@ -227,25 +240,35 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 }
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-e.fetchShouldSkipKeysTicker.C:
-			e.doFetchShouldSkipKeys()
+	ticker := time.NewTicker(e.fetchKeysInterval)
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
+		ticker.Stop()
+		return nil
+	})
+
+	e.doFetchShouldSkipKeys() // Immediate first fetch
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchShouldSkipKeys()
+			}
 		}
-	}
+	}()
 }
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
-	if e.fetchShouldSkipKeysTicker != nil {
-		e.fetchShouldSkipKeysTicker.Stop()
-	}
-	if e.fetchShouldUpdateMinAcceptedTsTicker != nil {
-		e.fetchShouldUpdateMinAcceptedTsTicker.Stop()
+	for _, shutdownFuncs := range e.shutdownFuncs {
+		if err := shutdownFuncs(); err != nil {
+			return err
+		}
 	}
 	if e.usageCollector != nil {
 		// TODO: handle error
@@ -266,31 +289,6 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 		}
 	}
 	return nil
-}
-
-type DBResponseTTL struct {
-	EngineFull string `ch:"engine_full"`
-}
-
-func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("Updating min accepted ts")
-
-	var delTTL uint64 = 15
-
-	seconds := delTTL * 24 * 60 * 60
-	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
-	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
-}
-
-func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
-	for {
-		select {
-		case <-e.closeChan:
-			return
-		case <-e.fetchShouldUpdateMinAcceptedTsTicker.C:
-			e.updateMinAcceptedTs()
-		}
-	}
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -318,19 +316,16 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
-	oldestAllowedTs := uint64(0)
-	if e.minAcceptedTs.Load() != nil {
-		oldestAllowedTs = e.minAcceptedTs.Load().(uint64)
-	}
+	oldestAllowedTs := uint64(time.Now().Add(-time.Duration(e.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano())
 
-	resourcesSeen := map[int64]map[string]string{}
+	start := time.Now()
+	chLen := 5
 
 	var insertLogsStmtV2 driver.Batch
 	var insertResourcesStmtV2 driver.Batch
 	var tagStatementV2 driver.Batch
 	var attributeKeysStmt driver.Batch
 	var resourceKeysStmt driver.Batch
-	var err error
 
 	var shouldSkipKeys map[string]shouldSkipKey
 	if e.shouldSkipKeyValue.Load() != nil {
@@ -341,90 +336,162 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
 	default:
-		start := time.Now()
-		chLen := 5
+	}
 
-		tagStatementV2, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareTagBatchV2:%w", err)
-		}
-		defer tagStatementV2.Close()
+	// Prepare batches first
+	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("PrepareTagBatchV2:%w", err)
+	}
+	defer tagStatementV2.Close()
 
-		attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
-		}
-		defer attributeKeysStmt.Close()
+	attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
+	}
+	defer attributeKeysStmt.Close()
 
-		resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
-		}
-		defer resourceKeysStmt.Close()
+	resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
+	}
+	defer resourceKeysStmt.Close()
 
-		insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
-		if err != nil {
-			return fmt.Errorf("PrepareBatchV2:%w", err)
-		}
-		defer insertLogsStmtV2.Close()
+	insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("PrepareBatchV2:%w", err)
+	}
+	defer insertLogsStmtV2.Close()
 
-		metrics := map[string]usage.Metric{}
+	// resource fingerprints aggregated by consumer
+	resourcesSeen := map[int64]map[string]string{}
+	metrics := map[string]usage.Metric{}
 
-		for i := 0; i < ld.ResourceLogs().Len(); i++ {
-			logs := ld.ResourceLogs().At(i)
-			res := logs.Resource()
-			resBytes, _ := getResourceAttributesByte(res)
-			resourcesMap := attributesToMap(res.Attributes(), true)
+	// records channel and limiter
+	recordStream := make(chan *Record, cap(e.limiter))
 
-			// we are using resourcesMap.StringData here as we are want everything to be string values.
-			serializedRes, err := json.Marshal(resourcesMap.StringData)
-			if err != nil {
-				return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
-			}
-			resourceJson := string(serializedRes)
+	// ensure recordStream is closed in all scenarios (producer completes or errgroup cancels)
+	// Case 1: Producer completes successfully; consumer will not exit until channel is closed
+	//  and hence closing the channel is required to allow the consumer to exit else code will be
+	//  stuck at group.Wait() waiting forever for consumer to exit when the last batch of concurrent logs have been sent in the channel
+	// Case 2: Error occurr in either producer or consumer; both will exit with the help of groupCtx.Done()
+	//  and channel will get closed by after waiting for producerWG
+	// Case 3: Error occurred in producer loop, outside the errgroup, defer closeRecordStream() will be called
+	//  for closing the channel
+	var closeOnce sync.Once
+	closeRecordStream := func() { closeOnce.Do(func() { close(recordStream) }) }
+	defer closeRecordStream()
+	// wait for all producer goroutines to finish sending before closing channel
+	// if Channel closed before all producers finish, we will get a panic of send on closed channel
+	var producersWG sync.WaitGroup
 
-			err = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, resourcesMap, shouldSkipKeys)
-			if err != nil {
-				return err
-			}
+	// Why SetLimit(utils.Concurrency()) is not used?
+	// because we want to limit the number of producers but the Consumer is also part of same errgroup
+	group, groupCtx := errgroup.WithContext(ctx)
 
-			for j := 0; j < logs.ScopeLogs().Len(); j++ {
-				scope := logs.ScopeLogs().At(j).Scope()
-				scopeName := scope.Name()
-				scopeVersion := scope.Version()
-
-				scopeMap := attributesToMap(scope.Attributes(), true)
-
-				err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, scopeMap, shouldSkipKeys)
-				if err != nil {
+	// consumer: Append to batches and aggregate metrics
+	group.Go(func() error {
+		for {
+			select {
+			case <-groupCtx.Done(): // process cancelled by producer error
+				return nil
+			case rec, open := <-recordStream:
+				if !open {
+					return nil
+				}
+				// tags for resource/scope/attrs
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys); err != nil {
 					return err
 				}
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys); err != nil {
+					return err
+				}
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys); err != nil {
+					return err
+				}
+				// log fields
+				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys)
 
-				rs := logs.ScopeLogs().At(j).LogRecords()
-				for k := 0; k < rs.Len(); k++ {
-					r := rs.At(k)
+				// append main log row
+				if err := insertLogsStmtV2.Append(
+					rec.tsBucketStart,
+					rec.resourceFP,
+					rec.ts,
+					rec.ots,
+					rec.id,
+					rec.traceID,
+					rec.spanID,
+					rec.traceFlags,
+					rec.severityText,
+					rec.severityNum,
+					rec.body,
+					rec.attrsMap.StringData,
+					rec.attrsMap.NumberData,
+					rec.attrsMap.BoolData,
+					rec.resourceMap.StringData,
+					rec.resourceMap.StringData,
+					rec.scopeName,
+					rec.scopeVersion,
+					rec.scopeMap.StringData,
+				); err != nil {
+					return fmt.Errorf("StatementAppendLogsV2:%w", err)
+				}
 
-					// capturing the metrics
-					tenant := usage.GetTenantNameFromResource(logs.Resource())
-					attrBytes, _ := json.Marshal(r.Attributes().AsRaw())
-					usage.AddMetric(metrics, tenant, 1, int64(len([]byte(r.Body().AsString()))+len(attrBytes)+len(resBytes)))
+				// aggregate metrics
+				tenant := usage.GetTenantNameFromResource()
+				usage.AddMetric(metrics, tenant, 1, rec.recordSize)
+			}
+		}
+	})
 
-					// set observedTimestamp as the default timestamp if timestamp is empty.
-					ts := uint64(r.Timestamp())
-					ots := uint64(r.ObservedTimestamp())
+	// Producer: iterate logs and spawn workers limited by e.limiter
+producerIteration:
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		logs := ld.ResourceLogs().At(i)
+		res := logs.Resource()
+		resBytes, _ := getResourceAttributesByte(res)
+		resourcesMap := attributesToMap(res.Attributes(), true)
+		serializedRes, err := json.Marshal(resourcesMap.StringData)
+		if err != nil {
+			return fmt.Errorf("couldn't serialize log resource JSON: %w", err)
+		}
+		resourceJson := string(serializedRes)
+
+		for j := 0; j < logs.ScopeLogs().Len(); j++ {
+			scope := logs.ScopeLogs().At(j).Scope()
+			scopeName := scope.Name()
+			scopeVersion := scope.Version()
+			scopeMap := attributesToMap(scope.Attributes(), true)
+
+			records := logs.ScopeLogs().At(j).LogRecords()
+			for k := 0; k < records.Len(); k++ {
+				record := records.At(k)
+
+				// block the execution until we acquire limiter slot
+				select {
+				case <-groupCtx.Done():
+					break producerIteration // immidiately break the producer loop and reach group.Wait()
+				case e.limiter <- struct{}{}:
+				}
+
+				producersWG.Add(1)
+				group.Go(func() error {
+					defer func() { <-e.limiter; producersWG.Done() }()
+
+					// timestamps
+					ts := uint64(record.Timestamp())
+					ots := uint64(record.ObservedTimestamp())
 					if ots == 0 {
 						ots = uint64(time.Now().UnixNano())
 					}
 					if ts == 0 {
 						ts = ots
 					}
-
 					if ts < oldestAllowedTs {
 						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
-						continue
+						return nil
 					}
 
-					// generate the id from timestamp
 					id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(ts)))
 					if err != nil {
 						return fmt.Errorf("IdGenError:%w", err)
@@ -432,6 +499,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 					lBucketStart := tsBucket(int64(ts/1000000000), distributedLogsResourceV2Seconds)
 
+					// fingerprint for resourceJson
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
 						resourcesSeen[int64(lBucketStart)] = map[string]string{}
 					}
@@ -440,130 +508,124 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						fp = fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
-
-					attrsMap := attributesToMap(r.Attributes(), false)
-
-					err = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attrsMap, shouldSkipKeys)
-					if err != nil {
-						return err
-					}
+					attrsMap := attributesToMap(record.Attributes(), false)
 
 					if len(resourcesMap.StringData) > 100 {
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
 
-					err = insertLogsStmtV2.Append(
-						uint64(lBucketStart),
-						fp,
-						ts,
-						ots,
-						id.String(),
-						utils.TraceIDToHexOrEmptyString(r.TraceID()),
-						utils.SpanIDToHexOrEmptyString(r.SpanID()),
-						uint32(r.Flags()),
-						r.SeverityText(),
-						uint8(r.SeverityNumber()),
-						getStringifiedBody(r.Body()),
-						attrsMap.StringData,
-						attrsMap.NumberData,
-						attrsMap.BoolData,
-						resourcesMap.StringData,
-						resourcesMap.StringData,
-						scopeName,
-						scopeVersion,
-						scopeMap.StringData,
-					)
-					if err != nil {
-						return fmt.Errorf("StatementAppendLogsV2:%w", err)
+					body := record.Body()
+
+					// record size calculation
+					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
+
+					recordStream <- &Record{
+						tsBucketStart: uint64(lBucketStart),
+						resourceFP:    fp,
+						ts:            ts,
+						ots:           ots,
+						id:            id.String(),
+						traceID:       utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:        utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:    uint32(record.Flags()),
+						severityText:  record.SeverityText(),
+						severityNum:   uint8(record.SeverityNumber()),
+						body:          getStringifiedBody(body),
+						scopeName:     scopeName,
+						scopeVersion:  scopeVersion,
+						resourceMap:   resourcesMap,
+						scopeMap:      scopeMap,
+						attrsMap:      attrsMap,
+						logFields:     attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:    int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
-
-					// log fields
-					logFields := attributeMap{
-						StringData: map[string]string{
-							"severity_text": r.SeverityText(),
-						},
-						NumberData: map[string]float64{
-							"severity_number": float64(r.SeverityNumber()),
-						},
-					}
-					// TODO: handle error
-					_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, logFields, shouldSkipKeys)
-				}
+					return nil
+				})
 			}
 		}
+	}
 
-		insertResourcesStmtV2, err = e.db.PrepareBatch(
-			ctx,
-			e.insertLogsResourceSQL,
-			driver.WithReleaseConnection(),
-		)
-		if err != nil {
-			return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
-		}
-		defer insertResourcesStmtV2.Close()
+	// Close the record stream only after all producers finish
+	// this is async so we block on group.Wait() and catch any error from the producer/consumer
+	go func() {
+		producersWG.Wait()
+		closeRecordStream()
+	}()
 
-		for bucketTs, resources := range resourcesSeen {
-			for resourceLabels, fingerprint := range resources {
-				// if a resource fingerprint is seen in the bucket already, skip inserting it again.
-				key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
-				if e.rfCache.Get(key) != nil {
-					e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
-					continue
-				}
-				// TODO: handle error
-				_ = insertResourcesStmtV2.Append(
-					resourceLabels,
-					fingerprint,
-					bucketTs,
-				)
-				e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
-			}
-		}
-
-		var wg sync.WaitGroup
-		chErr := make(chan error, chLen)
-		chDuration := make(chan statementSendDuration, chLen)
-
-		wg.Add(chLen)
-		go send(insertLogsStmtV2, distributedLogsTableV2, chDuration, chErr, &wg)
-		go send(insertResourcesStmtV2, distributedLogsResourceV2, chDuration, chErr, &wg)
-		go send(attributeKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
-		go send(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
-		go send(tagStatementV2, distributedTagAttributesV2, chDuration, chErr, &wg)
-		wg.Wait()
-		close(chErr)
-
-		// store the duration for send the data
-		for i := 0; i < chLen; i++ {
-			sendDuration := <-chDuration
-			e.durationHistogram.Record(
-				ctx,
-				float64(sendDuration.duration.Milliseconds()),
-				metric.WithAttributes(
-					attribute.String("table", sendDuration.Name),
-					attribute.String("exporter", pipeline.SignalLogs.String()),
-				),
-			)
-		}
-
-		// check the errors
-		for i := 0; i < chLen; i++ {
-			if r := <-chErr; r != nil {
-				return fmt.Errorf("StatementSend:%w", r)
-			}
-		}
-
-		duration := time.Since(start)
-		e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
-			zap.String("cost", duration.String()))
-
-		for k, v := range metrics {
-			// TODO: handle error
-			_ = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
-		}
-
+	err = group.Wait()
+	if err != nil {
 		return err
 	}
+
+	// Prepare and append resources fingerprints
+	insertResourcesStmtV2, err = e.db.PrepareBatch(
+		ctx,
+		e.insertLogsResourceSQL,
+		driver.WithReleaseConnection(),
+	)
+	if err != nil {
+		return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
+	}
+	defer insertResourcesStmtV2.Close()
+
+	for bucketTs, resources := range resourcesSeen {
+		for resourceLabels, fingerprint := range resources {
+			key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
+			if e.rfCache.Get(key) != nil {
+				e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
+				continue
+			}
+			_ = insertResourcesStmtV2.Append(
+				resourceLabels,
+				fingerprint,
+				bucketTs,
+			)
+			e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+		}
+	}
+
+	var wg sync.WaitGroup
+	chErr := make(chan error, chLen)
+	chDuration := make(chan statementSendDuration, chLen)
+
+	wg.Add(chLen)
+	go send(insertLogsStmtV2, distributedLogsTableV2, chDuration, chErr, &wg)
+	go send(insertResourcesStmtV2, distributedLogsResourceV2, chDuration, chErr, &wg)
+	go send(attributeKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
+	go send(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
+	go send(tagStatementV2, distributedTagAttributesV2, chDuration, chErr, &wg)
+	wg.Wait()
+	close(chErr)
+
+	// store the duration for send the data
+	for i := 0; i < chLen; i++ {
+		sendDuration := <-chDuration
+		e.durationHistogram.Record(
+			ctx,
+			float64(sendDuration.duration.Milliseconds()),
+			metric.WithAttributes(
+				attribute.String("table", sendDuration.Name),
+				attribute.String("exporter", pipeline.SignalLogs.String()),
+			),
+		)
+	}
+
+	// check the errors
+	for i := 0; i < chLen; i++ {
+		if r := <-chErr; r != nil {
+			return fmt.Errorf("StatementSend:%w", r)
+		}
+	}
+
+	duration := time.Since(start)
+	e.logger.Debug("insert logs", zap.Int("records", ld.LogRecordCount()),
+		zap.String("cost", duration.String()))
+
+	for k, v := range metrics {
+		_ = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
+	}
+
+	return nil
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
@@ -664,13 +726,11 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			continue
 		}
 		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
-
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
 		}
-
 		err := tagStatementV2.Append(
 			unixMilli,
 			numKey,

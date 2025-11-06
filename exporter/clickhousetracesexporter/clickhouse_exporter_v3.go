@@ -297,7 +297,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
 	referencesBytes, _ := json.Marshal(references)
 
-	tenant := usage.GetTenantNameFromResource(resource)
+	tenant := usage.GetTenantNameFromResource()
 
 	var span *SpanV3 = &SpanV3{
 		TsBucketStart: bucketStart,
