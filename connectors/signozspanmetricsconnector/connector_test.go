@@ -163,7 +163,7 @@ func verifyConsumeMetricsInput(tb testing.TB, input pmetric.Metrics, expectedTem
 
 		ilm := rm.ScopeMetrics()
 		require.Equal(tb, 1, ilm.Len())
-		assert.Equal(tb, "spanmetricsconnector", ilm.At(0).Scope().Name())
+		assert.Equal(tb, "signozspanmetricsconnector", ilm.At(0).Scope().Name())
 
 		m := ilm.At(0).Metrics()
 		require.Equal(tb, 2, m.Len(), "only sum and histogram metric types generated")
