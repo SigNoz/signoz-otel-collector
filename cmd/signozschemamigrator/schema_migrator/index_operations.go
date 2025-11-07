@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
@@ -277,9 +278,15 @@ func JSONSubColumnIndexName(column string, index IndexType) string {
 	return fmt.Sprintf("`%s_String_%s`", column, index)
 }
 
-// TODO: Use keycheck for checking BackTicks requirement and alter the expr accordingly
 func JSONSubColumnIndexExpr(column string) string {
-	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", column)
+	parts := strings.Split(column, ".")
+	for idx, part := range parts {
+		if keycheck.IsBacktickRequired(part) {
+			part := strings.Trim(part, "`") // trim if already present
+			parts[idx] = "`" + part + "`"
+		}
+	}
+	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", strings.Join(parts, "."))
 }
 
 // Returns the subcolumn name from the index expression
