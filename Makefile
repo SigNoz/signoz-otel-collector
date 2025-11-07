@@ -3,6 +3,7 @@ REPONAME ?= signoz
 IMAGE_NAME ?= signoz-otel-collector
 MIGRATOR_IMAGE_NAME ?= signoz-schema-migrator
 CONFIG_FILE ?= ./config/default-config.yaml
+CONFIG_FILE_WITH_CONNECTOR ?= ./config/default-config-with-connector.yaml
 DOCKER_TAG ?= latest
 
 GOOS ?= $(shell go env GOOS)
@@ -51,6 +52,10 @@ build-all: amd64 arm64
 .PHONY: run
 run:
 	go run cmd/signozotelcollector/main.go --config ${CONFIG_FILE}
+
+.PHONY: run-with-connector
+run-with-connector:
+	go run cmd/signozotelcollector/main.go --config ${CONFIG_FILE_WITH_CONNECTOR}
 
 .PHONY: fmt
 fmt:
