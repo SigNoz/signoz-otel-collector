@@ -98,10 +98,6 @@ func IsJSON(v any) bool {
 	return false
 }
 
-func ToPtr[T any](v T) *T {
-	return &v
-}
-
 func Concurrency() int {
 	return int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
 }
@@ -124,4 +120,8 @@ func TrimCommonPrefixSuffix(a, b string) (string, string) {
 	bMid := b[i : len(b)-j]
 
 	return aMid, bMid
+}
+
+func ToPointer[T any](v T) *T {
+	return &v
 }

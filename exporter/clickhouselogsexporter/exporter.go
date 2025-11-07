@@ -131,7 +131,6 @@ type attributeMap struct {
 }
 
 // Record represents a prepared log record, ready to be appended to ClickHouse batches.
-// Note: no ClickHouse batch is touched outside the consumer goroutine.
 type Record struct {
 	// batch columns
 	tsBucketStart uint64
@@ -149,20 +148,12 @@ type Record struct {
 	promoted      string
 	scopeName     string
 	scopeVersion  string
-
-	// for tag statements and resource-fingerprint table
-	resourceLabelsJSON string
-
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
 	attrsMap    attributeMap
 	logFields   attributeMap
-
-	// metrics delta
-	metricsTenant string
-	metricsCount  int64
-	metricsSize   int64
+	recordSize  int64
 }
 
 type statementSendDuration struct {
@@ -191,13 +182,11 @@ type clickhouseLogsExporter struct {
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 
-	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
-	maxDistinctValues  int
-	fetchKeysInterval  time.Duration
-	shutdownFunc       []func() error
-
-	// used to drop logs older than the retention period.
-	minAcceptedTs atomic.Value
+	shouldSkipKeyValue    atomic.Value // stores map[string]shouldSkipKey
+	maxDistinctValues     int
+	fetchKeysInterval     time.Duration
+	shutdownFuncs         []func() error
+	maxAllowedDataAgeDays uint64
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
@@ -222,6 +211,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: time.Duration(cfg.PromotedPathsSyncInterval) * time.Minute,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
+		maxAllowedDataAgeDays:     15,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -232,7 +222,6 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeys() // Start ticker routine
-	e.fetchShouldUpdateMinAcceptedTs()
 	e.fetchPromotedPaths()
 	return nil
 }
@@ -266,7 +255,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	ticker := time.NewTicker(e.fetchKeysInterval)
-	e.shutdownFunc = append(e.shutdownFunc, func() error {
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 		ticker.Stop()
 		return nil
 	})
@@ -294,7 +283,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	}
 
 	ticker := time.NewTicker(e.promotedPathsSyncInterval)
-	e.shutdownFunc = append(e.shutdownFunc, func() error {
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 		ticker.Stop()
 		return nil
 	})
@@ -340,7 +329,7 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
-	for _, shutdownFunc := range e.shutdownFunc {
+	for _, shutdownFunc := range e.shutdownFuncs {
 		if err := shutdownFunc(); err != nil {
 			return err
 		}
@@ -364,42 +353,6 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 		}
 	}
 	return nil
-}
-
-type DBResponseTTL struct {
-	EngineFull string `ch:"engine_full"`
-}
-
-func (e *clickhouseLogsExporter) updateMinAcceptedTs() {
-	e.logger.Info("Updating min accepted ts")
-
-	var delTTL uint64 = 15
-
-	seconds := delTTL * 24 * 60 * 60
-	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
-	e.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
-}
-
-func (e *clickhouseLogsExporter) fetchShouldUpdateMinAcceptedTs() {
-	ticker := time.NewTicker(10 * time.Minute)
-	e.shutdownFunc = append(e.shutdownFunc, func() error {
-		ticker.Stop()
-		return nil
-	})
-
-	e.updateMinAcceptedTs()
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		for {
-			select {
-			case <-e.closeChan:
-				return
-			case <-ticker.C:
-				e.updateMinAcceptedTs()
-			}
-		}
-	}()
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -427,10 +380,7 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
-	oldestAllowedTs := uint64(0)
-	if e.minAcceptedTs.Load() != nil {
-		oldestAllowedTs = e.minAcceptedTs.Load().(uint64)
-	}
+	oldestAllowedTs := uint64(time.Now().Add(-time.Duration(e.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano())
 
 	start := time.Now()
 	chLen := 5
@@ -448,7 +398,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		shouldSkipKeys = e.shouldSkipKeyValue.Load().(map[string]shouldSkipKey)
 	}
 
-	// Run consumer in current goroutine to return error properly
+	select {
+	case <-e.closeChan:
+		return errors.New("shutdown has been called")
+	default:
+	}
+
 	// Prepare batches first
 	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
 	if err != nil {
@@ -480,13 +435,24 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 
 	// records channel and limiter
 	recordStream := make(chan *Record, cap(e.limiter))
+
 	// ensure recordStream is closed in all scenarios (producer completes or errgroup cancels)
+	// Case 1: Producer completes successfully; consumer will not exit until channel is closed
+	//  and hence closing the channel is required to allow the consumer to exit else code will be
+	//  stuck at group.Wait() waiting forever for consumer to exit when the last batch of concurrent logs have been sent in the channel
+	// Case 2: Error occurr in either producer or consumer; both will exit with the help of groupCtx.Done()
+	//  and channel will get closed by after waiting for producerWG
+	// Case 3: Error occurred in producer loop, outside the errgroup, defer closeRecordStream() will be called
+	//  for closing the channel
 	var closeOnce sync.Once
 	closeRecordStream := func() { closeOnce.Do(func() { close(recordStream) }) }
 	defer closeRecordStream()
 	// wait for all producer goroutines to finish sending before closing channel
+	// if Channel closed before all producers finish, we will get a panic of send on closed channel
 	var producersWG sync.WaitGroup
 
+	// Why SetLimit(utils.Concurrency()) is not used?
+	// because we want to limit the number of producers but the Consumer is also part of same errgroup
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
@@ -495,8 +461,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			select {
 			case <-groupCtx.Done(): // process cancelled by producer error
 				return nil
-			case <-e.closeChan:
-				return errors.New("shutdown has been called")
 			case rec, open := <-recordStream:
 				if !open {
 					return nil
@@ -541,20 +505,15 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
 				}
 
-				// aggregate RF
-				bucket := int64(rec.tsBucketStart)
-				if _, ok := resourcesSeen[bucket]; !ok {
-					resourcesSeen[bucket] = map[string]string{}
-				}
-				resourcesSeen[bucket][rec.resourceLabelsJSON] = rec.resourceFP
-
 				// aggregate metrics
-				usage.AddMetric(metrics, rec.metricsTenant, rec.metricsCount, rec.metricsSize)
+				tenant := usage.GetTenantNameFromResource()
+				usage.AddMetric(metrics, tenant, 1, rec.recordSize)
 			}
 		}
 	})
 
 	// Producer: iterate logs and spawn workers limited by e.limiter
+producerIteration:
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
@@ -576,12 +535,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 			for k := 0; k < records.Len(); k++ {
 				record := records.At(k)
 
-				// acquire limiter slot
+				// block the execution until we acquire limiter slot
 				select {
 				case <-groupCtx.Done():
-					continue // to reach group.Wait()
-				case <-e.closeChan:
-					return errors.New("shutdown has been called")
+					break producerIteration // immidiately break the producer loop and reach group.Wait()
 				case e.limiter <- struct{}{}:
 				}
 
@@ -611,8 +568,14 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					lBucketStart := tsBucket(int64(ts/1000000000), distributedLogsResourceV2Seconds)
 
 					// fingerprint for resourceJson
-					fp := fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
-
+					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
+						resourcesSeen[int64(lBucketStart)] = map[string]string{}
+					}
+					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
+					if !exists {
+						fp = fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
+						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
+					}
 					attrsMap := attributesToMap(record.Attributes(), false)
 
 					if len(resourcesMap.StringData) > 100 {
@@ -641,50 +604,39 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 						}
 					}
 
-					// metrics
-					tenant := usage.GetTenantNameFromResource(logs.Resource())
+					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
-					rec := &Record{
-						tsBucketStart:      uint64(lBucketStart),
-						resourceFP:         fp,
-						ts:                 ts,
-						ots:                ots,
-						id:                 id.String(),
-						traceID:            utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:             utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:         uint32(record.Flags()),
-						severityText:       record.SeverityText(),
-						severityNum:        uint8(record.SeverityNumber()),
-						body:               getStringifiedBody(body),
-						bodyv2:             getStringifiedBody(bodyv2),
-						promoted:           getStringifiedBody(promoted),
-						scopeName:          scopeName,
-						scopeVersion:       scopeVersion,
-						resourceLabelsJSON: resourceJson,
-						resourceMap:        resourcesMap,
-						scopeMap:           scopeMap,
-						attrsMap:           attrsMap,
-						logFields:          attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						metricsTenant:      tenant,
-						metricsCount:       1,
-						metricsSize:        int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+					recordStream <- &Record{
+						tsBucketStart: uint64(lBucketStart),
+						resourceFP:    fp,
+						ts:            ts,
+						ots:           ots,
+						id:            id.String(),
+						traceID:       utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:        utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:    uint32(record.Flags()),
+						severityText:  record.SeverityText(),
+						severityNum:   uint8(record.SeverityNumber()),
+						body:          getStringifiedBody(body),
+						bodyv2:        getStringifiedBody(bodyv2),
+						promoted:      getStringifiedBody(promoted),
+						scopeName:     scopeName,
+						scopeVersion:  scopeVersion,
+						resourceMap:   resourcesMap,
+						scopeMap:      scopeMap,
+						attrsMap:      attrsMap,
+						logFields:     attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:    int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
-
-					select {
-					case <-groupCtx.Done():
-						return nil
-					case <-e.closeChan:
-						return errors.New("shutdown has been called")
-					case recordStream <- rec:
-						return nil
-					}
+					return nil
 				})
 			}
 		}
 	}
 
 	// Close the record stream only after all producers finish
+	// this is async so we block on group.Wait() and catch any error from the producer/consumer
 	go func() {
 		producersWG.Wait()
 		closeRecordStream()

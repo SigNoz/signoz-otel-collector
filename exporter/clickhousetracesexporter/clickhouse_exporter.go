@@ -113,6 +113,8 @@ type clickhouseTracesExporter struct {
 	wg             *sync.WaitGroup
 	closeChan      chan struct{}
 	logger         *zap.Logger
+
+	maxAllowedDataAgeDays uint64
 }
 
 type storageConfig struct {
@@ -133,9 +135,10 @@ func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOpt
 		config: storageConfig{
 			lowCardinalExceptionGrouping: cfg.LowCardinalExceptionGrouping,
 		},
-		wg:        new(sync.WaitGroup),
-		closeChan: make(chan struct{}),
-		logger:    settings.Logger,
+		wg:                    new(sync.WaitGroup),
+		closeChan:             make(chan struct{}),
+		logger:                settings.Logger,
+		maxAllowedDataAgeDays: 15,
 	}
 
 	for _, opt := range exporterOpts {
