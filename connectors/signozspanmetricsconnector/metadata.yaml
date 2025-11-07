@@ -1,4 +1,4 @@
-type: spanmetrics
+type: signozspanmetrics
 
 status:
   class: connector

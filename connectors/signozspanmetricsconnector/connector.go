@@ -280,7 +280,7 @@ func (p *connectorImp) buildMetrics() pmetric.Metrics {
 		}
 
 		sm := rm.ScopeMetrics().AppendEmpty()
-		sm.Scope().SetName("spanmetricsconnector")
+		sm.Scope().SetName("signozspanmetricsconnector")
 
 		/**
 		 * To represent an uninterrupted stream of metrics as per the spec, the (StartTimestamp, Timestamp)'s of successive data points should be:
