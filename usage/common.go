@@ -10,7 +10,6 @@ import (
 
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/tag"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 const (
@@ -67,7 +66,7 @@ func AddMetric(metrics map[string]Metric, tenant string, count int64, size int64
 	}
 }
 
-func GetTenantNameFromResource(resource pcommon.Resource) string {
+func GetTenantNameFromResource() string {
 	// Note: using default now since we don't want to rely on the resource attribute of tenant
 	// TODO(Nitya): think this when otel collector needs to be multi-tenant
 	// tenant, found := resource.Attributes().Get("tenant")

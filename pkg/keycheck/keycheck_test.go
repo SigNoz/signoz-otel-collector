@@ -142,3 +142,43 @@ func Test_IsRandomKey(t *testing.T) {
 		})
 	}
 }
+
+func Test_IsCardinal(t *testing.T) {
+	tests := []struct {
+		key        string
+		isCardinal bool
+	}{
+		{
+			key:        "value-test",
+			isCardinal: false,
+		},
+		{
+			key:        "value@test",
+			isCardinal: false,
+		},
+		{
+			key:        "value:test",
+			isCardinal: false,
+		},
+		{
+			key:        "value_test",
+			isCardinal: false,
+		},
+		{
+			key:        "value1",
+			isCardinal: true,
+		},
+		{
+			key:        "value`",
+			isCardinal: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			if got := IsCardinal(tt.key); got != tt.isCardinal {
+				t.Errorf("IsCardinal() = %v, want %v", got, tt.isCardinal)
+			}
+		})
+	}
+}

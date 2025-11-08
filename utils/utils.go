@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	encodingjson "encoding/json"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -95,4 +96,12 @@ func IsJSON(v any) bool {
 	}
 
 	return false
+}
+
+func Concurrency() int {
+	return int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
+}
+
+func ToPointer[T any](v T) *T {
+	return &v
 }
