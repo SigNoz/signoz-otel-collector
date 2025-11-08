@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
+	chutils "github.com/SigNoz/signoz-otel-collector/pkg/clickhouse"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats"
@@ -72,6 +74,10 @@ type clickhouseMetricsExporter struct {
 	exporterID     uuid.UUID
 
 	closeChan chan struct{}
+
+	minAcceptedTs                        atomic.Value
+	fetchShouldUpdateMinAcceptedTsTicker *time.Ticker
+	ttlParser                            *chutils.TTLParser
 }
 
 // sample represents a single metric sample
@@ -259,6 +265,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		}
 	}
 	chExporter.closeChan = make(chan struct{})
+	chExporter.ttlParser = chutils.NewTTLParser(chExporter.logger)
 
 	return chExporter, nil
 }
@@ -266,12 +273,25 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
 	go c.cache.Start()
 	c.cacheRunning = true
+
+	c.fetchShouldUpdateMinAcceptedTsTicker = time.NewTicker(10 * time.Minute)
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.updateMinAcceptedTs()
+		c.fetchShouldUpdateMinAcceptedTs()
+	}()
+
 	return nil
 }
 
 func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	if c.cacheRunning {
 		c.cache.Stop()
+	}
+	if c.fetchShouldUpdateMinAcceptedTsTicker != nil {
+		c.fetchShouldUpdateMinAcceptedTsTicker.Stop()
 	}
 	if c.usageCollector != nil {
 		err := c.usageCollector.Stop()
@@ -282,6 +302,37 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	close(c.closeChan)
 	c.wg.Wait()
 	return c.conn.Close()
+}
+
+func (c *clickhouseMetricsExporter) updateMinAcceptedTs() {
+	c.logger.Info("Updating min accepted ts")
+
+	delTTL := c.ttlParser.GetTableTTLDays(context.Background(), c.conn, c.cfg.Database, c.cfg.SamplesTable)
+
+	if delTTL == 0 {
+		// no ttl for whatever reason, we won't filter any data
+		// if it was because of error we would rather want no filter than make false
+		// assumption
+		c.logger.Info("no TTL for table, no filtering")
+		c.minAcceptedTs.Store(uint64(0))
+		return
+	}
+
+	seconds := delTTL * 24 * 60 * 60
+	acceptedDateTime := time.Now().Add(-time.Duration(seconds) * time.Second)
+	c.minAcceptedTs.Store(uint64(acceptedDateTime.UnixNano()))
+	c.logger.Info("added min accepted ts", zap.Uint64("ttl_days", delTTL), zap.Time("min_accepted_time", acceptedDateTime))
+}
+
+func (c *clickhouseMetricsExporter) fetchShouldUpdateMinAcceptedTs() {
+	for {
+		select {
+		case <-c.closeChan:
+			return
+		case <-c.fetchShouldUpdateMinAcceptedTsTicker.C:
+			c.updateMinAcceptedTs()
+		}
+	}
 }
 
 // processGauge processes gauge metrics
@@ -315,6 +366,17 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			continue
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					continue
+				}
+			}
+		}
 
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
@@ -379,6 +441,18 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			continue
 		}
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					continue
+				}
+			}
+		}
+
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
@@ -426,6 +500,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		sampleTyp := typ
 		sampleTemporality := temporality
 		var value float64
@@ -480,6 +566,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 	addBucketSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		var cumulativeCount uint64
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		pointAttrs := dp.Attributes()
 
 		for i := 0; i < dp.ExplicitBounds().Len() && i < dp.BucketCounts().Len(); i++ {
@@ -611,6 +709,18 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	addSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		sampleTyp := typ
 		var value float64
 		switch suffix {
@@ -655,6 +765,18 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		for i := 0; i < dp.QuantileValues().Len(); i++ {
 			quantile := dp.QuantileValues().At(i)
 			quantileStr := strconv.FormatFloat(quantile.Quantile(), 'f', -1, 64)
@@ -756,6 +878,18 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	addSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		sampleTyp := typ
 		sampleTemporality := temporality
 		var value float64
@@ -822,6 +956,18 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	addDDSketchSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+
+		if c.minAcceptedTs.Load() != nil {
+			minAcceptedNs := c.minAcceptedTs.Load().(uint64)
+			if minAcceptedNs > 0 {
+				oldestAllowedTs := int64(minAcceptedNs / 1e6)
+				if unixMilli < oldestAllowedTs {
+					c.logger.Debug("skipping old metric data point", zap.String("metric", name), zap.Int64("ts", unixMilli), zap.Int64("oldestAllowedTs", oldestAllowedTs))
+					return
+				}
+			}
+		}
+
 		positive := toStore(dp.Positive())
 		negative := toStore(dp.Negative())
 		gamma := math.Pow(2, math.Pow(2, float64(-dp.Scale())))
@@ -964,7 +1110,19 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 	case <-c.closeChan:
 		return errors.New("shutdown has been called")
 	default:
-		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+		err := c.writeBatch(ctx, c.prepareBatch(ctx, md))
+		if err != nil {
+			// we try to remove metrics older than the retention period
+			// but if we get too many partitions for single INSERT block, we will drop the data
+			// Check if this is a ClickHouse exception with error code 252 (TOO_MANY_PARTS)
+			var chErr *clickhouse.Exception
+			if errors.As(err, &chErr) && chErr.Code == 252 {
+				c.logger.Warn("too many partitions for single INSERT block, dropping the batch")
+				return nil
+			}
+			return err
+		}
+		return nil
 	}
 }
 

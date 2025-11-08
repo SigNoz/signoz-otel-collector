@@ -272,6 +272,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
+	github.com/AfterShip/clickhouse-sql-parser v0.4.13 // indirect
 	github.com/AthenZ/athenz v1.12.13 // indirect
 	github.com/Azure/azure-amqp-common-go/v4 v4.2.0 // indirect
 	github.com/Azure/azure-event-hubs-go/v3 v3.6.2 // indirect
