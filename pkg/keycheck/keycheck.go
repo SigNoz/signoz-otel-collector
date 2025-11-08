@@ -138,7 +138,7 @@ func isULID(s string) bool {
 
 	// Check if it's base32 (A-Z, 0-9, excluding I, L, O, U)
 	for _, char := range s {
-		if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
+		if (char < 'A' || char > 'Z') && (char < '0' || char > '9') {
 			return false
 		}
 		// Exclude I, L, O, U

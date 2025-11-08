@@ -145,7 +145,7 @@ func fromJSONDot(s string) ([]string, error) {
 			tokenStart = i
 			state = InUnbracketedToken
 		case InBracket:
-			if !(c == '\'' || c == '"') {
+			if c != '\'' && c != '"' {
 				return nil, fmt.Errorf("strings in brackets must be surrounded by quotes")
 			}
 			state = InQuote

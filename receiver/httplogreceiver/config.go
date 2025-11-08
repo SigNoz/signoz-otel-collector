@@ -24,12 +24,12 @@ type Config struct {
 
 // Validate verifies that the endpoint is valid and the configured port is not 0
 func (rCfg *Config) Validate() error {
-	if rCfg.ServerConfig.Endpoint == "" {
+	if rCfg.Endpoint == "" {
 		return errors.New("must specify an endpoint for the httplogreceiver")
 	}
 
 	// validate port
-	_, portStr, err := net.SplitHostPort(rCfg.ServerConfig.Endpoint)
+	_, portStr, err := net.SplitHostPort(rCfg.Endpoint)
 	if err != nil {
 		return fmt.Errorf("endpoint is not formatted correctly: %w", err)
 	}

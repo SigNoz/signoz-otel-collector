@@ -123,7 +123,7 @@ func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error 
 	}
 
 	// set up the listener
-	ln, err := r.config.ServerConfig.ToListener(ctx)
+	ln, err := r.config.ToListener(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to bind to address %s: %w", r.config.Endpoint, err)
 	}
