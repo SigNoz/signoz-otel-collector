@@ -152,7 +152,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for index table: %w", err)
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	for _, span := range batchSpans {
 
@@ -229,7 +229,7 @@ func (w *SpanWriter) writeErrorBatchV3(ctx context.Context, batchSpans []*SpanV3
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for error table: %w", err)
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	for _, span := range batchSpans {
 		for _, errorEvent := range span.ErrorEvents {
