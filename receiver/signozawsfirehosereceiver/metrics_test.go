@@ -128,7 +128,7 @@ func TestMetricsReceiverWithError(t *testing.T) {
 
 	cfg := createDefaultConfig().(*Config)
 	cfg.RecordType = "test"
-	cfg.ServerConfig.Endpoint = "localhost:0"
+	cfg.Endpoint = "localhost:0"
 
 	receiver, err := newMetricsReceiver(
 		cfg,
