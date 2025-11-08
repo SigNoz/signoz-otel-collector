@@ -100,5 +100,5 @@ func Test_shutdown(t *testing.T) {
 	if err != nil {
 		log.Fatalf("an error '%s' was not expected when shutting down exporter", err)
 	}
-	defaultConn.Close()
+	_ = defaultConn.Close()
 }

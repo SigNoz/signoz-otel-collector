@@ -173,7 +173,7 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 	if err != nil {
 		return err
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	for _, sample := range batch.samples {
 		roundedUnixMilli := sample.unixMilli / 3600000 * 3600000

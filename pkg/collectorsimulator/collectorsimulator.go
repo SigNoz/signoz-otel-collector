@@ -69,7 +69,7 @@ func NewCollectorSimulator(
 	}
 	collectorLogsOutputFilePath := logsOutputFile.Name()
 	cleanupFn = func() {
-		os.Remove(collectorLogsOutputFilePath)
+		_ = os.Remove(collectorLogsOutputFilePath)
 	}
 	err = logsOutputFile.Close()
 	if err != nil {
@@ -94,8 +94,8 @@ func NewCollectorSimulator(
 	}
 	simulationConfigPath := simulationConfigFile.Name()
 	cleanupFn = func() {
-		os.Remove(collectorLogsOutputFilePath)
-		os.Remove(simulationConfigPath)
+		_ = os.Remove(collectorLogsOutputFilePath)
+		_ = os.Remove(simulationConfigPath)
 	}
 
 	_, err = simulationConfigFile.Write(collectorConfYaml)

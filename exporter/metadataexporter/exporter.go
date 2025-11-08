@@ -320,7 +320,7 @@ func (e *metadataExporter) updateTagValueCountFromDB(ctx context.Context, p *upd
 		p.logger.Error("failed to query tag value counts", zap.String("signal", p.signalName), zap.Error(err))
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	newMap := make(map[string]tagValueCountFromDB)
 	for rows.Next() {
@@ -671,7 +671,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 		return nil
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	totalSpans := 0
 	records := make([]writeToStatementBatchRecord, 0)
@@ -743,7 +743,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 		return nil
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	totalDps := 0
 	records := make([]writeToStatementBatchRecord, 0)
@@ -841,7 +841,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	totalLogRecords := 0
 	records := make([]writeToStatementBatchRecord, 0)

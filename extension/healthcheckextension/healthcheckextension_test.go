@@ -178,7 +178,7 @@ func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 	// to accept an address.
 	ln, err := net.Listen("tcp", endpoint)
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
