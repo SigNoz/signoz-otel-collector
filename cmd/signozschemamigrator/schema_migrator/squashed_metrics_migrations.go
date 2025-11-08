@@ -263,9 +263,6 @@ var (
 						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
-					Indexes: []Index{
-						{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
-					},
 					Engine: ReplacingMergeTree{
 						MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
@@ -335,9 +332,6 @@ var (
 						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Indexes: []Index{
-						{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
 					},
 					Engine: ReplacingMergeTree{
 						MergeTree{
@@ -409,9 +403,6 @@ var (
 						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
-					Indexes: []Index{
-						{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
-					},
 					Engine: ReplacingMergeTree{
 						MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
@@ -481,9 +472,6 @@ var (
 						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Indexes: []Index{
-						{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
 					},
 					Engine: ReplacingMergeTree{
 						MergeTree{
@@ -1102,9 +1090,6 @@ GROUP BY
 						{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
-					},
-					Indexes: []Index{
-						{Name: "idx_labels", Expression: "labels", Type: "ngrambf_v1(4, 1024, 3, 0)", Granularity: 1},
 					},
 					Engine: ReplacingMergeTree{
 						MergeTree: MergeTree{
