@@ -17,10 +17,281 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+const (
+	stringAttrName         = "stringAttrName"
+	intAttrName            = "intAttrName"
+	doubleAttrName         = "doubleAttrName"
+	boolAttrName           = "boolAttrName"
+	nullAttrName           = "nullAttrName"
+	mapAttrName            = "mapAttrName"
+	arrayAttrName          = "arrayAttrName"
+	notInSpanAttrName0     = "shouldBeInMetric"
+	notInSpanAttrName1     = "shouldNotBeInMetric"
+	regionResourceAttrName = "region"
+	conflictResourceAttr   = "host.name"
+	DimensionsCacheSize    = 2
+
+	sampleRegion          = "us-east-1"
+	sampleConflictingHost = "conflicting-host"
+	sampleLatency         = float64(11)
+	sampleLatencyDuration = time.Duration(sampleLatency) * time.Millisecond
+)
+
+var (
+	testID = "test-instance-id"
+)
+
+type metricID struct {
+	service    string
+	operation  string
+	kind       string
+	statusCode string
+}
+
+type metricDataPoint interface {
+	Attributes() pcommon.Map
+}
+
+type serviceSpans struct {
+	serviceName string
+	spans       []span
+}
+
+type span struct {
+	operation  string
+	kind       ptrace.SpanKind
+	statusCode ptrace.StatusCode
+}
+
+// buildSampleTrace builds the following trace:
+//
+//	service-a/ping (server) ->
+//	  service-a/ping (client) ->
+//	    service-b/ping (server)
+func buildSampleTrace() ptrace.Traces {
+	traces := ptrace.NewTraces()
+
+	initServiceSpans(
+		serviceSpans{
+			serviceName: "service-a",
+			spans: []span{
+				{
+					operation:  "/ping",
+					kind:       ptrace.SpanKindServer,
+					statusCode: ptrace.StatusCodeOk,
+				},
+				{
+					operation:  "/ping",
+					kind:       ptrace.SpanKindClient,
+					statusCode: ptrace.StatusCodeOk,
+				},
+			},
+		}, traces.ResourceSpans().AppendEmpty())
+	initServiceSpans(
+		serviceSpans{
+			serviceName: "service-b",
+			spans: []span{
+				{
+					operation:  "/ping",
+					kind:       ptrace.SpanKindServer,
+					statusCode: ptrace.StatusCodeError,
+				},
+			},
+		}, traces.ResourceSpans().AppendEmpty())
+	initServiceSpans(serviceSpans{}, traces.ResourceSpans().AppendEmpty())
+	return traces
+}
+
+func buildBadSampleTrace() ptrace.Traces {
+	badTrace := buildSampleTrace()
+	span := badTrace.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0)
+	now := time.Now()
+	span.SetEndTimestamp(pcommon.NewTimestampFromTime(now))
+	span.SetStartTimestamp(pcommon.NewTimestampFromTime(now.Add(sampleLatencyDuration)))
+	return badTrace
+}
+
+func verifyConsumeMetricsInputCumulative(t testing.TB, input pmetric.Metrics) bool {
+	return verifyConsumeMetricsInput(t, input, pmetric.AggregationTemporalityCumulative, 1)
+}
+
+func verifyBadMetricsOkay(t testing.TB, input pmetric.Metrics) bool {
+	return true
+}
+
+func verifyConsumeMetricsInputDelta(t testing.TB, input pmetric.Metrics) bool {
+	return verifyConsumeMetricsInput(t, input, pmetric.AggregationTemporalityDelta, 1)
+}
+
+func verifyMultipleCumulativeConsumptions() func(t testing.TB, input pmetric.Metrics) bool {
+	numCumulativeConsumptions := 0
+	return func(t testing.TB, input pmetric.Metrics) bool {
+		numCumulativeConsumptions++
+		return verifyConsumeMetricsInput(t, input, pmetric.AggregationTemporalityCumulative, numCumulativeConsumptions)
+	}
+}
+
+func verifyConsumeMetricsInput(
+	t testing.TB,
+	input pmetric.Metrics,
+	expectedTemporality pmetric.AggregationTemporality,
+	numCumulativeConsumptions int,
+) bool {
+	t.Helper()
+	require.Contains(t, []int{6, 7}, input.DataPointCount(),
+		"Should be 3 for each of call count and latency. Each group of 3 data points is made of: "+
+			"service-a (server kind) -> service-a (client kind) -> service-b (service kind)",
+	)
+
+	rm := input.ResourceMetrics()
+	require.Equal(t, 1, rm.Len())
+
+	ilm := rm.At(0).ScopeMetrics()
+	require.Equal(t, 1, ilm.Len())
+	assert.Equal(t, "signozspanmetricsprocessor", ilm.At(0).Scope().Name())
+
+	m := ilm.At(0).Metrics()
+	require.True(t, m.Len() == 6 || m.Len() == 7, "unexpected number of metrics: %d", m.Len())
+
+	seenMetricIDs := make(map[metricID]bool)
+	assert.Equal(t, "signoz_calls_total", m.At(0).Name())
+	assert.Equal(t, expectedTemporality, m.At(0).Sum().AggregationTemporality())
+	assert.True(t, m.At(0).Sum().IsMonotonic())
+	callsDps := m.At(0).Sum().DataPoints()
+	require.Equal(t, 3, callsDps.Len())
+	for dpi := 0; dpi < callsDps.Len(); dpi++ {
+		dp := callsDps.At(dpi)
+		assert.Equal(t, int64(numCumulativeConsumptions), dp.IntValue())
+		assert.NotZero(t, dp.StartTimestamp(), "StartTimestamp should be set")
+		assert.NotZero(t, dp.Timestamp(), "Timestamp should be set")
+		verifyMetricLabels(dp, t, seenMetricIDs)
+	}
+
+	seenMetricIDs = make(map[metricID]bool)
+	assert.Equal(t, "signoz_latency", m.At(1).Name())
+	assert.Equal(t, "ms", m.At(1).Unit())
+	assert.Equal(t, expectedTemporality, m.At(1).Histogram().AggregationTemporality())
+	latencyDps := m.At(1).Histogram().DataPoints()
+	require.Equal(t, 3, latencyDps.Len())
+	for dpi := 0; dpi < latencyDps.Len(); dpi++ {
+		dp := latencyDps.At(dpi)
+		assert.Equal(t, sampleLatency*float64(numCumulativeConsumptions), dp.Sum())
+		assert.NotZero(t, dp.Timestamp(), "Timestamp should be set")
+		assert.Equal(t, dp.ExplicitBounds().Len()+1, dp.BucketCounts().Len())
+
+		var foundLatencyIndex int
+		for foundLatencyIndex = 0; foundLatencyIndex < dp.ExplicitBounds().Len(); foundLatencyIndex++ {
+			if dp.ExplicitBounds().At(foundLatencyIndex) > sampleLatency {
+				break
+			}
+		}
+
+		var wantBucketCount uint64
+		for bi := 0; bi < dp.BucketCounts().Len(); bi++ {
+			wantBucketCount = 0
+			if bi == foundLatencyIndex {
+				wantBucketCount = uint64(numCumulativeConsumptions)
+			}
+			assert.Equal(t, wantBucketCount, dp.BucketCounts().At(bi))
+		}
+		verifyMetricLabels(dp, t, seenMetricIDs)
+	}
+
+	assert.Equal(t, "signoz_external_call_latency_sum", m.At(2).Name())
+	assert.Equal(t, "signoz_external_call_latency_count", m.At(3).Name())
+	assert.Equal(t, "signoz_db_latency_sum", m.At(4).Name())
+	assert.Equal(t, "signoz_db_latency_count", m.At(5).Name())
+	if m.Len() == 7 {
+		assert.Equal(t, "signoz_latency", m.At(6).Name())
+		assert.Equal(t, pmetric.MetricTypeExponentialHistogram, m.At(6).Type())
+	}
+
+	return true
+}
+
+func verifyMetricLabels(dp metricDataPoint, t testing.TB, seenMetricIDs map[metricID]bool) {
+	mID := metricID{}
+	wantDimensions := map[string]pcommon.Value{
+		conflictResourceAttr:                    pcommon.NewValueStr(sampleConflictingHost),
+		resourcePrefix + conflictResourceAttr:   pcommon.NewValueStr(sampleConflictingHost),
+		stringAttrName:                          pcommon.NewValueStr("stringAttrValue"),
+		intAttrName:                             pcommon.NewValueInt(99),
+		doubleAttrName:                          pcommon.NewValueDouble(99.99),
+		boolAttrName:                            pcommon.NewValueBool(true),
+		nullAttrName:                            pcommon.NewValueEmpty(),
+		arrayAttrName:                           pcommon.NewValueSlice(),
+		mapAttrName:                             pcommon.NewValueMap(),
+		notInSpanAttrName0:                      pcommon.NewValueStr("defaultNotInSpanAttrVal"),
+		regionResourceAttrName:                  pcommon.NewValueStr(sampleRegion),
+		resourcePrefix + regionResourceAttrName: pcommon.NewValueStr(sampleRegion),
+	}
+
+	dp.Attributes().Range(func(k string, v pcommon.Value) bool {
+		switch k {
+		case serviceNameKey:
+			mID.service = v.Str()
+		case operationKey:
+			mID.operation = v.Str()
+		case spanKindKey:
+			mID.kind = v.Str()
+		case statusCodeKey:
+			mID.statusCode = v.Str()
+		case "http.status_code":
+			assert.Equal(t, "200", v.Str())
+		case notInSpanAttrName1:
+			assert.Fail(t, notInSpanAttrName1+" should not be in this metric")
+		default:
+			assert.Equal(t, wantDimensions[k], v)
+			delete(wantDimensions, k)
+		}
+		return true
+	})
+	assert.Empty(t, wantDimensions, "Did not see all expected dimensions in metric. Missing: ", wantDimensions)
+
+	assert.False(t, seenMetricIDs[mID])
+	seenMetricIDs[mID] = true
+}
+
+func initServiceSpans(serviceSpans serviceSpans, spans ptrace.ResourceSpans) {
+	if serviceSpans.serviceName != "" {
+		spans.Resource().Attributes().PutStr(conventions.AttributeServiceName, serviceSpans.serviceName)
+	}
+
+	spans.Resource().Attributes().PutStr(regionResourceAttrName, sampleRegion)
+	spans.Resource().Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
+
+	ils := spans.ScopeSpans().AppendEmpty()
+	for _, span := range serviceSpans.spans {
+		initSpan(span, ils.Spans().AppendEmpty())
+	}
+}
+
+func initSpan(span span, s ptrace.Span) {
+	s.SetName(span.operation)
+	s.SetKind(span.kind)
+	s.Status().SetCode(span.statusCode)
+	now := time.Now()
+	s.SetStartTimestamp(pcommon.NewTimestampFromTime(now))
+	s.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(sampleLatencyDuration)))
+
+	s.Attributes().PutStr(stringAttrName, "stringAttrValue")
+	s.Attributes().PutStr(conflictResourceAttr, sampleConflictingHost)
+	s.Attributes().PutStr("http.response.status_code", "200")
+	s.Attributes().PutInt(intAttrName, 99)
+	s.Attributes().PutDouble(doubleAttrName, 99.99)
+	s.Attributes().PutBool(boolAttrName, true)
+	s.Attributes().PutEmpty(nullAttrName)
+	s.Attributes().PutEmptyMap(mapAttrName)
+	s.Attributes().PutEmptySlice(arrayAttrName)
+	s.SetTraceID(pcommon.TraceID([16]byte{byte(42)}))
+	s.SetSpanID(pcommon.SpanID([8]byte{byte(42)}))
+}
 
 const (
 	defaultNullValue        = "defaultNullValue"
