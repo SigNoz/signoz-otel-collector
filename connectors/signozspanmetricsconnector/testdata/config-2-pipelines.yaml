@@ -1,0 +1,35 @@
+# Minimal two-pipeline setup using the signozspanmetrics connector.
+
+receivers:
+  jaeger:
+    protocols:
+      thrift_http:
+        endpoint: "0.0.0.0:14278"
+
+processors:
+  batch:
+
+connectors:
+  signozspanmetrics:
+    dimensions_cache_size: 500
+    metrics_flush_interval: 30s
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+
+exporters:
+  otlp:
+    endpoint: "localhost:4317"
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [jaeger]
+      processors: [batch]
+      exporters: [signozspanmetrics, otlp]
+    metrics:
+      receivers: [signozspanmetrics]
+      exporters: [prometheus]
+

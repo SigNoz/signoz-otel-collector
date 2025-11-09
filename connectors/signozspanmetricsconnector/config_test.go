@@ -1,445 +1,221 @@
 package signozspanmetricsconnector
 
 import (
-	"errors"
-	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozspanmetricsconnector/internal/metadata"
-	"github.com/SigNoz/signoz-otel-collector/connectors/signozspanmetricsconnector/internal/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/configoptional"
-	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
-	"go.opentelemetry.io/collector/featuregate"
+	"go.opentelemetry.io/collector/exporter/otlpexporter"
+	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/processor/batchprocessor"
+	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver"
 )
 
 func TestLoadConfig(t *testing.T) {
-	t.Parallel()
-
-	require.NoError(t, featuregate.GlobalRegistry().Set(useSecondAsDefaultMetricsUnit.ID(), true))
-	t.Logf("Config path: %s", filepath.Join("testdata", "config.yaml"))
-	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
-	t.Logf("Config cm: %+v", *cm)
-	require.NoError(t, err)
-
-	defaultMethod := http.MethodGet
-	customTimestampCacheSize := 123
-	tests := []struct {
-		name            string
-		id              component.ID
-		expected        component.Config
-		errorMessage    string
-		extraAssertions func(config *Config)
+	defaultMethod := "GET"
+	testcases := []struct {
+		configFile                         string
+		wantMetricsExporter                string
+		wantLatencyHistogramBuckets        []time.Duration
+		wantDimensions                     []Dimension
+		wantDimensionsCacheSize            int
+		wantAggregationTemporality         string
+		wantMetricsFlushInterval           time.Duration
+		wantMaxServicesToTrack             int
+		wantMaxOperationsToTrackPerService int
+		wantExcludePatterns                []ExcludePattern
+		wantTimeBucketInterval             time.Duration
+		wantEnableExpHistogram             bool
+		wantSkipSpansOlderThan             time.Duration
 	}{
 		{
-			name:     "default",
-			id:       component.NewIDWithName(metadata.Type, "default"),
-			expected: createDefaultConfig(),
+			configFile:                         "config-2-pipelines.yaml",
+			wantMetricsExporter:                "prometheus",
+			wantAggregationTemporality:         cumulative,
+			wantDimensionsCacheSize:            500,
+			wantMetricsFlushInterval:           30 * time.Second,
+			wantMaxServicesToTrack:             256,
+			wantMaxOperationsToTrackPerService: 2048,
 		},
 		{
-			name:     "default_explicit_histogram",
-			id:       component.NewIDWithName(metadata.Type, "default_explicit_histogram"),
-			expected: createDefaultConfig(),
+			configFile:                         "config-3-pipelines.yaml",
+			wantMetricsExporter:                "otlp/spanmetrics",
+			wantAggregationTemporality:         cumulative,
+			wantDimensionsCacheSize:            defaultDimensionsCacheSize,
+			wantMetricsFlushInterval:           60 * time.Second,
+			wantMaxServicesToTrack:             256,
+			wantMaxOperationsToTrackPerService: 2048,
 		},
 		{
-			name: "full",
-			id:   component.NewIDWithName(metadata.Type, "full"),
-			expected: &Config{
-				AggregationTemporality: delta,
-				Dimensions: []Dimension{
-					{Name: "http.method", Default: &defaultMethod},
-					{Name: "http.status_code", Default: (*string)(nil)},
-				},
-				Namespace:                DefaultNamespace,
-				ResourceMetricsCacheSize: 1600,
-				MetricsFlushInterval:     30 * time.Second,
-				Exemplars: ExemplarsConfig{
-					Enabled:         true,
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Histogram: HistogramConfig{
-					Unit: metrics.Seconds,
-					Explicit: configoptional.Some(ExplicitHistogramConfig{
-						Buckets: []time.Duration{
-							10 * time.Millisecond,
-							100 * time.Millisecond,
-							250 * time.Millisecond,
-						},
-					}),
-				},
+			configFile:          "config-full.yaml",
+			wantMetricsExporter: "otlp/spanmetrics",
+			wantLatencyHistogramBuckets: []time.Duration{
+				100 * time.Microsecond,
+				1 * time.Millisecond,
+				2 * time.Millisecond,
+				6 * time.Millisecond,
+				10 * time.Millisecond,
+				100 * time.Millisecond,
+				250 * time.Millisecond,
 			},
-		},
-		{
-			name: "exponential_histogram",
-			id:   component.NewIDWithName(metadata.Type, "exponential_histogram"),
-			expected: &Config{
-				Namespace:                DefaultNamespace,
-				AggregationTemporality:   cumulative,
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Exemplars: ExemplarsConfig{
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Histogram: HistogramConfig{
-					Unit: metrics.Seconds,
-					Exponential: configoptional.Some(ExponentialHistogramConfig{
-						MaxSize: 10,
-					}),
-				},
+			wantDimensions: []Dimension{
+				{"http.method", &defaultMethod},
+				{"http.status_code", nil},
 			},
-		},
-		{
-			name:         "exponential_and_explicit_histogram",
-			id:           component.NewIDWithName(metadata.Type, "exponential_and_explicit_histogram"),
-			errorMessage: "use either `explicit` or `exponential` buckets histogram",
-		},
-		{
-			name:         "invalid_histogram_unit",
-			id:           component.NewIDWithName(metadata.Type, "invalid_histogram_unit"),
-			errorMessage: "unknown Unit \"h\"",
-		},
-		{
-			name:         "invalid_metrics_expiration",
-			id:           component.NewIDWithName(metadata.Type, "invalid_metrics_expiration"),
-			errorMessage: "the duration should be positive",
-		},
-		{
-			name: "exemplars_enabled",
-			id:   component.NewIDWithName(metadata.Type, "exemplars_enabled"),
-			expected: &Config{
-				AggregationTemporality:   "AGGREGATION_TEMPORALITY_CUMULATIVE",
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Histogram:                HistogramConfig{Disable: false, Unit: defaultUnit},
-				Exemplars:                ExemplarsConfig{Enabled: true, MaxPerDataPoint: defaultMaxPerDatapoint},
-				Namespace:                DefaultNamespace,
+			wantDimensionsCacheSize:            1500,
+			wantAggregationTemporality:         delta,
+			wantMetricsFlushInterval:           60 * time.Second,
+			wantMaxServicesToTrack:             512,
+			wantMaxOperationsToTrackPerService: 69420,
+			wantExcludePatterns: []ExcludePattern{
+				{Name: "operation", Pattern: "^/internal/"},
 			},
-		},
-		{
-			name: "exemplars_enabled_with_max_per_datapoint",
-			id:   component.NewIDWithName(metadata.Type, "exemplars_enabled_with_max_per_datapoint"),
-			expected: &Config{
-				AggregationTemporality:   "AGGREGATION_TEMPORALITY_CUMULATIVE",
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Histogram:                HistogramConfig{Disable: false, Unit: defaultUnit},
-				Exemplars:                ExemplarsConfig{Enabled: true, MaxPerDataPoint: 10},
-				Namespace:                DefaultNamespace,
-			},
-		},
-		{
-			name: "resource_metrics_key_attributes",
-			id:   component.NewIDWithName(metadata.Type, "resource_metrics_key_attributes"),
-			expected: &Config{
-				AggregationTemporality:       "AGGREGATION_TEMPORALITY_CUMULATIVE",
-				ResourceMetricsCacheSize:     defaultResourceMetricsCacheSize,
-				ResourceMetricsKeyAttributes: []string{"service.name", "telemetry.sdk.language", "telemetry.sdk.name"},
-				MetricsFlushInterval:         60 * time.Second,
-				Exemplars: ExemplarsConfig{
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Histogram: HistogramConfig{Disable: false, Unit: defaultUnit},
-				Namespace: DefaultNamespace,
-			},
-		},
-		{
-			name: "custom_delta_timestamp_cache_size",
-			id:   component.NewIDWithName(metadata.Type, "custom_delta_timestamp_cache_size"),
-			expected: &Config{
-				AggregationTemporality:   "AGGREGATION_TEMPORALITY_DELTA",
-				TimestampCacheSize:       &customTimestampCacheSize,
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Exemplars: ExemplarsConfig{
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Histogram: HistogramConfig{Disable: false, Unit: defaultUnit},
-				Namespace: DefaultNamespace,
-			},
-		},
-		{
-			name: "default_delta_timestamp_cache_size",
-			id:   component.NewIDWithName(metadata.Type, "default_delta_timestamp_cache_size"),
-			expected: &Config{
-				AggregationTemporality:   "AGGREGATION_TEMPORALITY_DELTA",
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Exemplars: ExemplarsConfig{
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Histogram: HistogramConfig{Disable: false, Unit: defaultUnit},
-				Namespace: DefaultNamespace,
-			},
-			extraAssertions: func(config *Config) {
-				assert.Equal(t, defaultDeltaTimestampCacheSize, config.GetDeltaTimestampCacheSize())
-			},
-		},
-		{
-			name:         "invalid_delta_timestamp_cache_size",
-			id:           component.NewIDWithName(metadata.Type, "invalid_delta_timestamp_cache_size"),
-			errorMessage: "invalid delta timestamp cache size: 0, the maximum number of the items in the cache should be positive",
-		},
-		{
-			name: "separate_calls_and_duration_dimensions",
-			id:   component.NewIDWithName(metadata.Type, "separate_calls_and_duration_dimensions"),
-			expected: &Config{
-				AggregationTemporality: "AGGREGATION_TEMPORALITY_CUMULATIVE",
-				Histogram:              HistogramConfig{Disable: false, Unit: defaultUnit, Dimensions: []Dimension{{Name: "http.status_code", Default: (*string)(nil)}}},
-				Dimensions: []Dimension{
-					{Name: "http.method", Default: &defaultMethod},
-				},
-				CallsDimensions: []Dimension{
-					{Name: "http.url", Default: (*string)(nil)},
-				},
-				ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-				MetricsFlushInterval:     60 * time.Second,
-				Exemplars: ExemplarsConfig{
-					MaxPerDataPoint: defaultMaxPerDatapoint,
-				},
-				Namespace: DefaultNamespace,
-			},
+			wantTimeBucketInterval: 30 * time.Second,
+			wantEnableExpHistogram: true,
+			wantSkipSpansOlderThan: 24 * time.Hour,
 		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			factory := NewFactory()
-			cfg := factory.CreateDefaultConfig()
-
-			if tt.name == "default_explicit_histogram" {
-				// TODO(nikhilmantri0902): remove once we upgrade Collector deps. Our current
-				// go.opentelemetry.io/collector/config/configoptional (v0.128.0) marks an empty
-				// `explicit:` block as HasValue=true, unlike upstream’s newer version. We adjust
-				// the expectation here to keep the test passing until we bump dependencies.
-				expectedCfg := tt.expected.(*Config)
-				expectedCfg.Histogram.Explicit = configoptional.Some(ExplicitHistogramConfig{})
-			}
-
-			sub, err := cm.Sub(tt.id.String())
+	for _, tc := range testcases {
+		t.Run(tc.configFile, func(t *testing.T) {
+			// Prepare
+			factories, err := otelcoltest.NopFactories()
 			require.NoError(t, err)
-			err = sub.Unmarshal(cfg)
 
-			if tt.expected == nil {
-				err = errors.Join(err, xconfmap.Validate(cfg))
-				assert.ErrorContains(t, err, tt.errorMessage)
-				return
-			}
-			assert.NoError(t, xconfmap.Validate(cfg))
-			assert.Equal(t, tt.expected, cfg)
-			if tt.extraAssertions != nil {
-				tt.extraAssertions(cfg.(*Config))
-			}
+			factories.Receivers[component.MustNewType("otlp")] = otlpreceiver.NewFactory()
+			factories.Receivers[component.MustNewType("jaeger")] = jaegerreceiver.NewFactory()
+
+			factories.Connectors[metadata.Type] = NewFactory()
+			factories.Processors[component.MustNewType("batch")] = batchprocessor.NewFactory()
+
+			factories.Exporters[component.MustNewType("otlp")] = otlpexporter.NewFactory()
+			factories.Exporters[component.MustNewType("prometheus")] = prometheusexporter.NewFactory()
+
+			// Test
+			cfg, err := otelcoltest.LoadConfigAndValidate(filepath.Join("testdata", tc.configFile), factories)
+
+			// Verify
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			assert.Equal(t,
+				&Config{
+					LatencyHistogramBuckets:        tc.wantLatencyHistogramBuckets,
+					Dimensions:                     tc.wantDimensions,
+					DimensionsCacheSize:            tc.wantDimensionsCacheSize,
+					ExcludePatterns:                tc.wantExcludePatterns,
+					AggregationTemporality:         tc.wantAggregationTemporality,
+					MetricsFlushInterval:           tc.wantMetricsFlushInterval,
+					TimeBucketInterval:             tc.wantTimeBucketInterval,
+					EnableExpHistogram:             tc.wantEnableExpHistogram,
+					MaxServicesToTrack:             tc.wantMaxServicesToTrack,
+					MaxOperationsToTrackPerService: tc.wantMaxOperationsToTrackPerService,
+					SkipSpansOlderThan:             tc.wantSkipSpansOlderThan,
+				},
+				cfg.Connectors[component.NewID(metadata.Type)],
+			)
 		})
 	}
 }
 
 func TestGetAggregationTemporality(t *testing.T) {
-	cfg := &Config{AggregationTemporality: delta}
-	assert.Equal(t, pmetric.AggregationTemporalityDelta, cfg.GetAggregationTemporality())
-
-	cfg = &Config{AggregationTemporality: cumulative}
-	assert.Equal(t, pmetric.AggregationTemporalityCumulative, cfg.GetAggregationTemporality())
-
-	cfg = &Config{}
-	assert.Equal(t, pmetric.AggregationTemporalityCumulative, cfg.GetAggregationTemporality())
-}
-
-func TestValidateDimensions(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		dimensions  []Dimension
-		expectedErr string
-	}{
-		{
-			name:       "no additional dimensions",
-			dimensions: []Dimension{},
-		},
-		{
-			name: "no duplicate dimensions",
-			dimensions: []Dimension{
-				{Name: "http.service_name"},
-				{Name: "http.status_code"},
-			},
-		},
-		{
-			name: "duplicate dimension with reserved labels",
-			dimensions: []Dimension{
-				{Name: "service.name"},
-			},
-			expectedErr: "duplicate dimension name service.name",
-		},
-		{
-			name: "duplicate additional dimensions",
-			dimensions: []Dimension{
-				{Name: "service_name"},
-				{Name: "service_name"},
-			},
-			expectedErr: "duplicate dimension name service_name",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateDimensions(tc.dimensions)
-			if tc.expectedErr != "" {
-				assert.EqualError(t, err, tc.expectedErr)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestValidateEventDimensions(t *testing.T) {
-	for _, tc := range []struct {
-		enabled     bool
-		name        string
-		dimensions  []Dimension
-		expectedErr string
-	}{
-		{
-			enabled:    false,
-			name:       "disabled - no additional dimensions",
-			dimensions: []Dimension{},
-		},
-		{
-			enabled:     true,
-			name:        "enabled - no additional dimensions",
-			dimensions:  []Dimension{},
-			expectedErr: "no dimensions configured for events",
-		},
-		{
-			enabled:    true,
-			name:       "enabled - no duplicate dimensions",
-			dimensions: []Dimension{{Name: "exception_type"}},
-		},
-		{
-			enabled: true,
-			name:    "enabled - duplicate dimensions",
-			dimensions: []Dimension{
-				{Name: "exception_type"},
-				{Name: "exception_type"},
-			},
-			expectedErr: "duplicate dimension name exception_type",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateEventDimensions(tc.enabled, tc.dimensions)
-			if tc.expectedErr != "" {
-				assert.EqualError(t, err, tc.expectedErr)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestConfigValidate(t *testing.T) {
 	tests := []struct {
-		name        string
-		config      Config
-		expectedErr string
+		name       string
+		config     Config
+		wantResult pmetric.AggregationTemporality
 	}{
 		{
-			name: "valid config",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				Histogram: HistogramConfig{
-					Explicit: configoptional.Some(ExplicitHistogramConfig{
-						Buckets: []time.Duration{10 * time.Millisecond},
-					}),
-				},
-			},
+			name:       "delta temporality",
+			config:     Config{AggregationTemporality: delta},
+			wantResult: pmetric.AggregationTemporalityDelta,
 		},
 		{
-			name: "invalid metrics flush interval",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     -1 * time.Second,
-			},
-			expectedErr: "invalid metrics_flush_interval: -1s, the duration should be positive",
+			name:       "cumulative temporality",
+			config:     Config{AggregationTemporality: cumulative},
+			wantResult: pmetric.AggregationTemporalityCumulative,
 		},
 		{
-			name: "invalid metrics expiration",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				MetricsExpiration:        -1 * time.Second,
-			},
-			expectedErr: "invalid metrics_expiration: -1s, the duration should be positive",
-		},
-		{
-			name: "invalid delta timestamp cache size",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				AggregationTemporality:   delta,
-				TimestampCacheSize:       new(int), // zero value
-			},
-			expectedErr: "invalid delta timestamp cache size: 0, the maximum number of the items in the cache should be positive",
-		},
-		{
-			name: "invalid aggregation cardinality limit",
-			config: Config{
-				ResourceMetricsCacheSize:    1000,
-				MetricsFlushInterval:        60 * time.Second,
-				AggregationCardinalityLimit: -1,
-			},
-			expectedErr: "invalid aggregation_cardinality_limit: -1, the limit should be positive",
-		},
-		{
-			name: "both explicit and exponential histogram",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				Histogram: HistogramConfig{
-					Explicit: configoptional.Some(ExplicitHistogramConfig{
-						Buckets: []time.Duration{10 * time.Millisecond},
-					}),
-					Exponential: configoptional.Some(ExponentialHistogramConfig{
-						MaxSize: 10,
-					}),
-				},
-			},
-			expectedErr: "use either `explicit` or `exponential` buckets histogram",
-		},
-		{
-			name: "duplicate dimension name",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				Dimensions: []Dimension{
-					{Name: "service.name"},
-				},
-			},
-			expectedErr: "failed validating dimensions: duplicate dimension name service.name",
-		},
-		{
-			name: "events enabled with no dimensions",
-			config: Config{
-				ResourceMetricsCacheSize: 1000,
-				MetricsFlushInterval:     60 * time.Second,
-				Events: EventsConfig{
-					Enabled: true,
-				},
-			},
-			expectedErr: "failed validating event dimensions: no dimensions configured for events",
+			name:       "default temporality",
+			config:     Config{},
+			wantResult: pmetric.AggregationTemporalityCumulative,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
-			if tt.expectedErr != "" {
-				assert.ErrorContains(t, err, tt.expectedErr)
-			} else {
-				assert.NoError(t, err)
-			}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.config.GetAggregationTemporality()
+			assert.Equal(t, tc.wantResult, got)
+		})
+	}
+}
+
+func TestGetTimeBucketInterval(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     Config
+		wantResult time.Duration
+	}{
+		{
+			name:       "default time bucket",
+			config:     Config{},
+			wantResult: defaultTimeBucketInterval,
+		},
+		{
+			name:       "custom time bucket",
+			config:     Config{TimeBucketInterval: 30 * time.Second},
+			wantResult: 30 * time.Second,
+		},
+		{
+			name:       "another custom bucket",
+			config:     Config{TimeBucketInterval: 2 * time.Minute},
+			wantResult: 2 * time.Minute,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.config.GetTimeBucketInterval()
+			assert.Equal(t, tc.wantResult, got)
+		})
+	}
+}
+
+func TestGetSkipSpansOlderThan(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     Config
+		wantResult time.Duration
+	}{
+		{
+			name:       "default skip window",
+			config:     Config{},
+			wantResult: defaultSkipSpansOlderThan,
+		},
+		{
+			name:       "custom skip window",
+			config:     Config{SkipSpansOlderThan: 12 * time.Hour},
+			wantResult: 12 * time.Hour,
+		},
+		{
+			name:       "zero value falls back to default",
+			config:     Config{SkipSpansOlderThan: 0},
+			wantResult: defaultSkipSpansOlderThan,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.config.GetSkipSpansOlderThan()
+			assert.Equal(t, tc.wantResult, got)
 		})
 	}
 }

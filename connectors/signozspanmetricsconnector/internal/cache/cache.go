@@ -43,6 +43,11 @@ func (c *Cache[K, V]) RemoveEvictedItems() {
 	}
 }
 
+// Contains checks if a key is present in the cache.
+func (c *Cache[K, V]) Contains(key K) bool {
+	return c.lru.Contains(key)
+}
+
 // Add a value to the cache, returns true if an eviction occurred and updates the "recently used"-ness of the key.
 func (c *Cache[K, V]) Add(key K, value V) bool {
 	return c.lru.Add(key, value)

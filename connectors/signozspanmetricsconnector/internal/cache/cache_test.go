@@ -7,7 +7,43 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestCacheContains(t *testing.T) {
+	testCases := []struct {
+		name      string
+		setupKeys []string
+		checkKey  string
+		want      bool
+	}{
+		{
+			name:      "key_present",
+			setupKeys: []string{"key1", "key2"},
+			checkKey:  "key1",
+			want:      true,
+		},
+		{
+			name:      "key_absent",
+			setupKeys: []string{"key1", "key2"},
+			checkKey:  "missing",
+			want:      false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache, err := NewCache[string, int](5)
+			require.NoError(t, err)
+
+			for idx, key := range tc.setupKeys {
+				cache.Add(key, idx)
+			}
+
+			require.Equal(t, tc.want, cache.Contains(tc.checkKey))
+		})
+	}
+}
 
 func TestNewCache(t *testing.T) {
 	type args struct {

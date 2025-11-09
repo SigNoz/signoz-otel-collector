@@ -5,13 +5,11 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozspanmetricsconnector/internal/metadata"
-	"github.com/SigNoz/signoz-otel-collector/connectors/signozspanmetricsconnector/internal/metrics"
 	"github.com/google/uuid"
 	"github.com/jonboulle/clockwork"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/featuregate"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -22,41 +20,6 @@ const (
 	useSecondAsDefaultMetricsUnitFeatureGateID = "connector.spanmetrics.useSecondAsDefaultMetricsUnit"
 	excludeResourceMetricsFeatureGate          = "connector.spanmetrics.excludeResourceMetrics"
 )
-
-var (
-	legacyMetricNamesFeatureGate  *featuregate.Gate
-	includeCollectorInstanceID    *featuregate.Gate
-	useSecondAsDefaultMetricsUnit *featuregate.Gate
-	excludeResourceMetrics        *featuregate.Gate
-)
-
-func init() {
-	// TODO: Remove this feature gate when the legacy metric names are removed.
-	legacyMetricNamesFeatureGate = featuregate.GlobalRegistry().MustRegister(
-		legacyMetricNamesFeatureGateID,
-		featuregate.StageAlpha, // Alpha because we want it disabled by default.
-		featuregate.WithRegisterDescription("When enabled, connector uses legacy metric names."),
-		featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/33227"),
-	)
-	includeCollectorInstanceID = featuregate.GlobalRegistry().MustRegister(
-		includeCollectorInstanceIDFeatureGateID,
-		featuregate.StageAlpha,
-		featuregate.WithRegisterDescription("When enabled, connector add collector.instance.id to default dimensions."),
-		featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/40400"),
-	)
-	useSecondAsDefaultMetricsUnit = featuregate.GlobalRegistry().MustRegister(
-		useSecondAsDefaultMetricsUnitFeatureGateID,
-		featuregate.StageAlpha,
-		featuregate.WithRegisterDescription("When enabled, connector use second as default unit for duration metrics."),
-		featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/42462"),
-	)
-	excludeResourceMetrics = featuregate.GlobalRegistry().MustRegister(
-		excludeResourceMetricsFeatureGate,
-		featuregate.StageAlpha,
-		featuregate.WithRegisterDescription("When enabled, connector will exclude all resource attributes."),
-		featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/42103"),
-	)
-}
 
 // NewFactory creates a factory for the spanmetrics connector.
 func NewFactory() connector.Factory {
@@ -69,25 +32,18 @@ func NewFactory() connector.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		AggregationTemporality:   "AGGREGATION_TEMPORALITY_CUMULATIVE",
-		ResourceMetricsCacheSize: defaultResourceMetricsCacheSize,
-		MetricsFlushInterval:     60 * time.Second,
-		Histogram: HistogramConfig{Disable: false, Unit: func() metrics.Unit {
-			if useSecondAsDefaultMetricsUnit.IsEnabled() {
-				return metrics.Seconds
-			}
-
-			return metrics.Milliseconds
-		}()},
-		Namespace:                   DefaultNamespace,
-		AggregationCardinalityLimit: 0,
-		Exemplars: ExemplarsConfig{
-			MaxPerDataPoint: defaultMaxPerDatapoint,
-		},
+		AggregationTemporality:         cumulative,
+		DimensionsCacheSize:            defaultDimensionsCacheSize,
+		skipSanitizeLabel:              dropSanitizationFeatureGate.IsEnabled(),
+		EnableExpHistogram:             false,
+		MetricsFlushInterval:           60 * time.Second,
+		MaxServicesToTrack:             maxNumberOfServicesToTrack,
+		MaxOperationsToTrackPerService: maxNumberOfOperationsToTrackPerService,
 	}
 }
 
 func createTracesToMetricsConnector(ctx context.Context, params connector.Settings, cfg component.Config, nextConsumer consumer.Metrics) (connector.Traces, error) {
+	// TODO(nikhilmantri0902, srikanthccv): the processor uses serviceInstanceKey below, verify if using collector.instance.id is okay?
 	instanceID, ok := params.Resource.Attributes().Get(collectorInstanceKey)
 	// This never happens: the OpenTelemetry Collector automatically adds this attribute.
 	// See: https://github.com/open-telemetry/opentelemetry-collector/blob/main/service/internal/resource/config.go#L31

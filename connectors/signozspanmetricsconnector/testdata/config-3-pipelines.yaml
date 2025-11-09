@@ -1,0 +1,40 @@
+# Three-pipeline example: traces pipeline feeds connector; intermediate metrics pipeline forwards to final metrics pipeline.
+
+receivers:
+  jaeger:
+    protocols:
+      thrift_http:
+        endpoint: "0.0.0.0:14278"
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "localhost:55677"
+
+processors:
+  batch:
+
+connectors:
+  signozspanmetrics:
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+
+exporters:
+  otlp:
+    endpoint: "localhost:4317"
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [jaeger]
+      processors: [batch]
+      exporters: [signozspanmetrics, otlp]
+    metrics/spanmetrics:
+      receivers: [signozspanmetrics]
+      exporters: [otlp]
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+
