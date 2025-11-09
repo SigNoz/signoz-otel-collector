@@ -193,3 +193,108 @@ func TestGetResourceAttributesByte(t *testing.T) {
 		})
 	}
 }
+
+// setupTestExporterWithConcurrency creates a new exporter with mock ClickHouse client and custom concurrency for testing
+func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrency int) *clickhouseLogsExporter {
+	opts := testOptions()
+	opts = append(opts, WithClickHouseClient(mock))
+	opts = append(opts, WithConcurrency(concurrency))
+	id := uuid.New()
+	opts = append(opts, WithNewUsageCollector(id, mock))
+
+	exporter, err := newExporter(
+		exporter.Settings{},
+		&Config{
+			DSN: "clickhouse://localhost:9000/test",
+			AttributesLimits: AttributesLimits{
+				FetchKeysInterval: 2 * time.Second,
+				MaxDistinctValues: 25000,
+			},
+		},
+		opts...,
+	)
+
+	if err != nil {
+		t.Fatalf("failed to create exporter: %v", err)
+	}
+
+	return exporter
+}
+
+func TestExporterConcurrency(t *testing.T) {
+	tests := []struct {
+		name        string
+		logCount    int
+		concurrency int
+	}{
+		{
+			name:        "1_log",
+			logCount:    1,
+			concurrency: 3,
+		},
+		{
+			name:        "7_logs",
+			logCount:    7,
+			concurrency: 3,
+		},
+		{
+			name:        "10k_logs",
+			logCount:    10000,
+			concurrency: 3,
+		},
+		{
+			name:        "2234_logs",
+			logCount:    2234,
+			concurrency: 3,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+			if err != nil {
+				log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+			}
+
+			// expect prepare batch for 5 tables
+			tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+			attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+			resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+			logsStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+			logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+
+			tagStatementV2.ExpectAppend()
+			tagStatementV2.ExpectSend()
+			attributeKeysStmt.ExpectAppend()
+			attributeKeysStmt.ExpectSend()
+			resourceKeysStmt.ExpectAppend()
+			resourceKeysStmt.ExpectSend()
+			// Expect appends for logs matching the log count
+			for i := 0; i < tc.logCount; i++ {
+				logsStatementV2.ExpectAppend()
+			}
+			logsStatementV2.ExpectSend()
+			logsResourceStatementV2.ExpectAppend()
+			logsResourceStatementV2.ExpectSend()
+
+			mock.ExpectClose()
+
+			exporter := setupTestExporterWithConcurrency(t, mock, tc.concurrency)
+			logs := plogsgen.Generate(plogsgen.WithLogRecordCount(tc.logCount))
+			expectedCount := int64(logs.LogRecordCount())
+
+			err = exporter.pushLogsData(context.Background(), logs)
+			require.NoError(t, err)
+
+			err = exporter.Shutdown(context.Background())
+			assert.Nil(t, err)
+
+			eventually(t, func() bool {
+				return mock.ExpectationsWereMet() == nil
+			})
+
+			// Verify the count by checking the input logs match what was processed
+			assert.Equal(t, int64(tc.logCount), expectedCount, "Expected %d logs in input", tc.logCount)
+		})
+	}
+}
