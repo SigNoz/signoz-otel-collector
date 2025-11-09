@@ -624,15 +624,15 @@ producerIteration:
 	}
 	defer insertResourcesStmtV2.Close()
 
-	err = resourcesSeen.rangeAll(func(bucketTs int64, resourceKey, fingerprintVal string) error {
-		key := utils.MakeKeyForRFCache(bucketTs, fingerprintVal)
+	err = resourcesSeen.rangeAll(func(bucketTs int64, resourceLables, fingerprint string) error {
+		key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
 		if e.rfCache.Get(key) != nil {
 			e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
 			return nil
 		}
 		if err := insertResourcesStmtV2.Append(
-			resourceKey,
-			fingerprintVal,
+			resourceLables,
+			fingerprint,
 			bucketTs,
 		); err != nil {
 			return err
