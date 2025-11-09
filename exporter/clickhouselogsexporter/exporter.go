@@ -154,6 +154,56 @@ type statementSendDuration struct {
 	duration time.Duration
 }
 
+// resourcesSeenMap is a thread-safe map for storing resource fingerprints by bucket timestamp.
+// Uses nested sync.Map for lock-free concurrent access: outer map keyed by bucket (int64),
+// inner map keyed by resource JSON (string) with fingerprint (string) as value.
+type resourcesSeenMap struct {
+	buckets sync.Map // map[int64]*sync.Map[string, string]
+}
+
+// newResourcesSeenMap creates a new thread-safe resourcesSeenMap.
+func newResourcesSeenMap() *resourcesSeenMap {
+	return &resourcesSeenMap{}
+}
+
+// getOrCreateFingerprint returns the fingerprint for the given bucket and resource JSON.
+// If it doesn't exist, it creates and stores a new fingerprint.
+// Uses nested sync.Map for lock-free concurrent access to different buckets.
+func (r *resourcesSeenMap) getOrCreateFingerprint(bucket int64, resourceJSON string, createFn func() string) string {
+	// Get or create the inner map for this bucket
+	bucketVal, _ := r.buckets.LoadOrStore(bucket, &sync.Map{})
+	innerMap := bucketVal.(*sync.Map)
+
+	// check if fingerprint already exists
+	if fpVal, exists := innerMap.Load(resourceJSON); exists {
+		return fpVal.(string)
+	}
+
+	//  need to create fingerprint
+	// Use LoadOrStore to handle race condition where another goroutine might create it
+	fp := createFn()
+	actualVal, _ := innerMap.LoadOrStore(resourceJSON, fp)
+	return actualVal.(string)
+}
+
+// rangeAll iterates over all entries in the map, calling fn for each bucket and its resources.
+func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resources map[string]string)) {
+	r.buckets.Range(func(key, value interface{}) bool {
+		bucketTs := key.(int64)
+		innerMap := value.(*sync.Map)
+
+		// Collect all resources from the inner map
+		resources := make(map[string]string)
+		innerMap.Range(func(resourceKey, fingerprintVal interface{}) bool {
+			resources[resourceKey.(string)] = fingerprintVal.(string)
+			return true
+		})
+
+		fn(bucketTs, resources)
+		return true
+	})
+}
+
 type clickhouseLogsExporter struct {
 	id                    uuid.UUID
 	db                    clickhouse.Conn
@@ -364,7 +414,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	defer insertLogsStmtV2.Close()
 
 	// resource fingerprints aggregated by consumer
-	resourcesSeen := map[int64]map[string]string{}
+	resourcesSeen := newResourcesSeenMap()
 	metrics := map[string]usage.Metric{}
 
 	// records channel and limiter
@@ -500,14 +550,13 @@ producerIteration:
 					lBucketStart := tsBucket(int64(ts/1000000000), distributedLogsResourceV2Seconds)
 
 					// fingerprint for resourceJson
-					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {
-						resourcesSeen[int64(lBucketStart)] = map[string]string{}
-					}
-					fp, exists := resourcesSeen[int64(lBucketStart)][resourceJson]
-					if !exists {
-						fp = fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
-						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
-					}
+					fp := resourcesSeen.getOrCreateFingerprint(
+						int64(lBucketStart),
+						resourceJson,
+						func() string {
+							return fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
+						},
+					)
 					attrsMap := attributesToMap(record.Attributes(), false)
 
 					if len(resourcesMap.StringData) > 100 {
@@ -568,7 +617,7 @@ producerIteration:
 	}
 	defer insertResourcesStmtV2.Close()
 
-	for bucketTs, resources := range resourcesSeen {
+	resourcesSeen.rangeAll(func(bucketTs int64, resources map[string]string) {
 		for resourceLabels, fingerprint := range resources {
 			key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
 			if e.rfCache.Get(key) != nil {
@@ -582,7 +631,7 @@ producerIteration:
 			)
 			e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 		}
-	}
+	})
 
 	var wg sync.WaitGroup
 	chErr := make(chan error, chLen)
