@@ -186,22 +186,29 @@ func (r *resourcesSeenMap) getOrCreateFingerprint(bucket int64, resourceJSON str
 	return actualVal.(string)
 }
 
-// rangeAll iterates over all entries in the map, calling fn for each bucket and its resources.
-func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resources map[string]string)) {
+// rangeAll iterates over all entries in the map, calling fn for each resourceKey and fingerprintVal.
+// Errors are handled immediately and iteration stops on first error.
+func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerprintVal string) error) error {
+	var err error
 	r.buckets.Range(func(key, value interface{}) bool {
+		if err != nil {
+			return false
+		}
 		bucketTs := key.(int64)
 		innerMap := value.(*sync.Map)
 
-		// Collect all resources from the inner map
-		resources := make(map[string]string)
 		innerMap.Range(func(resourceKey, fingerprintVal interface{}) bool {
-			resources[resourceKey.(string)] = fingerprintVal.(string)
+			if err != nil {
+				return false
+			}
+			if err = fn(bucketTs, resourceKey.(string), fingerprintVal.(string)); err != nil {
+				return false
+			}
 			return true
 		})
-
-		fn(bucketTs, resources)
 		return true
 	})
+	return err
 }
 
 type clickhouseLogsExporter struct {
@@ -617,21 +624,25 @@ producerIteration:
 	}
 	defer insertResourcesStmtV2.Close()
 
-	resourcesSeen.rangeAll(func(bucketTs int64, resources map[string]string) {
-		for resourceLabels, fingerprint := range resources {
-			key := utils.MakeKeyForRFCache(bucketTs, fingerprint)
-			if e.rfCache.Get(key) != nil {
-				e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
-				continue
-			}
-			_ = insertResourcesStmtV2.Append(
-				resourceLabels,
-				fingerprint,
-				bucketTs,
-			)
-			e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+	err = resourcesSeen.rangeAll(func(bucketTs int64, resourceKey, fingerprintVal string) error {
+		key := utils.MakeKeyForRFCache(bucketTs, fingerprintVal)
+		if e.rfCache.Get(key) != nil {
+			e.logger.Debug("resource fingerprint already present in cache, skipping", zap.String("key", key))
+			return nil
 		}
+		if err := insertResourcesStmtV2.Append(
+			resourceKey,
+			fingerprintVal,
+			bucketTs,
+		); err != nil {
+			return err
+		}
+		e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("error appending resources to batch: %w", err)
+	}
 
 	var wg sync.WaitGroup
 	chErr := make(chan error, chLen)
