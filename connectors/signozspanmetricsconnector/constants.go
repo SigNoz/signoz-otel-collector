@@ -23,14 +23,13 @@ const (
 const (
 	serviceNameKey = conventions.AttributeServiceName
 	// TODO(nikhilmantri0902): rename to span.name
-	operationKey                   = "operation"                          // OpenTelemetry non-standard constant.
-	spanKindKey                    = "span.kind"                          // OpenTelemetry non-standard constant.
-	statusCodeKey                  = "status.code"                        // OpenTelemetry non-standard constant.
-	collectorInstanceKey           = "collector.instance.id"              // OpenTelemetry non-standard constant.
-	instrumentationScopeNameKey    = "span.instrumentation.scope.name"    // OpenTelemetry non-standard constant.
-	instrumentationScopeVersionKey = "span.instrumentation.scope.version" // OpenTelemetry non-standard constant.
-	metricKeySeparator             = string(byte(0))
-	signozID                       = "signoz.collector.id"
+	operationKey         = "operation"             // OpenTelemetry non-standard constant.
+	spanKindKey          = "span.kind"             // OpenTelemetry non-standard constant.
+	statusCodeKey        = "status.code"           // OpenTelemetry non-standard constant.
+	collectorInstanceKey = "collector.instance.id" // OpenTelemetry non-standard constant.
+	signozID             = "signoz.collector.id"
+
+	metricKeySeparator = string(byte(0))
 
 	tagHTTPStatusCode       = conventions.AttributeHTTPStatusCode
 	tagHTTPStatusCodeStable = "http.response.status_code"
