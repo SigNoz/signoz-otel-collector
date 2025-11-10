@@ -281,7 +281,6 @@ func TestExporterConcurrency(t *testing.T) {
 
 			exporter := setupTestExporterWithConcurrency(t, mock, tc.concurrency)
 			logs := plogsgen.Generate(plogsgen.WithLogRecordCount(tc.logCount))
-			expectedCount := int64(logs.LogRecordCount())
 
 			err = exporter.pushLogsData(context.Background(), logs)
 			require.NoError(t, err)
@@ -292,9 +291,6 @@ func TestExporterConcurrency(t *testing.T) {
 			eventually(t, func() bool {
 				return mock.ExpectationsWereMet() == nil
 			})
-
-			// Verify the count by checking the input logs match what was processed
-			assert.Equal(t, int64(tc.logCount), expectedCount, "Expected %d logs in input", tc.logCount)
 		})
 	}
 }

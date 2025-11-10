@@ -191,6 +191,7 @@ func (r *resourcesSeenMap) getOrCreateFingerprint(bucket int64, resourceJSON str
 func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerprintVal string) error) error {
 	var err error
 	r.buckets.Range(func(key, value interface{}) bool {
+		// to break the iteration
 		if err != nil {
 			return false
 		}
@@ -206,9 +207,6 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 		}
 
 		innerMap.Range(func(resourceKey, fingerprintVal interface{}) bool {
-			if err != nil {
-				return false
-			}
 			resourceLabels, yes := resourceKey.(string)
 			if !yes {
 				err = fmt.Errorf("expected resourceLables to be string, found %T", resourceKey)
