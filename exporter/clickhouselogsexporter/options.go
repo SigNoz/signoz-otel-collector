@@ -69,3 +69,9 @@ func WithRFCache(rfCache *ttlcache.Cache[string, struct{}]) LogExporterOption {
 		e.rfCache = rfCache
 	}
 }
+
+func WithConcurrency(concurrency int) LogExporterOption {
+	return func(e *clickhouseLogsExporter) {
+		e.limiter = make(chan struct{}, concurrency)
+	}
+}

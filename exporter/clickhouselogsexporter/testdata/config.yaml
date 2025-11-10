@@ -10,6 +10,7 @@ exporters:
   clickhouselogsexporter/full:
     dsn: tcp://127.0.0.1:9000/?dial_timeout=5s
     timeout: 5s
+    log_level_concurrency: 7
     retry_on_failure:
       enabled: true
       initial_interval: 5s
