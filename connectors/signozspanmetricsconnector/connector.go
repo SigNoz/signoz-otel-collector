@@ -590,6 +590,7 @@ func (p *connectorImp) logCardinalityInfo() {
 // and span metadata such as name, kind, status_code and any additional
 // dimensions the user has configured.
 func (p *connectorImp) aggregateMetrics(traces ptrace.Traces) {
+	p.logger.Info("running connector aggregateMetrics")
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rspans := traces.ResourceSpans().At(i)
 		resourceAttrOrig := rspans.Resource().Attributes()
