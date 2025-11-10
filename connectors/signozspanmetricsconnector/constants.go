@@ -16,7 +16,7 @@ const (
 	defaultDimensionsCacheSize             = 1000
 	defaultSkipSpansOlderThan              = 24 * time.Hour
 	defaultTimeBucketInterval              = time.Minute
-	dropSanitizationGateID                 = "processor.signozspanmetrics.PermissiveLabelSanitization"
+	dropSanitizationGateID                 = "connector.signozspanmetrics.PermissiveLabelSanitization"
 )
 
 // connector implementation constants

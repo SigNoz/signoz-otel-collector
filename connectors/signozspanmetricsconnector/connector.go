@@ -592,11 +592,13 @@ func (p *connectorImp) logCardinalityInfo() {
 func (p *connectorImp) aggregateMetrics(traces ptrace.Traces) {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rspans := traces.ResourceSpans().At(i)
-		resourceAttr := rspans.Resource().Attributes()
-		serviceAttr, ok := resourceAttr.Get(serviceNameKey)
+		resourceAttrOrig := rspans.Resource().Attributes()
+		serviceAttr, ok := resourceAttrOrig.Get(serviceNameKey)
 		if !ok {
 			continue
 		}
+		resourceAttr := pcommon.NewMap()
+		resourceAttrOrig.CopyTo(resourceAttr)
 		resourceAttr.PutStr(signozID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()

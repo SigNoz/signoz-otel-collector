@@ -27,17 +27,20 @@ processors:
 
 connectors:
   signozspanmetrics/delta:
-    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
     metrics_flush_interval: 60s
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s ]
+    dimensions_cache_size: 100000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    enable_exp_histogram: true
     skip_spans_older_than: 24h
-    histogram:
-      explicit:
-        buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
     dimensions:
       - name: service.namespace
         default: default
       - name: deployment.environment
         default: default
+      # This is added to ensure the uniqueness of the timeseries
+      # Otherwise, identical timeseries produced by multiple replicas of
+      # collectors result in incorrect APM metrics
       - name: signoz.collector.id
       - name: service.version
       - name: browser.platform
