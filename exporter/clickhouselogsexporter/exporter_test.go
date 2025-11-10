@@ -197,10 +197,8 @@ func TestGetResourceAttributesByte(t *testing.T) {
 // setupTestExporterWithConcurrency creates a new exporter with mock ClickHouse client and custom concurrency for testing
 func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrency int) *clickhouseLogsExporter {
 	opts := testOptions()
-	opts = append(opts, WithClickHouseClient(mock))
-	opts = append(opts, WithConcurrency(concurrency))
 	id := uuid.New()
-	opts = append(opts, WithNewUsageCollector(id, mock))
+	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock), WithConcurrency(concurrency))
 
 	exporter, err := newExporter(
 		exporter.Settings{},
@@ -219,6 +217,15 @@ func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrenc
 	}
 
 	return exporter
+}
+
+func TestConcurrencyCapacity(t *testing.T) {
+	exporter := setupTestExporterWithConcurrency(t, nil, 7)
+	assert.Equal(t, 7, cap(exporter.limiter))
+
+	eventually(t, func() bool {
+		return exporter.Shutdown(context.Background()) == nil
+	})
 }
 
 func TestExporterConcurrency(t *testing.T) {

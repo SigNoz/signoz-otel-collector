@@ -18,6 +18,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
@@ -36,8 +37,9 @@ type Config struct {
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).
-	DSN          string `mapstructure:"dsn"`
-	UseNewSchema bool   `mapstructure:"use_new_schema"`
+	DSN                 string `mapstructure:"dsn"`
+	UseNewSchema        bool   `mapstructure:"use_new_schema"`
+	LogLevelConcurrency *int   `mapstructure:"log_level_concurrency"`
 
 	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
 }
@@ -51,5 +53,12 @@ func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
+	if cfg.LogLevelConcurrency == nil {
+		cfg.LogLevelConcurrency = utils.ToPointer(utils.Concurrency())
+	}
+	if *cfg.LogLevelConcurrency < 1 {
+		err = multierr.Append(err, errors.New("concurrency must be greater than 0"))
+	}
+
 	return err
 }

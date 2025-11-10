@@ -35,7 +35,6 @@ const (
 
 // NewFactory creates a factory for Elastic exporter.
 func NewFactory() exporter.Factory {
-
 	return exporter.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
@@ -97,6 +96,7 @@ func createLogsExporter(
 		WithMeter(meter),
 		WithKeysCache(keysCache),
 		WithRFCache(rfCache),
+		WithConcurrency(*c.LogLevelConcurrency),
 	}
 
 	exporter, err := newExporter(set, c, opts...)
