@@ -194,14 +194,33 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 		if err != nil {
 			return false
 		}
-		bucketTs := key.(int64)
-		innerMap := value.(*sync.Map)
+		bucketTs, yes := key.(int64)
+		if !yes {
+			err = fmt.Errorf("expected bucketTs to be int64, found %T", key)
+			return false
+		}
+		innerMap, yes := value.(*sync.Map)
+		if !yes {
+			err = fmt.Errorf("expected bucket value to be *sync.Map, found %T", value)
+			return false
+		}
 
 		innerMap.Range(func(resourceKey, fingerprintVal interface{}) bool {
 			if err != nil {
 				return false
 			}
-			if err = fn(bucketTs, resourceKey.(string), fingerprintVal.(string)); err != nil {
+			resourceLabels, yes := resourceKey.(string)
+			if !yes {
+				err = fmt.Errorf("expected resourceLables to be string, found %T", resourceKey)
+				return false
+			}
+			fingerprint, yes := fingerprintVal.(string)
+			if !yes {
+				err = fmt.Errorf("expected fingerprint to be string, found %T", fingerprintVal)
+				return false
+			}
+
+			if err = fn(bucketTs, resourceLabels, fingerprint); err != nil {
 				return false
 			}
 			return true
