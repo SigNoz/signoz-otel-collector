@@ -597,6 +597,8 @@ func (p *connectorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
+		// Create a new map to avoid modifying the original map,
+		// so we no longer write into the shared pdata passed by the collector
 		resourceAttr := pcommon.NewMap()
 		resourceAttrOrig.CopyTo(resourceAttr)
 		resourceAttr.PutStr(signozID, p.instanceID)
