@@ -174,6 +174,8 @@ type processorImp struct {
 
 	keyBuf *bytes.Buffer
 
+	lateSpanData map[string]*lateSpanBucketStats
+
 	// An LRU cache of dimension key-value maps keyed by a unique identifier formed by a concatenation of its values:
 	// e.g. { "foo/barOK": { "serviceName": "foo", "operation": "/bar", "status_code": "OK" }}
 	metricKeyToDimensions             *cache.Cache[metricKey, pcommon.Map]
@@ -344,6 +346,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 		dbCallDimensions:                       newDimensions(dbCallDimensions),
 		externalCallDimensions:                 newDimensions(externalCallDimensions),
 		keyBuf:                                 bytes.NewBuffer(make([]byte, 0, 1024)),
+		lateSpanData:                           make(map[string]*lateSpanBucketStats),
 		metricKeyToDimensions:                  metricKeyToDimensionsCache,
 		expHistogramKeyToDimensions:            expHistogramKeyToDimensionsCache,
 		callMetricKeyToDimensions:              callMetricKeyToDimensionsCache,
@@ -541,6 +544,8 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 	// regardless of error while building metrics, before the next batch of spans is received.
 	p.resetExemplarData()
 
+	lateReports := p.collectAndResetLateSpanData()
+
 	// This component no longer needs to read the metrics once built, so it is safe to unlock.
 	p.lock.Unlock()
 
@@ -553,6 +558,10 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 		if err := consumer.ConsumeMetrics(ctx, m); err != nil {
 			p.logger.Error("Failed ConsumeMetrics for exporter", zap.String("exporter", exporterNames[i]), zap.Error(err))
 		}
+	}
+
+	if len(lateReports) > 0 {
+		p.logLateSpanReports(lateReports)
 	}
 }
 
@@ -979,6 +988,10 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 	if p.shouldSkip(serviceName, span, resourceAttr) {
 		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))
 		return
+	}
+
+	if delay := time.Since(span.StartTimestamp().AsTime()); delay >= lateSpanBuckets[0].min {
+		p.recordLateSpan(serviceName, span, resourceAttr, delay)
 	}
 	// Protect against end timestamps before start timestamps. Assume 0 duration.
 	latencyInMilliseconds := float64(0)
