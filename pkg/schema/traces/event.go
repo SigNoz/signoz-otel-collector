@@ -57,7 +57,7 @@ func NewEventsAndErrorEvents(input ptrace.SpanEventSlice, serviceName string, lo
 			event.IsError = true
 			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
-			uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
+			uuid := strings.ReplaceAll(uuidWithHyphen.String(), "-", "")
 			errorEvent.ErrorID = uuid
 			var hash [16]byte
 			if lowCardinalExceptionGrouping {

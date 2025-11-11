@@ -368,7 +368,7 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 	if err != nil {
 		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var hostAddr string
 		var port uint16
@@ -399,7 +399,7 @@ func (m *MigrationManager) HostAddrs() ([]string, error) {
 			if err != nil {
 				return nil, errors.Join(ErrFailedToGetConn, err)
 			}
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var hostAddr string
 				var port uint16
