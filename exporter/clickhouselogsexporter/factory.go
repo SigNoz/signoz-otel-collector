@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 const (
@@ -35,7 +36,6 @@ const (
 
 // NewFactory creates a factory for Elastic exporter.
 func NewFactory() exporter.Factory {
-
 	return exporter.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
@@ -52,6 +52,7 @@ func createDefaultConfig() component.Config {
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
+		LogLevelConcurrency: utils.ToPointer(utils.Concurrency()),
 	}
 }
 
@@ -97,6 +98,7 @@ func createLogsExporter(
 		WithMeter(meter),
 		WithKeysCache(keysCache),
 		WithRFCache(rfCache),
+		WithConcurrency(*c.LogLevelConcurrency),
 	}
 
 	exporter, err := newExporter(set, c, opts...)

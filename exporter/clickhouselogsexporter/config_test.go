@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -70,6 +71,7 @@ func TestLoadConfig(t *testing.T) {
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
+		LogLevelConcurrency: utils.ToPointer(7),
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true
