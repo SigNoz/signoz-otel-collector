@@ -34,7 +34,7 @@ type spanSummary struct {
 	SpanID       string            `json:"span_id"`
 	SpanName     string            `json:"span_name"`
 	StartTime    string            `json:"start_time"`
-	DelayMs      int64             `json:"delay_ms"`
+	DelaySeconds int               `json:"delay_seconds"`
 	ResourceInfo map[string]string `json:"resource_info,omitempty"`
 }
 
@@ -54,20 +54,24 @@ type lateSpanBucketStats struct {
 }
 
 type lateSpanBucketReport struct {
-	Bucket       string                   `json:"bucket"`
-	Count        int                      `json:"count"`
-	FirstSpan    spanSummary              `json:"first_span"`
-	MinDelayMs   int64                    `json:"min_delay_ms"`
-	MinSpan      spanSummary              `json:"min_span"`
-	MaxDelayMs   int64                    `json:"max_delay_ms"`
-	MaxSpan      spanSummary              `json:"max_span"`
-	ServiceStats map[string]serviceSample `json:"service_stats"`
+	Bucket          string                   `json:"bucket"`
+	Count           int                      `json:"count"`
+	FirstSpan       spanSummary              `json:"first_span"`
+	MinDelaySeconds int                      `json:"min_delay_seconds"`
+	MinSpan         spanSummary              `json:"min_span"`
+	MaxDelaySeconds int                      `json:"max_delay_seconds"`
+	MaxSpan         spanSummary              `json:"max_span"`
+	ServiceStats    map[string]serviceSample `json:"service_stats"`
 }
 
 func (p *processorImp) recordLateSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map, delay time.Duration) {
 	bucketDef, ok := bucketForSpanDelay(delay)
 	if !ok {
 		return
+	}
+
+	if p.lateSpanData == nil {
+		p.lateSpanData = make(map[string]*lateSpanBucketStats)
 	}
 
 	spanInfo := buildSpanSummary(serviceName, span, resourceAttr, delay)
@@ -130,7 +134,7 @@ func buildSpanSummary(serviceName string, span ptrace.Span, resourceAttr pcommon
 		TraceID:      span.TraceID().String(),
 		SpanID:       span.SpanID().String(),
 		StartTime:    span.StartTimestamp().AsTime().UTC().Format(time.RFC3339Nano),
-		DelayMs:      delay.Milliseconds(),
+		DelaySeconds: int(delay.Seconds()),
 		ResourceInfo: resourceInfo,
 	}
 }
@@ -164,14 +168,14 @@ func (p *processorImp) collectAndResetLateSpanData() []lateSpanBucketReport {
 			continue
 		}
 		report := lateSpanBucketReport{
-			Bucket:       bucketName,
-			Count:        stats.Count,
-			FirstSpan:    stats.FirstSpan,
-			MinDelayMs:   stats.MinDelay.Milliseconds(),
-			MinSpan:      stats.MinSpan,
-			MaxDelayMs:   stats.MaxDelay.Milliseconds(),
-			MaxSpan:      stats.MaxSpan,
-			ServiceStats: make(map[string]serviceSample, len(stats.ServiceMap)),
+			Bucket:          bucketName,
+			Count:           stats.Count,
+			FirstSpan:       stats.FirstSpan,
+			MinDelaySeconds: int(stats.MinDelay.Seconds()),
+			MinSpan:         stats.MinSpan,
+			MaxDelaySeconds: int(stats.MaxDelay.Seconds()),
+			MaxSpan:         stats.MaxSpan,
+			ServiceStats:    make(map[string]serviceSample, len(stats.ServiceMap)),
 		}
 		for svc, svcStats := range stats.ServiceMap {
 			if svcStats == nil {
@@ -197,8 +201,8 @@ func (p *processorImp) logLateSpanReports(reports []lateSpanBucketReport) {
 		p.logger.Warn("Late spans observed before exporting metrics",
 			zap.String("bucket", report.Bucket),
 			zap.Int("count", report.Count),
-			zap.Int64("min_delay_ms", report.MinDelayMs),
-			zap.Int64("max_delay_ms", report.MaxDelayMs),
+			zap.Int("min_delay_seconds", report.MinDelaySeconds),
+			zap.Int("max_delay_seconds", report.MaxDelaySeconds),
 			zap.Any("first_span", report.FirstSpan),
 			zap.Any("min_span", report.MinSpan),
 			zap.Any("max_span", report.MaxSpan),
