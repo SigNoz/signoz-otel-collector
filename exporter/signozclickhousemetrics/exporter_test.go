@@ -1242,3 +1242,49 @@ func Test_shutdown(t *testing.T) {
 		assert.Error(t, ok)
 	}
 }
+
+func TestCollectAndResetLateMetricData(t *testing.T) {
+	exp := &clickhouseMetricsExporter{
+		lateMetricData: make(map[string]*lateMetricBucketStats),
+	}
+
+	exp.lateMetricData["5m-10m"] = &lateMetricBucketStats{
+		Count:      3,
+		FirstPoint: metricSummary{MetricName: "signoz_latency_sum", DelaySeconds: 400},
+		MinDelay:   6 * time.Minute,
+		MinPoint:   metricSummary{MetricName: "signoz_latency_sum", DelaySeconds: 360},
+		MaxDelay:   9 * time.Minute,
+		MaxPoint:   metricSummary{MetricName: "signoz_latency_sum", DelaySeconds: 540},
+	}
+	exp.lateMetricData["10m-30m"] = &lateMetricBucketStats{
+		Count:      1,
+		FirstPoint: metricSummary{MetricName: "signoz_calls_total", DelaySeconds: 1200},
+		MinDelay:   20 * time.Minute,
+		MinPoint:   metricSummary{MetricName: "signoz_calls_total", DelaySeconds: 1200},
+		MaxDelay:   20 * time.Minute,
+		MaxPoint:   metricSummary{MetricName: "signoz_calls_total", DelaySeconds: 1200},
+	}
+
+	reports := exp.collectAndResetLateMetricData()
+	require.Len(t, reports, 2)
+
+	reportMap := make(map[string]lateMetricBucketReport)
+	for _, r := range reports {
+		reportMap[r.Bucket] = r
+	}
+
+	bucket, ok := reportMap["5m-10m"]
+	require.True(t, ok)
+	require.Equal(t, 3, bucket.Count)
+	require.Equal(t, 360, bucket.MinDelaySeconds)
+	require.Equal(t, 540, bucket.MaxDelaySeconds)
+	require.Equal(t, "signoz_latency_sum", bucket.FirstPoint.MetricName)
+
+	bucket, ok = reportMap["10m-30m"]
+	require.True(t, ok)
+	require.Equal(t, 1, bucket.Count)
+	require.Equal(t, 1200, bucket.MinDelaySeconds)
+	require.Equal(t, 1200, bucket.MaxDelaySeconds)
+
+	require.Empty(t, exp.lateMetricData)
+}

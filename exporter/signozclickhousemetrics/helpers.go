@@ -70,7 +70,7 @@ func extractPrimaryMetricLabels(resourceMap, fingerprintMap map[string]string) m
 	addIfPresent("service.name", resourceMap, string(semconv.AttributeServiceName))
 	addIfPresent("service.namespace", resourceMap, semconv.AttributeServiceNamespace)
 	addIfPresent("deployment.environment", resourceMap, semconv.AttributeDeploymentEnvironment)
-	addIfPresent("span.kind", fingerprintMap, "span.kind", "span_kind")
+	addIfPresent("span.kind", fingerprintMap, "span.kind")
 	addIfPresent("operation", fingerprintMap, "operation")
 
 	return primaryMetricLabels

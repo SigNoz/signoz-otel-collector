@@ -355,9 +355,9 @@ func (c *clickhouseMetricsExporter) collectAndResetLateMetricData() []lateMetric
 			Bucket:          bucketName,
 			Count:           stats.Count,
 			FirstPoint:      stats.FirstPoint,
-			MinDelaySeconds: int(stats.MinDelay / time.Second),
+			MinDelaySeconds: int(stats.MinDelay.Seconds()),
 			MinPoint:        stats.MinPoint,
-			MaxDelaySeconds: int(stats.MaxDelay / time.Second),
+			MaxDelaySeconds: int(stats.MaxDelay.Seconds()),
 			MaxPoint:        stats.MaxPoint,
 		}
 		reports = append(reports, report)
