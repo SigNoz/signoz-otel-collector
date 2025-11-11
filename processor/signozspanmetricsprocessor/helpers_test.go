@@ -6,60 +6,7 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
-	"go.uber.org/zap"
 )
-
-func TestCollectAndResetLateSpanData(t *testing.T) {
-	logger := zap.NewNop()
-	p := &processorImp{
-		logger:       logger,
-		lateSpanData: make(map[string]*lateSpanBucketStats),
-	}
-
-	// Seed bucket with synthetic data.
-	p.lateSpanData["5m-10m"] = &lateSpanBucketStats{
-		Count:     2,
-		FirstSpan: spanSummary{Service: "svc-a", SpanName: "span-1", DelaySeconds: 360},
-		MinDelay:  6 * time.Minute,
-		MinSpan:   spanSummary{Service: "svc-b", SpanName: "span-2", DelaySeconds: 360},
-		MaxDelay:  9 * time.Minute,
-		MaxSpan:   spanSummary{Service: "svc-a", SpanName: "span-3", DelaySeconds: 540},
-		ServiceMap: map[string]*serviceSample{
-			"svc-a": {Count: 1, SampleSpanNames: []string{"span-1"}},
-			"svc-b": {Count: 1, SampleSpanNames: []string{"span-2"}},
-		},
-	}
-
-	reports := p.collectAndResetLateSpanData()
-	if len(reports) != 1 {
-		t.Fatalf("expected 1 report, got %d", len(reports))
-	}
-
-	if reports[0].Bucket != "5m-10m" {
-		t.Errorf("expected bucket '5m-10m', got %q", reports[0].Bucket)
-	}
-	if reports[0].Count != 2 {
-		t.Errorf("expected count 2, got %d", reports[0].Count)
-	}
-	if reports[0].MinDelaySeconds != 360 {
-		t.Errorf("expected min delay seconds 360, got %d", reports[0].MinDelaySeconds)
-	}
-	if reports[0].MaxDelaySeconds != 540 {
-		t.Errorf("expected max delay seconds 540, got %d", reports[0].MaxDelaySeconds)
-	}
-
-	if _, ok := reports[0].ServiceStats["svc-a"]; !ok {
-		t.Fatalf("expected service svc-a in report")
-	}
-	if reports[0].ServiceStats["svc-a"].Count != 1 {
-		t.Errorf("expected svc-a count 1, got %d", reports[0].ServiceStats["svc-a"].Count)
-	}
-
-	// Map should be reset after collection.
-	if len(p.lateSpanData) != 0 {
-		t.Fatalf("expected lateSpanData to be reset, found %d buckets", len(p.lateSpanData))
-	}
-}
 
 func TestExtractSpanResourceInfo(t *testing.T) {
 	tests := []struct {

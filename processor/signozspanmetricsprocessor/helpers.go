@@ -6,8 +6,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
-
-	"go.uber.org/zap"
 )
 
 var lateSpanBuckets = []bucketDefinition{
@@ -64,57 +62,6 @@ type lateSpanBucketReport struct {
 	ServiceStats    map[string]serviceSample `json:"service_stats"`
 }
 
-func (p *processorImp) recordLateSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map, delay time.Duration) {
-	bucketDef, ok := bucketForSpanDelay(delay)
-	if !ok {
-		return
-	}
-
-	if p.lateSpanData == nil {
-		p.lateSpanData = make(map[string]*lateSpanBucketStats)
-	}
-
-	spanInfo := buildSpanSummary(serviceName, span, resourceAttr, delay)
-
-	stats, ok := p.lateSpanData[bucketDef.name]
-	if !ok {
-		stats = &lateSpanBucketStats{
-			FirstSpan:  spanInfo,
-			MinDelay:   delay,
-			MinSpan:    spanInfo,
-			MaxDelay:   delay,
-			MaxSpan:    spanInfo,
-			ServiceMap: make(map[string]*serviceSample),
-		}
-		p.lateSpanData[bucketDef.name] = stats
-	}
-
-	stats.Count++
-
-	if stats.Count == 1 {
-		stats.FirstSpan = spanInfo
-	}
-
-	if delay < stats.MinDelay {
-		stats.MinDelay = delay
-		stats.MinSpan = spanInfo
-	}
-	if delay > stats.MaxDelay {
-		stats.MaxDelay = delay
-		stats.MaxSpan = spanInfo
-	}
-
-	serviceStats, ok := stats.ServiceMap[serviceName]
-	if !ok {
-		serviceStats = &serviceSample{}
-		stats.ServiceMap[serviceName] = serviceStats
-	}
-	serviceStats.Count++
-	if len(serviceStats.SampleSpanNames) < maxServiceSamplesPerBucket {
-		serviceStats.SampleSpanNames = append(serviceStats.SampleSpanNames, span.Name())
-	}
-}
-
 func bucketForSpanDelay(delay time.Duration) (bucketDefinition, bool) {
 	for _, bucket := range lateSpanBuckets {
 		if delay >= bucket.min && delay < bucket.max {
@@ -155,58 +102,4 @@ func extractSpanResourceInfo(resourceAttr pcommon.Map) map[string]string {
 		return nil
 	}
 	return info
-}
-
-func (p *processorImp) collectAndResetLateSpanData() []lateSpanBucketReport {
-	if len(p.lateSpanData) == 0 {
-		return nil
-	}
-
-	reports := make([]lateSpanBucketReport, 0, len(p.lateSpanData))
-	for bucketName, stats := range p.lateSpanData {
-		if stats == nil || stats.Count == 0 {
-			continue
-		}
-		report := lateSpanBucketReport{
-			Bucket:          bucketName,
-			Count:           stats.Count,
-			FirstSpan:       stats.FirstSpan,
-			MinDelaySeconds: int(stats.MinDelay.Seconds()),
-			MinSpan:         stats.MinSpan,
-			MaxDelaySeconds: int(stats.MaxDelay.Seconds()),
-			MaxSpan:         stats.MaxSpan,
-			ServiceStats:    make(map[string]serviceSample, len(stats.ServiceMap)),
-		}
-		for svc, svcStats := range stats.ServiceMap {
-			if svcStats == nil {
-				continue
-			}
-			report.ServiceStats[svc] = serviceSample{
-				Count:           svcStats.Count,
-				SampleSpanNames: append([]string(nil), svcStats.SampleSpanNames...),
-			}
-		}
-		reports = append(reports, report)
-	}
-
-	p.lateSpanData = make(map[string]*lateSpanBucketStats)
-	return reports
-}
-
-func (p *processorImp) logLateSpanReports(reports []lateSpanBucketReport) {
-	for _, report := range reports {
-		if report.Count == 0 {
-			continue
-		}
-		p.logger.Warn("Late spans observed before exporting metrics",
-			zap.String("bucket", report.Bucket),
-			zap.Int("count", report.Count),
-			zap.Int("min_delay_seconds", report.MinDelaySeconds),
-			zap.Int("max_delay_seconds", report.MaxDelaySeconds),
-			zap.Any("first_span", report.FirstSpan),
-			zap.Any("min_span", report.MinSpan),
-			zap.Any("max_span", report.MaxSpan),
-			zap.Any("service_stats", report.ServiceStats),
-		)
-	}
 }
