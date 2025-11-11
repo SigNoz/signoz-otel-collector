@@ -544,7 +544,11 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 	// regardless of error while building metrics, before the next batch of spans is received.
 	p.resetExemplarData()
 
+	// print late span reports
 	lateReports := p.collectAndResetLateSpanData()
+	if len(lateReports) > 0 {
+		p.logLateSpanReports(lateReports)
+	}
 
 	// This component no longer needs to read the metrics once built, so it is safe to unlock.
 	p.lock.Unlock()
@@ -558,10 +562,6 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 		if err := consumer.ConsumeMetrics(ctx, m); err != nil {
 			p.logger.Error("Failed ConsumeMetrics for exporter", zap.String("exporter", exporterNames[i]), zap.Error(err))
 		}
-	}
-
-	if len(lateReports) > 0 {
-		p.logLateSpanReports(lateReports)
 	}
 }
 
