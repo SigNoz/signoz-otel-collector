@@ -59,6 +59,9 @@ type clickhouseMetricsExporter struct {
 	wg            sync.WaitGroup
 	enableExpHist bool
 
+	lateMetricMu   sync.Mutex
+	lateMetricData map[string]*lateMetricBucketStats
+
 	samplesSQL    string
 	timeSeriesSQL string
 	expHistSQL    string
@@ -284,6 +287,103 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	return c.conn.Close()
 }
 
+func (c *clickhouseMetricsExporter) observeLateMetric(metricName, env string, delay time.Duration, labels map[string]string, fingerprint uint64, ts time.Time) {
+	bucketDef, ok := bucketForMetricDelay(delay)
+	if !ok {
+		return
+	}
+
+	if c.lateMetricData == nil {
+		c.lateMetricData = make(map[string]*lateMetricBucketStats)
+	}
+
+	delaySeconds := int(delay.Seconds())
+	summary := metricSummary{
+		MetricName:    metricName,
+		Env:           env,
+		Fingerprint:   fingerprint,
+		Timestamp:     ts.UTC().Format(time.RFC3339Nano),
+		DelaySeconds:  delaySeconds,
+		PrimaryLabels: labels,
+	}
+
+	c.lateMetricMu.Lock()
+	defer c.lateMetricMu.Unlock()
+
+	stats, ok := c.lateMetricData[bucketDef.name]
+	if !ok {
+		stats = &lateMetricBucketStats{
+			FirstPoint: summary,
+			MinDelay:   delay,
+			MinPoint:   summary,
+			MaxDelay:   delay,
+			MaxPoint:   summary,
+		}
+		c.lateMetricData[bucketDef.name] = stats
+	}
+
+	stats.Count++
+	if stats.Count == 1 {
+		stats.FirstPoint = summary
+	}
+
+	if delay < stats.MinDelay {
+		stats.MinDelay = delay
+		stats.MinPoint = summary
+	}
+	if delay > stats.MaxDelay {
+		stats.MaxDelay = delay
+		stats.MaxPoint = summary
+	}
+
+}
+
+func (c *clickhouseMetricsExporter) collectAndResetLateMetricData() []lateMetricBucketReport {
+	c.lateMetricMu.Lock()
+	defer c.lateMetricMu.Unlock()
+
+	if len(c.lateMetricData) == 0 {
+		return nil
+	}
+
+	reports := make([]lateMetricBucketReport, 0, len(c.lateMetricData))
+	for bucketName, stats := range c.lateMetricData {
+		if stats == nil || stats.Count == 0 {
+			continue
+		}
+		report := lateMetricBucketReport{
+			Bucket:          bucketName,
+			Count:           stats.Count,
+			FirstPoint:      stats.FirstPoint,
+			MinDelaySeconds: int(stats.MinDelay / time.Second),
+			MinPoint:        stats.MinPoint,
+			MaxDelaySeconds: int(stats.MaxDelay / time.Second),
+			MaxPoint:        stats.MaxPoint,
+		}
+		reports = append(reports, report)
+	}
+
+	c.lateMetricData = make(map[string]*lateMetricBucketStats)
+	return reports
+}
+
+func (c *clickhouseMetricsExporter) logLateMetricReports(reports []lateMetricBucketReport) {
+	for _, report := range reports {
+		if report.Count == 0 {
+			continue
+		}
+		c.logger.Warn("Late metrics observed before ClickHouse export",
+			zap.String("bucket", report.Bucket),
+			zap.Int("count", report.Count),
+			zap.Int("min_delay_seconds", report.MinDelaySeconds),
+			zap.Int("max_delay_seconds", report.MaxDelaySeconds),
+			zap.Any("first_point", report.FirstPoint),
+			zap.Any("min_point", report.MinPoint),
+			zap.Any("max_point", report.MaxPoint),
+		)
+	}
+}
+
 // processGauge processes gauge metrics
 func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Metric, env string, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) {
 	name := metric.Name()
@@ -314,17 +414,24 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			c.logger.Debug(NanDetectedErrMsg, zap.String("metric_name", name))
 			continue
 		}
-		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointTime := dp.Timestamp().AsTime()
+		unixMilli := pointTime.UnixMilli()
 
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
+		seriesFingerprint := fingerprint.HashWithName(name)
+		delay := time.Since(pointTime)
+		if delay >= lateMetricBuckets[0].min {
+			primaryLabels := extractPrimaryMetricLabels(resourceFingerprintMap, fingerprintMap)
+			c.observeLateMetric(name, env, delay, primaryLabels, seriesFingerprint, pointTime)
+		}
 		batch.addSample(&sample{
 			env:         env,
 			temporality: temporality,
 			metricName:  name,
-			fingerprint: fingerprint.HashWithName(name),
+			fingerprint: seriesFingerprint,
 			unixMilli:   unixMilli,
 			value:       value,
 			flags:       uint32(dp.Flags()),
@@ -338,7 +445,7 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			unit:          unit,
 			typ:           typ,
 			isMonotonic:   isMonotonic,
-			fingerprint:   fingerprint.HashWithName(name),
+			fingerprint:   seriesFingerprint,
 			unixMilli:     unixMilli,
 			labels:        pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
 			attrs:         fingerprintMap,
@@ -378,16 +485,23 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			c.logger.Debug(NanDetectedErrMsg, zap.String("metric_name", name))
 			continue
 		}
-		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		pointTime := dp.Timestamp().AsTime()
+		unixMilli := pointTime.UnixMilli()
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
+		seriesFingerprint := fingerprint.HashWithName(name)
+		delay := time.Since(pointTime)
+		if delay >= lateMetricBuckets[0].min {
+			primaryLabels := extractPrimaryMetricLabels(resourceFingerprintMap, fingerprintMap)
+			c.observeLateMetric(name, env, delay, primaryLabels, seriesFingerprint, pointTime)
+		}
 		batch.addSample(&sample{
 			env:         env,
 			temporality: temporality,
 			metricName:  name,
-			fingerprint: fingerprint.HashWithName(name),
+			fingerprint: seriesFingerprint,
 			unixMilli:   unixMilli,
 			value:       value,
 			flags:       uint32(dp.Flags()),
@@ -401,7 +515,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			unit:          unit,
 			typ:           typ,
 			isMonotonic:   isMonotonic,
-			fingerprint:   fingerprint.HashWithName(name),
+			fingerprint:   seriesFingerprint,
 			unixMilli:     unixMilli,
 			labels:        pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
 			attrs:         fingerprintMap,
@@ -582,6 +696,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			c.logger.Debug(NanDetectedErrMsg, zap.String("metric_name", name))
 			continue
 		}
+
+		pointTime := dp.Timestamp().AsTime()
+		delay := time.Since(pointTime)
+		if delay >= lateMetricBuckets[0].min {
+			fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+				"__temporality__": temporality.String(),
+			})
+			fingerprintMap := fingerprint.AttributesAsMap()
+			labels := extractPrimaryMetricLabels(resourceFingerprintMap, fingerprintMap)
+			c.observeLateMetric(name, env, delay, labels, fingerprint.HashWithName(name+countSuffix), pointTime)
+		}
+
 		addSample(b, dp, countSuffix)
 		if dp.HasSum() {
 			addSample(b, dp, sumSuffix)
@@ -726,6 +852,18 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		if skip {
 			continue
 		}
+
+		pointTime := dp.Timestamp().AsTime()
+		delay := time.Since(pointTime)
+		if delay >= lateMetricBuckets[0].min {
+			fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+				"__temporality__": temporality.String(),
+			})
+			fingerprintMap := fingerprint.AttributesAsMap()
+			labels := extractPrimaryMetricLabels(resourceFingerprintMap, fingerprintMap)
+			c.observeLateMetric(name, env, delay, labels, fingerprint.HashWithName(name+countSuffix), pointTime)
+		}
+
 		addSample(b, dp, countSuffix)
 		addSample(b, dp, sumSuffix)
 		addQuantileSample(b, dp, quantilesSuffix)
@@ -891,6 +1029,18 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			c.logger.Debug(NanDetectedErrMsg, zap.String("metric_name", name))
 			continue
 		}
+
+		pointTime := dp.Timestamp().AsTime()
+		delay := time.Since(pointTime)
+		if delay >= lateMetricBuckets[0].min {
+			fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+				"__temporality__": temporality.String(),
+			})
+			fingerprintMap := fingerprint.AttributesAsMap()
+			labels := extractPrimaryMetricLabels(resourceFingerprintMap, fingerprintMap)
+			c.observeLateMetric(name+countSuffix, env, delay, labels, fingerprint.HashWithName(name+countSuffix), pointTime)
+		}
+
 		addSample(b, dp, countSuffix)
 		if dp.HasSum() {
 			addSample(b, dp, sumSuffix)
@@ -964,7 +1114,13 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 	case <-c.closeChan:
 		return errors.New("shutdown has been called")
 	default:
-		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+		batch := c.prepareBatch(ctx, md)
+		lateReports := c.collectAndResetLateMetricData()
+		err := c.writeBatch(ctx, batch)
+		if len(lateReports) > 0 {
+			c.logLateMetricReports(lateReports)
+		}
+		return err
 	}
 }
 
