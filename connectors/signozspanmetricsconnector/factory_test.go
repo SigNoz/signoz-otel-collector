@@ -1,6 +1,7 @@
 package signozspanmetricsconnector
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func TestNewConnector(t *testing.T) {
 			cfg.Dimensions = tc.dimensions
 
 			// Test
-			traceConnector, err := factory.CreateTracesToMetrics(t.Context(), creationParams, cfg, consumertest.NewNop())
+			traceConnector, err := factory.CreateTracesToMetrics(context.Background(), creationParams, cfg, consumertest.NewNop())
 			smc := traceConnector.(*connectorImp)
 
 			// Verify
