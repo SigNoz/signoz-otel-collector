@@ -883,4 +883,37 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1006,
+		UpItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4",
+				Index: Index{
+					Name: "idx_labels",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				Index: Index{
+					Name: "idx_labels",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				Index: Index{
+					Name: "idx_labels",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				Index: Index{
+					Name: "idx_labels",
+				},
+			},
+		},
+	},
 }
