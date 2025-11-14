@@ -274,12 +274,13 @@ func (a AlterTableClearIndex) ToSQL() string {
 	return sql.String()
 }
 
-func JSONSubColumnIndexName(column string, index IndexType) string {
-	return fmt.Sprintf("`%s_String_%s`", column, index)
+func JSONSubColumnIndexName(column, path string, index IndexType) string {
+	expr := column + "." + path
+	return fmt.Sprintf("`%s_String_%s`", expr, index)
 }
 
-func JSONSubColumnIndexExpr(column string) string {
-	parts := strings.Split(column, ".")
+func jsonSubColumnIndexExprFormat(expr string) string {
+	parts := strings.Split(expr, ".")
 	for idx, part := range parts {
 		if keycheck.IsBacktickRequired(part) {
 			part := strings.Trim(part, "`") // trim if already present
@@ -289,10 +290,15 @@ func JSONSubColumnIndexExpr(column string) string {
 	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", strings.Join(parts, "."))
 }
 
+func JSONSubColumnIndexExpr(column, path string) string {
+	expr := column + "." + path
+	return jsonSubColumnIndexExprFormat(expr)
+}
+
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
 func UnfoldJSONSubColumnIndexExpr(expr string) (string, error) {
-	format := JSONSubColumnIndexExpr("")
+	format := jsonSubColumnIndexExprFormat(expr)
 	expr, format = utils.TrimCommonPrefixSuffix(expr, format)
 	if format != "" {
 		return "", fmt.Errorf("format mismatch: %s != %s", expr, format)

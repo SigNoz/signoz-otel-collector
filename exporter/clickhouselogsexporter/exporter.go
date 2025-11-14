@@ -81,8 +81,8 @@ const (
 		severity_text,
 		severity_number,
 		body,
-		body_v2,
-		promoted,
+		body_json,
+		body_json_promoted,
 		attributes_string,
 		attributes_number,
 		attributes_bool,
@@ -133,21 +133,21 @@ type attributeMap struct {
 // Record represents a prepared log record, ready to be appended to ClickHouse batches.
 type Record struct {
 	// batch columns
-	tsBucketStart uint64
-	resourceFP    string
-	ts            uint64
-	ots           uint64
-	id            string
-	traceID       string
-	spanID        string
-	traceFlags    uint32
-	severityText  string
-	severityNum   uint8
-	body          string
-	bodyv2        string
-	promoted      string
-	scopeName     string
-	scopeVersion  string
+	tsBucketStart    uint64
+	resourceFP       string
+	ts               uint64
+	ots              uint64
+	id               string
+	traceID          string
+	spanID           string
+	traceFlags       uint32
+	severityText     string
+	severityNum      uint8
+	body             string
+	bodyJSON         string
+	bodyJSONPromoted string
+	scopeName        string
+	scopeVersion     string
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -565,8 +565,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
-					rec.bodyv2,
-					rec.promoted,
+					rec.bodyJSON,
+					rec.bodyJSONPromoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -657,7 +657,7 @@ producerIteration:
 
 					body := record.Body()
 					promoted := pcommon.NewValueMap()
-					bodyv2 := pcommon.NewValueMap()
+					bodyJSON := pcommon.NewValueMap()
 					if body.Type() == pcommon.ValueTypeMap {
 						// Work on a local mutable copy of the body to avoid mutating
 						// the shared pdata across goroutines.
@@ -667,9 +667,9 @@ producerIteration:
 						// promoted paths extraction using cached set
 						promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
-						// set values to promoted and bodyv2
+						// set values to promoted and bodyJSON
 						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
-						bodyv2 = mutableBody
+						bodyJSON = mutableBody
 
 						// set body to empty string if body column compatibility is disabled
 						if constants.BodyColumnCompatibilityDisabled {
@@ -681,26 +681,26 @@ producerIteration:
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
 					recordStream <- &Record{
-						tsBucketStart: uint64(lBucketStart),
-						resourceFP:    fp,
-						ts:            ts,
-						ots:           ots,
-						id:            id.String(),
-						traceID:       utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:        utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:    uint32(record.Flags()),
-						severityText:  record.SeverityText(),
-						severityNum:   uint8(record.SeverityNumber()),
-						body:          getStringifiedBody(body),
-						bodyv2:        getStringifiedBody(bodyv2),
-						promoted:      getStringifiedBody(promoted),
-						scopeName:     scopeName,
-						scopeVersion:  scopeVersion,
-						resourceMap:   resourcesMap,
-						scopeMap:      scopeMap,
-						attrsMap:      attrsMap,
-						logFields:     attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:    int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						tsBucketStart:    uint64(lBucketStart),
+						resourceFP:       fp,
+						ts:               ts,
+						ots:              ots,
+						id:               id.String(),
+						traceID:          utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:           utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:       uint32(record.Flags()),
+						severityText:     record.SeverityText(),
+						severityNum:      uint8(record.SeverityNumber()),
+						body:             getStringifiedBody(body),
+						bodyJSON:         getStringifiedBody(bodyJSON),
+						bodyJSONPromoted: getStringifiedBody(promoted),
+						scopeName:        scopeName,
+						scopeVersion:     scopeVersion,
+						resourceMap:      resourcesMap,
+						scopeMap:         scopeMap,
+						attrsMap:         attrsMap,
+						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
 					return nil
 				})

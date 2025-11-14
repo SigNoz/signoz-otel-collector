@@ -3,6 +3,7 @@ package schemamigrator
 import (
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
@@ -315,7 +316,7 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name: "body_v2",
+					Name: constants.BodyJSONColumn,
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
@@ -329,7 +330,7 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name: "body_v2",
+					Name: constants.BodyJSONColumn,
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
@@ -343,24 +344,24 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name:  "promoted",
+					Name:  constants.BodyPromotedColumn,
 					Type:  JSONColumnType{},
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: "body_v2",
+					Name: constants.BodyJSONColumn,
 				},
 			},
 			AlterTableAddColumn{
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name:  "promoted",
+					Name:  constants.BodyPromotedColumn,
 					Type:  JSONColumnType{},
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: "body_v2",
+					Name: constants.BodyJSONColumn,
 				},
 			},
 			InsertIntoTable{
@@ -375,8 +376,8 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName("promoted.message", IndexTypeTokenBF),
-					Expression:  JSONSubColumnIndexExpr("promoted.message"),
+					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", IndexTypeTokenBF),
+					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message"),
 					Type:        "tokenbf_v1(10000, 2, 0)",
 					Granularity: 1,
 				},
@@ -385,8 +386,8 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName("promoted.message", IndexTypeNGramBF),
-					Expression:  JSONSubColumnIndexExpr("promoted.message"),
+					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", IndexTypeNGramBF),
+					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message"),
 					Type:        "ngrambf_v1(4, 60000, 5, 0)",
 					Granularity: 1,
 				},
@@ -396,12 +397,12 @@ ORDER BY name ASC`,
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
-				Column:   Column{Name: "promoted"},
+				Column:   Column{Name: constants.BodyPromotedColumn},
 			},
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
-				Column:   Column{Name: "body_v2"},
+				Column:   Column{Name: constants.BodyJSONColumn},
 			},
 			DropTableOperation{
 				Database: "signoz_logs",
@@ -423,14 +424,14 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName("promoted.message", IndexTypeNGramBF),
+					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", IndexTypeNGramBF),
 				},
 			},
 			AlterTableDropIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName("promoted.message", IndexTypeTokenBF),
+					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", IndexTypeTokenBF),
 				},
 			},
 		},
