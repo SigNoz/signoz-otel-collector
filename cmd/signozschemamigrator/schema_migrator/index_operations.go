@@ -298,7 +298,7 @@ func JSONSubColumnIndexExpr(column, path string) string {
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
 func UnfoldJSONSubColumnIndexExpr(expr string) (string, error) {
-	format := jsonSubColumnIndexExprFormat(expr)
+	format := jsonSubColumnIndexExprFormat("")
 	expr, format = utils.TrimCommonPrefixSuffix(expr, format)
 	if format != "" {
 		return "", fmt.Errorf("format mismatch: %s != %s", expr, format)
