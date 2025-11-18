@@ -40,6 +40,13 @@ func (s *ConcurrentSet[T]) Len() int {
 	return len(s.set)
 }
 
+func (s *ConcurrentSet[T]) Contains(k T) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.set[k]
+	return ok
+}
+
 func (s *ConcurrentSet[T]) Keys() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

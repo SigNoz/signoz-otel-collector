@@ -17,14 +17,11 @@ import (
 
 // Single end-to-end test: build a representative log body map and compare final path->types.
 func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
-	keyCache, err := lru.New[string, struct{}](1000)
-	if err != nil {
-		t.Fatalf("failed to create key cache: %v", err)
-	}
-	exp := &jsonTypeExporter{
-		keyCache: keyCache,
-	}
 	ctx := context.Background()
+	exp, err := setupTestExporter()
+	if err != nil {
+		t.Fatalf("failed to create test exporter: %v", err)
+	}
 
 	// Construct log body as an actual map[string]any
 	input := map[string]any{
@@ -238,8 +235,8 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			exp.config = testCase.config
 			// Collect bitmasks via analyzePValue
-			typeSet := TypeSet{}
-			err := exp.analyzePValue(ctx, body, &typeSet)
+			typeSet := NewTypeSet(exp.pathCache)
+			err := exp.analyzePValue(ctx, body, typeSet)
 			require.NoError(t, err)
 
 			// Expand masks to final type strings (same mapping as in pushLogs)
@@ -272,4 +269,19 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func setupTestExporter() (*jsonTypeExporter, error) {
+	pathCache, err := lru.New[string, *utils.ConcurrentSet[string]](10000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create path cache: %w", err)
+	}
+	cardinalityCache, err := lru.New[string, struct{}](10000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cardinality cache: %w", err)
+	}
+	return &jsonTypeExporter{
+		pathCache:        pathCache,
+		cardinalityCache: cardinalityCache,
+	}, nil
 }

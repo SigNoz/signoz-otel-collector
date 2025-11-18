@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -34,7 +33,10 @@ type jsonTypeExporter struct {
 	conn    clickhouse.Conn
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
-	keyCache  *lru.Cache[string, struct{}]
+	cardinalityCache *lru.Cache[string, struct{}]
+	// this cache contains full paths and their types
+	// to skip adding duplicate entries for existing path and types combination
+	pathCache *lru.Cache[string, *utils.ConcurrentSet[string]]
 	closeChan chan struct{}
 }
 
@@ -50,18 +52,24 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}
 
-	keyCache, err := lru.New[string, struct{}](defaultKeyCacheSize)
+	pathCache, err := lru.New[string, *utils.ConcurrentSet[string]](defaultKeyCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key cache: %w", err)
 	}
 
+	cardinalityCache, err := lru.New[string, struct{}](defaultKeyCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cardinality cache: %w", err)
+	}
+
 	return &jsonTypeExporter{
-		config:    &cfg,
-		logger:    set.Logger,
-		limiter:   make(chan struct{}, utils.Concurrency()),
-		conn:      conn,
-		keyCache:  keyCache,
-		closeChan: make(chan struct{}),
+		config:           &cfg,
+		logger:           set.Logger,
+		limiter:          make(chan struct{}, utils.Concurrency()),
+		conn:             conn,
+		pathCache:        pathCache,
+		cardinalityCache: cardinalityCache,
+		closeChan:        make(chan struct{}),
 	}, nil
 }
 
@@ -89,9 +97,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// per-batch type registry with bitmask aggregation
-	types := TypeSet{
-		types: sync.Map{},
-	}
+	types := NewTypeSet(e.pathCache)
 
 logIteration:
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
@@ -116,7 +122,7 @@ logIteration:
 					}()
 
 					// analyze body using pcommon.Value directly
-					return e.analyzePValue(groupCtx, body, &types)
+					return e.analyzePValue(groupCtx, body, types)
 				})
 			}
 		}
@@ -130,7 +136,7 @@ logIteration:
 	}
 
 	// Persist collected types to database
-	if err := e.persistTypes(ctx, &types); err != nil {
+	if err := e.persistTypes(ctx, types); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
 	}
@@ -182,13 +188,13 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 				default:
 				}
 
-				contains := e.keyCache.Contains(key)
+				contains := e.cardinalityCache.Contains(key)
 				// if high cardinality, skip the key
 				if !contains && keycheck.IsCardinal(key) {
 					return true
 				}
 				if !contains {
-					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+					e.cardinalityCache.Add(key, struct{}{}) // add key to cardinality cache to avoid checking it again for next log records
 				}
 
 				if err := closure(ctx, generatePath(prefix, key), value, typeSet, level+1); err != nil {

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -34,41 +35,53 @@ const (
 )
 
 type TypeSet struct {
-	types sync.Map // map[string]*utils.ConcurrentSet[string]
+	pathCache *lru.Cache[string, *utils.ConcurrentSet[string]] // to skip adding duplicate entries for existing path and types combination
+	types     sync.Map                                         // map[string]*utils.ConcurrentSet[string]
+}
+
+func NewTypeSet(pathCache *lru.Cache[string, *utils.ConcurrentSet[string]]) *TypeSet {
+	return &TypeSet{
+		pathCache: pathCache,
+		types:     sync.Map{},
+	}
 }
 
 func (t *TypeSet) Insert(path string, mask uint16) {
 	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
 	cs := actual.(*utils.ConcurrentSet[string])
-	// expand mask to strings
-	if mask&maskString != 0 {
-		cs.Insert(StringType)
+	var typ string
+	switch {
+	case mask&maskString != 0:
+		typ = StringType
+	case mask&maskInt != 0:
+		typ = IntType
+	case mask&maskFloat != 0:
+		typ = Float64Type
+	case mask&maskBool != 0:
+		typ = BooleanType
+	case mask&maskArrayString != 0:
+		typ = ArrayString
+	case mask&maskArrayInt != 0:
+		typ = ArrayInt
+	case mask&maskArrayFloat != 0:
+		typ = ArrayFloat64
+	case mask&maskArrayBool != 0:
+		typ = ArrayBoolean
+	case mask&maskArrayJSON != 0:
+		typ = ArrayJSON
+	case mask&maskArrayDynamic != 0:
+		typ = ArrayDynamic
 	}
-	if mask&maskInt != 0 {
-		cs.Insert(IntType)
+
+	set, ok := t.pathCache.Get(path)
+	if !ok {
+		set = utils.WithCapacityConcurrentSet[string](3)
+		t.pathCache.Add(path, set)
 	}
-	if mask&maskFloat != 0 {
-		cs.Insert(Float64Type)
-	}
-	if mask&maskBool != 0 {
-		cs.Insert(BooleanType)
-	}
-	if mask&maskArrayString != 0 {
-		cs.Insert(ArrayString)
-	}
-	if mask&maskArrayInt != 0 {
-		cs.Insert(ArrayInt)
-	}
-	if mask&maskArrayFloat != 0 {
-		cs.Insert(ArrayFloat64)
-	}
-	if mask&maskArrayBool != 0 {
-		cs.Insert(ArrayBoolean)
-	}
-	if mask&maskArrayJSON != 0 {
-		cs.Insert(ArrayJSON)
-	}
-	if mask&maskArrayDynamic != 0 {
-		cs.Insert(ArrayDynamic)
+
+	// if not recorded yet, record it
+	if !set.Contains(typ) {
+		set.Insert(typ)
+		cs.Insert(typ)
 	}
 }
