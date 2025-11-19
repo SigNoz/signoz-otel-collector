@@ -57,7 +57,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
-	distributedPromotedPaths         = "distributed_promoted_paths"
+	distributedPromotedPathsTable    = constants.SignozMetadataDB + "." + constants.DistributedPromotedPathsTable
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -378,7 +378,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
-	query := fmt.Sprintf(`SELECT path FROM %s.%s SETTINGS max_threads = 1`, databaseName, distributedPromotedPaths)
+	query := fmt.Sprintf(`SELECT path FROM %s SETTINGS max_threads = 1`, distributedPromotedPathsTable)
 	e.logger.Debug("fetching promoted paths", zap.String("query", query))
 
 	rows := []struct {
