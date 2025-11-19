@@ -242,7 +242,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
-						PartitionBy: "toDate(seen_at_ts_bucket_start / 1000)",
+						PartitionBy: "toDate(seen_at_ts_bucket_start)",
 						OrderBy:     "(labels, fingerprint, seen_at_ts_bucket_start)",
 						TTL:         "toDateTime(seen_at_ts_bucket_start) + INTERVAL 1296000 SECOND + INTERVAL 1800 SECOND DELETE",
 						Settings: TableSettings{
