@@ -1,8 +1,19 @@
 package schemamigrator
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
+
+type IndexType string
+
+const (
+	IndexTypeTokenBF IndexType = "tokenbf_v1"
+	IndexTypeNGramBF IndexType = "ngrambf_v1"
 )
 
 // Index is used to represent an index in the SQL.
@@ -261,4 +272,36 @@ func (a AlterTableClearIndex) ToSQL() string {
 		sql.WriteString(a.Partition)
 	}
 	return sql.String()
+}
+
+func JSONSubColumnIndexName(column, path string, index IndexType) string {
+	expr := column + "." + path
+	return fmt.Sprintf("`%s_String_%s`", expr, index)
+}
+
+func jsonSubColumnIndexExprFormat(expr string) string {
+	parts := strings.Split(expr, ".")
+	for idx, part := range parts {
+		if keycheck.IsBacktickRequired(part) {
+			part := strings.Trim(part, "`") // trim if already present
+			parts[idx] = "`" + part + "`"
+		}
+	}
+	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", strings.Join(parts, "."))
+}
+
+func JSONSubColumnIndexExpr(column, path string) string {
+	expr := column + "." + path
+	return jsonSubColumnIndexExprFormat(expr)
+}
+
+// Returns the subcolumn name from the index expression
+// If the expression is not a JSON subcolumn index expression, returns an error
+func UnfoldJSONSubColumnIndexExpr(expr string) (string, error) {
+	format := jsonSubColumnIndexExprFormat("")
+	expr, format = utils.TrimCommonPrefixSuffix(expr, format)
+	if format != "" {
+		return "", fmt.Errorf("format mismatch: %s != %s", expr, format)
+	}
+	return expr, nil
 }

@@ -41,7 +41,8 @@ type Config struct {
 	UseNewSchema        bool   `mapstructure:"use_new_schema"`
 	LogLevelConcurrency *int   `mapstructure:"log_level_concurrency"`
 
-	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
+	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
+	PromotedPathsSyncInterval int              `mapstructure:"promoted_paths_sync_interval_in_minutes"`
 }
 
 var (
@@ -53,6 +54,10 @@ func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
+	if cfg.PromotedPathsSyncInterval <= 0 {
+		cfg.PromotedPathsSyncInterval = 5
+	}
+
 	if cfg.LogLevelConcurrency == nil {
 		cfg.LogLevelConcurrency = utils.ToPointer(utils.Concurrency())
 	}
