@@ -17,7 +17,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
@@ -44,7 +43,7 @@ func main() {
 			v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 			v.AutomaticEnv()
 
-			cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			cmd.Flags().VisitAll(func(f *flag.Flag) {
 				configName := f.Name
 				if !f.Changed && v.IsSet(configName) {
 					val := v.Get(configName)
