@@ -31,11 +31,11 @@ func main() {
 	}
 
 	rootCmd := &cobra.Command{
-		Use:   "migrate",
-		Short: "Runs migrations for any store.",
+		Use: "signoz-otel-collector",
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
+		SilenceUsage: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			v := viper.New()
 
