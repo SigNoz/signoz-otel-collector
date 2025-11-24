@@ -6,77 +6,117 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
+	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/migrate"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
+	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 func main() {
-
-	// Command line flags
-	f := flag.NewFlagSet("Collector CLI Options", flag.ExitOnError)
-
-	f.Usage = func() {
-		fmt.Println(f.FlagUsages())
-		os.Exit(0)
-	}
-
-	f.String("config", "", "File path for the collector configuration")
-	f.String("manager-config", "", "File path for the agent manager configuration")
-	f.String("copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
-	f.Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
-		"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
-	err := f.Parse(os.Args[1:])
-	if err != nil {
-		log.Fatalf("Failed to parse args %v", err)
-	}
-
 	logger, err := initZapLog()
 	if err != nil {
 		log.Fatalf("failed to initialize zap logger: %v", err)
 	}
 
-	collectorConfig, _ := f.GetString("config")
-	managerConfig, _ := f.GetString("manager-config")
-	copyPath, _ := f.GetString("copy-path")
-	if managerConfig != "" {
-		if err := copyConfigFile(collectorConfig, copyPath); err != nil {
-			logger.Fatal("Failed to copy config file %v", zap.Error(err))
-		}
-		collectorConfig = copyPath
-	}
-
-	ctx := context.Background()
-
-	coll := signozcol.New(
-		signozcol.WrappedCollectorSettings{
-			ConfigPaths:  []string{collectorConfig},
-			Version:      constants.Version,
-			Desc:         constants.Desc,
-			LoggingOpts:  []zap.Option{zap.WithCaller(true)},
-			PollInterval: 200 * time.Millisecond,
-			Logger:       logger,
+	rootCmd := &cobra.Command{
+		Use: "signoz-otel-collector",
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
 		},
-	)
+		SilenceUsage: true,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			v := viper.New()
 
-	svc, err := service.New(coll, logger, managerConfig, collectorConfig)
-	if err != nil {
-		logger.Fatal("failed to create collector service:", zap.Error(err))
+			v.SetEnvPrefix("signoz-otel-collector")
+			v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+			v.AutomaticEnv()
+
+			cmd.Flags().VisitAll(func(f *flag.Flag) {
+				configName := f.Name
+				if !f.Changed && v.IsSet(configName) {
+					val := v.Get(configName)
+					err := cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+					if err != nil {
+						panic(err)
+					}
+				}
+			})
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Command line flags
+			f := flag.NewFlagSet("Collector CLI Options", flag.ExitOnError)
+
+			f.Usage = func() {
+				fmt.Println(f.FlagUsages())
+				os.Exit(0)
+			}
+
+			f.String("config", "", "File path for the collector configuration")
+			f.String("manager-config", "", "File path for the agent manager configuration")
+			f.String("copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
+			f.Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
+				"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
+			err := f.Parse(os.Args[1:])
+			if err != nil {
+				log.Fatalf("Failed to parse args %v", err)
+			}
+
+			collectorConfig, _ := f.GetString("config")
+			managerConfig, _ := f.GetString("manager-config")
+			copyPath, _ := f.GetString("copy-path")
+			if managerConfig != "" {
+				if err := copyConfigFile(collectorConfig, copyPath); err != nil {
+					logger.Fatal("Failed to copy config file %v", zap.Error(err))
+				}
+				collectorConfig = copyPath
+			}
+
+			ctx := context.Background()
+
+			coll := signozcol.New(
+				signozcol.WrappedCollectorSettings{
+					ConfigPaths:  []string{collectorConfig},
+					Version:      constants.Version,
+					Desc:         constants.Desc,
+					LoggingOpts:  []zap.Option{zap.WithCaller(true)},
+					PollInterval: 200 * time.Millisecond,
+					Logger:       logger,
+				},
+			)
+
+			svc, err := service.New(coll, logger, managerConfig, collectorConfig)
+			if err != nil {
+				logger.Fatal("failed to create collector service:", zap.Error(err))
+			}
+
+			ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
+			if err := runInteractive(ctx, logger, svc); err != nil {
+				logger.Fatal("failed to run service:", zap.Error(err))
+			}
+
+			return err
+		},
 	}
 
-	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	config.Clickhouse.RegisterFlags(rootCmd)
 
-	if err := runInteractive(ctx, logger, svc); err != nil {
-		logger.Fatal("failed to run service:", zap.Error(err))
+	migrate.Register(rootCmd, logger)
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
 }
 
