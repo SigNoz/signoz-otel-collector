@@ -12,7 +12,7 @@ type clickhouse struct {
 }
 
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.DSN, "dsn", "tcp://0.0.0.0:9001", "the dsn for clickhouse connection")
+	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "the dsn for clickhouse connection")
 }
 
 type migrateSyncCheck struct {
@@ -20,5 +20,5 @@ type migrateSyncCheck struct {
 }
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "The timeout for sync check")
+	cmd.PersistentFlags().StringVar(&cfg.Timeout, "migrate-sync-check-timeout", "10s", "The timeout for sync check")
 }

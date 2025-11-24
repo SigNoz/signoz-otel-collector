@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/migrate/config"
+	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	schemamigrator "github.com/SigNoz/signoz-otel-collector/cmd/signozschemamigrator/schema_migrator"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
@@ -23,10 +23,10 @@ type check struct {
 
 func registerCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	syncCheckCommand := &cobra.Command{
-		Use:   "check",
-		Short: "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
+		Use:          "check",
+		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("running migrate sync check command")
 			check, err := newCheck(config.Clickhouse.DSN, config.MigrateSyncCheck.Timeout, logger)
 			if err != nil {
 				return err
@@ -42,18 +42,19 @@ func registerCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	}
 
 	config.MigrateSyncCheck.RegisterFlags(syncCheckCommand)
+
 	parentCmd.AddCommand(syncCheckCommand)
 }
 
 func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse dsn: %w", err)
+		return nil, err
 	}
 
 	conn, err := clickhouse.Open(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open connection: %w", err)
+		return nil, err
 	}
 
 	timeoutDuration, err := time.ParseDuration(timeout)
@@ -77,44 +78,45 @@ func (c *check) Run() error {
 		if err == nil {
 			break
 		}
-		c.logger.Info("sync migrations still in progress", zap.Error(err))
 
-		if backoff.NextBackOff() == backoff.Stop {
-			return fmt.Errorf("sync migration check timed out after %s: %w", c.timeout, err)
+		c.logger.Info("Waiting for sync migrations to complete...", zap.Error(err))
+		nextBackOff := backoff.NextBackOff()
+		if nextBackOff == backoff.Stop {
+			return errors.New("timed out waiting for sync migrations to complete within the configured timeout")
 		}
-		time.Sleep(backoff.NextBackOff())
+		time.Sleep(nextBackOff)
 	}
 
 	return nil
 }
 
 func (c *check) Check() error {
-	err := c.shouldRunMigration(c.conn, schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
+	err := c.isMigrationSuccess(c.conn, schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.shouldRunMigration(c.conn, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.shouldRunMigration(c.conn, schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.shouldRunMigration(c.conn, schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.shouldRunMigration(c.conn, schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.shouldRunMigration(c.conn, schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
@@ -123,10 +125,12 @@ func (c *check) Check() error {
 	return nil
 }
 
-func (c *check) shouldRunMigration(conn clickhouse.Conn, db string, migrationID uint64) error {
+func (c *check) isMigrationSuccess(conn clickhouse.Conn, db string, migrationID uint64) error {
+	c.logger.Info("Checking migration completion", zap.String("database", db), zap.Uint64("migrationID", migrationID))
 	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
-	var migrationSchemaMigrationRecord schemamigrator.MigrationSchemaMigrationRecord
-	if err := conn.QueryRow(context.Background(), query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
+
+	var migrationRecord schemamigrator.MigrationSchemaMigrationRecord
+	if err := conn.QueryRow(context.Background(), query).ScanStruct(&migrationRecord); err != nil {
 		if err == sql.ErrNoRows {
 			return nil
 		}
@@ -134,10 +138,8 @@ func (c *check) shouldRunMigration(conn clickhouse.Conn, db string, migrationID 
 		return err
 	}
 
-	fmt.Println(migrationSchemaMigrationRecord.Status, migrationSchemaMigrationRecord.MigrationID)
-
-	if migrationSchemaMigrationRecord.Status != schemamigrator.InProgressStatus && migrationSchemaMigrationRecord.Status != schemamigrator.FinishedStatus {
-		return errors.New("migration is not completed")
+	if migrationRecord.Status != schemamigrator.InProgressStatus && migrationRecord.Status != schemamigrator.FinishedStatus {
+		return fmt.Errorf("migration with ID %d for database '%s' has not been completed (current status: %s)", migrationID, db, migrationRecord.Status)
 	}
 
 	return nil
