@@ -121,7 +121,6 @@ func (c *check) Check() error {
 		return err
 	}
 
-	fmt.Println("all the migrations have been run successfully")
 	return nil
 }
 
