@@ -20,5 +20,5 @@ type migrateSyncCheck struct {
 }
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "migrate-sync-check-timeout", "10s", "The timeout for sync check")
+	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "The timeout for sync check")
 }
