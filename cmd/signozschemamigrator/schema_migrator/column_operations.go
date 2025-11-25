@@ -1,7 +1,9 @@
 package schemamigrator
 
 import (
+	"strconv"
 	"strings"
+	"time"
 )
 
 // AlterTableAddColumn is used to add a column to a table.
@@ -64,6 +66,62 @@ func (a AlterTableAddColumn) ToSQL() string {
 		sql.WriteString(" AFTER ")
 		sql.WriteString(a.After.Name)
 	}
+	return sql.String()
+}
+
+type AddColumnUpdateMetadata struct {
+	cluster        string
+	Database       string
+	BaseColumn     string
+	BaseColumnType ColumnType
+	NewColumn      string
+	NewColumnType  ColumnType
+	ReleaseTime    time.Time
+}
+
+func (a AddColumnUpdateMetadata) OnCluster(cluster string) Operation {
+	a.cluster = cluster
+	return &a
+}
+
+func (a AddColumnUpdateMetadata) WithReplication() Operation {
+	// no-op
+	return &a
+}
+
+func (a AddColumnUpdateMetadata) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, "" // no-op
+}
+
+func (a AddColumnUpdateMetadata) IsMutation() bool {
+	return false
+}
+
+func (a AddColumnUpdateMetadata) IsIdempotent() bool {
+	return true
+}
+
+func (a AddColumnUpdateMetadata) IsLightweight() bool {
+	return true
+}
+
+func (a AddColumnUpdateMetadata) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("INSERT INTO ")
+	sql.WriteString(a.Database)
+	sql.WriteString(".")
+	sql.WriteString("distributed_column_key_evolution_metadata")
+	sql.WriteString(" (base_column, base_column_type, new_column, new_column_type, release_time) VALUES ('")
+	sql.WriteString(a.BaseColumn)
+	sql.WriteString("', '")
+	sql.WriteString(a.BaseColumnType.String())
+	sql.WriteString("', '")
+	sql.WriteString(a.NewColumn)
+	sql.WriteString("', '")
+	sql.WriteString(a.NewColumnType.String())
+	sql.WriteString("', ")
+	sql.WriteString(strconv.FormatInt(a.ReleaseTime.UnixNano(), 10))
+	sql.WriteString(")")
 	return sql.String()
 }
 
