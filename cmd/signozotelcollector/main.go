@@ -13,13 +13,11 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/migrate"
 	"github.com/SigNoz/signoz-otel-collector/constants"
-	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -55,27 +53,9 @@ func main() {
 			})
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Command line flags
-			f := flag.NewFlagSet("Collector CLI Options", flag.ExitOnError)
-
-			f.Usage = func() {
-				fmt.Println(f.FlagUsages())
-				os.Exit(0)
-			}
-
-			f.String("config", "", "File path for the collector configuration")
-			f.String("manager-config", "", "File path for the agent manager configuration")
-			f.String("copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
-			f.Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
-				"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
-			err := f.Parse(os.Args[1:])
-			if err != nil {
-				log.Fatalf("Failed to parse args %v", err)
-			}
-
-			collectorConfig, _ := f.GetString("config")
-			managerConfig, _ := f.GetString("manager-config")
-			copyPath, _ := f.GetString("copy-path")
+			collectorConfig := config.Collector.Config
+			managerConfig := config.Collector.ManagerConfig
+			copyPath := config.Collector.CopyPath
 			if managerConfig != "" {
 				if err := copyConfigFile(collectorConfig, copyPath); err != nil {
 					logger.Fatal("Failed to copy config file %v", zap.Error(err))
@@ -113,6 +93,7 @@ func main() {
 	}
 
 	config.Clickhouse.RegisterFlags(rootCmd)
+	config.Collector.RegisterFlags(rootCmd)
 
 	migrate.Register(rootCmd, logger)
 	if err := rootCmd.Execute(); err != nil {
