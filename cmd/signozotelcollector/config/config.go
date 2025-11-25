@@ -21,7 +21,7 @@ type collector struct {
 func (cfg *collector) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.Config, "config", "", "File path for the collector configuration")
 	cmd.PersistentFlags().StringVar(&cfg.ManagerConfig, "manager-config", "", "File path for the agent manager configuration")
-	cmd.PersistentFlags().StringVar(&cfg.Config, "copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
+	cmd.PersistentFlags().StringVar(&cfg.CopyPath, "copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
 	cmd.PersistentFlags().Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
 		"Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature.")
 }
