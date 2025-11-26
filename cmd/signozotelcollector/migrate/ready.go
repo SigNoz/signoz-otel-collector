@@ -1,4 +1,4 @@
-package ready
+package migrate
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type ready struct {
 	logger   *zap.Logger
 }
 
-func Register(parentCmd *cobra.Command, logger *zap.Logger) {
+func registerReady(parentCmd *cobra.Command, logger *zap.Logger) {
 	readyCmd := &cobra.Command{
 		Use:   "ready",
 		Short: "Checks if the store is ready to run migrations. In cases of stores which have sharded/replicated setups, checks if all the shards/replicas are online and have the necessary permissions.",
