@@ -40,7 +40,7 @@ func registerReady(parentCmd *cobra.Command, logger *zap.Logger) {
 				return err
 			}
 
-			err = ready.Run()
+			err = ready.Run(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -80,12 +80,12 @@ func newReady(dsn string, shards, replicas uint64, cluster, version, timeout str
 	}, nil
 }
 
-func (r *ready) Run() error {
+func (r *ready) Run(ctx context.Context) error {
 	backoff := backoff.NewExponentialBackOff()
 	backoff.MaxElapsedTime = r.timeout
 
 	for {
-		err := r.Ready()
+		err := r.Ready(ctx)
 		if err == nil {
 			break
 		}
@@ -101,26 +101,26 @@ func (r *ready) Run() error {
 	return nil
 }
 
-func (r *ready) Ready() error {
-	if err := r.MatchVersion(); err != nil {
+func (r *ready) Ready(ctx context.Context) error {
+	if err := r.MatchVersion(ctx); err != nil {
 		return err
 	}
 
-	if err := r.MatchReplicaCount(); err != nil {
+	if err := r.MatchReplicaCount(ctx); err != nil {
 		return err
 	}
 
-	if err := r.MatchShardCount(); err != nil {
+	if err := r.MatchShardCount(ctx); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *ready) MatchVersion() error {
+func (r *ready) MatchVersion(ctx context.Context) error {
 	query := "SELECT version()"
 	var version string
-	if err := r.conn.QueryRow(context.Background(), query).Scan(&version); err != nil {
+	if err := r.conn.QueryRow(ctx, query).Scan(&version); err != nil {
 		return err
 	}
 
@@ -131,10 +131,10 @@ func (r *ready) MatchVersion() error {
 	return nil
 }
 
-func (r *ready) MatchReplicaCount() error {
+func (r *ready) MatchReplicaCount(ctx context.Context) error {
 	query := fmt.Sprintf("SELECT count(DISTINCT(shard_num)) FROM system.clusters WHERE cluster = %s", r.cluster)
 	var replicas uint64
-	if err := r.conn.QueryRow(context.Background(), query).Scan(&replicas); err != nil {
+	if err := r.conn.QueryRow(ctx, query).Scan(&replicas); err != nil {
 		return err
 	}
 
@@ -145,10 +145,10 @@ func (r *ready) MatchReplicaCount() error {
 	return nil
 }
 
-func (r *ready) MatchShardCount() error {
+func (r *ready) MatchShardCount(ctx context.Context) error {
 	query := fmt.Sprintf("SELECT count(DISTINCT(replica_num)) FROM system.clusters WHERE cluster = %s", r.cluster)
 	var shards uint64
-	if err := r.conn.QueryRow(context.Background(), query).Scan(&shards); err != nil {
+	if err := r.conn.QueryRow(ctx, query).Scan(&shards); err != nil {
 		return err
 	}
 
