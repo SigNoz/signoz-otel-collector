@@ -91,32 +91,32 @@ func (c *check) Run() error {
 }
 
 func (c *check) Check() error {
-	err := c.isMigrationSuccess(c.conn, schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
+	err := c.isMigrationSuccess(schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
@@ -124,12 +124,12 @@ func (c *check) Check() error {
 	return nil
 }
 
-func (c *check) isMigrationSuccess(conn clickhouse.Conn, db string, migrationID uint64) error {
+func (c *check) isMigrationSuccess(db string, migrationID uint64) error {
 	c.logger.Info("Checking migration completion", zap.String("database", db), zap.Uint64("migrationID", migrationID))
 	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
 
 	var migrationRecord schemamigrator.MigrationSchemaMigrationRecord
-	if err := conn.QueryRow(context.Background(), query).ScanStruct(&migrationRecord); err != nil {
+	if err := c.conn.QueryRow(context.Background(), query).ScanStruct(&migrationRecord); err != nil {
 		if err == sql.ErrNoRows {
 			return nil
 		}
