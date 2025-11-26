@@ -81,6 +81,47 @@ const (
 		severity_text,
 		severity_number,
 		body,
+		attributes_string,
+		attributes_number,
+		attributes_bool,
+		resources_string,
+		resource,
+		scope_name,
+		scope_version,
+		scope_string
+		) VALUES (
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?
+			)`
+	insertLogsSQLTemplateV2WithBodyJSON = `INSERT INTO %s.%s (
+		ts_bucket_start,
+		resource_fingerprint,
+		timestamp,
+		observed_timestamp,
+		id,
+		trace_id,
+		span_id,
+		trace_flags,
+		severity_text,
+		severity_number,
+		body,
 		body_json,
 		body_json_promoted,
 		attributes_string,
@@ -240,6 +281,7 @@ type clickhouseLogsExporter struct {
 	db                    clickhouse.Conn
 	insertLogsSQLV2       string
 	insertLogsResourceSQL string
+	includeBodyJSONCols   bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -276,14 +318,15 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.ActivateBodyJSONCols),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
+		includeBodyJSONCols:       cfg.ActivateBodyJSONCols,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
-		promotedPathsSyncInterval: time.Duration(cfg.PromotedPathsSyncInterval) * time.Minute,
+		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     15,
 	}
@@ -356,25 +399,28 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 		e.promotedPaths.Store(map[string]struct{}{})
 	}
 
-	ticker := time.NewTicker(e.promotedPathsSyncInterval)
-	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
-		ticker.Stop()
-		return nil
-	})
+	// if body JSON columns are activated, fetch promoted paths periodically
+	if e.includeBodyJSONCols {
+		ticker := time.NewTicker(e.promotedPathsSyncInterval)
+		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
+			ticker.Stop()
+			return nil
+		})
 
-	e.doFetchPromotedPaths() // Immediate first fetch
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		for {
-			select {
-			case <-e.closeChan:
-				return
-			case <-ticker.C:
-				e.doFetchPromotedPaths()
+		e.doFetchPromotedPaths() // Immediate first fetch
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			for {
+				select {
+				case <-e.closeChan:
+					return
+				case <-ticker.C:
+					e.doFetchPromotedPaths()
+				}
 			}
-		}
-	}()
+		}()
+	}
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
@@ -553,7 +599,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys)
 
 				// append main log row
-				if err := insertLogsStmtV2.Append(
+				args := []any{
 					rec.tsBucketStart,
 					rec.resourceFP,
 					rec.ts,
@@ -565,8 +611,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
-					rec.bodyJSON,
-					rec.bodyJSONPromoted,
+				}
+				if e.includeBodyJSONCols {
+					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
+				}
+				args = append(args,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -575,7 +624,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.scopeName,
 					rec.scopeVersion,
 					rec.scopeMap.StringData,
-				); err != nil {
+				)
+				if err := insertLogsStmtV2.Append(args...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
 				}
 
@@ -658,7 +708,7 @@ producerIteration:
 					body := record.Body()
 					promoted := pcommon.NewValueMap()
 					bodyJSON := pcommon.NewValueMap()
-					if body.Type() == pcommon.ValueTypeMap {
+					if e.includeBodyJSONCols && body.Type() == pcommon.ValueTypeMap {
 						// Work on a local mutable copy of the body to avoid mutating
 						// the shared pdata across goroutines.
 						mutableBody := pcommon.NewValueMap()
@@ -671,10 +721,8 @@ producerIteration:
 						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
 						bodyJSON = mutableBody
 
-						// set body to empty string if body column compatibility is disabled
-						if constants.BodyColumnCompatibilityDisabled {
-							body = pcommon.NewValueEmpty()
-						}
+						// set body to empty string
+						body = pcommon.NewValueEmpty()
 					}
 
 					// record size calculation
@@ -989,8 +1037,12 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	return db, nil
 }
 
-func renderInsertLogsSQLV2(_ *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
+func renderInsertLogsSQLV2(includeBodyJSON bool) string {
+	template := insertLogsSQLTemplateV2
+	if includeBodyJSON {
+		template = insertLogsSQLTemplateV2WithBodyJSON
+	}
+	return fmt.Sprintf(template, databaseName, distributedLogsTableV2)
 }
 
 func renderInsertLogsResourceSQL(_ *Config) string {

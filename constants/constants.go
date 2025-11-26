@@ -11,4 +11,7 @@ const (
 	DistributedPathTypesTable     = "distributed_json_path_types"
 	LocalPromotedPathsTable       = "json_promoted_paths"
 	DistributedPromotedPathsTable = "distributed_json_promoted_paths"
+	PathTypesTablePathColumn      = "path"
+	PathTypesTableTypeColumn      = "type"
+	PathTypesTableLastSeenColumn  = "last_seen"
 )

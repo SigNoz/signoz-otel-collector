@@ -42,7 +42,8 @@ type Config struct {
 	LogLevelConcurrency *int   `mapstructure:"log_level_concurrency"`
 
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
-	PromotedPathsSyncInterval int              `mapstructure:"promoted_paths_sync_interval_in_minutes"`
+	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
+	ActivateBodyJSONCols      bool             `mapstructure:"activate_body_json_cols"`
 }
 
 var (
@@ -54,8 +55,8 @@ func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
-	if cfg.PromotedPathsSyncInterval <= 0 {
-		cfg.PromotedPathsSyncInterval = 5
+	if cfg.PromotedPathsSyncInterval == nil {
+		cfg.PromotedPathsSyncInterval = utils.ToPointer(5 * time.Minute)
 	}
 
 	if cfg.LogLevelConcurrency == nil {
