@@ -21,7 +21,7 @@ type check struct {
 	logger  *zap.Logger
 }
 
-func registerCheck(parentCmd *cobra.Command, logger *zap.Logger) {
+func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	syncCheckCommand := &cobra.Command{
 		Use:          "check",
 		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
@@ -32,7 +32,7 @@ func registerCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 				return err
 			}
 
-			err = check.Run()
+			err = check.Run(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -69,12 +69,12 @@ func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
 	}, nil
 }
 
-func (c *check) Run() error {
+func (c *check) Run(ctx context.Context) error {
 	backoff := backoff.NewExponentialBackOff()
 	backoff.MaxElapsedTime = c.timeout
 
 	for {
-		err := c.Check()
+		err := c.Check(ctx)
 		if err == nil {
 			break
 		}
@@ -90,33 +90,33 @@ func (c *check) Run() error {
 	return nil
 }
 
-func (c *check) Check() error {
-	err := c.isMigrationSuccess(c.conn, schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
+func (c *check) Check(ctx context.Context) error {
+	err := c.isMigrationSuccess(ctx, schemamigrator.SignozTracesDB, schemamigrator.TracesMigrations[len(schemamigrator.TracesMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozMetricsDB, schemamigrator.MetricsMigrations[len(schemamigrator.MetricsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozMetadataDB, schemamigrator.MetadataMigrations[len(schemamigrator.MetadataMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozAnalyticsDB, schemamigrator.AnalyticsMigrations[len(schemamigrator.AnalyticsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
 
-	err = c.isMigrationSuccess(c.conn, schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozMeterDB, schemamigrator.MeterMigrations[len(schemamigrator.MeterMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
@@ -124,12 +124,12 @@ func (c *check) Check() error {
 	return nil
 }
 
-func (c *check) isMigrationSuccess(conn clickhouse.Conn, db string, migrationID uint64) error {
+func (c *check) isMigrationSuccess(ctx context.Context, db string, migrationID uint64) error {
 	c.logger.Info("Checking migration completion", zap.String("database", db), zap.Uint64("migrationID", migrationID))
 	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
 
 	var migrationRecord schemamigrator.MigrationSchemaMigrationRecord
-	if err := conn.QueryRow(context.Background(), query).ScanStruct(&migrationRecord); err != nil {
+	if err := c.conn.QueryRow(ctx, query).ScanStruct(&migrationRecord); err != nil {
 		if err == sql.ErrNoRows {
 			return nil
 		}
