@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/migrate/sync"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -16,7 +15,7 @@ func Register(parentCmd *cobra.Command, logger *zap.Logger) {
 	}
 
 	registerReady(rootCmd, logger)
-	sync.Register(rootCmd, logger)
+	registerSync(rootCmd, logger)
 
 	parentCmd.AddCommand(rootCmd)
 }

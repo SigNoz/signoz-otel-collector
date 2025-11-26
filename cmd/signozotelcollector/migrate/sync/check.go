@@ -21,7 +21,7 @@ type check struct {
 	logger  *zap.Logger
 }
 
-func registerCheck(parentCmd *cobra.Command, logger *zap.Logger) {
+func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	syncCheckCommand := &cobra.Command{
 		Use:          "check",
 		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
