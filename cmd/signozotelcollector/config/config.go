@@ -36,11 +36,11 @@ type clickhouse struct {
 }
 
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "the dsn for clickhouse connection")
-	cmd.PersistentFlags().Uint64Var(&cfg.Shards, "clickhouse-shards", 1, "number of shards for clickhouse server")
-	cmd.PersistentFlags().Uint64Var(&cfg.Replicas, "clickhouse-replicas", 1, "number of replicas per shard for clickhouse server")
-	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "name of the clickhouse cluster to connect")
-	cmd.PersistentFlags().StringVar(&cfg.Version, "clickhouse-version", "25.5.6.14", "clickhouse version")
+	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "DSN for clickhouse connection")
+	cmd.PersistentFlags().Uint64Var(&cfg.Shards, "clickhouse-shards", 1, "Number of shards for clickhouse server")
+	cmd.PersistentFlags().Uint64Var(&cfg.Replicas, "clickhouse-replicas", 1, "Number of replicas per shard for clickhouse server")
+	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "Name of the clickhouse cluster to connect")
+	cmd.PersistentFlags().StringVar(&cfg.Version, "clickhouse-version", "25.5.6.14", "Clickhouse version")
 }
 
 type migrateReady struct {
@@ -48,7 +48,7 @@ type migrateReady struct {
 }
 
 func (cfg *migrateReady) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "The timeout for migrate ready")
+	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for migrate ready operation")
 }
 
 type migrateSyncCheck struct {
@@ -56,5 +56,5 @@ type migrateSyncCheck struct {
 }
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "The timeout for sync check")
+	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for sync check operation")
 }
