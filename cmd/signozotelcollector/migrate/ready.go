@@ -3,6 +3,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -124,8 +125,10 @@ func (r *ready) MatchVersion(ctx context.Context) error {
 		return err
 	}
 
-	if r.version != version {
-		return fmt.Errorf("store version mismatch (%v/%v)", version, r.version)
+	expectedCannonicalVersion := r.getCannonicalVersion(r.version)
+	actualCannonicalVersion := r.getCannonicalVersion(r.version)
+	if expectedCannonicalVersion != actualCannonicalVersion {
+		return fmt.Errorf("store version mismatch (%v/%v)", actualCannonicalVersion, expectedCannonicalVersion)
 	}
 
 	return nil
@@ -157,4 +160,14 @@ func (r *ready) MatchShardCount(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ref: https://clickhouse.com/docs/sql-reference/functions/other-functions#version
+func (r *ready) getCannonicalVersion(version string) string {
+	parts := strings.Split(version, ".")
+	if len(parts) > 3 {
+		return strings.Join(parts[:3], ".")
+	}
+
+	return version
 }
