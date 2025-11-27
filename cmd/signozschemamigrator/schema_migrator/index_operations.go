@@ -14,6 +14,12 @@ const (
 	IndexTypeTokenBF IndexType = "tokenbf_v1"
 	IndexTypeNGramBF IndexType = "ngrambf_v1"
 	IndexTypeMinMax  IndexType = "minmax"
+
+	stringBasedIndexPrefix = "lower(assumeNotNull(dynamicElement("
+	numberBasedIndexPrefix = "assumeNotNull(dynamicElement("
+
+	stringBasedIndexExpr = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
+	numberBasedIndexExpr = "assumeNotNull(dynamicElement(%s, '%s'))"
 )
 
 // Index is used to represent an index in the SQL.
@@ -287,7 +293,13 @@ func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
 			parts[idx] = "`" + part + "`"
 		}
 	}
-	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, '%s')))", strings.Join(parts, "."), typeColumn)
+
+	indexExpr := stringBasedIndexExpr
+	if typeColumn != "String" {
+		indexExpr = numberBasedIndexExpr
+	}
+
+	return fmt.Sprintf(indexExpr, strings.Join(parts, "."), typeColumn)
 }
 
 func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
@@ -298,8 +310,8 @@ func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
 func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
-	if !strings.HasPrefix(expr, "lower(assumeNotNull(dynamicElement(") {
-		return "", "", fmt.Errorf("invalid expression: %s, expected prefix: lower(assumeNotNull(dynamicElement(...))", expr)
+	if !(strings.HasPrefix(expr, stringBasedIndexPrefix) || strings.HasPrefix(expr, numberBasedIndexPrefix)) {
+		return "", "", fmt.Errorf("invalid expression: %s, expected prefix: %s or %s", expr, stringBasedIndexPrefix, numberBasedIndexPrefix)
 	}
 
 	// remove lower()
