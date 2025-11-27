@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
-	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 type IndexType string
@@ -14,6 +13,7 @@ type IndexType string
 const (
 	IndexTypeTokenBF IndexType = "tokenbf_v1"
 	IndexTypeNGramBF IndexType = "ngrambf_v1"
+	IndexTypeMinMax  IndexType = "minmax"
 )
 
 // Index is used to represent an index in the SQL.
@@ -274,12 +274,12 @@ func (a AlterTableClearIndex) ToSQL() string {
 	return sql.String()
 }
 
-func JSONSubColumnIndexName(column, path string, index IndexType) string {
+func JSONSubColumnIndexName(column, path, typeColumn string, index IndexType) string {
 	expr := column + "." + path
-	return fmt.Sprintf("`%s_String_%s`", expr, index)
+	return fmt.Sprintf("`%s_%s_%s`", expr, typeColumn, index)
 }
 
-func jsonSubColumnIndexExprFormat(expr string) string {
+func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
 	parts := strings.Split(expr, ".")
 	for idx, part := range parts {
 		if keycheck.IsBacktickRequired(part) {
@@ -287,21 +287,47 @@ func jsonSubColumnIndexExprFormat(expr string) string {
 			parts[idx] = "`" + part + "`"
 		}
 	}
-	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, 'String')))", strings.Join(parts, "."))
+	return fmt.Sprintf("lower(assumeNotNull(dynamicElement(%s, '%s')))", strings.Join(parts, "."), typeColumn)
 }
 
-func JSONSubColumnIndexExpr(column, path string) string {
+func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
 	expr := column + "." + path
-	return jsonSubColumnIndexExprFormat(expr)
+	return jsonSubColumnIndexExprFormat(expr, typeColumn)
 }
 
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
-func UnfoldJSONSubColumnIndexExpr(expr string) (string, error) {
-	format := jsonSubColumnIndexExprFormat("")
-	expr, format = utils.TrimCommonPrefixSuffix(expr, format)
-	if format != "" {
-		return "", fmt.Errorf("format mismatch: %s != %s", expr, format)
+func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
+	if !strings.HasPrefix(expr, "lower(assumeNotNull(dynamicElement(") {
+		return "", "", fmt.Errorf("invalid expression: %s, expected prefix: lower(assumeNotNull(dynamicElement(...))", expr)
 	}
-	return expr, nil
+
+	// remove lower()
+	expr = strings.TrimPrefix(expr, "lower(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// remove assumeNotNull()
+	expr = strings.TrimPrefix(expr, "assumeNotNull(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// remove dynamicElement()
+	expr = strings.TrimPrefix(expr, "dynamicElement(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// split by comma
+	parts := strings.Split(expr, ",")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid expression: %s", expr)
+	}
+
+	expr = parts[0]
+
+	// extract the column type and trim the quotes
+	typeColumn := strings.TrimSpace(parts[1])
+
+	// trim the type column
+	typeColumn = strings.TrimLeft(typeColumn, "'")
+	typeColumn = strings.TrimRight(typeColumn, "'")
+
+	return expr, typeColumn, nil
 }
