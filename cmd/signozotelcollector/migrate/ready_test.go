@@ -59,8 +59,8 @@ func TestGetCannonicalVersion(t *testing.T) {
 
 	for _, test := range tests {
 		ready := ready{version: test.ExpectedVersion}
-		canonicalCurrent := ready.getCannonicalVersion(test.CurrentVersion)
-		canonicalExpected := ready.getCannonicalVersion(test.ExpectedVersion)
+		canonicalCurrent := ready.getCanonicalVersion(test.CurrentVersion)
+		canonicalExpected := ready.getCanonicalVersion(test.ExpectedVersion)
 
 		pass := canonicalCurrent == canonicalExpected
 		assert.Equal(t, test.Pass, pass)
