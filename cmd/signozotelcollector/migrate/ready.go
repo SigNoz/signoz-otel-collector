@@ -125,10 +125,8 @@ func (r *ready) MatchVersion(ctx context.Context) error {
 		return err
 	}
 
-	expectedCanonicalVersion := r.getCanonicalVersion(r.version)
-	actualCanonicalVersion := r.getCanonicalVersion(r.version)
-	if expectedCanonicalVersion != actualCanonicalVersion {
-		return fmt.Errorf("store version mismatch (%v/%v)", actualCanonicalVersion, expectedCanonicalVersion)
+	if !strings.HasPrefix(version, r.version) {
+		return fmt.Errorf("store version mismatch (%v/%v)", version, r.version)
 	}
 
 	return nil
@@ -160,14 +158,4 @@ func (r *ready) MatchShardCount(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// ref: https://clickhouse.com/docs/sql-reference/functions/other-functions#version
-func (r *ready) getCanonicalVersion(version string) string {
-	parts := strings.Split(version, ".")
-	if len(parts) > 3 {
-		return strings.Join(parts[:3], ".")
-	}
-
-	return version
 }
