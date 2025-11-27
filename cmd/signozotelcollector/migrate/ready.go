@@ -3,6 +3,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -124,7 +125,7 @@ func (r *ready) MatchVersion(ctx context.Context) error {
 		return err
 	}
 
-	if r.version != version {
+	if !strings.HasPrefix(version, r.version) {
 		return fmt.Errorf("store version mismatch (%v/%v)", version, r.version)
 	}
 
