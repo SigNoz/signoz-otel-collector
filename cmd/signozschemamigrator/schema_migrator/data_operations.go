@@ -60,7 +60,7 @@ func (i InsertIntoTable) ToSQL() string {
 	for _, row := range i.Values {
 		vals := make([]string, len(row))
 		for idx, v := range row {
-			vals[idx] = v
+			vals[idx] = fmt.Sprintf("'%s'", v)
 		}
 		rows = append(rows, fmt.Sprintf("(%s)", strings.Join(vals, ", ")))
 	}
