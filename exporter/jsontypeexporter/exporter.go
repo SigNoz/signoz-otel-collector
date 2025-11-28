@@ -9,6 +9,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -21,7 +22,7 @@ import (
 )
 
 const (
-	DistributedPathTypesTableName = "signoz_logs.distributed_path_types"
+	distributedPathTypesTableName = constants.SignozMetadataDB + "." + constants.DistributedPathTypesTable
 	defaultKeyCacheSize           = 10_000
 	ArraySeparator                = "[]."
 	ArraySuffix                   = "[]"
@@ -272,7 +273,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 // persistTypes writes the collected types to the ClickHouse database
 func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) error {
 	// Prepare the SQL statement
-	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", DistributedPathTypesTableName)
+	sql := fmt.Sprintf("INSERT INTO %s (path, type, last_seen) VALUES (?, ?, ?)", distributedPathTypesTableName)
 
 	statement, err := e.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
@@ -320,7 +321,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 
 	e.logger.Debug("Successfully persisted types to database",
 		zap.Int("count", insertedCount),
-		zap.String("table", DistributedPathTypesTableName))
+		zap.String("table", distributedPathTypesTableName))
 
 	return nil
 }

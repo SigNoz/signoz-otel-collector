@@ -13,7 +13,7 @@ GOFMT=gofmt
 FMT_LOG=.fmt.log
 IMPORT_LOG=.import.log
 
-CLICKHOUSE_HOST ?= localhost
+CLICKHOUSE_HOST ?= 127.0.0.1
 CLICKHOUSE_PORT ?= 9000
 
 LD_FLAGS ?=
@@ -103,3 +103,10 @@ install-ci: install-tools
 
 .PHONY: test-ci
 test-ci: lint
+
+.PHONY: migrator
+migrator:
+	@echo "------------------"
+	@echo "--> Running schema migrator for $(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)"
+	@echo "------------------"
+	go run cmd/signozschemamigrator/main.go sync --dsn "clickhouse://$(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)" --dev

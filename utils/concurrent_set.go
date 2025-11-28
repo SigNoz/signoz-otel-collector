@@ -57,6 +57,17 @@ func (s *ConcurrentSet[T]) String() string {
 	return fmt.Sprint(s.Keys())
 }
 
+func (s *ConcurrentSet[T]) Iter(continueFn func(k T) bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for k := range s.set {
+		if !continueFn(k) {
+			break
+		}
+	}
+}
+
 func (s *ConcurrentSet[T]) ToSlice() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -1,8 +1,25 @@
 package schemamigrator
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
+)
+
+type IndexType string
+
+const (
+	IndexTypeTokenBF IndexType = "tokenbf_v1"
+	IndexTypeNGramBF IndexType = "ngrambf_v1"
+	IndexTypeMinMax  IndexType = "minmax"
+
+	stringBasedIndexPrefix = "lower(assumeNotNull(dynamicElement("
+	numberBasedIndexPrefix = "assumeNotNull(dynamicElement("
+
+	stringBasedIndexExpr = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
+	numberBasedIndexExpr = "assumeNotNull(dynamicElement(%s, '%s'))"
 )
 
 // Index is used to represent an index in the SQL.
@@ -261,4 +278,68 @@ func (a AlterTableClearIndex) ToSQL() string {
 		sql.WriteString(a.Partition)
 	}
 	return sql.String()
+}
+
+func JSONSubColumnIndexName(column, path, typeColumn string, index IndexType) string {
+	expr := column + "." + path
+	return fmt.Sprintf("`%s_%s_%s`", expr, typeColumn, index)
+}
+
+func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
+	parts := strings.Split(expr, ".")
+	for idx, part := range parts {
+		if keycheck.IsBacktickRequired(part) {
+			part := strings.Trim(part, "`") // trim if already present
+			parts[idx] = "`" + part + "`"
+		}
+	}
+
+	indexExpr := stringBasedIndexExpr
+	if typeColumn != "String" {
+		indexExpr = numberBasedIndexExpr
+	}
+
+	return fmt.Sprintf(indexExpr, strings.Join(parts, "."), typeColumn)
+}
+
+func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
+	expr := column + "." + path
+	return jsonSubColumnIndexExprFormat(expr, typeColumn)
+}
+
+// Returns the subcolumn name from the index expression
+// If the expression is not a JSON subcolumn index expression, returns an error
+func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
+	if !(strings.HasPrefix(expr, stringBasedIndexPrefix) || strings.HasPrefix(expr, numberBasedIndexPrefix)) {
+		return "", "", fmt.Errorf("invalid expression: %s, expected prefix: %s or %s", expr, stringBasedIndexPrefix, numberBasedIndexPrefix)
+	}
+
+	// remove lower()
+	expr = strings.TrimPrefix(expr, "lower(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// remove assumeNotNull()
+	expr = strings.TrimPrefix(expr, "assumeNotNull(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// remove dynamicElement()
+	expr = strings.TrimPrefix(expr, "dynamicElement(")
+	expr = strings.TrimSuffix(expr, ")")
+
+	// split by comma
+	parts := strings.Split(expr, ",")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid expression: %s", expr)
+	}
+
+	expr = parts[0]
+
+	// extract the column type and trim the quotes
+	typeColumn := strings.TrimSpace(parts[1])
+
+	// trim the type column
+	typeColumn = strings.TrimLeft(typeColumn, "'")
+	typeColumn = strings.TrimRight(typeColumn, "'")
+
+	return expr, typeColumn, nil
 }
