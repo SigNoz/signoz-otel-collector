@@ -26,7 +26,7 @@ func GetAvailableLocalAddress() string {
 	}
 	// There is a possible race if something else takes this same port before
 	// the test uses it, however, that is unlikely in practice.
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	return ln.Addr().String()
 }
 
@@ -45,7 +45,7 @@ func waitForPortToListen(port int) error {
 		case <-ticker.C:
 			conn, err := net.Dial("tcp", address)
 			if err == nil && conn != nil {
-				conn.Close()
+				_ = conn.Close()
 				return nil
 			}
 

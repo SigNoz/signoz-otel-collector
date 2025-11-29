@@ -147,7 +147,7 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 			event.IsError = true
 			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
-			uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
+			uuid := strings.ReplaceAll(uuidWithHyphen.String(), "-", "")
 			errorEvent.ErrorID = uuid
 			var hash [16]byte
 			if lowCardinalExceptionGrouping {
@@ -299,7 +299,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
-	var span *SpanV3 = &SpanV3{
+	span := &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
 

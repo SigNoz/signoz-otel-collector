@@ -16,7 +16,7 @@ type Config struct {
 var _ component.Config = (*Config)(nil)
 
 func (cfg *Config) Validate() error {
-	if len(cfg.BaseConfig.Operators) == 0 {
+	if len(cfg.Operators) == 0 {
 		return errors.New("no operators were configured for signozlogspipeline processor")
 	}
 	return nil
@@ -25,7 +25,7 @@ func (cfg *Config) Validate() error {
 func (cfg *Config) OperatorConfigs() []operator.Config {
 	ops := []operator.Config{}
 
-	for _, op := range cfg.BaseConfig.Operators {
+	for _, op := range cfg.Operators {
 		ops = append(ops, operator.Config(op))
 	}
 	return ops

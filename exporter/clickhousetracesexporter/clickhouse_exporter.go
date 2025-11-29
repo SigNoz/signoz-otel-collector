@@ -164,7 +164,7 @@ func (s *clickhouseTracesExporter) Shutdown(_ context.Context) error {
 			s.logger.Error("Error stopping usage collector", zap.Error(err))
 		}
 	}
-	s.Writer.Close()
+	_ = s.Writer.Close()
 
 	return nil
 }

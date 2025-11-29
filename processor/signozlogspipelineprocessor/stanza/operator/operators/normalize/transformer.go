@@ -18,7 +18,7 @@ type Processor struct {
 
 // Process will parse an entry for JSON.
 func (p *Processor) Process(ctx context.Context, entry *entry.Entry) error {
-	return p.TransformerOperator.ProcessWith(ctx, entry, p.transform)
+	return p.ProcessWith(ctx, entry, p.transform)
 }
 
 func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
@@ -32,7 +32,7 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	case string:
 		// Unquote JSON strings if possible
 		unquoted := utils.Unquote(v)
-		if !(strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}")) {
+		if !strings.HasPrefix(unquoted, "{") || !strings.HasSuffix(unquoted, "}") {
 			return nil
 		}
 		err := sonic.Unmarshal([]byte(unquoted), &parsedValue)
