@@ -30,6 +30,13 @@ func WithCapacityConcurrentSet[T comparable](capacity int) *ConcurrentSet[T] {
 	}
 }
 
+func (s *ConcurrentSet[T]) Contains(k T) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.set[k]
+	return ok
+}
+
 func (s *ConcurrentSet[T]) Insert(k T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
