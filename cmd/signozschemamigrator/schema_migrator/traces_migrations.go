@@ -1,5 +1,7 @@
 package schemamigrator
 
+import "github.com/SigNoz/signoz-otel-collector/utils"
+
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
 	{
@@ -914,7 +916,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "signoz_index_v3",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -923,7 +925,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "distributed_signoz_index_v3",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
