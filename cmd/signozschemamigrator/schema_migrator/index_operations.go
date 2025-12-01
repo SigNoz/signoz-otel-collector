@@ -84,6 +84,10 @@ func (a AlterTableAddIndex) IsLightweight() bool {
 	return true
 }
 
+func (a AlterTableAddIndex) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableAddIndex) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -145,6 +149,10 @@ func (a AlterTableDropIndex) IsLightweight() bool {
 	return true
 }
 
+func (a AlterTableDropIndex) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableDropIndex) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -198,6 +206,10 @@ func (a AlterTableMaterializeIndex) IsIdempotent() bool {
 
 func (a AlterTableMaterializeIndex) IsLightweight() bool {
 	// Materializing an index is not lightweight. It will create a complete index for all the data in the table.
+	return false
+}
+
+func (a AlterTableMaterializeIndex) ForceMigrate() bool {
 	return false
 }
 
@@ -258,6 +270,10 @@ func (a AlterTableClearIndex) IsIdempotent() bool {
 
 func (a AlterTableClearIndex) IsLightweight() bool {
 	// Clearing an index is not lightweight. It will remove the index from the table.
+	return false
+}
+
+func (a AlterTableClearIndex) ForceMigrate() bool {
 	return false
 }
 

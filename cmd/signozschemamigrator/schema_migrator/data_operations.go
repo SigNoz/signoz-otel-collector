@@ -14,6 +14,7 @@ type InsertIntoTable struct {
 	Table       string
 	Columns     []string
 	LightWeight bool
+	Synchronous bool
 	Values      [][]string
 }
 
@@ -40,6 +41,10 @@ func (i InsertIntoTable) IsIdempotent() bool { return true }
 
 // IsLightweight returns true.
 func (i InsertIntoTable) IsLightweight() bool { return i.LightWeight }
+
+func (i InsertIntoTable) ForceMigrate() bool {
+	return i.Synchronous
+}
 
 func (i InsertIntoTable) ToSQL() string {
 	var sql strings.Builder

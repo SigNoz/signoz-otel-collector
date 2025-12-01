@@ -62,6 +62,10 @@ func (c CreateTableOperation) IsLightweight() bool {
 	return true
 }
 
+func (c CreateTableOperation) ForceMigrate() bool {
+	return false
+}
+
 func (c CreateTableOperation) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("CREATE TABLE IF NOT EXISTS ")
@@ -125,6 +129,10 @@ func (d DropTableOperation) IsLightweight() bool {
 	return true
 }
 
+func (d DropTableOperation) ForceMigrate() bool {
+	return false
+}
+
 func (d DropTableOperation) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("DROP TABLE IF EXISTS ")
@@ -181,6 +189,10 @@ func (c CreateMaterializedViewOperation) IsIdempotent() bool {
 func (c CreateMaterializedViewOperation) IsLightweight() bool {
 	// Create materialized view is lightweight.
 	return true
+}
+
+func (c CreateMaterializedViewOperation) ForceMigrate() bool {
+	return false
 }
 
 func (c CreateMaterializedViewOperation) ToSQL() string {
@@ -250,6 +262,10 @@ func (c ModifyQueryMaterializedViewOperation) IsLightweight() bool {
 	return true
 }
 
+func (c ModifyQueryMaterializedViewOperation) ForceMigrate() bool {
+	return false
+}
+
 func (c ModifyQueryMaterializedViewOperation) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -294,6 +310,10 @@ func (d TruncateTableOperation) IsIdempotent() bool {
 }
 
 func (d TruncateTableOperation) IsLightweight() bool {
+	return false
+}
+
+func (d TruncateTableOperation) ForceMigrate() bool {
 	return false
 }
 
@@ -356,6 +376,10 @@ func (a AlterTableModifyTTL) IsLightweight() bool {
 	return !a.Settings.MaterializeTTLAfterModify
 }
 
+func (a AlterTableModifyTTL) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableModifyTTL) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -407,6 +431,10 @@ func (a AlterTableDropTTL) IsIdempotent() bool {
 
 func (a AlterTableDropTTL) IsLightweight() bool {
 	return true
+}
+
+func (a AlterTableDropTTL) ForceMigrate() bool {
+	return false
 }
 
 func (a AlterTableDropTTL) ToSQL() string {
@@ -462,6 +490,10 @@ func (a AlterTableModifySettings) IsIdempotent() bool {
 func (a AlterTableModifySettings) IsLightweight() bool {
 	// Modifying table settings is lightweight.
 	return true
+}
+
+func (a AlterTableModifySettings) ForceMigrate() bool {
+	return false
 }
 
 func (a AlterTableModifySettings) ToSQL() string {

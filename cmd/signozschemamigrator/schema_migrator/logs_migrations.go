@@ -369,6 +369,7 @@ ORDER BY name ASC`,
 				Database:    constants.SignozMetadataDB,
 				Table:       constants.DistributedPromotedPathsTable,
 				LightWeight: true,
+				Synchronous: true,
 				Columns:     []string{"path", "created_at"},
 				Values: [][]string{
 					{"message", fmt.Sprintf("%d", time.Now().UnixMilli())},

@@ -689,17 +689,24 @@ func (m *MigrationManager) shouldRunMigration(db string, migrationID uint64, ver
 
 // MigrateUpSync migrates the schema up.
 func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint64) error {
+	executeMigration := func(db string, migration SchemaMigrationRecord) error {
+		for _, item := range migration.UpItems {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, db, false); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
 	m.logger.Info("Running migrations up sync")
 	for _, migration := range TracesMigrations {
 		if !m.shouldRunMigration(signozTracesDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozTracesDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -707,12 +714,8 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		if !m.shouldRunMigration(signozLogsDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozLogsDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozLogsDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -720,12 +723,8 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		if !m.shouldRunMigration(signozMetricsDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozMetricsDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -733,12 +732,8 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		if !m.shouldRunMigration(signozMetadataDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetadataDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozMetadataDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -746,12 +741,8 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		if !m.shouldRunMigration(signozAnalyticsDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozAnalyticsDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozAnalyticsDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -759,12 +750,8 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		if !m.shouldRunMigration(signozMeterDB, migration.MigrationID, upVersions) {
 			continue
 		}
-		for _, item := range migration.UpItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
-					return err
-				}
-			}
+		if err := executeMigration(signozMeterDB, migration); err != nil {
+			return err
 		}
 	}
 
@@ -781,7 +768,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		for _, item := range migration.DownItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozTracesDB, false); err != nil {
 					return err
 				}
@@ -794,7 +781,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		for _, item := range migration.DownItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozLogsDB, false); err != nil {
 					return err
 				}
@@ -807,7 +794,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		for _, item := range migration.DownItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMetricsDB, false); err != nil {
 					return err
 				}
@@ -820,7 +807,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		for _, item := range migration.DownItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozAnalyticsDB, false); err != nil {
 					return err
 				}
@@ -833,7 +820,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		for _, item := range migration.DownItems {
-			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			if !item.IsMutation() && (item.ForceMigrate() || (item.IsIdempotent() && item.IsLightweight())) {
 				if err := m.RunOperation(ctx, item, migration.MigrationID, signozMeterDB, false); err != nil {
 					return err
 				}
@@ -853,6 +840,11 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 			continue
 		}
 		for _, item := range migration.UpItems {
+			if !item.IsMutation() && item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
@@ -915,6 +907,11 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 			continue
 		}
 		for _, item := range migration.DownItems {
+			if !item.IsMutation() && item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
