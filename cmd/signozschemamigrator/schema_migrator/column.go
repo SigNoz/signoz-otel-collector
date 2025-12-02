@@ -20,6 +20,52 @@ const (
 	ColumnPropertySettings     ColumnProperty = "SETTINGS"
 )
 
+type ColumnTypeEnum int
+
+const (
+	// String types
+	ColumnTypeEnumString ColumnTypeEnum = iota
+	// Integer types
+	ColumnTypeEnumInt8
+	ColumnTypeEnumInt16
+	ColumnTypeEnumInt32
+	ColumnTypeEnumInt64
+	ColumnTypeEnumInt128
+	ColumnTypeEnumInt256
+	ColumnTypeEnumUInt8
+	ColumnTypeEnumUInt16
+	ColumnTypeEnumUInt32
+	ColumnTypeEnumUInt64
+	ColumnTypeEnumUInt128
+	ColumnTypeEnumUInt256
+	// Floating point types
+	ColumnTypeEnumFloat32
+	ColumnTypeEnumFloat64
+	// Boolean types
+	ColumnTypeEnumBool
+	// Date types
+	ColumnTypeEnumDate
+	ColumnTypeEnumDate32
+	// UUID types
+	ColumnTypeEnumUUID
+	// IP types
+	ColumnTypeEnumIPv4
+	ColumnTypeEnumIPv6
+
+	ColumnTypeEnumLowCardinality
+	ColumnTypeEnumNullable
+	ColumnTypeEnumSimpleAggregateFunction
+	ColumnTypeEnumAggregateFunction
+	ColumnTypeEnumJSON
+	ColumnTypeEnumFixedString
+	ColumnTypeEnumDateTime
+	ColumnTypeEnumDateTime64
+	ColumnTypeEnumArray
+	ColumnTypeEnumMap
+	ColumnTypeEnumTuple
+	ColumnTypeEnumEnumeration
+)
+
 // ColumnType represents a column type.
 // It is used to represent the column type in the schema definition.
 // The column type can be a primitive type, a fixed string type, a date time type,
@@ -27,64 +73,82 @@ const (
 // a simple aggregate function type, or an aggregate function type.
 type ColumnType interface {
 	String() string
+	GetType() ColumnTypeEnum
 }
 
 // PrimitiveColumnType represents a primitive column type.
 // It is used to represent the primitive column type in the column type.
 // Example: String, Int64, Float64, Bool, Date, DateTime, etc.
-type PrimitiveColumnType string
-
-const (
-	// String types
-	ColumnTypeString PrimitiveColumnType = "String"
-	// Integer types
-	ColumnTypeInt8    PrimitiveColumnType = "Int8"
-	ColumnTypeInt16   PrimitiveColumnType = "Int16"
-	ColumnTypeInt32   PrimitiveColumnType = "Int32"
-	ColumnTypeInt64   PrimitiveColumnType = "Int64"
-	ColumnTypeInt128  PrimitiveColumnType = "Int128"
-	ColumnTypeInt256  PrimitiveColumnType = "Int256"
-	ColumnTypeUInt8   PrimitiveColumnType = "UInt8"
-	ColumnTypeUInt16  PrimitiveColumnType = "UInt16"
-	ColumnTypeUInt32  PrimitiveColumnType = "UInt32"
-	ColumnTypeUInt64  PrimitiveColumnType = "UInt64"
-	ColumnTypeUInt128 PrimitiveColumnType = "UInt128"
-	ColumnTypeUInt256 PrimitiveColumnType = "UInt256"
-	// Floating point types
-	ColumnTypeFloat32 PrimitiveColumnType = "Float32"
-	ColumnTypeFloat64 PrimitiveColumnType = "Float64"
-	// Boolean types
-	ColumnTypeBool PrimitiveColumnType = "Bool"
-	// Date types
-	ColumnTypeDate   PrimitiveColumnType = "Date"
-	ColumnTypeDate32 PrimitiveColumnType = "Date32"
-	// UUID types
-	ColumnTypeUUID PrimitiveColumnType = "UUID"
-	// IP types
-	ColumnTypeIPv4 PrimitiveColumnType = "IPv4"
-	ColumnTypeIPv6 PrimitiveColumnType = "IPv6"
-)
+type PrimitiveColumnType struct {
+	Type string
+	Enum ColumnTypeEnum
+}
 
 func (p PrimitiveColumnType) String() string {
-	return string(p)
+	return p.Type
 }
+
+func (p PrimitiveColumnType) GetType() ColumnTypeEnum {
+	return p.Enum
+}
+
+var (
+	// String types
+	ColumnTypeString = PrimitiveColumnType{Type: "String", Enum: ColumnTypeEnumString}
+	// Integer types
+	ColumnTypeInt8    = PrimitiveColumnType{Type: "Int8", Enum: ColumnTypeEnumInt8}
+	ColumnTypeInt16   = PrimitiveColumnType{Type: "Int16", Enum: ColumnTypeEnumInt16}
+	ColumnTypeInt32   = PrimitiveColumnType{Type: "Int32", Enum: ColumnTypeEnumInt32}
+	ColumnTypeInt64   = PrimitiveColumnType{Type: "Int64", Enum: ColumnTypeEnumInt64}
+	ColumnTypeInt128  = PrimitiveColumnType{Type: "Int128", Enum: ColumnTypeEnumInt128}
+	ColumnTypeInt256  = PrimitiveColumnType{Type: "Int256", Enum: ColumnTypeEnumInt256}
+	ColumnTypeUInt8   = PrimitiveColumnType{Type: "UInt8", Enum: ColumnTypeEnumUInt8}
+	ColumnTypeUInt16  = PrimitiveColumnType{Type: "UInt16", Enum: ColumnTypeEnumUInt16}
+	ColumnTypeUInt32  = PrimitiveColumnType{Type: "UInt32", Enum: ColumnTypeEnumUInt32}
+	ColumnTypeUInt64  = PrimitiveColumnType{Type: "UInt64", Enum: ColumnTypeEnumUInt64}
+	ColumnTypeUInt128 = PrimitiveColumnType{Type: "UInt128", Enum: ColumnTypeEnumUInt128}
+	ColumnTypeUInt256 = PrimitiveColumnType{Type: "UInt256", Enum: ColumnTypeEnumUInt256}
+
+	// Floating point types
+	ColumnTypeFloat32 = PrimitiveColumnType{Type: "Float32", Enum: ColumnTypeEnumFloat32}
+	ColumnTypeFloat64 = PrimitiveColumnType{Type: "Float64", Enum: ColumnTypeEnumFloat64}
+	// Boolean types
+	ColumnTypeBool = PrimitiveColumnType{Type: "Bool", Enum: ColumnTypeEnumBool}
+	// Date types
+	ColumnTypeDate   = PrimitiveColumnType{Type: "Date", Enum: ColumnTypeEnumDate}
+	ColumnTypeDate32 = PrimitiveColumnType{Type: "Date32", Enum: ColumnTypeEnumDate32}
+	// UUID types
+	ColumnTypeUUID = PrimitiveColumnType{Type: "UUID", Enum: ColumnTypeEnumUUID}
+	// IP types
+	ColumnTypeIPv4 = PrimitiveColumnType{Type: "IPv4", Enum: ColumnTypeEnumIPv4}
+	ColumnTypeIPv6 = PrimitiveColumnType{Type: "IPv6", Enum: ColumnTypeEnumIPv6}
+)
 
 // JSONColumnType represent a JSON column type
 type JSONColumnType struct {
-	MaxDynamicPaths uint
-	MaxDynamicTypes uint
+	MaxDynamicPaths *uint
+	MaxDynamicTypes *uint
+	Columns         []Column
 }
 
 func (f JSONColumnType) String() string {
 	params := []string{}
-	if f.MaxDynamicPaths != 0 {
-		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", f.MaxDynamicPaths))
+	if f.MaxDynamicPaths != nil {
+		params = append(params, fmt.Sprintf("max_dynamic_paths=%d", *f.MaxDynamicPaths))
 	}
-	if f.MaxDynamicTypes != 0 {
-		params = append(params, fmt.Sprintf("max_dynamic_types=%d", f.MaxDynamicTypes))
+	if f.MaxDynamicTypes != nil {
+		params = append(params, fmt.Sprintf("max_dynamic_types=%d", *f.MaxDynamicTypes))
+	}
+
+	for _, column := range f.Columns {
+		params = append(params, fmt.Sprintf("%s %s", column.Name, column.Type.String()))
 	}
 
 	return fmt.Sprintf("JSON(%s)", strings.Join(params, ", "))
+}
+
+func (f JSONColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumJSON
 }
 
 // FixedStringColumnType represents a fixed string column type.
@@ -97,6 +161,10 @@ type FixedStringColumnType struct {
 
 func (f FixedStringColumnType) String() string {
 	return fmt.Sprintf("FixedString(%d)", f.Length)
+}
+
+func (f FixedStringColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumFixedString
 }
 
 // DateTimeColumnType represents a date time column type.
@@ -112,6 +180,10 @@ func (d DateTimeColumnType) String() string {
 		return "DateTime"
 	}
 	return fmt.Sprintf("DateTime(%s)", d.Timezone)
+}
+
+func (d DateTimeColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumDateTime
 }
 
 // DateTime64ColumnType represents a date time 64 column type.
@@ -130,6 +202,10 @@ func (d DateTime64ColumnType) String() string {
 	return fmt.Sprintf("DateTime64(%d, %s)", d.Precision, d.Timezone)
 }
 
+func (d DateTime64ColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumDateTime64
+}
+
 // ArrayColumnType represents an array column type.
 // It is used to represent the array column type in the column type.
 // ElementType is the element type of the array column type.
@@ -140,6 +216,10 @@ type ArrayColumnType struct {
 
 func (a ArrayColumnType) String() string {
 	return fmt.Sprintf("Array(%s)", a.ElementType)
+}
+
+func (a ArrayColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumArray
 }
 
 // MapColumnType represents a map column type.
@@ -155,6 +235,10 @@ type MapColumnType struct {
 
 func (m MapColumnType) String() string {
 	return fmt.Sprintf("Map(%s, %s)", m.KeyType, m.ValueType)
+}
+
+func (m MapColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumMap
 }
 
 // TupleColumnType represents a tuple column type.
@@ -173,6 +257,10 @@ func (t TupleColumnType) String() string {
 	return fmt.Sprintf("Tuple(%s)", strings.Join(elements, ", "))
 }
 
+func (t TupleColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumTuple
+}
+
 // LowCardinalityColumnType represents a low cardinality column type.
 // It is used to represent the low cardinality column type in the column type.
 // ElementType is the element type of the low cardinality column type.
@@ -185,6 +273,10 @@ func (l LowCardinalityColumnType) String() string {
 	return fmt.Sprintf("LowCardinality(%s)", l.ElementType)
 }
 
+func (l LowCardinalityColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumLowCardinality
+}
+
 type EnumerationColumnType struct {
 	Values []string
 	Size   int
@@ -192,6 +284,10 @@ type EnumerationColumnType struct {
 
 func (e EnumerationColumnType) String() string {
 	return fmt.Sprintf("Enum%d(%s)", e.Size, strings.Join(e.Values, ", "))
+}
+
+func (e EnumerationColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumEnumeration
 }
 
 // NullableColumnType represents a nullable column type.
@@ -204,6 +300,10 @@ type NullableColumnType struct {
 
 func (n NullableColumnType) String() string {
 	return fmt.Sprintf("Nullable(%s)", n.ElementType)
+}
+
+func (n NullableColumnType) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumNullable
 }
 
 // SimpleAggregateFunction represents a simple aggregate function in a column type.
@@ -225,6 +325,10 @@ func (s SimpleAggregateFunction) String() string {
 	return fmt.Sprintf("SimpleAggregateFunction(%s, %s)", s.FunctionName, strings.Join(arguments, ", "))
 }
 
+func (s SimpleAggregateFunction) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumSimpleAggregateFunction
+}
+
 // AggregateFunction represents an aggregate function in a column type.
 // It is used to represent the aggregate function in the column type.
 // FunctionName is the name of the aggregate function.
@@ -242,6 +346,10 @@ func (a AggregateFunction) String() string {
 		arguments[i] = arg.String()
 	}
 	return fmt.Sprintf("AggregateFunction(%s, %s)", a.FunctionName, strings.Join(arguments, ", "))
+}
+
+func (a AggregateFunction) GetType() ColumnTypeEnum {
+	return ColumnTypeEnumAggregateFunction
 }
 
 // Column represents a column in a table.
