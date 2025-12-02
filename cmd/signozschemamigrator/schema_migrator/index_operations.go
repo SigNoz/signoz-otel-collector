@@ -2,6 +2,7 @@ package schemamigrator
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,15 +12,23 @@ import (
 type IndexType string
 
 const (
-	IndexTypeTokenBF IndexType = "tokenbf_v1"
-	IndexTypeNGramBF IndexType = "ngrambf_v1"
-	IndexTypeMinMax  IndexType = "minmax"
+	IndexTypeTokenBF     IndexType = "tokenbf_v1"
+	IndexTypeNGramBF     IndexType = "ngrambf_v1"
+	IndexTypeMinMax      IndexType = "minmax"
+	stringBasedIndexExpr           = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
+	numberBasedIndexExpr           = "assumeNotNull(dynamicElement(%s, '%s'))"
+)
 
-	stringBasedIndexPrefix = "lower(assumeNotNull(dynamicElement("
-	numberBasedIndexPrefix = "assumeNotNull(dynamicElement("
+var (
+	// string type: must have lower(...)
+	jsonStringSubColumnIndexExprRe = regexp.MustCompile(
+		`^lower\(assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>String)'\)\)\)$`,
+	)
 
-	stringBasedIndexExpr = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
-	numberBasedIndexExpr = "assumeNotNull(dynamicElement(%s, '%s'))"
+	// non-string type: no lower(...), any non-String type
+	jsonNumberSubColumnIndexExprRe = regexp.MustCompile(
+		`^assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
+	)
 )
 
 // Index is used to represent an index in the SQL.
@@ -326,36 +335,27 @@ func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
 func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
-	if !(strings.HasPrefix(expr, stringBasedIndexPrefix) || strings.HasPrefix(expr, numberBasedIndexPrefix)) {
-		return "", "", fmt.Errorf("invalid expression: %s, expected prefix: %s or %s", expr, stringBasedIndexPrefix, numberBasedIndexPrefix)
+	processSubExpNames := func(subExpNames []string) (string, string, error) {
+		if len(subExpNames) != 2 {
+			return "", "", fmt.Errorf("invalid expression: %s", expr)
+		}
+		subExpr, typeColumn := subExpNames[0], subExpNames[1]
+		if subExpr == "" || typeColumn == "" {
+			return "", "", fmt.Errorf("invalid expression: %s", expr)
+		}
+
+		return subExpr, typeColumn, nil
 	}
 
-	// remove lower()
-	expr = strings.TrimPrefix(expr, "lower(")
-	expr = strings.TrimSuffix(expr, ")")
-
-	// remove assumeNotNull()
-	expr = strings.TrimPrefix(expr, "assumeNotNull(")
-	expr = strings.TrimSuffix(expr, ")")
-
-	// remove dynamicElement()
-	expr = strings.TrimPrefix(expr, "dynamicElement(")
-	expr = strings.TrimSuffix(expr, ")")
-
-	// split by comma
-	parts := strings.Split(expr, ",")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid expression: %s", expr)
+	// try string pattern (with lower(...))
+	if matches := jsonStringSubColumnIndexExprRe.FindStringSubmatch(expr); matches != nil {
+		return processSubExpNames(jsonStringSubColumnIndexExprRe.SubexpNames())
 	}
 
-	expr = parts[0]
+	// try non-string pattern (without lower(...))
+	if matches := jsonNumberSubColumnIndexExprRe.FindStringSubmatch(expr); matches != nil {
+		return processSubExpNames(jsonNumberSubColumnIndexExprRe.SubexpNames())
+	}
 
-	// extract the column type and trim the quotes
-	typeColumn := strings.TrimSpace(parts[1])
-
-	// trim the type column
-	typeColumn = strings.TrimLeft(typeColumn, "'")
-	typeColumn = strings.TrimRight(typeColumn, "'")
-
-	return expr, typeColumn, nil
+	return "", "", fmt.Errorf("invalid expression: %s", expr)
 }

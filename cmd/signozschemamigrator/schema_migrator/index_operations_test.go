@@ -142,7 +142,7 @@ func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
 			wantExpr:    "body.nested.path",
 			wantType:    "Float64",
 			wantError:   true,
-			errorSubstr: "invalid expression: dynamicElement(body.nested.path,'Float64'), expected prefix: lower(assumeNotNull(dynamicElement(...))",
+			errorSubstr: "invalid expression: dynamicElement(body.nested.path,'Float64')",
 		}, {
 			name:        "test-4",
 			expr:        "lower(assumeNotNull(dynamicElement(body.nested.`order-id`,'Int64')))",
@@ -157,7 +157,7 @@ func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
 			wantExpr:    "",
 			wantType:    "",
 			wantError:   true,
-			errorSubstr: "invalid expression: , expected prefix: lower(assumeNotNull(dynamicElement(...))",
+			errorSubstr: "invalid expression: ",
 		},
 	}
 
