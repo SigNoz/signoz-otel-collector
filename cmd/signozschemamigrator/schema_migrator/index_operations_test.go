@@ -130,8 +130,8 @@ func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
 		},
 		{
 			name:        "test-2",
-			expr:        "lower(assumeNotNull(dynamicElement(column.path, 'Int64')))",
-			wantExpr:    "column.path",
+			expr:        "lower(assumeNotNull(dynamicElement(column.`path`, 'Int64')))",
+			wantExpr:    "column.`path`",
 			wantType:    "Int64",
 			wantError:   false,
 			errorSubstr: "",

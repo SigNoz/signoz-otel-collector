@@ -22,12 +22,12 @@ const (
 var (
 	// string type: must have lower(...)
 	jsonStringSubColumnIndexExprRe = regexp.MustCompile(
-		`^lower\(assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>String)'\)\)\)$`,
+		`lower\(assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
 	)
 
 	// non-string type: no lower(...), any non-String type
 	jsonNumberSubColumnIndexExprRe = regexp.MustCompile(
-		`^assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
+		`assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
 	)
 )
 
@@ -335,26 +335,42 @@ func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
 // Returns the subcolumn name from the index expression
 // If the expression is not a JSON subcolumn index expression, returns an error
 func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
-	processSubExpNames := func(subExpNames []string) (string, string, error) {
-		if len(subExpNames) != 2 {
-			return "", "", fmt.Errorf("invalid expression: %s", expr)
-		}
-		subExpr, typeColumn := subExpNames[0], subExpNames[1]
-		if subExpr == "" || typeColumn == "" {
-			return "", "", fmt.Errorf("invalid expression: %s", expr)
+	// helper to extract "expr" and "type" named groups from a regex/match pair
+	processMatches := func(re *regexp.Regexp, expr string) (string, string, bool) {
+		matches := re.FindStringSubmatch(expr)
+		if matches == nil {
+			return "", "", false
 		}
 
-		return subExpr, typeColumn, nil
+		var subExpr, typeColumn string
+		for i, name := range re.SubexpNames() {
+			if i == 0 || name == "" {
+				continue
+			}
+
+			switch name {
+			case "expr":
+				subExpr = matches[i]
+			case "type":
+				typeColumn = matches[i]
+			}
+		}
+
+		if subExpr == "" || typeColumn == "" {
+			return "", "", false
+		}
+
+		return subExpr, typeColumn, true
 	}
 
 	// try string pattern (with lower(...))
-	if matches := jsonStringSubColumnIndexExprRe.FindStringSubmatch(expr); matches != nil {
-		return processSubExpNames(jsonStringSubColumnIndexExprRe.SubexpNames())
+	if subExpr, typeColumn, ok := processMatches(jsonStringSubColumnIndexExprRe, expr); ok {
+		return subExpr, typeColumn, nil
 	}
 
 	// try non-string pattern (without lower(...))
-	if matches := jsonNumberSubColumnIndexExprRe.FindStringSubmatch(expr); matches != nil {
-		return processSubExpNames(jsonNumberSubColumnIndexExprRe.SubexpNames())
+	if subExpr, typeColumn, ok := processMatches(jsonNumberSubColumnIndexExprRe, expr); ok {
+		return subExpr, typeColumn, nil
 	}
 
 	return "", "", fmt.Errorf("invalid expression: %s", expr)
