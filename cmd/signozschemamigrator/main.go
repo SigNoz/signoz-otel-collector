@@ -88,7 +88,13 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+			logger.Info("Running migrations in sync mode", zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+
+			opts, err := clickhouse.ParseDSN(dsn)
+			if err != nil {
+				return fmt.Errorf("failed to parse dsn: %w", err)
+			}
+			logger.Info("Parsed DSN", zap.String("addr", strings.Join(opts.Addr, ",")), zap.String("db", opts.Auth.Database))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
@@ -119,12 +125,6 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			if len(upVersions) != 0 && len(downVersions) != 0 {
 				return fmt.Errorf("cannot provide both up and down migrations")
 			}
-
-			opts, err := clickhouse.ParseDSN(dsn)
-			if err != nil {
-				return fmt.Errorf("failed to parse dsn: %w", err)
-			}
-			logger.Info("Parsed DSN", zap.Any("opts", opts))
 
 			conn, err := clickhouse.Open(opts)
 			if err != nil {
@@ -186,7 +186,13 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+			logger.Info("Running migrations in async mode", zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+
+			opts, err := clickhouse.ParseDSN(dsn)
+			if err != nil {
+				return fmt.Errorf("failed to parse dsn: %w", err)
+			}
+			logger.Info("Parsed DSN", zap.String("addr", strings.Join(opts.Addr, ",")), zap.String("db", opts.Auth.Database))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
@@ -217,12 +223,6 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			if len(upVersions) != 0 && len(downVersions) != 0 {
 				return fmt.Errorf("cannot provide both up and down migrations")
 			}
-
-			opts, err := clickhouse.ParseDSN(dsn)
-			if err != nil {
-				return fmt.Errorf("failed to parse dsn: %w", err)
-			}
-			logger.Info("Parsed DSN", zap.Any("opts", opts))
 
 			conn, err := clickhouse.Open(opts)
 			if err != nil {
