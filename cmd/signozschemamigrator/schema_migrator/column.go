@@ -20,50 +20,50 @@ const (
 	ColumnPropertySettings     ColumnProperty = "SETTINGS"
 )
 
-type ColumnTypeEnum string
+type ColumnTypeEnum int
 
 const (
 	// String types
-	ColumnTypeEnumString ColumnTypeEnum = "String"
+	ColumnTypeEnumString ColumnTypeEnum = iota
 	// Integer types
-	ColumnTypeEnumInt8    ColumnTypeEnum = "Int8"
-	ColumnTypeEnumInt16   ColumnTypeEnum = "Int16"
-	ColumnTypeEnumInt32   ColumnTypeEnum = "Int32"
-	ColumnTypeEnumInt64   ColumnTypeEnum = "Int64"
-	ColumnTypeEnumInt128  ColumnTypeEnum = "Int128"
-	ColumnTypeEnumInt256  ColumnTypeEnum = "Int256"
-	ColumnTypeEnumUInt8   ColumnTypeEnum = "UInt8"
-	ColumnTypeEnumUInt16  ColumnTypeEnum = "UInt16"
-	ColumnTypeEnumUInt32  ColumnTypeEnum = "UInt32"
-	ColumnTypeEnumUInt64  ColumnTypeEnum = "UInt64"
-	ColumnTypeEnumUInt128 ColumnTypeEnum = "UInt128"
-	ColumnTypeEnumUInt256 ColumnTypeEnum = "UInt256"
+	ColumnTypeEnumInt8
+	ColumnTypeEnumInt16
+	ColumnTypeEnumInt32
+	ColumnTypeEnumInt64
+	ColumnTypeEnumInt128
+	ColumnTypeEnumInt256
+	ColumnTypeEnumUInt8
+	ColumnTypeEnumUInt16
+	ColumnTypeEnumUInt32
+	ColumnTypeEnumUInt64
+	ColumnTypeEnumUInt128
+	ColumnTypeEnumUInt256
 	// Floating point types
-	ColumnTypeEnumFloat32 ColumnTypeEnum = "Float32"
-	ColumnTypeEnumFloat64 ColumnTypeEnum = "Float64"
+	ColumnTypeEnumFloat32
+	ColumnTypeEnumFloat64
 	// Boolean types
-	ColumnTypeEnumBool ColumnTypeEnum = "Bool"
+	ColumnTypeEnumBool
 	// Date types
-	ColumnTypeEnumDate   ColumnTypeEnum = "Date"
-	ColumnTypeEnumDate32 ColumnTypeEnum = "Date32"
+	ColumnTypeEnumDate
+	ColumnTypeEnumDate32
 	// UUID types
-	ColumnTypeEnumUUID ColumnTypeEnum = "UUID"
+	ColumnTypeEnumUUID
 	// IP types
-	ColumnTypeEnumIPv4 ColumnTypeEnum = "IPv4"
-	ColumnTypeEnumIPv6 ColumnTypeEnum = "IPv6"
+	ColumnTypeEnumIPv4
+	ColumnTypeEnumIPv6
 
-	ColumnTypeEnumLowCardinality          ColumnTypeEnum = "LowCardinality"
-	ColumnTypeEnumNullable                ColumnTypeEnum = "Nullable"
-	ColumnTypeEnumSimpleAggregateFunction ColumnTypeEnum = "SimpleAggregateFunction"
-	ColumnTypeEnumAggregateFunction       ColumnTypeEnum = "AggregateFunction"
-	ColumnTypeEnumJSON                    ColumnTypeEnum = "JSON"
-	ColumnTypeEnumFixedString             ColumnTypeEnum = "FixedString"
-	ColumnTypeEnumDateTime                ColumnTypeEnum = "DateTime"
-	ColumnTypeEnumDateTime64              ColumnTypeEnum = "DateTime64"
-	ColumnTypeEnumArray                   ColumnTypeEnum = "Array"
-	ColumnTypeEnumMap                     ColumnTypeEnum = "Map"
-	ColumnTypeEnumTuple                   ColumnTypeEnum = "Tuple"
-	ColumnTypeEnumEnumeration             ColumnTypeEnum = "Enumeration"
+	ColumnTypeEnumLowCardinality
+	ColumnTypeEnumNullable
+	ColumnTypeEnumSimpleAggregateFunction
+	ColumnTypeEnumAggregateFunction
+	ColumnTypeEnumJSON
+	ColumnTypeEnumFixedString
+	ColumnTypeEnumDateTime
+	ColumnTypeEnumDateTime64
+	ColumnTypeEnumArray
+	ColumnTypeEnumMap
+	ColumnTypeEnumTuple
+	ColumnTypeEnumEnumeration
 )
 
 // ColumnType represents a column type.
@@ -96,19 +96,18 @@ var (
 	// String types
 	ColumnTypeString = PrimitiveColumnType{Type: "String", Enum: ColumnTypeEnumString}
 	// Integer types
-	ColumnTypeInt8   = PrimitiveColumnType{Type: "Int8", Enum: ColumnTypeEnumInt8}
-	ColumnTypeInt16  = PrimitiveColumnType{Type: "Int16", Enum: ColumnTypeEnumInt16}
-	ColumnTypeInt32  = PrimitiveColumnType{Type: "Int32", Enum: ColumnTypeEnumInt32}
-	ColumnTypeInt64  = PrimitiveColumnType{Type: "Int64", Enum: ColumnTypeEnumInt64}
-	ColumnTypeInt128 = PrimitiveColumnType{Type: "Int128", Enum: ColumnTypeEnumInt128}
-	ColumnTypeInt256 = PrimitiveColumnType{Type: "Int256", Enum: ColumnTypeEnumInt256}
+	ColumnTypeInt8    = PrimitiveColumnType{Type: "Int8", Enum: ColumnTypeEnumInt8}
+	ColumnTypeInt16   = PrimitiveColumnType{Type: "Int16", Enum: ColumnTypeEnumInt16}
+	ColumnTypeInt32   = PrimitiveColumnType{Type: "Int32", Enum: ColumnTypeEnumInt32}
+	ColumnTypeInt64   = PrimitiveColumnType{Type: "Int64", Enum: ColumnTypeEnumInt64}
+	ColumnTypeInt128  = PrimitiveColumnType{Type: "Int128", Enum: ColumnTypeEnumInt128}
+	ColumnTypeInt256  = PrimitiveColumnType{Type: "Int256", Enum: ColumnTypeEnumInt256}
 	ColumnTypeUInt8   = PrimitiveColumnType{Type: "UInt8", Enum: ColumnTypeEnumUInt8}
 	ColumnTypeUInt16  = PrimitiveColumnType{Type: "UInt16", Enum: ColumnTypeEnumUInt16}
 	ColumnTypeUInt32  = PrimitiveColumnType{Type: "UInt32", Enum: ColumnTypeEnumUInt32}
 	ColumnTypeUInt64  = PrimitiveColumnType{Type: "UInt64", Enum: ColumnTypeEnumUInt64}
 	ColumnTypeUInt128 = PrimitiveColumnType{Type: "UInt128", Enum: ColumnTypeEnumUInt128}
 	ColumnTypeUInt256 = PrimitiveColumnType{Type: "UInt256", Enum: ColumnTypeEnumUInt256}
-	
 	// Floating point types
 	ColumnTypeFloat32 = PrimitiveColumnType{Type: "Float32", Enum: ColumnTypeEnumFloat32}
 	ColumnTypeFloat64 = PrimitiveColumnType{Type: "Float64", Enum: ColumnTypeEnumFloat64}
