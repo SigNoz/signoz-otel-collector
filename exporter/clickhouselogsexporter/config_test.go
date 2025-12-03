@@ -72,9 +72,9 @@ func TestLoadConfig(t *testing.T) {
 			MaxDistinctValues: 25000,
 		},
 		LogLevelConcurrency:       utils.ToPointer(7),
-		ActivateBodyJSONCols:      true,
+		BodyJSONEnabled:           true,
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
-		CleanStringBasedBody:      true,
+		BodyJSONOldBodyEnabled:    true,
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true

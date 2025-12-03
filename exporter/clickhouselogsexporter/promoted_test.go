@@ -7,6 +7,12 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
+func TestInvalidBodyType(t *testing.T) {
+	body := pcommon.NewValueStr("test log")
+	promoted := buildPromotedAndPruneBody(body, map[string]struct{}{})
+	assert.Equal(t, pcommon.NewValueMap(), promoted)
+}
+
 func TestPromotedPathSeparation(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -62,7 +68,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			name: "ambiguous_dot_notation_literal_preference",
 			body: map[string]interface{}{
 				"message": "test log",
-				"a.b.c":   "literal_value",
+				"a.b.c":   "literal_value", // use first occurrence of the path
 				"a": map[string]interface{}{
 					"b": map[string]interface{}{
 						"c": "nested_value",
@@ -138,7 +144,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			expectedBody: map[string]interface{}{
 				"message": "test log",
 				"user": map[string]interface{}{
-					"email": "john@example.com",
+					"email":          "john@example.com",
 					"address.street": "123 Main St",
 				},
 			},

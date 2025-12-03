@@ -277,12 +277,12 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 }
 
 type clickhouseLogsExporter struct {
-	id                    uuid.UUID
-	db                    clickhouse.Conn
-	insertLogsSQLV2       string
-	insertLogsResourceSQL string
-	includeBodyJSONCols   bool
-	cleanStringBasedBody  bool
+	id                     uuid.UUID
+	db                     clickhouse.Conn
+	insertLogsSQLV2        string
+	insertLogsResourceSQL  string
+	bodyJSONEnabled        bool
+	bodyJSONOldBodyEnabled bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -319,16 +319,16 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.ActivateBodyJSONCols),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
-		includeBodyJSONCols:       cfg.ActivateBodyJSONCols,
+		bodyJSONEnabled:           cfg.BodyJSONEnabled,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
-		cleanStringBasedBody:      cfg.CleanStringBasedBody,
+		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     15,
 	}
@@ -402,7 +402,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	}
 
 	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.includeBodyJSONCols {
+	if e.bodyJSONEnabled {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
 		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 			ticker.Stop()
@@ -507,14 +507,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	start := time.Now()
 	chLen := 5
 
-	// Single-threaded ClickHouse batch owner (consumer)
 	var insertLogsStmtV2 driver.Batch
 	var insertResourcesStmtV2 driver.Batch
 	var tagStatementV2 driver.Batch
 	var attributeKeysStmt driver.Batch
 	var resourceKeysStmt driver.Batch
 
-	// Consumer: owns ClickHouse batches and appends from records
 	var shouldSkipKeys map[string]shouldSkipKey
 	if e.shouldSkipKeyValue.Load() != nil {
 		shouldSkipKeys = e.shouldSkipKeyValue.Load().(map[string]shouldSkipKey)
@@ -614,7 +612,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityNum,
 					rec.body,
 				}
-				if e.includeBodyJSONCols {
+				if e.bodyJSONEnabled {
 					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
 				}
 				args = append(args,
@@ -828,7 +826,7 @@ producerIteration:
 func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
-	if e.includeBodyJSONCols && body.Type() == pcommon.ValueTypeMap {
+	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
 		// Work on a local mutable copy of the body to avoid mutating
 		// the shared pdata across goroutines.
 		mutableBody := pcommon.NewValueMap()
@@ -841,7 +839,7 @@ func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string
 		promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
 		bodyJSON = mutableBody
 
-		if e.cleanStringBasedBody {
+		if !e.bodyJSONOldBodyEnabled {
 			// set body to empty string
 			body = pcommon.NewValueEmpty()
 		}

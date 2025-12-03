@@ -306,20 +306,20 @@ func TestExporterConcurrency(t *testing.T) {
 
 func TestProcessBody(t *testing.T) {
 	tests := []struct {
-		name                 string
-		includeBodyJSONCols  bool
-		cleanStringBasedBody bool
-		promotedPaths        map[string]struct{}
-		body                 func() pcommon.Value
-		expectedBody         string
-		expectedBodyJSON     string
-		expectedPromoted     string
+		name                   string
+		bodyJSONEnabled        bool
+		bodyJSONOldBodyEnabled bool
+		promotedPaths          map[string]struct{}
+		body                   func() pcommon.Value
+		expectedBody           string
+		expectedBodyJSON       string
+		expectedPromoted       string
 	}{
 		{
-			name:                 "includeBodyJSONCols_false_string_body",
-			includeBodyJSONCols:  false,
-			cleanStringBasedBody: false,
-			promotedPaths:        map[string]struct{}{},
+			name:                   "bodyJSONEnabled_false_string_body",
+			bodyJSONEnabled:        false,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueStr("test log message")
 				return v
@@ -329,10 +329,10 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                 "includeBodyJSONCols_false_map_body",
-			includeBodyJSONCols:  false,
-			cleanStringBasedBody: false,
-			promotedPaths:        map[string]struct{}{},
+			name:                   "bodyJSONEnabled_false_map_body",
+			bodyJSONEnabled:        false,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
 				v.Map().PutStr("message", "test")
@@ -343,10 +343,10 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                 "includeBodyJSONCols_true_non_map_body",
-			includeBodyJSONCols:  true,
-			cleanStringBasedBody: false,
-			promotedPaths:        map[string]struct{}{},
+			name:                   "bodyJSONEnabled_true_non_map_body",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueStr("test log message")
 				return v
@@ -356,9 +356,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                 "includeBodyJSONCols_true_map_body_with_promoted_paths",
-			includeBodyJSONCols:  true,
-			cleanStringBasedBody: false,
+			name:                   "bodyJSONEnabled_true_map_body_with_promoted_paths",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: true,
 			promotedPaths: map[string]struct{}{
 				"message": {},
 			},
@@ -373,9 +373,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
-			name:                 "includeBodyJSONCols_true_map_body_with_nested_promoted_paths",
-			includeBodyJSONCols:  true,
-			cleanStringBasedBody: false,
+			name:                   "bodyJSONEnabled_true_map_body_with_nested_promoted_paths",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: true,
 			promotedPaths: map[string]struct{}{
 				"user.id": {},
 				"message": {},
@@ -393,9 +393,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
-			name:                 "includeBodyJSONCols_true_cleanStringBasedBody_true",
-			includeBodyJSONCols:  true,
-			cleanStringBasedBody: true,
+			name:                   "bodyJSONEnabled_true_bodyJSONOldBodyEnabled_true",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: false,
 			promotedPaths: map[string]struct{}{
 				"message": {},
 			},
@@ -409,14 +409,15 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
-			name:                 "includeBodyJSONCols_true_map_body_multiple_promoted_paths",
-			includeBodyJSONCols:  true,
-			cleanStringBasedBody: false,
+			name:                   "bodyJSONEnabled_true_map_body_multiple_promoted_paths",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: true,
 			promotedPaths: map[string]struct{}{
-				"level":     {},
-				"user.id":   {},
-				"user.name": {},
-				"message":   {},
+				"level":      {},
+				"user.id":    {},
+				"user.name":  {},
+				"user.roles": {},
+				"message":    {},
 			},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
@@ -426,11 +427,14 @@ func TestProcessBody(t *testing.T) {
 				userMap.PutStr("id", "123")
 				userMap.PutStr("name", "john")
 				userMap.PutStr("email", "john@example.com")
+				roles := userMap.PutEmptySlice("roles")
+				roles.AppendEmpty().SetStr("admin")
+				roles.AppendEmpty().SetStr("user")
 				return v
 			},
-			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john"}}`,
+			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
 			expectedBodyJSON: `{"user":{"email":"john@example.com"}}`,
-			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john"}`,
+			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 	}
 
@@ -446,8 +450,8 @@ func TestProcessBody(t *testing.T) {
 				exporter.Settings{},
 				&Config{
 					DSN:                       "clickhouse://localhost:9000/test",
-					ActivateBodyJSONCols:      tc.includeBodyJSONCols,
-					CleanStringBasedBody:      tc.cleanStringBasedBody,
+					BodyJSONEnabled:           tc.bodyJSONEnabled,
+					BodyJSONOldBodyEnabled:    tc.bodyJSONOldBodyEnabled,
 					PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
 					LogLevelConcurrency:       utils.ToPointer(1),
 					AttributesLimits: AttributesLimits{
