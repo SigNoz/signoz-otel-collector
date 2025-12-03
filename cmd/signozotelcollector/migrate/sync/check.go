@@ -10,6 +10,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	schemamigrator "github.com/SigNoz/signoz-otel-collector/cmd/signozschemamigrator/schema_migrator"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -96,7 +97,12 @@ func (c *check) Check(ctx context.Context) error {
 		return err
 	}
 
-	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
+	logsMigrations := schemamigrator.LogsMigrations
+	if constants.EnableLogsMigrationsJSON {
+		logsMigrations = append(logsMigrations, schemamigrator.LogsMigrationsJSON...)
+	}
+
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, logsMigrations[len(logsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}

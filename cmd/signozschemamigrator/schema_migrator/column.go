@@ -413,10 +413,6 @@ func (c Column) ToSQL() string {
 	return sql.String()
 }
 
-func (c Column) IsJSONColumn() bool {
-	return strings.HasPrefix(c.Type.String(), "JSON(") || c.Type.String() == "JSON"
-}
-
 type ColumnSetting struct {
 	Name  string
 	Value string
