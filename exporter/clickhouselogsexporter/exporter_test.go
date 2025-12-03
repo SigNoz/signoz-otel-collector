@@ -61,15 +61,19 @@ func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseLogsExporter {
 	id := uuid.New()
 	opts = append(opts, WithNewUsageCollector(id, mock))
 
+	cfg := &Config{
+		DSN: "clickhouse://localhost:9000/test",
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 2 * time.Second,
+			MaxDistinctValues: 25000,
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+
 	exporter, err := newExporter(
 		exporter.Settings{},
-		&Config{
-			DSN: "clickhouse://localhost:9000/test",
-			AttributesLimits: AttributesLimits{
-				FetchKeysInterval: 2 * time.Second,
-				MaxDistinctValues: 25000,
-			},
-		},
+		cfg,
 		opts...,
 	)
 
@@ -202,15 +206,19 @@ func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrenc
 	id := uuid.New()
 	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock), WithConcurrency(concurrency))
 
+	cfg := &Config{
+		DSN: "clickhouse://localhost:9000/test",
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 2 * time.Second,
+			MaxDistinctValues: 25000,
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+
 	exporter, err := newExporter(
 		exporter.Settings{},
-		&Config{
-			DSN: "clickhouse://localhost:9000/test",
-			AttributesLimits: AttributesLimits{
-				FetchKeysInterval: 2 * time.Second,
-				MaxDistinctValues: 25000,
-			},
-		},
+		cfg,
 		opts...,
 	)
 
