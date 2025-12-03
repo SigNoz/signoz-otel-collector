@@ -1,34 +1,8 @@
 package schemamigrator
 
 import (
-	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
-)
-
-type IndexType string
-
-const (
-	IndexTypeTokenBF     IndexType = "tokenbf_v1"
-	IndexTypeNGramBF     IndexType = "ngrambf_v1"
-	IndexTypeMinMax      IndexType = "minmax"
-	stringBasedIndexExpr           = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
-	numberBasedIndexExpr           = "assumeNotNull(dynamicElement(%s, '%s'))"
-)
-
-var (
-	// string type: must have lower(...)
-	jsonStringSubColumnIndexExprRe = regexp.MustCompile(
-		`lower\(assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
-	)
-
-	// non-string type: no lower(...), any non-String type
-	jsonNumberSubColumnIndexExprRe = regexp.MustCompile(
-		`assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
-	)
 )
 
 // Index is used to represent an index in the SQL.
@@ -93,10 +67,6 @@ func (a AlterTableAddIndex) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableAddIndex) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableAddIndex) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -158,10 +128,6 @@ func (a AlterTableDropIndex) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableDropIndex) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableDropIndex) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -215,10 +181,6 @@ func (a AlterTableMaterializeIndex) IsIdempotent() bool {
 
 func (a AlterTableMaterializeIndex) IsLightweight() bool {
 	// Materializing an index is not lightweight. It will create a complete index for all the data in the table.
-	return false
-}
-
-func (a AlterTableMaterializeIndex) ForceMigrate() bool {
 	return false
 }
 
@@ -282,10 +244,6 @@ func (a AlterTableClearIndex) IsLightweight() bool {
 	return false
 }
 
-func (a AlterTableClearIndex) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableClearIndex) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -303,75 +261,4 @@ func (a AlterTableClearIndex) ToSQL() string {
 		sql.WriteString(a.Partition)
 	}
 	return sql.String()
-}
-
-func JSONSubColumnIndexName(column, path, typeColumn string, index IndexType) string {
-	expr := column + "." + path
-	return fmt.Sprintf("`%s_%s_%s`", expr, typeColumn, index)
-}
-
-func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
-	parts := strings.Split(expr, ".")
-	for idx, part := range parts {
-		if keycheck.IsBacktickRequired(part) {
-			part := strings.Trim(part, "`") // trim if already present
-			parts[idx] = "`" + part + "`"
-		}
-	}
-
-	indexExpr := stringBasedIndexExpr
-	if typeColumn != "String" {
-		indexExpr = numberBasedIndexExpr
-	}
-
-	return fmt.Sprintf(indexExpr, strings.Join(parts, "."), typeColumn)
-}
-
-func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
-	expr := column + "." + path
-	return jsonSubColumnIndexExprFormat(expr, typeColumn)
-}
-
-// Returns the subcolumn name from the index expression
-// If the expression is not a JSON subcolumn index expression, returns an error
-func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
-	// helper to extract "expr" and "type" named groups from a regex/match pair
-	processMatches := func(re *regexp.Regexp, expr string) (string, string, bool) {
-		matches := re.FindStringSubmatch(expr)
-		if matches == nil {
-			return "", "", false
-		}
-
-		var subExpr, typeColumn string
-		for i, name := range re.SubexpNames() {
-			if i == 0 || name == "" {
-				continue
-			}
-
-			switch name {
-			case "expr":
-				subExpr = matches[i]
-			case "type":
-				typeColumn = matches[i]
-			}
-		}
-
-		if subExpr == "" || typeColumn == "" {
-			return "", "", false
-		}
-
-		return subExpr, typeColumn, true
-	}
-
-	// try string pattern (with lower(...))
-	if subExpr, typeColumn, ok := processMatches(jsonStringSubColumnIndexExprRe, expr); ok {
-		return subExpr, typeColumn, nil
-	}
-
-	// try non-string pattern (without lower(...))
-	if subExpr, typeColumn, ok := processMatches(jsonNumberSubColumnIndexExprRe, expr); ok {
-		return subExpr, typeColumn, nil
-	}
-
-	return "", "", fmt.Errorf("invalid expression: %s", expr)
 }

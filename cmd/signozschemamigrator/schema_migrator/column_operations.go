@@ -48,10 +48,6 @@ func (a AlterTableAddColumn) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableAddColumn) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableAddColumn) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -112,10 +108,6 @@ func (a AlterTableDropColumn) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableDropColumn) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableDropColumn) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -172,10 +164,6 @@ func (a AlterTableModifyColumn) IsLightweight() bool {
 	// If the column type or ttl is modified, it is a mutation that
 	// re-writes the column data.
 	return a.Column.Type != nil || a.Column.TTL != ""
-}
-
-func (a AlterTableModifyColumn) ForceMigrate() bool {
-	return false
 }
 
 func (a AlterTableModifyColumn) ToSQL() string {
@@ -257,10 +245,6 @@ func (a AlterTableModifyColumnRemove) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableModifyColumnRemove) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableModifyColumnRemove) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -318,10 +302,6 @@ func (a AlterTableModifyColumnModifySettings) IsIdempotent() bool {
 func (a AlterTableModifyColumnModifySettings) IsLightweight() bool {
 	// Modifying the settings of a column is lightweight. It simply updates the metadata of the table.
 	return true
-}
-
-func (a AlterTableModifyColumnModifySettings) ForceMigrate() bool {
-	return false
 }
 
 func (a AlterTableModifyColumnModifySettings) ToSQL() string {
@@ -383,10 +363,6 @@ func (a AlterTableModifyColumnResetSettings) IsLightweight() bool {
 	return true
 }
 
-func (a AlterTableModifyColumnResetSettings) ForceMigrate() bool {
-	return false
-}
-
 func (a AlterTableModifyColumnResetSettings) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -444,10 +420,6 @@ func (a AlterTableMaterializeColumn) IsIdempotent() bool {
 
 func (a AlterTableMaterializeColumn) IsLightweight() bool {
 	// Materializing a column is not lightweight. It will rewrite the column data with materialized data.
-	return false
-}
-
-func (a AlterTableMaterializeColumn) ForceMigrate() bool {
 	return false
 }
 

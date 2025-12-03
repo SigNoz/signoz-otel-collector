@@ -108,6 +108,7 @@ var (
 	ColumnTypeUInt64  = PrimitiveColumnType{Type: "UInt64", Enum: ColumnTypeEnumUInt64}
 	ColumnTypeUInt128 = PrimitiveColumnType{Type: "UInt128", Enum: ColumnTypeEnumUInt128}
 	ColumnTypeUInt256 = PrimitiveColumnType{Type: "UInt256", Enum: ColumnTypeEnumUInt256}
+
 	// Floating point types
 	ColumnTypeFloat32 = PrimitiveColumnType{Type: "Float32", Enum: ColumnTypeEnumFloat32}
 	ColumnTypeFloat64 = PrimitiveColumnType{Type: "Float64", Enum: ColumnTypeEnumFloat64}

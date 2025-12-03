@@ -32,10 +32,4 @@ type Operation interface {
 
 	// ShouldWaitForDistributionQueue returns true if the operation should wait for the distribution queue to be empty
 	ShouldWaitForDistributionQueue() (bool, string, string)
-
-	// ForceMigrate returns true if the operation should run in sync mode
-	// Note: IsMutation takes priority - mutations always run asynchronously regardless of ForceMigrate value
-	// If true and IsMutation is false, the operation will run synchronously regardless of IsIdempotent and IsLightweight values
-	// If false, the operation will follow the default sync/async logic based on IsMutation, IsIdempotent, and IsLightweight values
-	ForceMigrate() bool
 }
