@@ -74,6 +74,7 @@ func TestLoadConfig(t *testing.T) {
 		LogLevelConcurrency:       utils.ToPointer(7),
 		ActivateBodyJSONCols:      true,
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
+		CleanStringBasedBody:      true,
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true

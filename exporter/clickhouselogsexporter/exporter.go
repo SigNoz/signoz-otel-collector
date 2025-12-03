@@ -282,6 +282,7 @@ type clickhouseLogsExporter struct {
 	insertLogsSQLV2       string
 	insertLogsResourceSQL string
 	includeBodyJSONCols   bool
+	cleanStringBasedBody  bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -327,6 +328,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
+		cleanStringBasedBody:      cfg.CleanStringBasedBody,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     15,
 	}
@@ -721,8 +723,10 @@ producerIteration:
 						promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
 						bodyJSON = mutableBody
 
-						// set body to empty string
-						body = pcommon.NewValueEmpty()
+						if e.cleanStringBasedBody {
+							// set body to empty string
+							body = pcommon.NewValueEmpty()
+						}
 					}
 
 					// record size calculation

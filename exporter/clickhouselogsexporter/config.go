@@ -48,6 +48,7 @@ type Config struct {
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
 	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
 	ActivateBodyJSONCols      bool             `mapstructure:"activate_body_json_cols"`
+	CleanStringBasedBody      bool             `mapstructure:"clean_string_based_body"`
 }
 
 var (
