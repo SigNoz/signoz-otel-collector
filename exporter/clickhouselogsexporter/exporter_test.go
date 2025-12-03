@@ -9,12 +9,14 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 
@@ -298,6 +300,185 @@ func TestExporterConcurrency(t *testing.T) {
 			eventually(t, func() bool {
 				return mock.ExpectationsWereMet() == nil
 			})
+		})
+	}
+}
+
+func TestProcessBody(t *testing.T) {
+	tests := []struct {
+		name                 string
+		includeBodyJSONCols  bool
+		cleanStringBasedBody bool
+		promotedPaths        map[string]struct{}
+		body                 func() pcommon.Value
+		expectedBody         string
+		expectedBodyJSON     string
+		expectedPromoted     string
+	}{
+		{
+			name:                 "includeBodyJSONCols_false_string_body",
+			includeBodyJSONCols:  false,
+			cleanStringBasedBody: false,
+			promotedPaths:        map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueStr("test log message")
+				return v
+			},
+			expectedBody:     "test log message",
+			expectedBodyJSON: "{}",
+			expectedPromoted: "{}",
+		},
+		{
+			name:                 "includeBodyJSONCols_false_map_body",
+			includeBodyJSONCols:  false,
+			cleanStringBasedBody: false,
+			promotedPaths:        map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				return v
+			},
+			expectedBody:     `{"message":"test"}`,
+			expectedBodyJSON: "{}",
+			expectedPromoted: "{}",
+		},
+		{
+			name:                 "includeBodyJSONCols_true_non_map_body",
+			includeBodyJSONCols:  true,
+			cleanStringBasedBody: false,
+			promotedPaths:        map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueStr("test log message")
+				return v
+			},
+			expectedBody:     "test log message",
+			expectedBodyJSON: "{}",
+			expectedPromoted: "{}",
+		},
+		{
+			name:                 "includeBodyJSONCols_true_map_body_with_promoted_paths",
+			includeBodyJSONCols:  true,
+			cleanStringBasedBody: false,
+			promotedPaths: map[string]struct{}{
+				"message": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				v.Map().PutInt("level", 1)
+				return v
+			},
+			expectedBody:     `{"level":1,"message":"test"}`,
+			expectedBodyJSON: `{"level":1}`,
+			expectedPromoted: `{"message":"test"}`,
+		},
+		{
+			name:                 "includeBodyJSONCols_true_map_body_with_nested_promoted_paths",
+			includeBodyJSONCols:  true,
+			cleanStringBasedBody: false,
+			promotedPaths: map[string]struct{}{
+				"user.id": {},
+				"message": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				userMap := v.Map().PutEmptyMap("user")
+				userMap.PutStr("id", "123")
+				userMap.PutStr("name", "john")
+				return v
+			},
+			expectedBody:     `{"message":"test","user":{"id":"123","name":"john"}}`,
+			expectedBodyJSON: `{"user":{"name":"john"}}`,
+			expectedPromoted: `{"message":"test","user.id":"123"}`,
+		},
+		{
+			name:                 "includeBodyJSONCols_true_cleanStringBasedBody_true",
+			includeBodyJSONCols:  true,
+			cleanStringBasedBody: true,
+			promotedPaths: map[string]struct{}{
+				"message": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				return v
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{}`,
+			expectedPromoted: `{"message":"test"}`,
+		},
+		{
+			name:                 "includeBodyJSONCols_true_map_body_multiple_promoted_paths",
+			includeBodyJSONCols:  true,
+			cleanStringBasedBody: false,
+			promotedPaths: map[string]struct{}{
+				"level":     {},
+				"user.id":   {},
+				"user.name": {},
+				"message":   {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				v.Map().PutInt("level", 1)
+				userMap := v.Map().PutEmptyMap("user")
+				userMap.PutStr("id", "123")
+				userMap.PutStr("name", "john")
+				userMap.PutStr("email", "john@example.com")
+				return v
+			},
+			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john"}}`,
+			expectedBodyJSON: `{"user":{"email":"john@example.com"}}`,
+			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create exporter with test configuration
+			opts := testOptions()
+			opts = append(opts, WithClickHouseClient(nil))
+			id := uuid.New()
+			opts = append(opts, WithNewUsageCollector(id, nil))
+
+			exporter, err := newExporter(
+				exporter.Settings{},
+				&Config{
+					DSN:                       "clickhouse://localhost:9000/test",
+					ActivateBodyJSONCols:      tc.includeBodyJSONCols,
+					CleanStringBasedBody:      tc.cleanStringBasedBody,
+					PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
+					LogLevelConcurrency:       utils.ToPointer(1),
+					AttributesLimits: AttributesLimits{
+						FetchKeysInterval: 2 * time.Second,
+						MaxDistinctValues: 25000,
+					},
+				},
+				opts...,
+			)
+			require.NoError(t, err)
+
+			// Set promoted paths
+			if tc.promotedPaths != nil {
+				exporter.promotedPaths.Store(tc.promotedPaths)
+			} else {
+				exporter.promotedPaths.Store(map[string]struct{}{})
+			}
+
+			// Create body value
+			body := tc.body()
+
+			// Process body
+			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(body)
+
+			err = exporter.Shutdown(context.Background())
+			require.NoError(t, err)
+
+			// Verify results
+			assert.Equal(t, tc.expectedBody, bodyStr, "body string mismatch")
+			assert.Equal(t, tc.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
+			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
 		})
 	}
 }
