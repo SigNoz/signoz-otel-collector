@@ -1,12 +1,6 @@
 package schemamigrator
 
-import (
-	"fmt"
-	"time"
-
-	"github.com/SigNoz/signoz-otel-collector/constants"
-	"github.com/SigNoz/signoz-otel-collector/utils"
-)
+import "github.com/SigNoz/signoz-otel-collector/utils"
 
 var LogsMigrations = []SchemaMigrationRecord{
 	{
@@ -207,7 +201,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](100)},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -216,7 +210,7 @@ ORDER BY name ASC`,
 				Table:    "distributed_logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](100)},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -235,207 +229,6 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: "resource",
 				},
-			},
-		},
-	},
-	{
-		MigrationID: 1005,
-		UpItems: []Operation{
-			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.LocalPathTypesTable,
-				Columns: []Column{
-					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: ReplacingMergeTree{
-					MergeTree: MergeTree{
-						OrderBy:     fmt.Sprintf("(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
-						PartitionBy: "toDate(last_seen / 1000000000)",
-						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
-						Settings: TableSettings{
-							{Name: "index_granularity", Value: "8192"},
-							{Name: "ttl_only_drop_parts", Value: "1"},
-						},
-					},
-				},
-			},
-			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.DistributedPathTypesTable,
-				Columns: []Column{
-					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: Distributed{
-					Database:    constants.SignozMetadataDB,
-					Table:       constants.LocalPathTypesTable,
-					ShardingKey: fmt.Sprintf("cityHash64(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
-				},
-			},
-			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.LocalPromotedPathsTable,
-				Columns: []Column{
-					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: ReplacingMergeTree{
-					MergeTree: MergeTree{
-						OrderBy:     "path",
-						PartitionBy: "toDate(created_at / 1000000000)",
-						Settings: TableSettings{
-							{Name: "index_granularity", Value: "8192"},
-						},
-					},
-				},
-			},
-			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.DistributedPromotedPathsTable,
-				Columns: []Column{
-					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: Distributed{
-					Database:    constants.SignozMetadataDB,
-					Table:       constants.LocalPromotedPathsTable,
-					ShardingKey: "cityHash64(path)",
-				},
-			},
-			AlterTableModifySettings{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Settings: TableSettings{
-					{Name: "object_serialization_version", Value: "'v3'"},
-					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Column: Column{
-					Name: constants.BodyJSONColumn,
-					Type: JSONColumnType{
-						MaxDynamicPaths: utils.ToPointer[uint](0),
-					},
-					Codec: "ZSTD(1)",
-				},
-				After: &Column{
-					Name: "body",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_logs",
-				Table:    "distributed_logs_v2",
-				Column: Column{
-					Name: constants.BodyJSONColumn,
-					Type: JSONColumnType{
-						MaxDynamicPaths: utils.ToPointer[uint](0),
-					},
-					Codec: "ZSTD(1)",
-				},
-				After: &Column{
-					Name: "body",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Column: Column{
-					Name:  constants.BodyPromotedColumn,
-					Type:  JSONColumnType{},
-					Codec: "ZSTD(1)",
-				},
-				After: &Column{
-					Name: constants.BodyJSONColumn,
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_logs",
-				Table:    "distributed_logs_v2",
-				Column: Column{
-					Name:  constants.BodyPromotedColumn,
-					Type:  JSONColumnType{},
-					Codec: "ZSTD(1)",
-				},
-				After: &Column{
-					Name: constants.BodyJSONColumn,
-				},
-			},
-			InsertIntoTable{
-				Database:    constants.SignozMetadataDB,
-				Table:       constants.DistributedPromotedPathsTable,
-				LightWeight: true,
-				Synchronous: true,
-				Columns:     []string{"path", "created_at"},
-				Values: [][]string{
-					{"message", fmt.Sprintf("%d", time.Now().UnixMilli())},
-				},
-			},
-			AlterTableAddIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
-					Type:        "tokenbf_v1(10000, 2, 0)",
-					Granularity: 1,
-				},
-			},
-			AlterTableAddIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
-					Type:        "ngrambf_v1(4, 15000, 3, 0)",
-					Granularity: 1,
-				},
-			},
-		},
-		DownItems: []Operation{
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-				},
-			},
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
-				},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Column:   Column{Name: constants.BodyPromotedColumn},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Column:   Column{Name: constants.BodyJSONColumn},
-			},
-			DropTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.LocalPathTypesTable,
-			},
-			DropTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.DistributedPathTypesTable,
-			},
-			DropTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.LocalPromotedPathsTable,
-			},
-			DropTableOperation{
-				Database: constants.SignozMetadataDB,
-				Table:    constants.DistributedPromotedPathsTable,
 			},
 		},
 	},
