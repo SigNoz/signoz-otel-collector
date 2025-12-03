@@ -24,6 +24,10 @@ import (
 	"go.uber.org/multierr"
 )
 
+const (
+	defaultPromotedPathsSyncInterval = 5 * time.Minute
+)
+
 type AttributesLimits struct {
 	FetchKeysInterval time.Duration `mapstructure:"fetch_keys_interval"`
 	MaxDistinctValues int           `mapstructure:"max_distinct_values"`
@@ -56,7 +60,7 @@ func (cfg *Config) Validate() (err error) {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
 	if cfg.PromotedPathsSyncInterval == nil {
-		cfg.PromotedPathsSyncInterval = utils.ToPointer(5 * time.Minute)
+		cfg.PromotedPathsSyncInterval = utils.ToPointer(defaultPromotedPathsSyncInterval)
 	}
 
 	if cfg.LogLevelConcurrency == nil {
