@@ -66,7 +66,6 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 			// the code is written in a way that the parent will remove the bodyMap itself after recursion
 			// check the end of the function for the cleanup
 			return
-
 		}
 	}
 
