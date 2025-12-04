@@ -64,6 +64,9 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.name": "john",
 			},
 		},
+		// This is likely not happen, but is covered for completeness
+		// ClickHouse will fail ingestion if there are multiple occurrences of the same path
+		// User can promote this path and fix the ingestion issue but would not be able to Query it
 		{
 			name: "ambiguous_dot_notation_literal_preference",
 			body: map[string]interface{}{
