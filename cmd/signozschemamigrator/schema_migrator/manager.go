@@ -78,11 +78,12 @@ type MigrationManager struct {
 	connOpts clickhouse.Options
 	conns    map[string]clickhouse.Conn
 
-	clusterName        string
-	replicationEnabled bool
-	logger             *zap.Logger
-	backoff            *backoff.ExponentialBackOff
-	development        bool
+	clusterName            string
+	replicationEnabled     bool
+	logger                 *zap.Logger
+	backoff                *backoff.ExponentialBackOff
+	development            bool
+	enableLogsMigrationsV2 bool
 }
 
 type Option func(*MigrationManager)
@@ -145,6 +146,12 @@ func WithLogger(logger *zap.Logger) Option {
 func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 	return func(mgr *MigrationManager) {
 		mgr.backoff = backoff
+	}
+}
+
+func WithEnableLogsMigrationsV2(enableLogsMigrationsV2 bool) Option {
+	return func(mgr *MigrationManager) {
+		mgr.enableLogsMigrationsV2 = enableLogsMigrationsV2
 	}
 }
 
@@ -703,7 +710,12 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
-	for _, migration := range LogsMigrations {
+	logsMigrations := LogsMigrations
+	if m.enableLogsMigrationsV2 {
+		logsMigrations = LogsMigrationsV2
+	}
+
+	for _, migration := range logsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
 			continue
 		}
@@ -789,7 +801,12 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 		}
 	}
 
-	for _, migration := range LogsMigrations {
+	logsMigrations := LogsMigrations
+	if m.enableLogsMigrationsV2 {
+		logsMigrations = LogsMigrationsV2
+	}
+
+	for _, migration := range logsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, downVersions) {
 			continue
 		}
@@ -884,7 +901,12 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 		}
 	}
 
-	for _, migration := range LogsMigrations {
+	logsMigrations := LogsMigrations
+	if m.enableLogsMigrationsV2 {
+		logsMigrations = LogsMigrationsV2
+	}
+
+	for _, migration := range logsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
 			continue
 		}

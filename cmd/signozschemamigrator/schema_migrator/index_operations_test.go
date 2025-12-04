@@ -110,3 +110,73 @@ func TestAlterTableClearIndex(t *testing.T) {
 		})
 	}
 }
+
+func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expr        string
+		wantExpr    string
+		wantType    string
+		wantError   bool
+		errorSubstr string
+	}{
+		{
+			name:        "test-1",
+			expr:        "lower(assumeNotNull(dynamicElement(column.path, 'String')))",
+			wantExpr:    "column.path",
+			wantType:    "String",
+			wantError:   false,
+			errorSubstr: "",
+		},
+		{
+			name:        "test-2",
+			expr:        "lower(assumeNotNull(dynamicElement(column.`path`, 'Int64')))",
+			wantExpr:    "column.`path`",
+			wantType:    "Int64",
+			wantError:   false,
+			errorSubstr: "",
+		},
+		{
+			name:        "test-3",
+			expr:        "dynamicElement(body.nested.path,'Float64')",
+			wantExpr:    "body.nested.path",
+			wantType:    "Float64",
+			wantError:   true,
+			errorSubstr: "invalid expression: dynamicElement(body.nested.path,'Float64')",
+		}, {
+			name:        "test-4",
+			expr:        "lower(assumeNotNull(dynamicElement(body.nested.`order-id`,'Int64')))",
+			wantExpr:    "body.nested.`order-id`",
+			wantType:    "Int64",
+			wantError:   false,
+			errorSubstr: "",
+		},
+		{
+			name:        "invalid-expression-empty",
+			expr:        "",
+			wantExpr:    "",
+			wantType:    "",
+			wantError:   true,
+			errorSubstr: "invalid expression: ",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotExpr, gotType, err := UnfoldJSONSubColumnIndexExpr(tc.expr)
+
+			if tc.wantError {
+				require.Error(t, err)
+				if tc.errorSubstr != "" {
+					require.Contains(t, err.Error(), tc.errorSubstr)
+				}
+				require.Empty(t, gotExpr)
+				require.Empty(t, gotType)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.wantExpr, gotExpr)
+				require.Equal(t, tc.wantType, gotType)
+			}
+		})
+	}
+}

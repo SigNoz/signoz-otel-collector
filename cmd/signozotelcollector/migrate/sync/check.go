@@ -16,9 +16,10 @@ import (
 )
 
 type check struct {
-	conn    clickhouse.Conn
-	timeout time.Duration
-	logger  *zap.Logger
+	conn                   clickhouse.Conn
+	timeout                time.Duration
+	logger                 *zap.Logger
+	enableLogsMigrationsV2 bool
 }
 
 func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
@@ -27,7 +28,12 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			check, err := newCheck(config.Clickhouse.DSN, config.MigrateSyncCheck.Timeout, logger)
+			check, err := newCheck(
+				config.Clickhouse.DSN,
+				config.MigrateSyncCheck.Timeout,
+				config.MigrateSyncCheck.EnableLogsMigrationsV2,
+				logger,
+			)
 			if err != nil {
 				return err
 			}
@@ -46,7 +52,7 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(syncCheckCommand)
 }
 
-func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
+func newCheck(dsn string, timeout string, enableLogsMigrationsV2 bool, logger *zap.Logger) (*check, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -63,9 +69,10 @@ func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
 	}
 
 	return &check{
-		conn:    conn,
-		timeout: timeoutDuration,
-		logger:  logger,
+		conn:                   conn,
+		timeout:                timeoutDuration,
+		logger:                 logger,
+		enableLogsMigrationsV2: enableLogsMigrationsV2,
 	}, nil
 }
 
@@ -96,7 +103,12 @@ func (c *check) Check(ctx context.Context) error {
 		return err
 	}
 
-	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, schemamigrator.LogsMigrations[len(schemamigrator.LogsMigrations)-1].MigrationID)
+	logsMigrations := schemamigrator.LogsMigrations
+	if c.enableLogsMigrationsV2 {
+		logsMigrations = schemamigrator.LogsMigrationsV2
+	}
+
+	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, logsMigrations[len(logsMigrations)-1].MigrationID)
 	if err != nil {
 		return err
 	}
