@@ -271,6 +271,65 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.id": "123",
 			},
 		},
+
+		{
+			name: "nested_after_match_is_found",
+			body: map[string]interface{}{
+				"message": "test log",
+				"a.b.c":   "literal",
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{
+						"d": map[string]interface{}{
+							"nested_key": "nested_value",
+						},
+					},
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"a.b.c": {},
+				"a.b.d": {},
+			},
+			expectedBody: map[string]interface{}{
+				"message": "test log",
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{
+						"d": map[string]interface{}{
+							"nested_key": "nested_value",
+						},
+					},
+				},
+			},
+			expectedPromoted: map[string]interface{}{
+				"a.b.c": "literal",
+			},
+		},
+		{
+			name: "nested_after_match_is_found_with_dot_notation",
+			body: map[string]interface{}{
+				"message": "test log",
+				"a.b.c":   "literal",
+				"a": map[string]interface{}{
+					"b.d": map[string]interface{}{
+						"nested_key": "nested_value",
+					},
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"a.b.c": {},
+				"a.b.d": {},
+			},
+			expectedBody: map[string]interface{}{
+				"message": "test log",
+				"a": map[string]interface{}{
+					"b.d": map[string]interface{}{
+						"nested_key": "nested_value",
+					},
+				},
+			},
+			expectedPromoted: map[string]interface{}{
+				"a.b.c": "literal",
+			},
+		},
 	}
 
 	for _, tc := range testCases {

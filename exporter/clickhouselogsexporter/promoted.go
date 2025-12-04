@@ -57,12 +57,15 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 	// Step 1: Prefer literal match of the entire remaining path at this level
 	// Example: If remainingPath is "a.b.c" and bodyMap has key "a.b.c", extract it directly
 	if v, ok := bodyMap.Get(remainingPath); ok {
-		dst := promotedMap.PutEmpty(fullPath)
-		v.CopyTo(dst)
-		bodyMap.Remove(remainingPath)
-		// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
-		// the code is written in a way that the parent will remove the bodyMap itself after recursion
-		// check the end of the function for the cleanup
+		// we've found the path, but it's nested map, so we don't need to extract it
+		if v.Type() != pcommon.ValueTypeMap {
+			dst := promotedMap.PutEmpty(fullPath)
+			v.CopyTo(dst)
+			bodyMap.Remove(remainingPath)
+			// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
+			// the code is written in a way that the parent will remove the bodyMap itself after recursion
+			// check the end of the function for the cleanup
+		}
 		return
 	}
 
