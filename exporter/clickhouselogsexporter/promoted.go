@@ -57,72 +57,28 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 	// Step 1: Prefer literal match of the entire remaining path at this level
 	// Example: If remainingPath is "a.b.c" and bodyMap has key "a.b.c", extract it directly
 	if v, ok := bodyMap.Get(remainingPath); ok {
-		dst := promotedMap.PutEmpty(fullPath)
-		v.CopyTo(dst)
-		bodyMap.Remove(remainingPath)
-		// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
-		return
-	}
-
-	// Step 2: If no dot remains in the path, try matching the remaining path as a direct key
-	// Example: remainingPath = "id" -> try bodyMap["id"]
-	dot := strings.IndexByte(remainingPath, '.')
-	if dot == -1 {
-		if v, ok := bodyMap.Get(remainingPath); ok {
+		// we've found the path, but it's nested map, so we don't need to extract it
+		if v.Type() != pcommon.ValueTypeMap {
 			dst := promotedMap.PutEmpty(fullPath)
 			v.CopyTo(dst)
 			bodyMap.Remove(remainingPath)
+			// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
+			// the code is written in a way that the parent will remove the bodyMap itself after recursion
+			// check the end of the function for the cleanup
+			return
 		}
+	}
+
+	// Step 2: Split the path into head (first segment) and tail (remaining segments)
+	// Example: "user.id" -> head="user", tail="id"
+	indexOfNextDot := strings.IndexByte(remainingPath, '.')
+	if indexOfNextDot == -1 {
 		return
 	}
+	head := remainingPath[:indexOfNextDot]
+	tail := remainingPath[indexOfNextDot+1:]
 
-	// Step 3: Split the path into head (first segment) and tail (remaining segments)
-	// Example: "user.id" -> head="user", tail="id"
-	head := remainingPath[:dot]
-	tail := remainingPath[dot+1:]
-
-	// Step 4: Materialize submaps for dotted literal keys
-	// If there is no map under "head", but there are dotted literal siblings like "head.xxx",
-	// materialize a submap under "head" and move those keys into it for consistent traversal.
-	//
-	// Example:
-	//   Body: {"user.id": "123", "user.name": "john"}
-	//   Path: "user.id"
-	//   Action: Create body["user"] = {"id": "123", "name": "john"}, remove "user.id" and "user.name"
-	if v, ok := bodyMap.Get(head); !ok || v.Type() != pcommon.ValueTypeMap {
-		// Scan for dotted literal keys that start with "head."
-		var foundPrefixed bool
-		bodyMap.Range(func(k string, vv pcommon.Value) bool {
-			if strings.HasPrefix(k, head+".") {
-				foundPrefixed = true
-				return false
-			}
-			return true
-		})
-		if foundPrefixed {
-			// Create submap and move entries from dotted literals into it
-			// Example: {"user.id": "123", "user.name": "john"} -> {"user": {"id": "123", "name": "john"}}
-			sub := bodyMap.PutEmptyMap(head)
-			var keysToMove []string
-			bodyMap.Range(func(k string, vv pcommon.Value) bool {
-				if strings.HasPrefix(k, head+".") {
-					keysToMove = append(keysToMove, k)
-				}
-				return true
-			})
-			for _, k := range keysToMove {
-				vv, _ := bodyMap.Get(k)
-				// Move only one level: "head.rest" -> sub["rest"]
-				// Example: "user.id" -> sub["id"], "user.name" -> sub["name"]
-				rest := k[len(head)+1:]
-				dst := sub.PutEmpty(rest)
-				vv.CopyTo(dst)
-				bodyMap.Remove(k)
-			}
-		}
-	}
-
-	// Step 5: Recurse into nested map if it exists
+	// Step 3: Recurse into nested map if it exists
 	// Example: bodyMap["user"] exists and is a map, recurse with tail="id"
 	if v, ok := bodyMap.Get(head); ok && v.Type() == pcommon.ValueTypeMap {
 		nestedMap := v.Map()

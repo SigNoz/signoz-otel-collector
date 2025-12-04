@@ -71,7 +71,10 @@ func TestLoadConfig(t *testing.T) {
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
-		LogLevelConcurrency: utils.ToPointer(7),
+		LogLevelConcurrency:       utils.ToPointer(7),
+		BodyJSONEnabled:           true,
+		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
+		BodyJSONOldBodyEnabled:    true,
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true

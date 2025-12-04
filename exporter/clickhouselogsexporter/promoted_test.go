@@ -7,6 +7,12 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
+func TestInvalidBodyType(t *testing.T) {
+	body := pcommon.NewValueStr("test log")
+	promoted := buildPromotedAndPruneBody(body, map[string]struct{}{})
+	assert.Equal(t, pcommon.NewValueMap(), promoted)
+}
+
 func TestPromotedPathSeparation(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -58,11 +64,15 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.name": "john",
 			},
 		},
+		// This is likely not happen, but is covered for completeness
+		// ClickHouse will fail ingestion if there are multiple occurrences of the same path
+		// type_json_skip_duplicated_paths can be enabled during parsing JSON object into JSON type duplicated paths will be ignored and only the first one will be inserted instead of an exception
+		// https://clickhouse.com/docs/operations/settings/formats#type_json_skip_duplicated_paths
 		{
 			name: "ambiguous_dot_notation_literal_preference",
 			body: map[string]interface{}{
 				"message": "test log",
-				"a.b.c":   "literal_value",
+				"a.b.c":   "literal_value", // use first occurrence of the path
 				"a": map[string]interface{}{
 					"b": map[string]interface{}{
 						"c": "nested_value",
@@ -138,7 +148,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			expectedBody: map[string]interface{}{
 				"message": "test log",
 				"user": map[string]interface{}{
-					"email": "john@example.com",
+					"email":          "john@example.com",
 					"address.street": "123 Main St",
 				},
 			},
@@ -244,21 +254,85 @@ func TestPromotedPathSeparation(t *testing.T) {
 			},
 		},
 		{
-			name: "empty_maps_after_extraction",
+			name: "nested_after_match_is_found",
 			body: map[string]interface{}{
 				"message": "test log",
-				"user": map[string]interface{}{
-					"id": "123",
+				"a.b.c":   "literal",
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{
+						"d": map[string]interface{}{
+							"nested_key": "nested_value",
+						},
+					},
 				},
 			},
 			promotedPaths: map[string]struct{}{
-				"user.id": {},
+				"a.b.c": {},
+				"a.b.d": {},
 			},
 			expectedBody: map[string]interface{}{
 				"message": "test log",
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{
+						"d": map[string]interface{}{
+							"nested_key": "nested_value",
+						},
+					},
+				},
 			},
 			expectedPromoted: map[string]interface{}{
-				"user.id": "123",
+				"a.b.c": "literal",
+			},
+		},
+		{
+			name: "nested_after_match_is_found_with_dot_notation",
+			body: map[string]interface{}{
+				"message": "test log",
+				"a.b.c":   "literal",
+				"a": map[string]interface{}{
+					"b.d": map[string]interface{}{
+						"nested_key": "nested_value",
+					},
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"a.b.c": {},
+				"a.b.d": {},
+			},
+			expectedBody: map[string]interface{}{
+				"message": "test log",
+				"a": map[string]interface{}{
+					"b.d": map[string]interface{}{
+						"nested_key": "nested_value",
+					},
+				},
+			},
+			expectedPromoted: map[string]interface{}{
+				"a.b.c": "literal",
+			},
+		},
+		{
+			name: "nested_2_matches_found",
+			body: map[string]interface{}{
+				"message": "test log",
+				"a.b.c": map[string]interface{}{
+					"nested_key": "nested_value",
+				},
+				"a": map[string]interface{}{
+					"b.c": "literal",
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"a.b.c": {},
+			},
+			expectedBody: map[string]interface{}{
+				"message": "test log",
+				"a.b.c": map[string]interface{}{
+					"nested_key": "nested_value",
+				},
+			},
+			expectedPromoted: map[string]interface{}{
+				"a.b.c": "literal",
 			},
 		},
 	}

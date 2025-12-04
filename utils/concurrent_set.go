@@ -44,6 +44,8 @@ func (s *ConcurrentSet[T]) Insert(k T) {
 }
 
 func (s *ConcurrentSet[T]) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return len(s.set)
 }
 
@@ -51,7 +53,7 @@ func (s *ConcurrentSet[T]) Keys() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	keys := make([]T, 0, s.Len())
+	keys := make([]T, 0, len(s.set))
 
 	for k := range s.set {
 		keys = append(keys, k)
@@ -79,7 +81,7 @@ func (s *ConcurrentSet[T]) ToSlice() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	keys := make([]T, 0, s.Len())
+	keys := make([]T, 0, len(s.set))
 
 	for k := range s.set {
 		keys = append(keys, k)
