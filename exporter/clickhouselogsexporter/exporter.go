@@ -335,6 +335,9 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		opt(e)
 	}
 
+	// Ensure promotedPaths is always initialized so reads and type assertions are safe
+	e.promotedPaths.Store(map[string]struct{}{})
+
 	return e, nil
 }
 
@@ -395,11 +398,6 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
-	// initialize with empty map so reads do not need nil checks
-	if e.promotedPaths.Load() == nil {
-		e.promotedPaths.Store(map[string]struct{}{})
-	}
-
 	// if body JSON columns are activated, fetch promoted paths periodically
 	if e.bodyJSONEnabled {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
