@@ -1266,3 +1266,20 @@ func makeCacheKey(a, b uint64) string {
 
 	return builder.String()
 }
+
+// setFirstSeenLastSeen updates the first and last seen timestamps.
+// If the pointers are nil, it allocates new memory and initializes them.
+// Otherwise, it updates them to track the minimum and maximum values.
+// Returns the updated pointers.
+func setFirstSeenLastSeen(firstSeenUnixMilli, lastSeenUnixMilli *int64, unixMilli int64) (*int64, *int64) {
+	if firstSeenUnixMilli == nil {
+		firstSeenUnixMilli = new(int64)
+		lastSeenUnixMilli = new(int64)
+		*firstSeenUnixMilli = unixMilli
+		*lastSeenUnixMilli = unixMilli
+	} else {
+		*firstSeenUnixMilli = min(*firstSeenUnixMilli, unixMilli)
+		*lastSeenUnixMilli = max(*lastSeenUnixMilli, unixMilli)
+	}
+	return firstSeenUnixMilli, lastSeenUnixMilli
+}
