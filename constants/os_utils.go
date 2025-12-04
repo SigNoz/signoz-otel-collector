@@ -9,7 +9,6 @@ var Desc = "SigNoz OpenTelemetry Collector"
 
 // AllowLbExporterConfig enables lb exporter capability in the collector instance
 var SupportLbExporterConfig = GetOrDefaultEnv("SUPPORT_LB_EXPORTER_CONFIG", "1")
-var EnableLogsMigrationsJSON = GetOrDefaultEnv("ENABLE_LOGS_MIGRATIONS_JSON", "0") == "1"
 
 func GetOrDefaultEnv(key string, fallback string) string {
 	v := os.Getenv(key)

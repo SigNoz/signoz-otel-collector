@@ -12,7 +12,6 @@ import (
 	"net/netip"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
 )
@@ -79,11 +78,12 @@ type MigrationManager struct {
 	connOpts clickhouse.Options
 	conns    map[string]clickhouse.Conn
 
-	clusterName        string
-	replicationEnabled bool
-	logger             *zap.Logger
-	backoff            *backoff.ExponentialBackOff
-	development        bool
+	clusterName            string
+	replicationEnabled     bool
+	logger                 *zap.Logger
+	backoff                *backoff.ExponentialBackOff
+	development            bool
+	enableLogsMigrationsV2 bool
 }
 
 type Option func(*MigrationManager)
@@ -146,6 +146,12 @@ func WithLogger(logger *zap.Logger) Option {
 func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 	return func(mgr *MigrationManager) {
 		mgr.backoff = backoff
+	}
+}
+
+func WithEnableLogsMigrationsV2(enableLogsMigrationsV2 bool) Option {
+	return func(mgr *MigrationManager) {
+		mgr.enableLogsMigrationsV2 = enableLogsMigrationsV2
 	}
 }
 
@@ -705,7 +711,7 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 	}
 
 	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsJSON {
+	if m.enableLogsMigrationsV2 {
 		logsMigrations = LogsMigrationsV2
 	}
 
@@ -796,7 +802,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 	}
 
 	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsJSON {
+	if m.enableLogsMigrationsV2 {
 		logsMigrations = LogsMigrationsV2
 	}
 
@@ -896,7 +902,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 	}
 
 	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsJSON {
+	if m.enableLogsMigrationsV2 {
 		logsMigrations = LogsMigrationsV2
 	}
 

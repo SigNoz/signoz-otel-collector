@@ -10,16 +10,16 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	schemamigrator "github.com/SigNoz/signoz-otel-collector/cmd/signozschemamigrator/schema_migrator"
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
 
 type check struct {
-	conn    clickhouse.Conn
-	timeout time.Duration
-	logger  *zap.Logger
+	conn                   clickhouse.Conn
+	timeout                time.Duration
+	logger                 *zap.Logger
+	enableLogsMigrationsV2 bool
 }
 
 func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
@@ -28,7 +28,12 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			check, err := newCheck(config.Clickhouse.DSN, config.MigrateSyncCheck.Timeout, logger)
+			check, err := newCheck(
+				config.Clickhouse.DSN,
+				config.MigrateSyncCheck.Timeout,
+				config.MigrateSyncCheck.EnableLogsMigrationsV2,
+				logger,
+			)
 			if err != nil {
 				return err
 			}
@@ -47,7 +52,7 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(syncCheckCommand)
 }
 
-func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
+func newCheck(dsn string, timeout string, enableLogsMigrationsV2 bool, logger *zap.Logger) (*check, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -64,9 +69,10 @@ func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
 	}
 
 	return &check{
-		conn:    conn,
-		timeout: timeoutDuration,
-		logger:  logger,
+		conn:                   conn,
+		timeout:                timeoutDuration,
+		logger:                 logger,
+		enableLogsMigrationsV2: enableLogsMigrationsV2,
 	}, nil
 }
 
@@ -98,8 +104,8 @@ func (c *check) Check(ctx context.Context) error {
 	}
 
 	logsMigrations := schemamigrator.LogsMigrations
-	if constants.EnableLogsMigrationsJSON {
-		logsMigrations = append(logsMigrations, schemamigrator.LogsMigrationsJSON...)
+	if c.enableLogsMigrationsV2 {
+		logsMigrations = schemamigrator.LogsMigrationsV2
 	}
 
 	err = c.isMigrationSuccess(ctx, schemamigrator.SignozLogsDB, logsMigrations[len(logsMigrations)-1].MigrationID)
