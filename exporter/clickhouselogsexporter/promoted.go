@@ -65,13 +65,17 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 			// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
 			// the code is written in a way that the parent will remove the bodyMap itself after recursion
 			// check the end of the function for the cleanup
+			return
+
 		}
-		return
 	}
 
 	// Step 2: Split the path into head (first segment) and tail (remaining segments)
 	// Example: "user.id" -> head="user", tail="id"
 	indexOfNextDot := strings.IndexByte(remainingPath, '.')
+	if indexOfNextDot == -1 {
+		return
+	}
 	head := remainingPath[:indexOfNextDot]
 	tail := remainingPath[indexOfNextDot+1:]
 

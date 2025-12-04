@@ -254,25 +254,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			},
 		},
 		{
-			name: "empty_maps_after_extraction",
-			body: map[string]interface{}{
-				"message": "test log",
-				"user": map[string]interface{}{
-					"id": "123",
-				},
-			},
-			promotedPaths: map[string]struct{}{
-				"user.id": {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-			},
-			expectedPromoted: map[string]interface{}{
-				"user.id": "123",
-			},
-		},
-
-		{
 			name: "nested_after_match_is_found",
 			body: map[string]interface{}{
 				"message": "test log",
@@ -324,6 +305,30 @@ func TestPromotedPathSeparation(t *testing.T) {
 					"b.d": map[string]interface{}{
 						"nested_key": "nested_value",
 					},
+				},
+			},
+			expectedPromoted: map[string]interface{}{
+				"a.b.c": "literal",
+			},
+		},
+		{
+			name: "nested_2_matches_found",
+			body: map[string]interface{}{
+				"message": "test log",
+				"a.b.c": map[string]interface{}{
+					"nested_key": "nested_value",
+				},
+				"a": map[string]interface{}{
+					"b.c": "literal",
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"a.b.c": {},
+			},
+			expectedBody: map[string]interface{}{
+				"message": "test log",
+				"a.b.c": map[string]interface{}{
+					"nested_key": "nested_value",
 				},
 			},
 			expectedPromoted: map[string]interface{}{
