@@ -1,12 +1,9 @@
 package schemamigrator
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // InsertIntoTable represents an INSERT INTO statement.
-// Columns are provided as names; values are provided as Go values and encoded safely.
+// InsertIntoTable can only be used for INSERTs into ReplacingMergeTree tables as of now.
 type InsertIntoTable struct {
 	cluster string
 
@@ -15,7 +12,10 @@ type InsertIntoTable struct {
 	Columns     []string
 	LightWeight bool
 	Synchronous bool
-	Values      [][]string
+	// Values should be a pre-formatted string representing the VALUES clause,
+	// for example: "('col1', 123), ('col2', 456)".
+	// The caller is responsible for proper formatting and escaping.
+	Values string
 }
 
 // OnCluster is a no-op for INSERTs (ClickHouse does not support INSERT ... ON CLUSTER).
@@ -60,16 +60,6 @@ func (i InsertIntoTable) ToSQL() string {
 	}
 
 	sql.WriteString(" VALUES ")
-
-	rows := make([]string, 0, len(i.Values))
-	for _, row := range i.Values {
-		vals := make([]string, len(row))
-		for idx, v := range row {
-			vals[idx] = fmt.Sprintf("'%s'", v)
-		}
-		rows = append(rows, fmt.Sprintf("(%s)", strings.Join(vals, ", ")))
-	}
-
-	sql.WriteString(strings.Join(rows, ", "))
+	sql.WriteString(i.Values)
 	return sql.String()
 }

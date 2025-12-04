@@ -706,7 +706,7 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 
 	logsMigrations := LogsMigrations
 	if constants.EnableLogsMigrationsJSON {
-		logsMigrations = append(logsMigrations, LogsMigrationsJSON...)
+		logsMigrations = LogsMigrationsV2
 	}
 
 	for _, migration := range logsMigrations {
@@ -797,7 +797,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 
 	logsMigrations := LogsMigrations
 	if constants.EnableLogsMigrationsJSON {
-		logsMigrations = append(logsMigrations, LogsMigrationsJSON...)
+		logsMigrations = LogsMigrationsV2
 	}
 
 	for _, migration := range logsMigrations {
@@ -897,7 +897,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 
 	logsMigrations := LogsMigrations
 	if constants.EnableLogsMigrationsJSON {
-		logsMigrations = append(logsMigrations, LogsMigrationsJSON...)
+		logsMigrations = LogsMigrationsV2
 	}
 
 	for _, migration := range logsMigrations {

@@ -8,9 +8,9 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
-var LogsMigrationsJSON = []SchemaMigrationRecord{
+var LogsMigrationsV2 = []SchemaMigrationRecord{
 	{
-		MigrationID: 2000,
+		MigrationID: 1000,
 		UpItems: []Operation{
 			DropTableOperation{
 				Database: "signoz_logs",
@@ -89,7 +89,7 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		MigrationID: 2001,
+		MigrationID: 1001,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
@@ -140,7 +140,7 @@ ORDER BY name ASC`,
 		DownItems: []Operation{},
 	},
 	{
-		MigrationID: 2002,
+		MigrationID: 1002,
 		UpItems: []Operation{
 			AlterTableAddColumn{
 				Database: "signoz_logs",
@@ -180,7 +180,7 @@ ORDER BY name ASC`,
 		DownItems: []Operation{},
 	},
 	{
-		MigrationID: 2003,
+		MigrationID: 1003,
 		UpItems: []Operation{
 			AlterTableMaterializeColumn{
 				Database: "signoz_logs",
@@ -200,7 +200,7 @@ ORDER BY name ASC`,
 		DownItems: []Operation{},
 	},
 	{
-		MigrationID: 2004,
+		MigrationID: 1004,
 		UpItems: []Operation{
 			AlterTableAddColumn{
 				Database: "signoz_logs",
@@ -242,7 +242,7 @@ ORDER BY name ASC`,
 		MigrationID: 2005,
 		UpItems: []Operation{
 			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.LocalPathTypesTable,
 				Columns: []Column{
 					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -262,7 +262,7 @@ ORDER BY name ASC`,
 				},
 			},
 			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.DistributedPathTypesTable,
 				Columns: []Column{
 					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -270,13 +270,13 @@ ORDER BY name ASC`,
 					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: Distributed{
-					Database:    constants.SignozMetadataDB,
+					Database:    SignozMetadataDB,
 					Table:       constants.LocalPathTypesTable,
 					ShardingKey: fmt.Sprintf("cityHash64(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
 				},
 			},
 			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.LocalPromotedPathsTable,
 				Columns: []Column{
 					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -293,14 +293,14 @@ ORDER BY name ASC`,
 				},
 			},
 			CreateTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.DistributedPromotedPathsTable,
 				Columns: []Column{
 					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: Distributed{
-					Database:    constants.SignozMetadataDB,
+					Database:    SignozMetadataDB,
 					Table:       constants.LocalPromotedPathsTable,
 					ShardingKey: "cityHash64(path)",
 				},
@@ -366,14 +366,12 @@ ORDER BY name ASC`,
 				},
 			},
 			InsertIntoTable{
-				Database:    constants.SignozMetadataDB,
+				Database:    SignozMetadataDB,
 				Table:       constants.DistributedPromotedPathsTable,
 				LightWeight: true,
 				Synchronous: true,
 				Columns:     []string{"path", "created_at"},
-				Values: [][]string{
-					{"message", fmt.Sprintf("%d", time.Now().UnixMilli())},
-				},
+				Values:      fmt.Sprintf("('message', %d)", time.Now().UnixMilli()),
 			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
@@ -422,21 +420,22 @@ ORDER BY name ASC`,
 				Column:   Column{Name: constants.BodyJSONColumn},
 			},
 			DropTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.LocalPathTypesTable,
 			},
 			DropTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.DistributedPathTypesTable,
 			},
 			DropTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.LocalPromotedPathsTable,
 			},
 			DropTableOperation{
-				Database: constants.SignozMetadataDB,
+				Database: SignozMetadataDB,
 				Table:    constants.DistributedPromotedPathsTable,
 			},
 		},
 	},
+	// Next migration id will be 2006
 }
