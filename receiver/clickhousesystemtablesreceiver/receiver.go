@@ -44,7 +44,7 @@ func (r *systemTablesReceiver) Start(
 
 	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
 	r.requestShutdown = cancelReceiverCtx
-
+	r.shutdownCompleteWg.Add(1)
 	go r.run(receiverCtx)
 
 	return nil
@@ -69,7 +69,6 @@ func (r *systemTablesReceiver) Shutdown(context.Context) error {
 }
 
 func (r *systemTablesReceiver) run(ctx context.Context) {
-	r.shutdownCompleteWg.Add(1)
 	defer r.shutdownCompleteWg.Done()
 
 	ticker := time.NewTicker(time.Second * time.Duration(

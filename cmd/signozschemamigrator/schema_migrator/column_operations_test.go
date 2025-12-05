@@ -3,6 +3,7 @@ package schemamigrator
 import (
 	"testing"
 
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,7 +261,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 				Table:    "table",
 				Column: Column{
 					Name: "col",
-					Type: JSONColumnType{MaxDynamicPaths: 10, MaxDynamicTypes: 2},
+					Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(10)), MaxDynamicTypes: utils.ToPointer(uint(2))},
 				},
 			}.OnCluster("cluster"),
 			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col JSON(max_dynamic_paths=10, max_dynamic_types=2)",

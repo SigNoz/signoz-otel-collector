@@ -28,6 +28,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -56,6 +57,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
+	distributedPromotedPathsTable    = constants.SignozMetadataDB + "." + constants.DistributedPromotedPathsTable
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -108,6 +110,51 @@ const (
 			?,
 			?
 			)`
+	insertLogsSQLTemplateV2WithBodyJSON = `INSERT INTO %s.%s (
+		ts_bucket_start,
+		resource_fingerprint,
+		timestamp,
+		observed_timestamp,
+		id,
+		trace_id,
+		span_id,
+		trace_flags,
+		severity_text,
+		severity_number,
+		body,
+		body_json,
+		body_json_promoted,
+		attributes_string,
+		attributes_number,
+		attributes_bool,
+		resources_string,
+		resource,
+		scope_name,
+		scope_version,
+		scope_string
+		) VALUES (
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?,
+			?
+			)`
 )
 
 type shouldSkipKey struct {
@@ -127,20 +174,21 @@ type attributeMap struct {
 // Record represents a prepared log record, ready to be appended to ClickHouse batches.
 type Record struct {
 	// batch columns
-	tsBucketStart uint64
-	resourceFP    string
-	ts            uint64
-	ots           uint64
-	id            string
-	traceID       string
-	spanID        string
-	traceFlags    uint32
-	severityText  string
-	severityNum   uint8
-	body          string
-	scopeName     string
-	scopeVersion  string
-
+	tsBucketStart    uint64
+	resourceFP       string
+	ts               uint64
+	ots              uint64
+	id               string
+	traceID          string
+	spanID           string
+	traceFlags       uint32
+	severityText     string
+	severityNum      uint8
+	body             string
+	bodyJSON         string
+	bodyJSONPromoted string
+	scopeName        string
+	scopeVersion     string
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -229,10 +277,12 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 }
 
 type clickhouseLogsExporter struct {
-	id                    uuid.UUID
-	db                    clickhouse.Conn
-	insertLogsSQLV2       string
-	insertLogsResourceSQL string
+	id                     uuid.UUID
+	db                     clickhouse.Conn
+	insertLogsSQLV2        string
+	insertLogsResourceSQL  string
+	bodyJSONEnabled        bool
+	bodyJSONOldBodyEnabled bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -254,35 +304,46 @@ type clickhouseLogsExporter struct {
 	fetchKeysInterval     time.Duration
 	shutdownFuncs         []func() error
 	maxAllowedDataAgeDays uint64
+
+	// promotedPaths holds a set of JSON paths that should be promoted.
+	// Accessed via atomic.Value to allow lock-free reads on hot path.
+	promotedPaths             atomic.Value // stores map[string]struct{}
+	promotedPathsSyncInterval time.Duration
 }
 
 func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*clickhouseLogsExporter, error) {
-
 	// view should be registered after exporter is initialized
 	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
 		return nil, err
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
-		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
-		cfg:                   cfg,
-		wg:                    new(sync.WaitGroup),
-		closeChan:             make(chan struct{}),
-		maxDistinctValues:     cfg.AttributesLimits.MaxDistinctValues,
-		fetchKeysInterval:     cfg.AttributesLimits.FetchKeysInterval,
-		limiter:               make(chan struct{}, utils.Concurrency()),
-		maxAllowedDataAgeDays: 15,
+		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
+		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
+		cfg:                       cfg,
+		bodyJSONEnabled:           cfg.BodyJSONEnabled,
+		wg:                        new(sync.WaitGroup),
+		closeChan:                 make(chan struct{}),
+		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
+		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
+		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
+		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
+		limiter:                   make(chan struct{}, utils.Concurrency()),
+		maxAllowedDataAgeDays:     15,
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
+
+	// Ensure promotedPaths is always initialized so reads and type assertions are safe
+	e.promotedPaths.Store(map[string]struct{}{})
 
 	return e, nil
 }
 
 func (e *clickhouseLogsExporter) Start(ctx context.Context, host component.Host) error {
 	e.fetchShouldSkipKeys() // Start ticker routine
+	e.fetchPromotedPaths()
 	return nil
 }
 
@@ -335,12 +396,60 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 	}()
 }
 
+// fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
+func (e *clickhouseLogsExporter) fetchPromotedPaths() {
+	// if body JSON columns are activated, fetch promoted paths periodically
+	if e.bodyJSONEnabled {
+		ticker := time.NewTicker(e.promotedPathsSyncInterval)
+		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
+			ticker.Stop()
+			return nil
+		})
+
+		e.doFetchPromotedPaths() // Immediate first fetch
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			for {
+				select {
+				case <-e.closeChan:
+					return
+				case <-ticker.C:
+					e.doFetchPromotedPaths()
+				}
+			}
+		}()
+	}
+}
+
+func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
+	query := fmt.Sprintf(`SELECT path FROM %s SETTINGS max_threads = 1`, distributedPromotedPathsTable)
+	e.logger.Debug("fetching promoted paths", zap.String("query", query))
+
+	rows := []struct {
+		Path string `ch:"path"`
+	}{}
+	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+		e.logger.Error("error while fetching promoted paths", zap.Error(err))
+		return
+	}
+	updated := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		if r.Path == "" {
+			continue
+		}
+		updated[r.Path] = struct{}{}
+	}
+
+	e.promotedPaths.Store(updated)
+}
+
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
-	for _, shutdownFuncs := range e.shutdownFuncs {
-		if err := shutdownFuncs(); err != nil {
+	for _, shutdownFunc := range e.shutdownFuncs {
+		if err := shutdownFunc(); err != nil {
 			return err
 		}
 	}
@@ -487,7 +596,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys)
 
 				// append main log row
-				if err := insertLogsStmtV2.Append(
+				args := []any{
 					rec.tsBucketStart,
 					rec.resourceFP,
 					rec.ts,
@@ -499,6 +608,11 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityText,
 					rec.severityNum,
 					rec.body,
+				}
+				if e.bodyJSONEnabled {
+					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
+				}
+				args = append(args,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -507,7 +621,8 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.scopeName,
 					rec.scopeVersion,
 					rec.scopeMap.StringData,
-				); err != nil {
+				)
+				if err := insertLogsStmtV2.Append(args...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
 				}
 
@@ -586,31 +701,31 @@ producerIteration:
 					if len(resourcesMap.StringData) > 100 {
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
-
-					body := record.Body()
-
 					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
+					body, bodyJSON, promoted := e.processBody(record.Body())
 					recordStream <- &Record{
-						tsBucketStart: uint64(lBucketStart),
-						resourceFP:    fp,
-						ts:            ts,
-						ots:           ots,
-						id:            id.String(),
-						traceID:       utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:        utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:    uint32(record.Flags()),
-						severityText:  record.SeverityText(),
-						severityNum:   uint8(record.SeverityNumber()),
-						body:          getStringifiedBody(body),
-						scopeName:     scopeName,
-						scopeVersion:  scopeVersion,
-						resourceMap:   resourcesMap,
-						scopeMap:      scopeMap,
-						attrsMap:      attrsMap,
-						logFields:     attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:    int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						tsBucketStart:    uint64(lBucketStart),
+						resourceFP:       fp,
+						ts:               ts,
+						ots:              ots,
+						id:               id.String(),
+						traceID:          utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:           utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:       uint32(record.Flags()),
+						severityText:     record.SeverityText(),
+						severityNum:      uint8(record.SeverityNumber()),
+						body:             body,
+						bodyJSON:         bodyJSON,
+						bodyJSONPromoted: promoted,
+						scopeName:        scopeName,
+						scopeVersion:     scopeVersion,
+						resourceMap:      resourcesMap,
+						scopeMap:         scopeMap,
+						attrsMap:         attrsMap,
+						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
 					return nil
 				})
@@ -703,6 +818,31 @@ producerIteration:
 	}
 
 	return nil
+}
+
+func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string) {
+	promoted := pcommon.NewValueMap()
+	bodyJSON := pcommon.NewValueMap()
+	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
+		// Work on a local mutable copy of the body to avoid mutating
+		// the shared pdata across goroutines.
+		mutableBody := pcommon.NewValueMap()
+		body.CopyTo(mutableBody)
+
+		// promoted paths extraction using cached set
+		promotedSet := e.promotedPaths.Load().(map[string]struct{})
+
+		// set values to promoted and bodyJSON
+		promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
+		bodyJSON = mutableBody
+
+		if !e.bodyJSONOldBodyEnabled {
+			// set body to empty string
+			body = pcommon.NewValueEmpty()
+		}
+	}
+
+	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
@@ -899,8 +1039,12 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	return db, nil
 }
 
-func renderInsertLogsSQLV2(_ *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
+func renderInsertLogsSQLV2(includeBodyJSON bool) string {
+	template := insertLogsSQLTemplateV2
+	if includeBodyJSON {
+		template = insertLogsSQLTemplateV2WithBodyJSON
+	}
+	return fmt.Sprintf(template, databaseName, distributedLogsTableV2)
 }
 
 func renderInsertLogsResourceSQL(_ *Config) string {

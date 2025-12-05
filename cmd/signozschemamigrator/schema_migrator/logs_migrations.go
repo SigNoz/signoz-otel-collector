@@ -1,6 +1,10 @@
 package schemamigrator
 
-import "time"
+import (
+	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 var LogsMigrations = []SchemaMigrationRecord{
 	{
@@ -201,7 +205,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -210,7 +214,7 @@ ORDER BY name ASC`,
 				Table:    "distributed_logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: 100},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -276,7 +280,7 @@ ORDER BY name ASC`,
 				BaseColumn:     "resources_string",
 				BaseColumnType: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString},
 				NewColumn:      "resource",
-				NewColumnType:  JSONColumnType{MaxDynamicPaths: 100},
+				NewColumnType:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
 				ReleaseTime:    time.Now().Add(-time.Duration(10*24) * time.Hour),
 			},
 		},
