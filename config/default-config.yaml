@@ -59,6 +59,8 @@ processors:
       - name: host.name
       - name: host.type
       - name: container.name
+      - name: special.random.attribute
+      - name: generated.by
   # memory_limiter:
   #   # 80% of maximum memory up to 2G
   #   limit_mib: 1500
