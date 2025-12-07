@@ -1,6 +1,8 @@
 package signozclickhousemetrics
 
 import (
+	"time"
+
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
@@ -12,6 +14,7 @@ type batch struct {
 	metadata []*metadata
 
 	metaSeen map[string]struct{}
+	metaIdx  map[string]int // maps seenKey -> index in metadata slice
 }
 
 func newBatch() *batch {
@@ -21,10 +24,24 @@ func newBatch() *batch {
 		ts:       make([]*ts, 0),
 		metadata: make([]*metadata, 0),
 		metaSeen: make(map[string]struct{}),
+		metaIdx:  make(map[string]int),
 	}
 }
 
-func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint) {
+func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint, firstSeenUnixMilli, lastSeenUnixMilli *int64) {
+	// Handle nil pointers - use current time as fallback
+	// TODO(nikhilmantri0902, srikanthccv): This is a hack to handle the case where the first and last seen timestamps are not provided.
+	// can happen when datapoints are 0 and we are here setting resource/scope attributes.
+	// We should remove this once we have a proper way to handle this.
+	// we can choose to skip adding metadata in this case.
+	if firstSeenUnixMilli == nil {
+		now := time.Now().UnixMilli()
+		firstSeenUnixMilli = new(int64)
+		*firstSeenUnixMilli = now
+		lastSeenUnixMilli = new(int64)
+		*lastSeenUnixMilli = now
+	}
+
 	for key, value := range fingerprint.Attributes() {
 		seenKey := key + name
 		if key == "le" {
@@ -34,21 +51,37 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		// it breaks the fingerprinting, we assume this will never happen
 		// even if it does, we will not handle it on our end (because we can't reliably which should take
 		// precedence), the user should be responsible for ensuring no conflicting keys in their metrics
-		if _, ok := b.metaSeen[seenKey]; ok {
+
+		// Check if metadata already exists
+		if idx, exists := b.metaIdx[seenKey]; exists {
+			// Update timestamps
+			existing := b.metadata[idx]
+			if existing.firstReportedUnixMilli == 0 || *firstSeenUnixMilli < existing.firstReportedUnixMilli {
+				existing.firstReportedUnixMilli = *firstSeenUnixMilli
+			}
+			if *lastSeenUnixMilli > existing.lastReportedUnixMilli {
+				existing.lastReportedUnixMilli = *lastSeenUnixMilli
+			}
 			continue
 		}
+
+		// New metadata entry
 		b.metaSeen[seenKey] = struct{}{}
+		idx := len(b.metadata)
+		b.metaIdx[seenKey] = idx
 		b.metadata = append(b.metadata, &metadata{
-			metricName:      name,
-			temporality:     temporality,
-			description:     desc,
-			unit:            unit,
-			typ:             typ,
-			isMonotonic:     isMonotonic,
-			attrName:        key,
-			attrType:        fingerprint.Type().String(),
-			attrDatatype:    value.DataType,
-			attrStringValue: value.Val,
+			metricName:             name,
+			temporality:            temporality,
+			description:            desc,
+			unit:                   unit,
+			typ:                    typ,
+			isMonotonic:            isMonotonic,
+			attrName:               key,
+			attrType:               fingerprint.Type().String(),
+			attrDatatype:           value.DataType,
+			attrStringValue:        value.Val,
+			firstReportedUnixMilli: *firstSeenUnixMilli,
+			lastReportedUnixMilli:  *lastSeenUnixMilli,
 		})
 	}
 }
