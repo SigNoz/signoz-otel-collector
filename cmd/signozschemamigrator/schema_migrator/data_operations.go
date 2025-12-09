@@ -37,7 +37,7 @@ func (i InsertIntoTable) ShouldWaitForDistributionQueue() (bool, string, string)
 // IsMutation returns false (does not alter existing data parts).
 func (i InsertIntoTable) IsMutation() bool { return false }
 
-func (i InsertIntoTable) IsIdempotent() bool { return true }
+func (i InsertIntoTable) IsIdempotent() bool { return false }
 
 // IsLightweight returns true.
 func (i InsertIntoTable) IsLightweight() bool { return i.LightWeight }
