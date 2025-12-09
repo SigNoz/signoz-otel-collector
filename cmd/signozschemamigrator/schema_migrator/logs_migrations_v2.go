@@ -371,7 +371,7 @@ ORDER BY name ASC`,
 				LightWeight: true,
 				Synchronous: true,
 				Columns:     []string{"path", "created_at"},
-				Values:      fmt.Sprintf("('message', %d)", time.Time{}.UnixMilli()), // Set to a fixed time to avoid flakiness
+				Values:      fmt.Sprintf("('message', %d)", time.Unix(0, 0).UnixMilli()), // Set to a fixed time to avoid flakiness
 			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
