@@ -174,6 +174,8 @@ type processorImp struct {
 
 	keyBuf *bytes.Buffer
 
+	lateSpanData map[string]*lateSpanBucketStats
+
 	// An LRU cache of dimension key-value maps keyed by a unique identifier formed by a concatenation of its values:
 	// e.g. { "foo/barOK": { "serviceName": "foo", "operation": "/bar", "status_code": "OK" }}
 	metricKeyToDimensions             *cache.Cache[metricKey, pcommon.Map]
@@ -344,6 +346,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 		dbCallDimensions:                       newDimensions(dbCallDimensions),
 		externalCallDimensions:                 newDimensions(externalCallDimensions),
 		keyBuf:                                 bytes.NewBuffer(make([]byte, 0, 1024)),
+		lateSpanData:                           make(map[string]*lateSpanBucketStats),
 		metricKeyToDimensions:                  metricKeyToDimensionsCache,
 		expHistogramKeyToDimensions:            expHistogramKeyToDimensionsCache,
 		callMetricKeyToDimensions:              callMetricKeyToDimensionsCache,
@@ -540,6 +543,12 @@ func (p *processorImp) exportMetrics(ctx context.Context) {
 	// Exemplars are only relevant to this batch of traces, so must be cleared within the lock,
 	// regardless of error while building metrics, before the next batch of spans is received.
 	p.resetExemplarData()
+
+	// print late span reports
+	lateReports := p.collectAndResetLateSpanData()
+	if len(lateReports) > 0 {
+		p.logLateSpanReports(lateReports)
+	}
 
 	// This component no longer needs to read the metrics once built, so it is safe to unlock.
 	p.lock.Unlock()
@@ -980,6 +989,10 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		p.logger.Debug("Skipping span", zap.String("span", span.Name()), zap.String("service", serviceName))
 		return
 	}
+
+	if delay := time.Since(span.StartTimestamp().AsTime()); delay >= lateSpanBuckets[0].min {
+		p.recordLateSpan(serviceName, span, resourceAttr, delay)
+	}
 	// Protect against end timestamps before start timestamps. Assume 0 duration.
 	latencyInMilliseconds := float64(0)
 	startTime := span.StartTimestamp()
@@ -1400,6 +1413,111 @@ func (p *processorImp) externalCallCache(serviceName string, span ptrace.Span, k
 	// Use Get to ensure any existing key has its recent-ness updated.
 	if _, has := p.externalCallMetricKeyToDimensions.Get(k); !has {
 		p.externalCallMetricKeyToDimensions.Add(k, p.buildCustomDimensionKVs(serviceName, span, p.externalCallDimensions, resourceAttrs, extraDims))
+	}
+}
+
+func (p *processorImp) recordLateSpan(serviceName string, span ptrace.Span, resourceAttr pcommon.Map, delay time.Duration) {
+	bucketDef, ok := bucketForSpanDelay(delay)
+	if !ok {
+		return
+	}
+
+	if p.lateSpanData == nil {
+		p.lateSpanData = make(map[string]*lateSpanBucketStats)
+	}
+
+	spanInfo := buildSpanSummary(serviceName, span, resourceAttr, delay)
+
+	stats, ok := p.lateSpanData[bucketDef.name]
+	if !ok {
+		stats = &lateSpanBucketStats{
+			FirstSpan:  spanInfo,
+			MinDelay:   delay,
+			MinSpan:    spanInfo,
+			MaxDelay:   delay,
+			MaxSpan:    spanInfo,
+			ServiceMap: make(map[string]*serviceSample),
+		}
+		p.lateSpanData[bucketDef.name] = stats
+	}
+
+	stats.Count++
+
+	if stats.Count == 1 {
+		stats.FirstSpan = spanInfo
+	}
+
+	if delay < stats.MinDelay {
+		stats.MinDelay = delay
+		stats.MinSpan = spanInfo
+	}
+	if delay > stats.MaxDelay {
+		stats.MaxDelay = delay
+		stats.MaxSpan = spanInfo
+	}
+
+	serviceStats, ok := stats.ServiceMap[serviceName]
+	if !ok {
+		serviceStats = &serviceSample{}
+		stats.ServiceMap[serviceName] = serviceStats
+	}
+	serviceStats.Count++
+	if len(serviceStats.SampleSpanNames) < maxServiceSamplesPerBucket {
+		serviceStats.SampleSpanNames = append(serviceStats.SampleSpanNames, span.Name())
+	}
+}
+
+func (p *processorImp) collectAndResetLateSpanData() []lateSpanBucketReport {
+	if len(p.lateSpanData) == 0 {
+		return nil
+	}
+
+	reports := make([]lateSpanBucketReport, 0, len(p.lateSpanData))
+	for bucketName, stats := range p.lateSpanData {
+		if stats == nil || stats.Count == 0 {
+			continue
+		}
+		report := lateSpanBucketReport{
+			Bucket:          bucketName,
+			Count:           stats.Count,
+			FirstSpan:       stats.FirstSpan,
+			MinDelaySeconds: int(stats.MinDelay.Seconds()),
+			MinSpan:         stats.MinSpan,
+			MaxDelaySeconds: int(stats.MaxDelay.Seconds()),
+			MaxSpan:         stats.MaxSpan,
+			ServiceStats:    make(map[string]serviceSample, len(stats.ServiceMap)),
+		}
+		for svc, svcStats := range stats.ServiceMap {
+			if svcStats == nil {
+				continue
+			}
+			report.ServiceStats[svc] = serviceSample{
+				Count:           svcStats.Count,
+				SampleSpanNames: append([]string(nil), svcStats.SampleSpanNames...),
+			}
+		}
+		reports = append(reports, report)
+	}
+
+	p.lateSpanData = make(map[string]*lateSpanBucketStats)
+	return reports
+}
+
+func (p *processorImp) logLateSpanReports(reports []lateSpanBucketReport) {
+	for _, report := range reports {
+		if report.Count == 0 {
+			continue
+		}
+		p.logger.Warn("Late spans observed before exporting metrics",
+			zap.String("bucket", report.Bucket),
+			zap.Int("count", report.Count),
+			zap.Int("min_delay_seconds", report.MinDelaySeconds),
+			zap.Int("max_delay_seconds", report.MaxDelaySeconds),
+			zap.Any("first_span", report.FirstSpan),
+			zap.Any("min_span", report.MinSpan),
+			zap.Any("max_span", report.MaxSpan),
+			zap.Any("service_stats", report.ServiceStats),
+		)
 	}
 }
 
