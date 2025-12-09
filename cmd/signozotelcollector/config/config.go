@@ -52,11 +52,9 @@ func (cfg *migrateReady) RegisterFlags(cmd *cobra.Command) {
 }
 
 type migrateSyncCheck struct {
-	Timeout                string
-	EnableLogsMigrationsV2 bool
+	Timeout string
 }
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for sync check operation")
-	cmd.PersistentFlags().BoolVar(&cfg.EnableLogsMigrationsV2, "enable-logs-migrations-v2", false, "Enable logs migrations v2 (JSON migrations)")
 }
