@@ -28,11 +28,7 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Checks the status of migrations for the store by checking the status of migrations in the migration table.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			check, err := newCheck(
-				config.Clickhouse.DSN,
-				config.MigrateSyncCheck.Timeout,
-				logger,
-			)
+			check, err := newCheck(config.Clickhouse.DSN, config.MigrateSyncCheck.Timeout, logger)
 			if err != nil {
 				return err
 			}

@@ -504,14 +504,12 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	start := time.Now()
 	chLen := 5
 
-	// Single-threaded ClickHouse batch owner (consumer)
 	var insertLogsStmtV2 driver.Batch
 	var insertResourcesStmtV2 driver.Batch
 	var tagStatementV2 driver.Batch
 	var attributeKeysStmt driver.Batch
 	var resourceKeysStmt driver.Batch
 
-	// Consumer: owns ClickHouse batches and appends from records
 	var shouldSkipKeys map[string]shouldSkipKey
 	if e.shouldSkipKeyValue.Load() != nil {
 		shouldSkipKeys = e.shouldSkipKeyValue.Load().(map[string]shouldSkipKey)
