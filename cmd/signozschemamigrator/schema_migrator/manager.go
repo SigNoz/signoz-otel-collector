@@ -854,6 +854,11 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 			continue
 		}
 		for _, item := range migration.UpItems {
+			if item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
@@ -877,6 +882,11 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 			continue
 		}
 		for _, item := range migration.UpItems {
+			if item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
@@ -926,6 +936,11 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 			continue
 		}
 		for _, item := range migration.DownItems {
+			if item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
@@ -944,6 +959,11 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 			continue
 		}
 		for _, item := range migration.DownItems {
+			if item.ForceMigrate() {
+				m.logger.Info("Skipping force sync operation", zap.Uint64("migration_id", migration.MigrationID))
+				// skip the force sync operation (should run in sync mode)
+				continue
+			}
 			if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
 				m.logger.Info("Skipping sync operation", zap.Uint64("migration_id", migration.MigrationID))
 				// skip the sync operation
