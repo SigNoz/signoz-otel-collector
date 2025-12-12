@@ -1,6 +1,7 @@
 package schemamigrator
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -244,17 +245,14 @@ ORDER BY name ASC`,
 				Table:    "column_key_evolution_metadata",
 				Columns: []Column{
 					{Name: "base_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "base_key", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "base_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "new_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "new_key", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "new_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "release_time", Type: ColumnTypeUInt64, Codec: "DoubleDelta, ZSTD(1)"},
 				},
-				Engine: ReplacingMergeTree{
-					MergeTree: MergeTree{
-						OrderBy: "(base_column, base_key, release_time)",
-					},
+				Engine: MergeTree{
+					OrderBy:     "(base_column)",
+					PartitionBy: "toDate(timestamp / 1000000000)",
 				},
 			},
 			CreateTableOperation{
@@ -262,26 +260,27 @@ ORDER BY name ASC`,
 				Table:    "distributed_column_key_evolution_metadata",
 				Columns: []Column{
 					{Name: "base_column", Type: ColumnTypeString},
-					{Name: "base_key", Type: ColumnTypeString},
 					{Name: "base_column_type", Type: ColumnTypeString},
 					{Name: "new_column", Type: ColumnTypeString},
-					{Name: "new_key", Type: ColumnTypeString},
 					{Name: "new_column_type", Type: ColumnTypeString},
 					{Name: "release_time", Type: ColumnTypeUInt64},
 				},
 				Engine: Distributed{
 					Database:    "signoz_logs",
 					Table:       "column_key_evolution_metadata",
-					ShardingKey: "cityHash64(base_column, base_key)",
+					ShardingKey: "cityHash64(base_column)",
 				},
 			},
-			AddColumnUpdateMetadata{
-				Database:       "signoz_logs",
-				BaseColumn:     "resources_string",
-				BaseColumnType: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString},
-				NewColumn:      "resource",
-				NewColumnType:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
-				ReleaseTime:    time.Now().Add(-time.Duration(10*24) * time.Hour),
+			InsertIntoTable{
+				Database:    "signoz_logs",
+				Table:       "distributed_column_key_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"base_column", "base_column_type", "new_column", "new_column_type"},
+				Values: fmt.Sprintf("('resources_string', %s, 'resource', %s, %d)",
+					MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}.String(),
+					JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))}.String(),
+					time.Now().Add(-time.Duration(10*24)*time.Hour).UnixNano()),
 			},
 		},
 		DownItems: []Operation{
