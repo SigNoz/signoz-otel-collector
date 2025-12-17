@@ -40,6 +40,10 @@ func (c CreateProjectionOperation) IsLightweight() bool {
 	return true
 }
 
+func (c CreateProjectionOperation) ForceMigrate() bool {
+	return false
+}
+
 func (c CreateProjectionOperation) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -90,6 +94,10 @@ func (d DropProjectionOperation) IsIdempotent() bool {
 func (d DropProjectionOperation) IsLightweight() bool {
 	// Drop projection is lightweight.
 	return true
+}
+
+func (d DropProjectionOperation) ForceMigrate() bool {
+	return false
 }
 
 func (d DropProjectionOperation) ToSQL() string {
