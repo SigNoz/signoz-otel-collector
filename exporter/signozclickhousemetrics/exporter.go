@@ -41,8 +41,8 @@ var (
 	maxSuffix         = ".max"
 	bucketSuffix      = ".bucket"
 	quantilesSuffix   = ".quantile"
-	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags) VALUES (?, ?, ?, ?, ?, ?, ?)"
-	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
@@ -1015,6 +1015,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				ts.scopeAttrs,
 				ts.resourceAttrs,
 				false,
+				time.Now().UnixMilli(),
 			)
 			if err != nil {
 				return err
@@ -1057,6 +1058,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				sample.unixMilli,
 				sample.value,
 				sample.flags,
+				time.Now().UnixMilli(),
 			)
 			if err != nil {
 				return err
