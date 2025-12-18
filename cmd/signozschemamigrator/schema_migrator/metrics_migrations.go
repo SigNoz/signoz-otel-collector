@@ -955,6 +955,24 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					Codec: "ZSTD(1)",
 				},
 			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "exp_hist",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_exp_hist",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
 		},
 	},
 }
