@@ -1,6 +1,7 @@
 package signozclickhousemetrics
 
 import (
+	"math"
 	"testing"
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
@@ -17,6 +18,7 @@ const (
 	timestampOffset4 = int64(4000)          // 4 second offset
 	timestampOffset5 = int64(500)           // 0.5 second offset
 	timestampOffset6 = int64(1500)          // 1.5 second offset
+	unsetTimestamp   = int64(math.MaxInt64) // sentinel for "not provided"
 )
 
 type metadataCall struct {
@@ -27,8 +29,8 @@ type metadataCall struct {
 	temporality pmetric.AggregationTemporality
 	isMonotonic bool
 	fingerprint *pkgfingerprint.Fingerprint
-	firstSeen   *int64
-	lastSeen    *int64
+	firstSeen   int64
+	lastSeen    int64
 }
 
 type metadataCheck struct {
@@ -75,8 +77,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
 			expectedMetaCount: 2,
@@ -120,16 +122,16 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   nil,
-					lastSeen:    nil,
+					firstSeen:   unsetTimestamp,
+					lastSeen:    unsetTimestamp,
 				},
 			},
 			expectedMetaCount: 1,
 			customCheck: func(t *testing.T, b *batch) {
 				meta := b.metadata[0]
-				assert.NotNil(t, meta.firstReportedUnixMilli)
-				assert.NotNil(t, meta.lastReportedUnixMilli)
-				assert.Equal(t, meta.firstReportedUnixMilli, meta.lastReportedUnixMilli, "first and last should be equal when nil")
+				assert.Greater(t, meta.firstReportedUnixMilli, int64(0))
+				assert.Greater(t, meta.lastReportedUnixMilli, int64(0))
+				assert.Equal(t, meta.firstReportedUnixMilli, meta.lastReportedUnixMilli, "first and last should be equal when unset")
 			},
 		},
 		{
@@ -148,8 +150,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 				{
 					name:        "test.metric",
@@ -158,8 +160,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp - timestampOffset5),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset3),
+					firstSeen:   baseTimestamp - timestampOffset5,
+					lastSeen:    baseTimestamp + timestampOffset3,
 				},
 			},
 			expectedMetaCount: 1,
@@ -187,8 +189,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 				{
 					name:        "test.metric",
@@ -197,8 +199,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   nil,
-					lastSeen:    nil,
+					firstSeen:   unsetTimestamp,
+					lastSeen:    unsetTimestamp,
 				},
 			},
 			expectedMetaCount: 1,
@@ -232,8 +234,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeHistogram,
 					temporality: pmetric.AggregationTemporalityCumulative,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
 			expectedMetaCount: 2,
@@ -265,8 +267,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(0),
-					lastSeen:    intPtr(0),
+					firstSeen:   0,
+					lastSeen:    0,
 				},
 				{
 					name:        "test.metric",
@@ -275,8 +277,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
 			expectedMetaCount: 1,
@@ -305,8 +307,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 				{
 					name:        "metric2",
@@ -315,8 +317,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeSum,
 					temporality: pmetric.AggregationTemporalityCumulative,
 					isMonotonic: true,
-					firstSeen:   intPtr(baseTimestamp + timestampOffset3),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset4),
+					firstSeen:   baseTimestamp + timestampOffset3,
+					lastSeen:    baseTimestamp + timestampOffset4,
 				},
 			},
 			expectedMetaCount: 4,
@@ -349,8 +351,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 				{
 					name:        "test.metric",
@@ -359,8 +361,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp + timestampOffset6),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset5),
+					firstSeen:   baseTimestamp + timestampOffset6,
+					lastSeen:    baseTimestamp + timestampOffset5,
 				},
 			},
 			expectedMetaCount: 1,
@@ -388,8 +390,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
 			expectedMetaCount: 1,
@@ -416,8 +418,8 @@ func TestBatch_addMetadata(t *testing.T) {
 					typ:         pmetric.MetricTypeGauge,
 					temporality: pmetric.AggregationTemporalityUnspecified,
 					isMonotonic: false,
-					firstSeen:   intPtr(baseTimestamp),
-					lastSeen:    intPtr(baseTimestamp + timestampOffset1),
+					firstSeen:   baseTimestamp,
+					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
 			expectedMetaCount: 1,

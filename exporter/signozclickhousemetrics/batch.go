@@ -1,6 +1,7 @@
 package signozclickhousemetrics
 
 import (
+	"math"
 	"time"
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
@@ -28,18 +29,18 @@ func newBatch() *batch {
 	}
 }
 
-func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint, firstSeenUnixMilli, lastSeenUnixMilli *int64) {
+func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint, firstSeenUnixMilli, lastSeenUnixMilli int64) {
 	// Handle nil pointers - use current time as fallback
 	// TODO(nikhilmantri0902, srikanthccv): This is a hack to handle the case where the first and last seen timestamps are not provided.
 	// can happen when datapoints are 0 and we are here setting resource/scope attributes.
 	// We should remove this once we have a proper way to handle this.
 	// we can choose to skip adding metadata in this case.
-	if firstSeenUnixMilli == nil {
+
+	if firstSeenUnixMilli == int64(math.MaxInt64) { // which means they were never set because of zero samples, default to now
 		now := time.Now().UnixMilli()
-		firstSeenUnixMilli = new(int64)
-		*firstSeenUnixMilli = now
-		lastSeenUnixMilli = new(int64)
-		*lastSeenUnixMilli = now
+		firstSeenUnixMilli = now
+		lastSeenUnixMilli = now
+		// TODO: Add a log here that firstSeen LastSeen not provided, defaulting to now
 	}
 
 	for key, value := range fingerprint.Attributes() {
@@ -56,11 +57,11 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		if idx, exists := b.metaIdx[seenKey]; exists {
 			// Update timestamps
 			existing := b.metadata[idx]
-			if existing.firstReportedUnixMilli == 0 || *firstSeenUnixMilli < existing.firstReportedUnixMilli {
-				existing.firstReportedUnixMilli = *firstSeenUnixMilli
+			if existing.firstReportedUnixMilli == 0 || firstSeenUnixMilli < existing.firstReportedUnixMilli {
+				existing.firstReportedUnixMilli = firstSeenUnixMilli
 			}
-			if *lastSeenUnixMilli > existing.lastReportedUnixMilli {
-				existing.lastReportedUnixMilli = *lastSeenUnixMilli
+			if lastSeenUnixMilli > existing.lastReportedUnixMilli {
+				existing.lastReportedUnixMilli = lastSeenUnixMilli
 			}
 			continue
 		}
@@ -80,8 +81,8 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 			attrType:               fingerprint.Type().String(),
 			attrDatatype:           value.DataType,
 			attrStringValue:        value.Val,
-			firstReportedUnixMilli: *firstSeenUnixMilli,
-			lastReportedUnixMilli:  *lastSeenUnixMilli,
+			firstReportedUnixMilli: firstSeenUnixMilli,
+			lastReportedUnixMilli:  lastSeenUnixMilli,
 		})
 	}
 }
