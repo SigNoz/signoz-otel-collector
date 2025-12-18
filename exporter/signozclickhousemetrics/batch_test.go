@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap/zaptest"
 )
 
 const (
@@ -434,7 +435,7 @@ func TestBatch_addMetadata(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newBatch()
+			b := newBatch(zaptest.NewLogger(t))
 			attrs := tc.setupAttrs()
 			fp := pkgfingerprint.NewFingerprint(tc.fingerprintType, 0, attrs, nil)
 

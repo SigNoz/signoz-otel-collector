@@ -6,6 +6,7 @@ import (
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 )
 
 type batch struct {
@@ -16,9 +17,10 @@ type batch struct {
 
 	metaSeen map[string]struct{}
 	metaIdx  map[string]int // maps seenKey -> index in metadata slice
+	logger   *zap.Logger
 }
 
-func newBatch() *batch {
+func newBatch(logger *zap.Logger) *batch {
 	return &batch{
 		samples:  make([]*sample, 0),
 		expHist:  make([]*exponentialHistogramSample, 0),
@@ -26,6 +28,7 @@ func newBatch() *batch {
 		metadata: make([]*metadata, 0),
 		metaSeen: make(map[string]struct{}),
 		metaIdx:  make(map[string]int),
+		logger:   logger,
 	}
 }
 
@@ -40,7 +43,10 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		now := time.Now().UnixMilli()
 		firstSeenUnixMilli = now
 		lastSeenUnixMilli = now
-		// TODO: Add a log here that firstSeen LastSeen not provided, defaulting to now
+		b.logger.Warn("firstSeen/lastSeen not provided; defaulting to now",
+			zap.Int64("first_seen_unix_milli", firstSeenUnixMilli),
+			zap.Int64("last_seen_unix_milli", lastSeenUnixMilli),
+		)
 	}
 
 	for key, value := range fingerprint.Attributes() {

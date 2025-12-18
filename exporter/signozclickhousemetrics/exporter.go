@@ -955,7 +955,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
-	batch := newBatch()
+	batch := newBatch(c.logger)
 	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
