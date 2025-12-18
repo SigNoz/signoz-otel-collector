@@ -924,7 +924,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "samples_v4",
 				Column: Column{
 					Name:  "inserted_at_unix_milli",
-					Type:  NullableColumnType{ColumnTypeInt64},
+					Type:  ColumnTypeInt64,
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -933,7 +933,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "distributed_samples_v4",
 				Column: Column{
 					Name:  "inserted_at_unix_milli",
-					Type:  NullableColumnType{ColumnTypeInt64},
+					Type:  ColumnTypeInt64,
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -942,7 +942,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "time_series_v4",
 				Column: Column{
 					Name:  "inserted_at_unix_milli",
-					Type:  NullableColumnType{ColumnTypeInt64},
+					Type:  ColumnTypeInt64,
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -951,7 +951,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "distributed_time_series_v4",
 				Column: Column{
 					Name:  "inserted_at_unix_milli",
-					Type:  NullableColumnType{ColumnTypeInt64},
+					Type:  ColumnTypeInt64,
 					Codec: "ZSTD(1)",
 				},
 			},
