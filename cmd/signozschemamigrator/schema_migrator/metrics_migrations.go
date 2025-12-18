@@ -956,6 +956,5 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				},
 			},
 		},
-		// additive column with server default; down migration not required
 	},
 }
