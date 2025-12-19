@@ -30,8 +30,8 @@ func registerReady(parentCmd *cobra.Command, logger *zap.Logger) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ready, err := newReady(
 				config.Clickhouse.DSN,
-				config.Clickhouse.Replicas,
 				config.Clickhouse.Shards,
+				config.Clickhouse.Replicas,
 				config.Clickhouse.Cluster,
 				config.Clickhouse.Version,
 				config.MigrateReady.Timeout,
@@ -107,11 +107,11 @@ func (r *ready) Ready(ctx context.Context) error {
 		return err
 	}
 
-	if err := r.MatchReplicaCount(ctx); err != nil {
+	if err := r.CheckKeeperConnection(ctx); err != nil {
 		return err
 	}
 
-	if err := r.MatchShardCount(ctx); err != nil {
+	if err := r.MatchReplicaAndShardCount(ctx); err != nil {
 		return err
 	}
 
@@ -132,10 +132,10 @@ func (r *ready) MatchVersion(ctx context.Context) error {
 	return nil
 }
 
-func (r *ready) MatchReplicaCount(ctx context.Context) error {
-	query := fmt.Sprintf("SELECT count(DISTINCT(shard_num)) FROM system.clusters WHERE cluster = %s", r.cluster)
-	var replicas uint64
-	if err := r.conn.QueryRow(ctx, query).Scan(&replicas); err != nil {
+func (r *ready) MatchReplicaAndShardCount(ctx context.Context) error {
+	query := fmt.Sprintf("SELECT count(DISTINCT(replica_num)), count(DISTINCT(shard_num)) FROM system.clusters WHERE cluster = %s", r.cluster)
+	var replicas, shards uint64
+	if err := r.conn.QueryRow(ctx, query).Scan(&replicas, &shards); err != nil {
 		return err
 	}
 
@@ -143,18 +143,17 @@ func (r *ready) MatchReplicaCount(ctx context.Context) error {
 		return fmt.Errorf("store replica count mismatch (%v/%v)", replicas, r.replicas)
 	}
 
+	if r.shards != shards {
+		return fmt.Errorf("store shard count mismatch (%v/%v)", shards, r.shards)
+	}
+
 	return nil
 }
 
-func (r *ready) MatchShardCount(ctx context.Context) error {
-	query := fmt.Sprintf("SELECT count(DISTINCT(replica_num)) FROM system.clusters WHERE cluster = %s", r.cluster)
-	var shards uint64
-	if err := r.conn.QueryRow(ctx, query).Scan(&shards); err != nil {
+func (r *ready) CheckKeeperConnection(ctx context.Context) error {
+	query := "SELECT * FROM system.zookeeper_connection"
+	if _, err := r.conn.Query(ctx, query); err != nil {
 		return err
-	}
-
-	if r.shards != shards {
-		return fmt.Errorf("store shard count mismatch (%v/%v)", shards, r.shards)
 	}
 
 	return nil
