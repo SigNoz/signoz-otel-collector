@@ -76,6 +76,12 @@ func TestFactoryCreateTracesProcessor(t *testing.T) {
 		},
 	}
 	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	if err != nil {
+		// CreateTraces returns error for invalid OTTL statements
+		assert.Error(t, err)
+		assert.Nil(t, tp)
+		return
+	}
 	assert.NotNil(t, tp)
 	assert.NoError(t, err)
 

@@ -30,7 +30,7 @@ func DataPointFunctions() map[string]ottl.Factory[*ottldatapoint.TransformContex
 func MetricFunctions() map[string]ottl.Factory[*ottlmetric.TransformContext] {
 	functions := ottlfuncs.StandardFuncs[*ottlmetric.TransformContext]()
 
-	metricFunctions := ottl.CreateFactoryMap(
+	metricFunctions := ottl.CreateFactoryMap[*ottlmetric.TransformContext](
 		newExtractSumMetricFactory(),
 		newExtractCountMetricFactory(),
 	)

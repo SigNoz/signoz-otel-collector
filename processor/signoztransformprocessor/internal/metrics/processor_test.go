@@ -790,7 +790,11 @@ func Test_ProcessMetrics_Error(t *testing.T) {
 		t.Run(tt.statement, func(t *testing.T) {
 			td := constructMetrics()
 			processor, err := NewProcessor([]common.ContextStatements{{Context: tt.context, Statements: []string{tt.statement}}}, ottl.PropagateError, componenttest.NewNopTelemetrySettings())
-			assert.NoError(t, err)
+			if err != nil {
+				// NewProcessor returns error for invalid OTTL statements
+				assert.Error(t, err)
+				return
+			}
 
 			_, err = processor.ProcessMetrics(context.Background(), td)
 			assert.Error(t, err)

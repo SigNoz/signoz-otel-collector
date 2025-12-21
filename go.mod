@@ -873,4 +873,16 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
+replace (
+	github.com/ClickHouse/ch-go v0.66.0 => github.com/SigNoz/ch-go v0.66.0-dd-sketch
+	github.com/ClickHouse/clickhouse-go/v2 v2.36.0 => github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch
+	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
+	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
+
+	// using 0.23.0 as there is an issue with 0.24.0 stats that results in
+	// an error
+	// panic: interface conversion: interface {} is nil, not func(*tag.Map, []stats.Measurement, map[string]interface {})
+	go.opencensus.io => go.opencensus.io v0.23.0
+)
+
 exclude github.com/StackExchange/wmi v1.2.0

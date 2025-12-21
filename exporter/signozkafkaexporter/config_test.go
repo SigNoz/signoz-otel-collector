@@ -47,7 +47,6 @@ func TestLoadConfig(t *testing.T) {
 					Multiplier:          backoff.DefaultMultiplier,
 				},
 				QueueBatchConfig: exporterhelper.QueueBatchConfig{
-					Enabled:      true,
 					Sizer:        exporterhelper.RequestSizerTypeRequests,
 					NumConsumers: 2,
 					QueueSize:    10,
