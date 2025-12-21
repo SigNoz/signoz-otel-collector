@@ -9,6 +9,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
@@ -145,7 +146,7 @@ func (f *kafkaExporterFactory) createTracesExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
+		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -175,7 +176,7 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
+		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -205,6 +206,6 @@ func (f *kafkaExporterFactory) createLogsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
+		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
 		exporterhelper.WithShutdown(exp.Close))
 }

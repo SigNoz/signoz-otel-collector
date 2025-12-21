@@ -6,6 +6,7 @@ import (
 
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter/internal/metadata"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -36,7 +37,7 @@ func createMeterMetricsExporter(ctx context.Context, params exporter.Settings, c
 		cfg,
 		chExporter.ConsumeMetrics,
 		exporterhelper.WithTimeout(chCfg.TimeoutConfig),
-		exporterhelper.WithQueue(chCfg.QueueBatchConfig),
+		exporterhelper.WithQueue(configoptional.Some(chCfg.QueueBatchConfig)),
 		exporterhelper.WithRetry(chCfg.BackOffConfig),
 		exporterhelper.WithStart(chExporter.Start),
 		exporterhelper.WithShutdown(chExporter.Shutdown),

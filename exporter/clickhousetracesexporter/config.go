@@ -46,16 +46,11 @@ var _ component.Config = (*Config)(nil)
 
 // Validate checks if the exporter configuration is valid
 func (cfg *Config) Validate() error {
-	if cfg.QueueBatchConfig.QueueSize < 0 {
-		return fmt.Errorf("remote write queue size can't be negative")
+	if cfg.QueueBatchConfig.QueueSize <= 0 {
+		return fmt.Errorf("queue_size must be positive")
 	}
-
-	if cfg.QueueBatchConfig.Enabled && cfg.QueueBatchConfig.QueueSize == 0 {
-		return fmt.Errorf("a 0 size queue will drop all the data")
-	}
-
-	if cfg.QueueBatchConfig.NumConsumers < 0 {
-		return fmt.Errorf("remote write consumer number can't be negative")
+	if cfg.QueueBatchConfig.NumConsumers <= 0 {
+		return fmt.Errorf("num_consumers must be positive")
 	}
 	return nil
 }

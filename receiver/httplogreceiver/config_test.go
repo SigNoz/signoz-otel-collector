@@ -41,12 +41,10 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					Endpoint: ":54321",
-					TLS: &configtls.ServerConfig{
-						Config: configtls.Config{
-							CertFile: "/test.crt",
-							KeyFile:  "/test.key",
-						},
-					},
+					TLS: configtls.NewServerConfig(
+						configtls.WithCertFile("/test.crt"),
+						configtls.WithKeyFile("/test.key"),
+					),
 				},
 			},
 		},

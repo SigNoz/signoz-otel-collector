@@ -20,7 +20,7 @@ import (
 var _ consumer.Traces = &traceStatements{}
 
 type traceStatements struct {
-	ottl.StatementSequence[ottlspan.TransformContext]
+	ottl.StatementSequence[*ottlspan.TransformContext]
 }
 
 func (t traceStatements) Capabilities() consumer.Capabilities {
@@ -37,7 +37,7 @@ func (t traceStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces) er
 			spans := sspans.Spans()
 			for k := 0; k < spans.Len(); k++ {
 				tCtx := ottlspan.NewTransformContext(spans.At(k), sspans.Scope(), rspans.Resource(), sspans, rspans)
-				err := t.Execute(ctx, tCtx)
+				err := t.Execute(ctx, &tCtx)
 				if err != nil {
 					return err
 				}
@@ -50,7 +50,7 @@ func (t traceStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces) er
 var _ consumer.Traces = &spanEventStatements{}
 
 type spanEventStatements struct {
-	ottl.StatementSequence[ottlspanevent.TransformContext]
+	ottl.StatementSequence[*ottlspanevent.TransformContext]
 }
 
 func (s spanEventStatements) Capabilities() consumer.Capabilities {
@@ -70,7 +70,7 @@ func (s spanEventStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces
 				spanEvents := span.Events()
 				for n := 0; n < spanEvents.Len(); n++ {
 					tCtx := ottlspanevent.NewTransformContext(spanEvents.At(n), span, sspans.Scope(), rspans.Resource(), sspans, rspans)
-					err := s.Execute(ctx, tCtx)
+					err := s.Execute(ctx, &tCtx)
 					if err != nil {
 						return err
 					}
@@ -83,13 +83,13 @@ func (s spanEventStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces
 
 type TraceParserCollection struct {
 	parserCollection
-	spanParser      ottl.Parser[ottlspan.TransformContext]
-	spanEventParser ottl.Parser[ottlspanevent.TransformContext]
+	spanParser      ottl.Parser[*ottlspan.TransformContext]
+	spanEventParser ottl.Parser[*ottlspanevent.TransformContext]
 }
 
 type TraceParserCollectionOption func(*TraceParserCollection) error
 
-func WithSpanParser(functions map[string]ottl.Factory[ottlspan.TransformContext]) TraceParserCollectionOption {
+func WithSpanParser(functions map[string]ottl.Factory[*ottlspan.TransformContext]) TraceParserCollectionOption {
 	return func(tp *TraceParserCollection) error {
 		spanParser, err := ottlspan.NewParser(functions, tp.settings)
 		if err != nil {
@@ -100,7 +100,7 @@ func WithSpanParser(functions map[string]ottl.Factory[ottlspan.TransformContext]
 	}
 }
 
-func WithSpanEventParser(functions map[string]ottl.Factory[ottlspanevent.TransformContext]) TraceParserCollectionOption {
+func WithSpanEventParser(functions map[string]ottl.Factory[*ottlspanevent.TransformContext]) TraceParserCollectionOption {
 	return func(tp *TraceParserCollection) error {
 		spanEventParser, err := ottlspanevent.NewParser(functions, tp.settings)
 		if err != nil {

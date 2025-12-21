@@ -17,7 +17,6 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 
-	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/jellydator/ttlcache/v3"
@@ -94,7 +93,7 @@ type exponentialHistogramSample struct {
 	metricName  string
 	fingerprint uint64
 	unixMilli   int64
-	sketch      chproto.DD
+	sketch      []byte
 	count       float64
 	sum         float64
 	min         float64
@@ -807,30 +806,8 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		})
 	}
 
-	toStore := func(buckets pmetric.ExponentialHistogramDataPointBuckets) *chproto.Store {
-		bincounts := make([]float64, 0, buckets.BucketCounts().Len())
-		for _, bucket := range buckets.BucketCounts().AsRaw() {
-			bincounts = append(bincounts, float64(bucket))
-		}
-
-		store := &chproto.Store{
-			ContiguousBinIndexOffset: int32(buckets.Offset()),
-			ContiguousBinCounts:      bincounts,
-		}
-		return store
-	}
-
 	addDDSketchSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
-		positive := toStore(dp.Positive())
-		negative := toStore(dp.Negative())
-		gamma := math.Pow(2, math.Pow(2, float64(-dp.Scale())))
-		dd := chproto.DD{
-			Mapping:        &chproto.IndexMapping{Gamma: gamma},
-			PositiveValues: positive,
-			NegativeValues: negative,
-			ZeroCount:      float64(dp.ZeroCount()),
-		}
 
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
@@ -841,7 +818,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			metricName:  name,
 			fingerprint: fingerprint.HashWithName(name),
 			unixMilli:   unixMilli,
-			sketch:      dd,
+			sketch:      nil, // TODO: map exponential histograms to current ch-go proto
 			count:       float64(dp.Count()),
 			sum:         dp.Sum(),
 			min:         dp.Min(),

@@ -3,11 +3,13 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -71,7 +73,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		cfg,
 		chExporter.PushMetrics,
 		exporterhelper.WithTimeout(chCfg.TimeoutConfig),
-		exporterhelper.WithQueue(chCfg.QueueBatchConfig),
+		exporterhelper.WithQueue(configoptional.Some(chCfg.QueueBatchConfig)),
 		exporterhelper.WithRetry(chCfg.BackOffConfig),
 		exporterhelper.WithStart(chExporter.Start),
 		exporterhelper.WithShutdown(chExporter.Shutdown),

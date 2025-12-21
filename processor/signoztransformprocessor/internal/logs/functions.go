@@ -12,20 +12,20 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 )
 
-func SignozLogFunctions() map[string]ottl.Factory[ottllog.TransformContext] {
-	factoryMap := map[string]ottl.Factory[ottllog.TransformContext]{}
-	for _, f := range []ottl.Factory[ottllog.TransformContext]{
+func SignozLogFunctions() map[string]ottl.Factory[*ottllog.TransformContext] {
+	factoryMap := map[string]ottl.Factory[*ottllog.TransformContext]{}
+	for _, f := range []ottl.Factory[*ottllog.TransformContext]{
 		signozFuncs.NewExprFactory(),
-		signozFuncs.NewGrokParseFactory[ottllog.TransformContext](),
-		signozFuncs.NewHexToIntFactory[ottllog.TransformContext](),
+		signozFuncs.NewGrokParseFactory[*ottllog.TransformContext](),
+		signozFuncs.NewHexToIntFactory[*ottllog.TransformContext](),
 	} {
 		factoryMap[f.Name()] = f
 	}
 	return factoryMap
 }
 
-func LogFunctions() map[string]ottl.Factory[ottllog.TransformContext] {
-	logFunctions := ottlfuncs.StandardFuncs[ottllog.TransformContext]()
+func LogFunctions() map[string]ottl.Factory[*ottllog.TransformContext] {
+	logFunctions := ottlfuncs.StandardFuncs[*ottllog.TransformContext]()
 
 	for name, factory := range SignozLogFunctions() {
 		_, exists := logFunctions[name]

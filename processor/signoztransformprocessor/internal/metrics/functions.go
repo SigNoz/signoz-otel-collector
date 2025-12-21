@@ -10,10 +10,10 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 )
 
-func DataPointFunctions() map[string]ottl.Factory[ottldatapoint.TransformContext] {
-	functions := ottlfuncs.StandardFuncs[ottldatapoint.TransformContext]()
+func DataPointFunctions() map[string]ottl.Factory[*ottldatapoint.TransformContext] {
+	functions := ottlfuncs.StandardFuncs[*ottldatapoint.TransformContext]()
 
-	datapointFunctions := ottl.CreateFactoryMap[ottldatapoint.TransformContext](
+	datapointFunctions := ottl.CreateFactoryMap[*ottldatapoint.TransformContext](
 		newConvertSumToGaugeFactory(),
 		newConvertGaugeToSumFactory(),
 		newConvertSummarySumValToSumFactory(),
@@ -27,8 +27,8 @@ func DataPointFunctions() map[string]ottl.Factory[ottldatapoint.TransformContext
 	return functions
 }
 
-func MetricFunctions() map[string]ottl.Factory[ottlmetric.TransformContext] {
-	functions := ottlfuncs.StandardFuncs[ottlmetric.TransformContext]()
+func MetricFunctions() map[string]ottl.Factory[*ottlmetric.TransformContext] {
+	functions := ottlfuncs.StandardFuncs[*ottlmetric.TransformContext]()
 
 	metricFunctions := ottl.CreateFactoryMap(
 		newExtractSumMetricFactory(),
