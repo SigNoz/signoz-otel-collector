@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -83,9 +84,9 @@ func (r *ready) Run(ctx context.Context) error {
 			break
 		}
 
-		baseErr := Unwrapb(err)
-		// exit early for non retryable errors.
-		if baseErr.IsPermanent() {
+		migrateErr := Unwrapb(err)
+		// exit early for permanent errors.
+		if migrateErr.IsPermanent() {
 			return fmt.Errorf("store not ready due to permanent error: %w", err)
 		}
 
@@ -137,11 +138,14 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 
 	for _, host := range hosts {
 		if host.address != "" {
-			dsn := fmt.Sprintf("tcp://%s:%d", host.address, host.port)
-
-			opts, err := clickhouse.ParseDSN(dsn)
+			addr, err := netip.ParseAddr(host.address)
 			if err != nil {
 				return err
+			}
+
+			addrPort := netip.AddrPortFrom(addr, host.port)
+			opts := &clickhouse.Options{
+				Addr: []string{addrPort.String()},
 			}
 
 			conn, err := clickhouse.Open(opts)
