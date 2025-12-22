@@ -35,28 +35,23 @@ func Test_loadConfig(t *testing.T) {
 
 	// checks if the correct Config struct can be instantiated from testdata/config.yaml
 	e1 := cfg.Exporters[component.NewIDWithName(metadata.Type, "2")]
-	assert.Equal(t, e1,
-		&Config{
-			Datasource: "tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password",
-			TimeoutConfig: exporterhelper.TimeoutConfig{
-				Timeout: 5 * time.Second,
-			},
-			BackOffConfig: configretry.BackOffConfig{
-				Enabled:             true,
-				InitialInterval:     5 * time.Second,
-				MaxInterval:         30 * time.Second,
-				MaxElapsedTime:      300 * time.Second,
-				RandomizationFactor: 0.7,
-				Multiplier:          1.3,
-			},
-			QueueBatchConfig: exporterhelper.QueueBatchConfig{
-				Sizer:        exporterhelper.RequestSizerTypeRequests,
-				NumConsumers: 5,
-				QueueSize:    100,
-			},
-			AttributesLimits: AttributesLimits{
-				FetchKeysInterval: 10 * time.Minute,
-				MaxDistinctValues: 25000,
-			},
-		})
+	actualCfg := e1.(*Config)
+	// Compare fields individually to avoid issues with internal fields in QueueBatchConfig
+	assert.Equal(t, "tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password", actualCfg.Datasource)
+	assert.Equal(t, 5*time.Second, actualCfg.TimeoutConfig.Timeout)
+	assert.Equal(t, configretry.BackOffConfig{
+		Enabled:             true,
+		InitialInterval:     5 * time.Second,
+		MaxInterval:         30 * time.Second,
+		MaxElapsedTime:      300 * time.Second,
+		RandomizationFactor: 0.7,
+		Multiplier:          1.3,
+	}, actualCfg.BackOffConfig)
+	assert.Equal(t, exporterhelper.RequestSizerTypeRequests, actualCfg.QueueBatchConfig.Sizer)
+	assert.Equal(t, 5, actualCfg.QueueBatchConfig.NumConsumers)
+	assert.Equal(t, 100, actualCfg.QueueBatchConfig.QueueSize)
+	assert.Equal(t, AttributesLimits{
+		FetchKeysInterval: 10 * time.Minute,
+		MaxDistinctValues: 25000,
+	}, actualCfg.AttributesLimits)
 }

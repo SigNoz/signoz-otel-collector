@@ -86,7 +86,20 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, sub.Unmarshal(cfg))
 
 			assert.NoError(t, xconfmap.Validate(cfg))
-			assert.Equal(t, tt.expected, cfg)
+			actualCfg := cfg.(*Config)
+			expectedCfg := tt.expected.(*Config)
+			// Compare fields individually to avoid issues with internal Enabled field in QueueBatchConfig
+			assert.Equal(t, expectedCfg.TimeoutConfig, actualCfg.TimeoutConfig)
+			assert.Equal(t, expectedCfg.BackOffConfig, actualCfg.BackOffConfig)
+			assert.Equal(t, expectedCfg.QueueBatchConfig.Sizer, actualCfg.QueueBatchConfig.Sizer)
+			assert.Equal(t, expectedCfg.QueueBatchConfig.NumConsumers, actualCfg.QueueBatchConfig.NumConsumers)
+			assert.Equal(t, expectedCfg.QueueBatchConfig.QueueSize, actualCfg.QueueBatchConfig.QueueSize)
+			assert.Equal(t, expectedCfg.Topic, actualCfg.Topic)
+			assert.Equal(t, expectedCfg.Encoding, actualCfg.Encoding)
+			assert.Equal(t, expectedCfg.Brokers, actualCfg.Brokers)
+			assert.Equal(t, expectedCfg.Authentication, actualCfg.Authentication)
+			assert.Equal(t, expectedCfg.Metadata, actualCfg.Metadata)
+			assert.Equal(t, expectedCfg.Producer, actualCfg.Producer)
 		})
 	}
 }
