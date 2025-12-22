@@ -17,6 +17,7 @@ func TestConfig_Validate_Valid(t *testing.T) {
 	cfg := &Config{
 		DSN: "tcp://localhost:9000?database=default",
 		QueueBatchConfig: exporterhelper.QueueBatchConfig{
+			QueueSize:    100,
 			NumConsumers: 1,
 		},
 	}
