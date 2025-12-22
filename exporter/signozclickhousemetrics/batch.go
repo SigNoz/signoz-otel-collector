@@ -33,11 +33,6 @@ func newBatch(logger *zap.Logger) *batch {
 }
 
 func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint, firstSeenUnixMilli, lastSeenUnixMilli int64) {
-	// Handle nil pointers - use current time as fallback
-	// TODO(nikhilmantri0902, srikanthccv): This is a hack to handle the case where the first and last seen timestamps are not provided.
-	// can happen when datapoints are 0 and we are here setting resource/scope attributes.
-	// We should remove this once we have a proper way to handle this.
-	// we can choose to skip adding metadata in this case.
 
 	if firstSeenUnixMilli == int64(math.MaxInt64) { // which means they were never set because of zero samples, default to now
 		now := time.Now().UnixMilli()
