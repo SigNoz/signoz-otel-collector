@@ -8,6 +8,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
+	"github.com/SigNoz/signoz-otel-collector/pkg/errors"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -91,6 +92,13 @@ func (r *ready) Run(ctx context.Context) error {
 			break
 		}
 
+		var error *errors.Error
+		if errors.As(err, &error) {
+			if !error.IsRetryable() {
+				return fmt.Errorf("store not ready due to non-retryable error: %w", err)
+			}
+		}
+
 		r.logger.Info("Waiting for store to be in ready state", zap.Error(err))
 		nextBackOff := backoff.NextBackOff()
 		if nextBackOff == backoff.Stop {
@@ -126,7 +134,7 @@ func (r *ready) MatchVersion(ctx context.Context) error {
 	}
 
 	if !strings.HasPrefix(version, r.version) {
-		return fmt.Errorf("store version mismatch (%v/%v)", version, r.version)
+		return errors.NewRetryableError(fmt.Errorf("store version mismatch (%v/%v)", version, r.version))
 	}
 
 	return nil
@@ -140,11 +148,11 @@ func (r *ready) MatchReplicaAndShardCount(ctx context.Context) error {
 	}
 
 	if r.replicas != replicas {
-		return fmt.Errorf("store replica count mismatch (%v/%v)", replicas, r.replicas)
+		return errors.NewRetryableError(fmt.Errorf("store replica count mismatch (%v/%v)", replicas, r.replicas))
 	}
 
 	if r.shards != shards {
-		return fmt.Errorf("store shard count mismatch (%v/%v)", shards, r.shards)
+		return errors.NewRetryableError(fmt.Errorf("store shard count mismatch (%v/%v)", shards, r.shards))
 	}
 
 	return nil
@@ -153,7 +161,16 @@ func (r *ready) MatchReplicaAndShardCount(ctx context.Context) error {
 func (r *ready) CheckKeeperConnection(ctx context.Context) error {
 	query := "SELECT * FROM system.zookeeper_connection"
 	if _, err := r.conn.Query(ctx, query); err != nil {
-		return err
+		var exception *clickhouse.Exception
+		if errors.As(err, &exception) {
+			if exception.Code == 999 {
+				if strings.Contains(exception.Error(), "No node") {
+					return errors.NewRetryableError(err)
+				}
+			}
+		}
+
+		return errors.New(err)
 	}
 
 	return nil
