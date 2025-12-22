@@ -5,6 +5,8 @@ package signozkafkaexporter
 
 import (
 	"context"
+	"crypto/tls"
+	"sort"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -12,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configtls"
 )
+
+var _ = tls.CurveID(0) // Ensure crypto/tls is imported for CurvePreferences type
 
 func TestAuthentication(t *testing.T) {
 	saramaPlaintext := &sarama.Config{}
@@ -124,6 +128,19 @@ func TestAuthentication(t *testing.T) {
 			} else {
 				// equalizes SCRAMClientGeneratorFunc to do assertion with the same reference.
 				config.Net.SASL.SCRAMClientGeneratorFunc = test.saramaConfig.Net.SASL.SCRAMClientGeneratorFunc
+				// Normalize TLS CurvePreferences to avoid non-deterministic ordering issues
+				if config.Net.TLS.Config != nil && test.saramaConfig.Net.TLS.Config != nil {
+					if config.Net.TLS.Config.CurvePreferences != nil {
+						sort.Slice(config.Net.TLS.Config.CurvePreferences, func(i, j int) bool {
+							return config.Net.TLS.Config.CurvePreferences[i] < config.Net.TLS.Config.CurvePreferences[j]
+						})
+					}
+					if test.saramaConfig.Net.TLS.Config.CurvePreferences != nil {
+						sort.Slice(test.saramaConfig.Net.TLS.Config.CurvePreferences, func(i, j int) bool {
+							return test.saramaConfig.Net.TLS.Config.CurvePreferences[i] < test.saramaConfig.Net.TLS.Config.CurvePreferences[j]
+						})
+					}
+				}
 				assert.Equal(t, test.saramaConfig, config)
 			}
 		})

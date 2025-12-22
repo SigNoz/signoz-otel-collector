@@ -48,7 +48,7 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, r0, defaultCfg)
 
 	r1 := cfg.Exporters[component.NewIDWithName(metadata.Type, "full")].(*Config)
-	assert.Equal(t, r1, &Config{
+	expectedConfig := &Config{
 		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
 		TimeoutConfig: exporterhelper.TimeoutConfig{
 			Timeout: 5 * time.Second,
@@ -74,7 +74,19 @@ func TestLoadConfig(t *testing.T) {
 		BodyJSONEnabled:           true,
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
 		BodyJSONOldBodyEnabled:    true,
-	})
+	}
+	// Compare fields individually to avoid issues with internal Batch field in QueueBatchConfig
+	assert.Equal(t, expectedConfig.DSN, r1.DSN)
+	assert.Equal(t, expectedConfig.TimeoutConfig, r1.TimeoutConfig)
+	assert.Equal(t, expectedConfig.BackOffConfig, r1.BackOffConfig)
+	assert.Equal(t, expectedConfig.QueueBatchConfig.Sizer, r1.QueueBatchConfig.Sizer)
+	assert.Equal(t, expectedConfig.QueueBatchConfig.NumConsumers, r1.QueueBatchConfig.NumConsumers)
+	assert.Equal(t, expectedConfig.QueueBatchConfig.QueueSize, r1.QueueBatchConfig.QueueSize)
+	assert.Equal(t, expectedConfig.AttributesLimits, r1.AttributesLimits)
+	assert.Equal(t, expectedConfig.LogLevelConcurrency, r1.LogLevelConcurrency)
+	assert.Equal(t, expectedConfig.BodyJSONEnabled, r1.BodyJSONEnabled)
+	assert.Equal(t, expectedConfig.PromotedPathsSyncInterval, r1.PromotedPathsSyncInterval)
+	assert.Equal(t, expectedConfig.BodyJSONOldBodyEnabled, r1.BodyJSONOldBodyEnabled)
 
 	defaultCfg.(*Config).UseNewSchema = true
 	r2 := cfg.Exporters[component.NewIDWithName(metadata.Type, "new_schema")]
