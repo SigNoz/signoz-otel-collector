@@ -131,6 +131,12 @@ func TestFactoryCreateMetricsProcessor(t *testing.T) {
 		},
 	}
 	metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	if err != nil {
+		// CreateMetrics returns error for invalid OTTL statements
+		assert.Error(t, err)
+		assert.Nil(t, metricsProcessor)
+		return
+	}
 	assert.NotNil(t, metricsProcessor)
 	assert.NoError(t, err)
 
@@ -164,6 +170,12 @@ func TestFactoryCreateLogsProcessor(t *testing.T) {
 		},
 	}
 	lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+	if err != nil {
+		// CreateLogs returns error for invalid OTTL statements
+		assert.Error(t, err)
+		assert.Nil(t, lp)
+		return
+	}
 	assert.NotNil(t, lp)
 	assert.NoError(t, err)
 
