@@ -119,7 +119,9 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 	if err != nil {
 		return NewRetryableError(err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	type hostAddr struct {
 		address string
@@ -152,7 +154,9 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				_ = conn.Close()
+			}()
 
 			if err := conn.Ping(ctx); err != nil {
 				return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
