@@ -94,6 +94,7 @@ func (r *ready) Run(ctx context.Context) error {
 
 		var error *errors.Error
 		if errors.As(err, &error) {
+			// exit early for non retryable errors.
 			if !error.IsRetryable() {
 				return fmt.Errorf("store not ready due to non-retryable error: %w", err)
 			}
