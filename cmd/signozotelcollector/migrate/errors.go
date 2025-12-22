@@ -4,7 +4,7 @@ import "errors"
 
 type base struct {
 	error
-	isRetryable bool
+	isPermanent bool
 }
 
 var _ error = (*base)(nil)
@@ -17,16 +17,16 @@ func (e *base) Unwrap() error {
 	return nil
 }
 
-func (e *base) IsRetryable() bool {
-	return e.isRetryable
+func (e *base) IsPermanent() bool {
+	return e.isPermanent
 }
 
 func New(origErr error) *base {
-	return &base{error: origErr, isRetryable: false}
+	return &base{error: origErr, isPermanent: false}
 }
 
-func NewRetryableError(origErr error) *base {
-	return &base{error: origErr, isRetryable: true}
+func NewPermanentError(origErr error) *base {
+	return &base{error: origErr, isPermanent: true}
 }
 
 func Unwrapb(err error) *base {
@@ -34,7 +34,7 @@ func Unwrapb(err error) *base {
 		return b
 	}
 
-	return NewRetryableError(err)
+	return New(err)
 }
 
 func As(err error, target any) bool {

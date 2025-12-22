@@ -85,8 +85,8 @@ func (r *ready) Run(ctx context.Context) error {
 
 		baseErr := Unwrapb(err)
 		// exit early for non retryable errors.
-		if !baseErr.IsRetryable() {
-			return fmt.Errorf("store not ready due to non-retryable error: %w", err)
+		if baseErr.IsPermanent() {
+			return fmt.Errorf("store not ready due to permanent error: %w", err)
 		}
 
 		r.logger.Info("Waiting for store to be in ready state", zap.Error(err))
@@ -141,8 +141,7 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 
 			opts, err := clickhouse.ParseDSN(dsn)
 			if err != nil {
-				// return explict non-retryable error if unable to parse DSN
-				return New(err)
+				return err
 			}
 
 			conn, err := clickhouse.Open(opts)
@@ -152,7 +151,7 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 			defer conn.Close()
 
 			if err := conn.Ping(ctx); err != nil {
-				return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
+				return fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err)
 			}
 		}
 	}
@@ -167,12 +166,12 @@ func (r *ready) CheckKeeper(ctx context.Context) error {
 		if errors.As(err, &exception) {
 			if exception.Code == 999 {
 				if strings.Contains(exception.Error(), "No node") {
-					return NewRetryableError(err)
+					return err
 				}
 			}
 		}
 
-		return New(err)
+		return NewPermanentError(err)
 	}
 
 	return nil
