@@ -85,9 +85,9 @@ func (r *ready) Run(ctx context.Context) error {
 		}
 
 		migrateErr := Unwrapb(err)
-		// exit early for permanent errors.
-		if migrateErr.IsPermanent() {
-			return fmt.Errorf("store not ready due to permanent error: %w", err)
+		// exit early for non-retryable errors.
+		if !migrateErr.IsRetryable() {
+			return fmt.Errorf("store not ready due to non-retryable error: %w", err)
 		}
 
 		r.logger.Info("Waiting for store to be in ready state", zap.Error(err))
@@ -117,7 +117,7 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1', '::1'] AND cluster = ?"
 	rows, err := r.conn.Query(ctx, query, r.cluster)
 	if err != nil {
-		return err
+		return NewRetryableError(err)
 	}
 	defer rows.Close()
 
@@ -144,18 +144,18 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 			}
 
 			addrPort := netip.AddrPortFrom(addr, host.port)
-			opts := &clickhouse.Options{
+			conn, err := clickhouse.Open(&clickhouse.Options{
+				// cannot pass all the address here as this is used for failover/ load-balancing. at any point of them one is selected and connection is established
+				// ref: https://github.com/ClickHouse/clickhouse-go/blob/main/clickhouse.go#L275
 				Addr: []string{addrPort.String()},
-			}
-
-			conn, err := clickhouse.Open(opts)
+			})
 			if err != nil {
 				return err
 			}
 			defer conn.Close()
 
 			if err := conn.Ping(ctx); err != nil {
-				return fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err)
+				return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
 			}
 		}
 	}
@@ -170,12 +170,12 @@ func (r *ready) CheckKeeper(ctx context.Context) error {
 		if errors.As(err, &exception) {
 			if exception.Code == 999 {
 				if strings.Contains(exception.Error(), "No node") {
-					return err
+					return NewRetryableError(err)
 				}
 			}
 		}
 
-		return NewPermanentError(err)
+		return err
 	}
 
 	return nil
