@@ -222,6 +222,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsservicereceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
 	"go.opentelemetry.io/collector/connector/forwardconnector"
+	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
 
 func Components() (otelcol.Factories, error) {
@@ -518,6 +519,7 @@ func CoreComponents() (
 		Receivers:  receivers,
 		Processors: processors,
 		Exporters:  exporters,
+		Telemetry:  otelconftelemetry.NewFactory(),
 	}
 
 	return factories, errs
