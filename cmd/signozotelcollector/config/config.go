@@ -37,10 +37,7 @@ type clickhouse struct {
 
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "DSN for clickhouse connection")
-	cmd.PersistentFlags().Uint64Var(&cfg.Shards, "clickhouse-shards", 1, "Number of shards for clickhouse server")
-	cmd.PersistentFlags().Uint64Var(&cfg.Replicas, "clickhouse-replicas", 1, "Number of replicas per shard for clickhouse server")
 	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "Name of the clickhouse cluster to connect")
-	cmd.PersistentFlags().StringVar(&cfg.Version, "clickhouse-version", "25.5.6", "Clickhouse version")
 }
 
 type migrateReady struct {

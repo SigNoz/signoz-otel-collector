@@ -29,6 +29,10 @@ func (a AlterTableAddColumn) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableAddColumn) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableAddColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -108,6 +112,10 @@ func (a AlterTableDropColumn) IsLightweight() bool {
 	return true
 }
 
+func (a AlterTableDropColumn) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableDropColumn) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -166,6 +174,10 @@ func (a AlterTableModifyColumn) IsLightweight() bool {
 	return a.Column.Type != nil || a.Column.TTL != ""
 }
 
+func (a AlterTableModifyColumn) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableModifyColumn) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -218,6 +230,10 @@ type AlterTableModifyColumnRemove struct {
 func (a AlterTableModifyColumnRemove) OnCluster(cluster string) Operation {
 	a.cluster = cluster
 	return &a
+}
+
+func (a AlterTableModifyColumnRemove) ForceMigrate() bool {
+	return false
 }
 
 // WithReplication is a no-op for this operation.
@@ -304,6 +320,10 @@ func (a AlterTableModifyColumnModifySettings) IsLightweight() bool {
 	return true
 }
 
+func (a AlterTableModifyColumnModifySettings) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableModifyColumnModifySettings) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -363,6 +383,10 @@ func (a AlterTableModifyColumnResetSettings) IsLightweight() bool {
 	return true
 }
 
+func (a AlterTableModifyColumnResetSettings) ForceMigrate() bool {
+	return false
+}
+
 func (a AlterTableModifyColumnResetSettings) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString("ALTER TABLE ")
@@ -420,6 +444,10 @@ func (a AlterTableMaterializeColumn) IsIdempotent() bool {
 
 func (a AlterTableMaterializeColumn) IsLightweight() bool {
 	// Materializing a column is not lightweight. It will rewrite the column data with materialized data.
+	return false
+}
+
+func (a AlterTableMaterializeColumn) ForceMigrate() bool {
 	return false
 }
 

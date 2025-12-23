@@ -916,4 +916,63 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1007,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_time_series_v4",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "exp_hist",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_exp_hist",
+				Column: Column{
+					Name:  "inserted_at_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+	},
 }
