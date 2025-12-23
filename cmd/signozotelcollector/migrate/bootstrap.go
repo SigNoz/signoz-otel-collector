@@ -49,7 +49,7 @@ func registerBootstrap(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(cmd)
 }
 
-func newBootstrap(dsn string, cluster string, replication bool, timeout string, logger *zap.Logger) (*bootstrap, error) {
+func newBootstrap(dsn string, cluster string, replication bool, timeout time.Duration, logger *zap.Logger) (*bootstrap, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -68,16 +68,11 @@ func newBootstrap(dsn string, cluster string, replication bool, timeout string, 
 		schemamigrator.WithLogger(logger),
 	)
 
-	timeoutDuration, err := time.ParseDuration(timeout)
-	if err != nil {
-		return nil, err
-	}
-
 	return &bootstrap{
 		conn:             conn,
 		cluster:          cluster,
 		migrationManager: migrationManager,
-		timeout:          timeoutDuration,
+		timeout:          timeout,
 		logger:           logger,
 	}, nil
 }
@@ -279,7 +274,6 @@ func (cmd *bootstrap) ShouldRunOperation(ctx context.Context, operation schemami
 		}
 
 		if count > 0 {
-			fmt.Println(count, tableOp.Database, tableOp.Table)
 			return false, nil
 		}
 	}

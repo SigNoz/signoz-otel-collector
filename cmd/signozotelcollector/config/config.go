@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 	"github.com/spf13/cobra"
 	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
@@ -41,25 +43,25 @@ func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
 }
 
 type migrateReady struct {
-	Timeout string
+	Timeout time.Duration
 }
 
 func (cfg *migrateReady) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for migrate ready operation")
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for migrate ready operation")
 }
 
 type migrateSyncCheck struct {
-	Timeout string
+	Timeout time.Duration
 }
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for sync check operation")
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for sync check operation")
 }
 
 type migrateBootstrap struct {
-	Timeout string
+	Timeout time.Duration
 }
 
 func (cfg *migrateBootstrap) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "15m", "Timeout for bootstrap operation")
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(15*time.Minute), "Timeout for bootstrap operation")
 }
