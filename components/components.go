@@ -201,26 +201,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/remotetapprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/sumologicprocessor"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/unrollprocessor"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ciscoosreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/envoyalsreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/faroreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/gitlabreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubpushreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/huaweicloudcesreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/icmpcheckreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8slogreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/libhoneyreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/macosunifiedloggingreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/ntpreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/pprofreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redfishreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/stefreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/systemdreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tlscheckreceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsservicereceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver"
 	"go.opentelemetry.io/collector/connector/forwardconnector"
 	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
@@ -337,26 +317,26 @@ func Components() (otelcol.Factories, error) {
 		windowsperfcountersreceiver.NewFactory(),
 		zipkinreceiver.NewFactory(),
 		zookeeperreceiver.NewFactory(),
-		ciscoosreceiver.NewFactory(),
-		envoyalsreceiver.NewFactory(),
-		faroreceiver.NewFactory(),
-		gitlabreceiver.NewFactory(),
-		googlecloudpubsubpushreceiver.NewFactory(),
-		huaweicloudcesreceiver.NewFactory(),
-		icmpcheckreceiver.NewFactory(),
-		k8slogreceiver.NewFactory(),
-		libhoneyreceiver.NewFactory(),
-		macosunifiedloggingreceiver.NewFactory(),
-		netflowreceiver.NewFactory(),
-		ntpreceiver.NewFactory(),
-		pprofreceiver.NewFactory(),
-		redfishreceiver.NewFactory(),
-		stefreceiver.NewFactory(),
-		systemdreceiver.NewFactory(),
-		tcpcheckreceiver.NewFactory(),
-		tlscheckreceiver.NewFactory(),
-		windowsservicereceiver.NewFactory(),
-		yanggrpcreceiver.NewFactory(),
+		// ciscoosreceiver.NewFactory(),
+		// envoyalsreceiver.NewFactory(),
+		// faroreceiver.NewFactory(),
+		// gitlabreceiver.NewFactory(),
+		// googlecloudpubsubpushreceiver.NewFactory(),
+		// huaweicloudcesreceiver.NewFactory(),
+		// icmpcheckreceiver.NewFactory(),
+		// k8slogreceiver.NewFactory(),
+		// libhoneyreceiver.NewFactory(),
+		// macosunifiedloggingreceiver.NewFactory(),
+		// netflowreceiver.NewFactory(),
+		// ntpreceiver.NewFactory(),
+		// pprofreceiver.NewFactory(),
+		// redfishreceiver.NewFactory(),
+		// stefreceiver.NewFactory(),
+		// systemdreceiver.NewFactory(),
+		// tcpcheckreceiver.NewFactory(),
+		// tlscheckreceiver.NewFactory(),
+		// windowsservicereceiver.NewFactory(),
+		// yanggrpcreceiver.NewFactory(),
 		signozkafkareceiver.NewFactory(),
 		signozawsfirehosereceiver.NewFactory(),
 	}
