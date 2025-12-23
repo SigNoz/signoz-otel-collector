@@ -10,6 +10,7 @@ var (
 	Collector        collector
 	Clickhouse       clickhouse
 	MigrateReady     migrateReady
+	MigrateBootstrap migrateBootstrap
 	MigrateSyncCheck migrateSyncCheck
 )
 
@@ -28,16 +29,15 @@ func (cfg *collector) RegisterFlags(cmd *cobra.Command) {
 }
 
 type clickhouse struct {
-	DSN      string
-	Shards   uint64
-	Replicas uint64
-	Cluster  string
-	Version  string
+	DSN         string
+	Cluster     string
+	Replication bool
 }
 
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "DSN for clickhouse connection")
 	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "Name of the clickhouse cluster to connect")
+	cmd.PersistentFlags().BoolVar(&cfg.Replication, "clickhouse-replication", false, "Set true if replication is enabled in the clickhouse cluster")
 }
 
 type migrateReady struct {
@@ -54,4 +54,12 @@ type migrateSyncCheck struct {
 
 func (cfg *migrateSyncCheck) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "10s", "Timeout for sync check operation")
+}
+
+type migrateBootstrap struct {
+	Timeout string
+}
+
+func (cfg *migrateBootstrap) RegisterFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVar(&cfg.Timeout, "timeout", "15m", "Timeout for bootstrap operation")
 }

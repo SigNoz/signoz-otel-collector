@@ -36,7 +36,7 @@ var (
 	SignozMetadataDB      = "signoz_metadata"
 	SignozAnalyticsDB     = "signoz_analytics"
 	SignozMeterDB         = "signoz_meter"
-	dbs                   = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
+	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
 
 	InProgressStatus = "in-progress"
 	FinishedStatus   = "finished"
@@ -150,13 +150,13 @@ func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 }
 
 func (m *MigrationManager) createDBs() error {
-	for _, db := range dbs {
+	for _, db := range Databases {
 		cmd := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s", db, m.clusterName)
 		if err := m.conn.Exec(context.Background(), cmd); err != nil {
 			return errors.Join(ErrFailedToCreateDBs, err)
 		}
 	}
-	m.logger.Info("Created databases", zap.Strings("dbs", dbs))
+	m.logger.Info("Created databases", zap.Strings("dbs", Databases))
 	return nil
 }
 
