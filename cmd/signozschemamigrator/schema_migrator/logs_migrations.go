@@ -1,6 +1,11 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/utils"
+import (
+	"fmt"
+	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 var LogsMigrations = []SchemaMigrationRecord{
 	{
@@ -229,6 +234,63 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: "resource",
 				},
+			},
+		},
+	},
+	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "column_key_evolution_metadata",
+				Columns: []Column{
+					{Name: "base_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "base_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "new_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "new_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "release_time", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "DoubleDelta, ZSTD(1)"},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     "(base_column, new_column, base_column_type, new_column_type)",
+						PartitionBy: "toDate(release_time / 1000000000)",
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_column_key_evolution_metadata",
+				Columns: []Column{
+					{Name: "base_column", Type: ColumnTypeString},
+					{Name: "base_column_type", Type: ColumnTypeString},
+					{Name: "new_column", Type: ColumnTypeString},
+					{Name: "new_column_type", Type: ColumnTypeString},
+					{Name: "release_time", Type: ColumnTypeUInt64},
+				},
+				Engine: Distributed{
+					Database:    "signoz_logs",
+					Table:       "column_key_evolution_metadata",
+					ShardingKey: "cityHash64(base_column)",
+				},
+			},
+			InsertIntoTable{
+				Database:    "signoz_logs",
+				Table:       "distributed_column_key_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"base_column", "base_column_type", "new_column", "new_column_type", "release_time"},
+				Values: fmt.Sprintf("('resources_string', 'Map(LowCardinality(String), Float64)', 'resource', 'JSON(max_dynamic_paths=100)',%d)",
+					time.Now().UnixNano()),
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "distributed_column_key_evolution_metadata",
+			},
+			DropTableOperation{
+				Database: "signoz_logs",
+				Table:    "column_key_evolution_metadata",
 			},
 		},
 	},
