@@ -47,7 +47,7 @@ func RegisterCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(syncCheckCommand)
 }
 
-func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
+func newCheck(dsn string, timeout time.Duration, logger *zap.Logger) (*check, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -58,14 +58,9 @@ func newCheck(dsn string, timeout string, logger *zap.Logger) (*check, error) {
 		return nil, err
 	}
 
-	timeoutDuration, err := time.ParseDuration(timeout)
-	if err != nil {
-		return nil, err
-	}
-
 	return &check{
 		conn:    conn,
-		timeout: timeoutDuration,
+		timeout: timeout,
 		logger:  logger,
 	}, nil
 }

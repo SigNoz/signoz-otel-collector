@@ -50,7 +50,7 @@ func registerReady(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(readyCmd)
 }
 
-func newReady(dsn string, cluster, timeout string, logger *zap.Logger) (*ready, error) {
+func newReady(dsn string, cluster string, timeout time.Duration, logger *zap.Logger) (*ready, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -61,15 +61,10 @@ func newReady(dsn string, cluster, timeout string, logger *zap.Logger) (*ready, 
 		return nil, err
 	}
 
-	timeoutDuration, err := time.ParseDuration(timeout)
-	if err != nil {
-		return nil, err
-	}
-
 	return &ready{
 		conn:    conn,
 		cluster: cluster,
-		timeout: timeoutDuration,
+		timeout: timeout,
 		logger:  logger,
 	}, nil
 }
