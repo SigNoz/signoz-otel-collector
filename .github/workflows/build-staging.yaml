@@ -57,7 +57,7 @@ jobs:
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: main
+      PRIMUS_REF: free-space
       GO_VERSION: 1.24
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
       GO_BUILD_FLAGS: ""
@@ -70,7 +70,7 @@ jobs:
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: main
+      PRIMUS_REF: free-space
       GO_VERSION: 1.24
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
@@ -85,7 +85,7 @@ jobs:
     secrets: inherit
     needs: [prepare, signoz-otel-collector, signoz-schema-migrator]
     with:
-      PRIMUS_REF: main
+      PRIMUS_REF: free-space
       GITHUB_ENVIRONMENT: staging
       GITHUB_SILENT: true
       GITHUB_REPOSITORY_NAME: charts-saas-v3-staging
