@@ -53,11 +53,11 @@ jobs:
           echo "version=$($MAKE info-version)" >> $GITHUB_OUTPUT
           echo "deployment=${deployment}" >> $GITHUB_OUTPUT
   signoz-otel-collector:
-    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@clean-runner
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: free-space
+      PRIMUS_REF: main
       GO_VERSION: 1.24
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
       GO_BUILD_FLAGS: ""
@@ -66,11 +66,11 @@ jobs:
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: gcp
   signoz-schema-migrator:
-    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@clean-runner
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: free-space
+      PRIMUS_REF: main
       GO_VERSION: 1.24
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
@@ -85,7 +85,7 @@ jobs:
     secrets: inherit
     needs: [prepare, signoz-otel-collector, signoz-schema-migrator]
     with:
-      PRIMUS_REF: free-space
+      PRIMUS_REF: main
       GITHUB_ENVIRONMENT: staging
       GITHUB_SILENT: true
       GITHUB_REPOSITORY_NAME: charts-saas-v3-staging

@@ -19,11 +19,11 @@ jobs:
             echo "providers=gcp" >> $GITHUB_OUTPUT
           fi
   signoz-otel-collector:
-    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@clean-runner
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: free-space
+      PRIMUS_REF: main
       GO_VERSION: 1.24
       GO_BUILD_CONTEXT: ./cmd/signozotelcollector
       GO_BUILD_FLAGS: ""
@@ -32,11 +32,11 @@ jobs:
       DOCKER_MANIFEST: true
       DOCKER_PROVIDERS: ${{ needs.prepare.outputs.docker_providers }}
   signoz-schema-migrator:
-    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@main
+    uses: signoz/primus.workflows/.github/workflows/go-build.yaml@clean-runner
     secrets: inherit
     needs: prepare
     with:
-      PRIMUS_REF: free-space
+      PRIMUS_REF: main
       GO_VERSION: 1.24
       GO_NAME: signoz-schema-migrator
       GO_BUILD_CONTEXT: ./cmd/signozschemamigrator
