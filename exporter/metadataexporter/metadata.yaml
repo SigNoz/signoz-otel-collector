@@ -3,3 +3,9 @@ status:
   class: exporter
   stability:
     stable: [traces, logs, metrics]
+
+tests:
+  goleak:
+    ignore:
+      top:
+        - "github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"

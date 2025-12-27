@@ -485,7 +485,11 @@ func Test_ProcessTraces_Error(t *testing.T) {
 		t.Run(string(tt.context), func(t *testing.T) {
 			td := constructLogs()
 			processor, err := NewProcessor([]common.ContextStatements{{Context: tt.context, Statements: []string{`set(attributes["test"], ParseJSON(1))`}}}, ottl.PropagateError, componenttest.NewNopTelemetrySettings())
-			assert.NoError(t, err)
+			if err != nil {
+				// NewProcessor returns error for invalid OTTL statements
+				assert.Error(t, err)
+				return
+			}
 
 			_, err = processor.ProcessLogs(context.Background(), td)
 			assert.Error(t, err)

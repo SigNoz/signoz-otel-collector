@@ -6,7 +6,7 @@ extensions:
     zpages: {}
 processors:
     batch:
-        send_batch_size: 10000
+        send_batch_size: 100000 # changed
         timeout: 10s
 receivers:
     otlp:
@@ -26,7 +26,7 @@ service:
                 - otlp
         traces:
             exporters:
-                - debug
+                - logging
             processors:
                 - batch
             receivers:

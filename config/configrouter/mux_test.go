@@ -36,7 +36,7 @@ func TestMuxConfig(t *testing.T) {
 	httpListener, err := serverConfig.ToListener(ctx)
 	require.NoError(t, err)
 
-	httpServer, err := serverConfig.ToServer(context.Background(), componenttest.NewNopHost(), componenttest.NewNopTelemetrySettings(), routerConfig)
+	httpServer, err := serverConfig.ToServer(context.Background(), componenttest.NewNopHost().GetExtensions(), componenttest.NewNopTelemetrySettings(), routerConfig)
 	require.NoError(t, err)
 
 	go func() {
