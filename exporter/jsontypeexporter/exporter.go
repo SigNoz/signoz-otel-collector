@@ -226,7 +226,8 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					}
 					cur = maskArrayJSON
 				case pcommon.ValueTypeSlice:
-					return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
+					e.logger.Error("arrays inside arrays are not supported!", zap.String("path", prefix))
+					continue // skip the array element
 				case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 					cur = maskArrayString
 				case pcommon.ValueTypeBool:

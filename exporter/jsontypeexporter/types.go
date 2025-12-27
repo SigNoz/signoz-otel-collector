@@ -7,15 +7,15 @@ import (
 )
 
 const (
-	StringType   = "String"
-	IntType      = "Int"
-	Float64Type  = "Float64"
-	BooleanType  = "Bool"
-	ArrayDynamic = "Array(Dynamic)"
-	ArrayBoolean = "Array(Nullable(Bool))"
-	ArrayFloat64 = "Array(Nullable(Float64))"
-	ArrayInt     = "Array(Nullable(Int))"
+	String       = "String"
+	Int64        = "Int64"
+	Float64      = "Float64"
+	Bool         = "Bool"
 	ArrayString  = "Array(Nullable(String))"
+	ArrayInt64   = "Array(Nullable(Int64))"
+	ArrayFloat64 = "Array(Nullable(Float64))"
+	ArrayBool    = "Array(Nullable(Bool))"
+	ArrayDynamic = "Array(Dynamic)"
 	ArrayJSON    = "Array(JSON)"
 )
 
@@ -42,28 +42,28 @@ func (t *TypeSet) Insert(path string, mask uint16) {
 	cs := actual.(*utils.ConcurrentSet[string])
 	// expand mask to strings
 	if mask&maskString != 0 {
-		cs.Insert(StringType)
+		cs.Insert(String)
 	}
 	if mask&maskInt != 0 {
-		cs.Insert(IntType)
+		cs.Insert(Int64)
 	}
 	if mask&maskFloat != 0 {
-		cs.Insert(Float64Type)
+		cs.Insert(Float64)
 	}
 	if mask&maskBool != 0 {
-		cs.Insert(BooleanType)
+		cs.Insert(Bool)
 	}
 	if mask&maskArrayString != 0 {
 		cs.Insert(ArrayString)
 	}
 	if mask&maskArrayInt != 0 {
-		cs.Insert(ArrayInt)
+		cs.Insert(ArrayInt64)
 	}
 	if mask&maskArrayFloat != 0 {
 		cs.Insert(ArrayFloat64)
 	}
 	if mask&maskArrayBool != 0 {
-		cs.Insert(ArrayBoolean)
+		cs.Insert(ArrayBool)
 	}
 	if mask&maskArrayJSON != 0 {
 		cs.Insert(ArrayJSON)
