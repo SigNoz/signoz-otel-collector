@@ -75,7 +75,7 @@ func TestLoadConfig(t *testing.T) {
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
 		BodyJSONOldBodyEnabled:    true,
 	}
-	// Compare fields individually to avoid issues with internal Batch field in QueueBatchConfig
+	// Compare fields individually to avoid issues with internal/unexported fields in QueueBatchConfig
 	assert.Equal(t, expectedConfig.DSN, r1.DSN)
 	assert.Equal(t, expectedConfig.TimeoutConfig, r1.TimeoutConfig)
 	assert.Equal(t, expectedConfig.BackOffConfig, r1.BackOffConfig)

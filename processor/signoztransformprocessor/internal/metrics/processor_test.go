@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -764,38 +765,49 @@ func Test_ProcessMetrics_MixContext(t *testing.T) {
 }
 
 func Test_ProcessMetrics_Error(t *testing.T) {
+	// All cases use intentionally invalid OTTL to ensure creation/processing fails
 	tests := []struct {
 		statement string
 		context   common.ContextID
+		expectErr bool
 	}{
 		{
 			statement: `set(attributes["test"], ParseJSON(1))`,
 			context:   "resource",
+			expectErr: true,
 		},
 		{
 			statement: `set(attributes["test"], ParseJSON(1))`,
 			context:   "scope",
+			expectErr: true,
 		},
 		{
 			statement: `set(name, ParseJSON(1))`,
 			context:   "metric",
+			expectErr: true,
 		},
 		{
 			statement: `set(attributes["test"], ParseJSON(1))`,
 			context:   "datapoint",
+			expectErr: true,
 		},
 	}
+
+	// Note: ParseJSON is an OTTL function that takes a JSON-encoded string
+	// and parses it into structured data. In these tests we pass ParseJSON(1),
+	// which is intentionally invalid: 1 isn't a JSON string, so the OTTL expression fails validation/creation.
+	// We use that bad expression to exercise the error path: every case is expected to fail because the statement itself is invalid,
+	// not because the processor always fails.
 
 	for _, tt := range tests {
 		t.Run(tt.statement, func(t *testing.T) {
 			td := constructMetrics()
 			processor, err := NewProcessor([]common.ContextStatements{{Context: tt.context, Statements: []string{tt.statement}}}, ottl.PropagateError, componenttest.NewNopTelemetrySettings())
-			if err != nil {
-				// NewProcessor returns error for invalid OTTL statements
-				assert.Error(t, err)
+			// NewProcessor returns error for invalid OTTL statements
+			if tt.expectErr {
+				require.Error(t, err)
 				return
 			}
-
 			_, err = processor.ProcessMetrics(context.Background(), td)
 			assert.Error(t, err)
 		})

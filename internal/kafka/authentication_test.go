@@ -140,7 +140,7 @@ func TestAuthentication(t *testing.T) {
 			} else {
 				// equalizes SCRAMClientGeneratorFunc to do assertion with the same reference.
 				config.Net.SASL.SCRAMClientGeneratorFunc = test.saramaConfig.Net.SASL.SCRAMClientGeneratorFunc
-				// Normalize TLS curve preferences order for comparison
+				// Normalize TLS CurvePreferences to avoid non-deterministic ordering issues
 				if config.Net.TLS.Config != nil && test.saramaConfig.Net.TLS.Config != nil {
 					sort.Slice(config.Net.TLS.Config.CurvePreferences, func(i, j int) bool {
 						return config.Net.TLS.Config.CurvePreferences[i] < config.Net.TLS.Config.CurvePreferences[j]
