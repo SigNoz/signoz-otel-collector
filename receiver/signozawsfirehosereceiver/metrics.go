@@ -53,7 +53,7 @@ func newMetricsReceiver(
 	}
 
 	transport := "http"
-	if config.TLS != nil {
+	if config.TLS.HasValue() {
 		transport = "https"
 	}
 

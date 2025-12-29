@@ -278,19 +278,21 @@ func Test_extractSumMetric(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualMetrics := pmetric.NewMetricSlice()
-			tt.input.CopyTo(actualMetrics.AppendEmpty())
-
 			evaluate, err := extractSumMetric(tt.monotonicity)
 			assert.NoError(t, err)
 
-			_, err = evaluate(nil, ottlmetric.NewTransformContext(tt.input, actualMetrics, pcommon.NewInstrumentationScope(), pcommon.NewResource(), pmetric.NewScopeMetrics(), pmetric.NewResourceMetrics()))
+			resourceMetrics := pmetric.NewResourceMetrics()
+			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
+			tt.input.CopyTo(scopeMetrics.Metrics().AppendEmpty())
+			metric := scopeMetrics.Metrics().At(0)
+			ctx := ottlmetric.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric)
+			_, err = evaluate(nil, ctx)
 			assert.Equal(t, tt.wantErr, err)
 
 			if tt.want != nil {
 				expected := pmetric.NewMetricSlice()
 				tt.want(expected)
-				assert.Equal(t, expected, actualMetrics)
+				assert.Equal(t, expected, scopeMetrics.Metrics())
 			}
 		})
 	}

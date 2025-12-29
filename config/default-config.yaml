@@ -87,11 +87,14 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
     sending_queue:
-      enabled: true
       queue_size: 100
       num_consumers: 5
   signozclickhousemetrics:
     dsn: tcp://localhost:9000/signoz_metrics
+  clickhouselogsexporter:
+    dsn: tcp://localhost:9000/signoz_logs
+    timeout: 10s
+    use_new_schema: true
   prometheus:
     endpoint: "0.0.0.0:8889"
 service:
@@ -105,6 +108,10 @@ service:
       receivers: [otlp, hostmetrics]
       processors: [batch]
       exporters: [signozclickhousemetrics]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouselogsexporter]
     metrics/spanmetrics:
       receivers: [otlp/spanmetrics]
       exporters: [prometheus]

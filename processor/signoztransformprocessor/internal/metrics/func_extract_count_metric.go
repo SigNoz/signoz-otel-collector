@@ -17,11 +17,11 @@ type extractCountMetricArguments struct {
 	Monotonic bool
 }
 
-func newExtractCountMetricFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newExtractCountMetricFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("extract_count_metric", &extractCountMetricArguments{}, createExtractCountMetricFunction)
 }
 
-func createExtractCountMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createExtractCountMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*extractCountMetricArguments)
 
 	if !ok {
@@ -31,8 +31,8 @@ func createExtractCountMetricFunction(_ ottl.FunctionContext, oArgs ottl.Argumen
 	return extractCountMetric(args.Monotonic)
 }
 
-func extractCountMetric(monotonic bool) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (interface{}, error) {
+func extractCountMetric(monotonic bool) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (interface{}, error) {
 		metric := tCtx.GetMetric()
 		invalidMetricTypeError := fmt.Errorf("extract_count_metric requires an input metric of type Histogram, ExponentialHistogram or Summary, got %s", metric.Type())
 
