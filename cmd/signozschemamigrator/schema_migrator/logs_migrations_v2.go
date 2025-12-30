@@ -243,7 +243,7 @@ ORDER BY name ASC`,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_logs",
-				Table:    "column_key_evolution_metadata",
+				Table:    "key_evolution_metadata",
 				Columns: []Column{
 					{Name: "base_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "base_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
@@ -260,7 +260,7 @@ ORDER BY name ASC`,
 			},
 			CreateTableOperation{
 				Database: "signoz_logs",
-				Table:    "distributed_column_key_evolution_metadata",
+				Table:    "distributed_key_evolution_metadata",
 				Columns: []Column{
 					{Name: "base_column", Type: ColumnTypeString},
 					{Name: "base_column_type", Type: ColumnTypeString},
@@ -270,13 +270,13 @@ ORDER BY name ASC`,
 				},
 				Engine: Distributed{
 					Database:    "signoz_logs",
-					Table:       "column_key_evolution_metadata",
+					Table:       "key_evolution_metadata",
 					ShardingKey: "cityHash64(base_column)",
 				},
 			},
 			InsertIntoTable{
 				Database:    "signoz_logs",
-				Table:       "distributed_column_key_evolution_metadata",
+				Table:       "distributed_key_evolution_metadata",
 				LightWeight: true,
 				Synchronous: true,
 				Columns:     []string{"base_column", "base_column_type", "new_column", "new_column_type", "release_time"},
@@ -287,11 +287,11 @@ ORDER BY name ASC`,
 		DownItems: []Operation{
 			DropTableOperation{
 				Database: "signoz_logs",
-				Table:    "distributed_column_key_evolution_metadata",
+				Table:    "distributed_key_evolution_metadata",
 			},
 			DropTableOperation{
 				Database: "signoz_logs",
-				Table:    "column_key_evolution_metadata",
+				Table:    "key_evolution_metadata",
 			},
 		},
 	},
