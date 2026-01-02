@@ -170,7 +170,12 @@ func (cmd *up) run(ctx context.Context, migrations []schemamigrator.SchemaMigrat
 		}
 
 		for _, item := range migration.UpItems {
-			if err := cmd.migrationManager.RunOperation(ctx, item, migration.MigrationID, db, false); err != nil {
+			if err := cmd.migrationManager.RunOperationWithoutUpdate(ctx, item, migration.MigrationID, db); err != nil {
+				cmd.logger.Error("Error occurred while running operation", zap.Error(err))
+				if err := cmd.migrationManager.InsertMigrationEntry(ctx, db, migration.MigrationID, schemamigrator.FailedStatus); err != nil {
+					return err
+				}
+
 				return err
 			}
 		}

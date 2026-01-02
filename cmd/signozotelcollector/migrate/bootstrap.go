@@ -122,6 +122,8 @@ func (cmd *bootstrap) Bootstrap(ctx context.Context) error {
 }
 
 func (cmd *bootstrap) CreateDatabases(ctx context.Context) error {
+	cmd.logger.Info("Creating databases")
+
 	query := `SELECT name FROM system.databases`
 	rows, err := cmd.conn.Query(ctx, query)
 	if err != nil {
@@ -151,6 +153,8 @@ func (cmd *bootstrap) CreateDatabases(ctx context.Context) error {
 }
 
 func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
+	cmd.logger.Info("Creating migration tables")
+
 	for _, migration := range schemamigrator.V2MigrationTablesLogs {
 		for _, operation := range migration.UpItems {
 			shouldRun, err := cmd.ShouldRunOperation(ctx, operation)
@@ -265,11 +269,9 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 func (cmd *bootstrap) ShouldRunOperation(ctx context.Context, operation schemamigrator.Operation) (bool, error) {
 	tableOp, ok := operation.(schemamigrator.CreateTableOperation)
 	if ok {
-		query := fmt.Sprintf(
-			`SELECT count() FROM system.tables WHERE database = '%s' AND name = '%s'`,
-			tableOp.Database, tableOp.Table,
-		)
+		query := fmt.Sprintf(`SELECT count() FROM system.tables WHERE database = '%s' AND name = '%s'`, tableOp.Database, tableOp.Table)
 
+		cmd.logger.Info("Checking if the operation should run", zap.String("sql", query))
 		var count uint64
 		err := cmd.conn.QueryRow(ctx, query).Scan(&count)
 		if err != nil {

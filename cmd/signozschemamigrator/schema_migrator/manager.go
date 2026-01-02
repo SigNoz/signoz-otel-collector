@@ -5,11 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
-
-	"net/netip"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -1132,6 +1131,55 @@ func (m *MigrationManager) ShouldRunMigrationWithoutVersions(ctx context.Context
 	}
 
 	return true, nil
+}
+
+func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operation Operation, migrationID uint64, database string) error {
+	m.logger.Info("Running operation", zap.Uint64("migration_id", migrationID), zap.String("database", database))
+	start := time.Now()
+
+	var sql string
+	if m.clusterName != "" {
+		operation = operation.OnCluster(m.clusterName)
+	}
+
+	if m.replicationEnabled {
+		operation = operation.WithReplication()
+	}
+
+	m.logger.Info("Waiting for running mutations before running the operation")
+	if err := m.WaitForRunningMutations(ctx); err != nil {
+		return err
+	}
+
+	m.logger.Info("Waiting for distributed DDL queue before running the operation")
+	if err := m.WaitDistributedDDLQueue(ctx); err != nil {
+		return err
+	}
+
+	if shouldWaitForDistributionQueue, database, table := operation.ShouldWaitForDistributionQueue(); shouldWaitForDistributionQueue {
+		m.logger.Info("Waiting for distribution queue", zap.String("database", database), zap.String("table", table))
+		if err := m.WaitForDistributionQueue(ctx, database, table); err != nil {
+			return err
+		}
+	}
+
+	sql = operation.ToSQL()
+	m.logger.Info("Running operation", zap.String("sql", sql))
+	err := m.conn.Exec(ctx, sql)
+	if err != nil {
+		return err
+	}
+
+	duration := time.Since(start)
+	m.logger.Info("Operation completed", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Duration("duration", duration))
+
+	return m.InsertMigrationEntry(ctx, database, migrationID, FinishedStatus)
+}
+
+func (m *MigrationManager) InsertMigrationEntry(ctx context.Context, db string, migrationID uint64, status string) error {
+	query := fmt.Sprintf("INSERT INTO %s.distributed_schema_migrations_v2 (migration_id, status, created_at) VALUES (%d, '%s', '%s')", db, migrationID, status, time.Now().UTC().Format("2006-01-02 15:04:05"))
+	m.logger.Info("Inserting migration entry", zap.String("query", query))
+	return m.conn.Exec(ctx, query)
 }
 
 func (m *MigrationManager) Close() error {
