@@ -699,6 +699,38 @@ func (m *MigrationManager) executeSyncOperations(ctx context.Context, operations
 	return nil
 }
 
+func (m *MigrationManager) IsSync(migration SchemaMigrationRecord) bool {
+	for _, item := range migration.UpItems {
+		// if any of the operations is a sync operation, return true
+		if item.ForceMigrate() || (!item.IsMutation() && item.IsIdempotent() && item.IsLightweight()) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *MigrationManager) IsAsync(migration SchemaMigrationRecord) bool {
+	for _, item := range migration.UpItems {
+		// if any of the operations is a force migrate operation, return false
+		if item.ForceMigrate() {
+			return false
+		}
+
+		// If any of the operations is sync, return false
+		if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+			return false
+		}
+
+		// If any of the operations is not idempotent, return false
+		if !item.IsIdempotent() {
+			return false
+		}
+	}
+
+	return true
+}
+
 // MigrateUpSync migrates the schema up.
 func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint64) error {
 	m.logger.Info("Running migrations up sync")
@@ -1075,6 +1107,31 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 	m.logger.Info("Operation completed", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Duration("duration", duration))
 
 	return nil
+}
+
+func (m *MigrationManager) ShouldRunMigrationWithoutVersions(ctx context.Context, db string, migrationID uint64) (bool, error) {
+	m.logger.Info("Checking if migration should run", zap.String("db", db), zap.Uint64("migration_id", migrationID))
+
+	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
+	m.logger.Info("Fetching migration status", zap.String("query", query))
+
+	var migrationSchemaMigrationRecord MigrationSchemaMigrationRecord
+	if err := m.conn.QueryRow(ctx, query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
+		if err == sql.ErrNoRows {
+			m.logger.Info("Migration not run", zap.Uint64("migration_id", migrationID))
+			return true, nil
+		}
+
+		return false, err
+	}
+
+	m.logger.Info("Migration status", zap.Uint64("migration_id", migrationID), zap.String("status", migrationSchemaMigrationRecord.Status))
+
+	if migrationSchemaMigrationRecord.Status == FinishedStatus {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (m *MigrationManager) Close() error {

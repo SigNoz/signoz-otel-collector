@@ -67,6 +67,9 @@ func newBootstrap(dsn string, cluster string, replication bool, timeout time.Dur
 		schemamigrator.WithConnOptions(*opts),
 		schemamigrator.WithLogger(logger),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &bootstrap{
 		conn:             conn,
