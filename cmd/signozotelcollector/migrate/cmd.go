@@ -15,8 +15,9 @@ func Register(parentCmd *cobra.Command, logger *zap.Logger) {
 	}
 
 	registerReady(rootCmd, logger)
-	registerSync(rootCmd, logger)
 	registerBootstrap(rootCmd, logger)
+	registerSync(rootCmd, logger)
+	registerAsync(rootCmd, logger)
 
 	parentCmd.AddCommand(rootCmd)
 }

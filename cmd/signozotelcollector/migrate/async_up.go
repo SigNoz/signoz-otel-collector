@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type syncUp struct {
+type asyncUp struct {
 	conn             clickhouse.Conn
 	cluster          string
 	migrationManager *schemamigrator.MigrationManager
@@ -22,13 +22,13 @@ type syncUp struct {
 	logger           *zap.Logger
 }
 
-func registerSyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
+func registerAsyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 	syncUpCommand := &cobra.Command{
 		Use:          "up",
-		Short:        "Runs 'up' sync migrations for the store. Up migrations are used to apply new migrations to the store.",
+		Short:        "Runs 'up' async migrations for the store. Up async migrations are used to apply new async migrations to the store.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			up, err := newSyncUp(
+			up, err := newAsyncUp(
 				config.Clickhouse.DSN,
 				config.Clickhouse.Cluster,
 				config.Clickhouse.Replication,
@@ -53,7 +53,7 @@ func registerSyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(syncUpCommand)
 }
 
-func newSyncUp(dsn string, cluster string, replication bool, timeout time.Duration, logger *zap.Logger) (*syncUp, error) {
+func newAsyncUp(dsn string, cluster string, replication bool, timeout time.Duration, logger *zap.Logger) (*asyncUp, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -72,21 +72,21 @@ func newSyncUp(dsn string, cluster string, replication bool, timeout time.Durati
 		schemamigrator.WithLogger(logger),
 	)
 
-	return &syncUp{
+	return &asyncUp{
 		conn:             conn,
 		cluster:          cluster,
 		migrationManager: migrationManager,
 		timeout:          timeout,
-		logger:           logger,
+		logger:           logger.With(zap.String("type", "async"), zap.String("subcommand", "up")),
 	}, nil
 }
 
-func (cmd *syncUp) Run(ctx context.Context) error {
+func (cmd *asyncUp) Run(ctx context.Context) error {
 	backoff := backoff.NewExponentialBackOff()
 	backoff.MaxElapsedTime = cmd.timeout
 
 	for {
-		err := cmd.SyncUp(ctx)
+		err := cmd.Up(ctx)
 		if err == nil {
 			break
 		}
@@ -94,13 +94,14 @@ func (cmd *syncUp) Run(ctx context.Context) error {
 		migrateErr := Unwrapb(err)
 		// exit early for non-retryable errors.
 		if !migrateErr.IsRetryable() {
-			return fmt.Errorf("failed to run migrations up sync: %w", err)
+			return fmt.Errorf("failed to run migrations: %w", err)
 		}
 
-		cmd.logger.Info("Error occurred while running migrations up sync, retrying", zap.Error(err))
 		nextBackOff := backoff.NextBackOff()
+		cmd.logger.Info("Retryable error occurred while running migrations", zap.Error(err), zap.Duration("retry_after", nextBackOff))
+
 		if nextBackOff == backoff.Stop {
-			return fmt.Errorf("timed out waiting for sync up to complete within the configured timeout of %s", cmd.timeout)
+			return fmt.Errorf("timed out waiting for migration to complete within the configured timeout of %s", cmd.timeout)
 		}
 
 		time.Sleep(nextBackOff)
@@ -109,13 +110,13 @@ func (cmd *syncUp) Run(ctx context.Context) error {
 	return nil
 }
 
-func (cmd *syncUp) SyncUp(ctx context.Context) error {
+func (cmd *asyncUp) Up(ctx context.Context) error {
 	err := cmd.migrationManager.RunSquashedMigrations(ctx)
 	if err != nil {
 		return err
 	}
 
-	cmd.logger.Info("Running sync migrations")
+	cmd.logger.Info("Running migrations")
 	err = cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
 	if err != nil {
 		return err
@@ -154,9 +155,9 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 	return nil
 }
 
-func (cmd *syncUp) run(ctx context.Context, migrations []schemamigrator.SchemaMigrationRecord, db string) error {
+func (cmd *asyncUp) run(ctx context.Context, migrations []schemamigrator.SchemaMigrationRecord, db string) error {
 	for _, migration := range migrations {
-		if !cmd.migrationManager.IsSync(migration) {
+		if !cmd.migrationManager.IsAsync(migration) {
 			continue
 		}
 

@@ -1182,6 +1182,22 @@ func (m *MigrationManager) InsertMigrationEntry(ctx context.Context, db string, 
 	return m.conn.Exec(ctx, query)
 }
 
+func (m *MigrationManager) CheckMigrationStatus(ctx context.Context, db string, migrationID uint64, status string) (bool, error) {
+	query := fmt.Sprintf("SELECT * FROM %s.distributed_schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
+	m.logger.Info("Checking migration status", zap.String("query", query))
+
+	var migrationSchemaMigrationRecord MigrationSchemaMigrationRecord
+	if err := m.conn.QueryRow(ctx, query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return migrationSchemaMigrationRecord.Status == status, nil
+}
+
 func (m *MigrationManager) Close() error {
 	return m.conn.Close()
 }
