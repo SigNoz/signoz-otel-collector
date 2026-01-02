@@ -1063,6 +1063,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 	},
 	{
 		MigrationID: 1009,
+
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_traces",
@@ -1072,13 +1073,13 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "base_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "new_column", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: "new_column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "release_time", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeUInt64}}, Codec: "DoubleDelta, ZSTD(1)"},
+					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "release_time", Type: ColumnTypeUInt64, Codec: "DoubleDelta, ZSTD(1)"},
 				},
-				Engine: AggregatingMergeTree{
-					MergeTree: MergeTree{
-						OrderBy:     "(base_column, new_column, base_column_type, new_column_type)",
-						PartitionBy: "toDate(release_time / 1000000000)",
-					},
+				Engine: MergeTree{
+					// Note: adding release_time as there can be actual duplicate entry
+					OrderBy:     "(base_column, new_column, base_column_type, new_column_type, path, release_time)",
+					PartitionBy: "toDate(release_time / 1000000000)",
 				},
 			},
 			CreateTableOperation{
@@ -1089,6 +1090,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "base_column_type", Type: ColumnTypeString},
 					{Name: "new_column", Type: ColumnTypeString},
 					{Name: "new_column_type", Type: ColumnTypeString},
+					{Name: "path", Type: ColumnTypeString},
 					{Name: "release_time", Type: ColumnTypeUInt64},
 				},
 				Engine: Distributed{
