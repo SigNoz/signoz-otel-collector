@@ -1,6 +1,8 @@
 package schemamigrator
 
-import "strings"
+import (
+	"strings"
+)
 
 // InsertIntoTable represents an INSERT INTO statement.
 // InsertIntoTable can only be used for INSERTs into ReplacingMergeTree tables as of now.
