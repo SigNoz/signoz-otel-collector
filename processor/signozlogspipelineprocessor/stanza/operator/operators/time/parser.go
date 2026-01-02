@@ -17,7 +17,7 @@ type Parser struct {
 
 // Process will parse time from an entry.
 func (p *Parser) Process(ctx context.Context, entry *entry.Entry) error {
-	return p.ProcessWith(ctx, entry, p.TimeParser.Parse)
+	return p.ProcessWith(ctx, entry, p.Parse)
 }
 
 func (p *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {

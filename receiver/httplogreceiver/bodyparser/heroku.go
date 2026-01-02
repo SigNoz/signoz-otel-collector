@@ -112,10 +112,7 @@ func octetCountingSplitter(data string) []string {
 		lengthStr := ""
 
 		// ignore tabs and spaces
-		for {
-			if index >= length || (data[index] != ' ' && data[index] != '\t' && data[index] != '\n') {
-				break
-			}
+		for index < length && (data[index] == ' ' || data[index] == '\t' || data[index] == '\n') {
 			index++
 		}
 
