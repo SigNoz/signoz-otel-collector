@@ -27,4 +27,5 @@ func TestLoadConfig(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, *(cfg.(*Config).MaxDepthTraverse), 100)
 	assert.Equal(t, *(cfg.(*Config).MaxArrayElementsAllowed), 5)
+	assert.True(t, cfg.(*Config).FailOnError, "fail_on_error should be true in test config")
 }

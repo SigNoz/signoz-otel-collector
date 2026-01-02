@@ -9,5 +9,5 @@ import (
 )
 
 func TestComponentFactoryType(t *testing.T) {
-	require.Equal(t, "jsontypeexporter", NewFactory().Type().String())
+	require.Equal(t, "signozjsontypeexporter", NewFactory().Type().String())
 }
