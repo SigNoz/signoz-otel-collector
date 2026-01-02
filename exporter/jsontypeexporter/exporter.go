@@ -144,6 +144,7 @@ func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
 		if e.config.FailOnError {
 			return err
 		}
+		e.logger.Error("Failed to process logs", zap.Error(err))
 	}
 
 	return nil
