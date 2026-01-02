@@ -1108,31 +1108,6 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 	return nil
 }
 
-func (m *MigrationManager) ShouldRunMigrationWithoutVersions(ctx context.Context, db string, migrationID uint64) (bool, error) {
-	m.logger.Info("Checking if migration should run", zap.String("db", db), zap.Uint64("migration_id", migrationID))
-
-	query := fmt.Sprintf("SELECT * FROM %s.schema_migrations_v2 WHERE migration_id = %d SETTINGS final = 1;", db, migrationID)
-	m.logger.Info("Fetching migration status", zap.String("query", query))
-
-	var migrationSchemaMigrationRecord MigrationSchemaMigrationRecord
-	if err := m.conn.QueryRow(ctx, query).ScanStruct(&migrationSchemaMigrationRecord); err != nil {
-		if err == sql.ErrNoRows {
-			m.logger.Info("Migration not run", zap.Uint64("migration_id", migrationID))
-			return true, nil
-		}
-
-		return false, err
-	}
-
-	m.logger.Info("Migration status", zap.Uint64("migration_id", migrationID), zap.String("status", migrationSchemaMigrationRecord.Status))
-
-	if migrationSchemaMigrationRecord.Status == FinishedStatus {
-		return false, nil
-	}
-
-	return true, nil
-}
-
 func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operation Operation, migrationID uint64, database string) error {
 	m.logger.Info("Running operation", zap.Uint64("migration_id", migrationID), zap.String("database", database))
 	start := time.Now()

@@ -161,12 +161,12 @@ func (cmd *asyncUp) run(ctx context.Context, migrations []schemamigrator.SchemaM
 			continue
 		}
 
-		shouldRun, err := cmd.migrationManager.ShouldRunMigrationWithoutVersions(ctx, db, migration.MigrationID)
+		ok, err := cmd.migrationManager.CheckMigrationStatus(ctx, db, migration.MigrationID, schemamigrator.FinishedStatus)
 		if err != nil {
 			return NewRetryableError(err)
 		}
 
-		if !shouldRun {
+		if ok {
 			continue
 		}
 
