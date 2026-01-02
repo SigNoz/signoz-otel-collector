@@ -80,7 +80,7 @@ func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
+func (e *jsonTypeExporter) processLogs(ctx context.Context, ld plog.Logs) error {
 	select {
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
@@ -134,6 +134,16 @@ logIteration:
 	if err := e.persistTypes(ctx, &types); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
+	}
+
+	return nil
+}
+
+func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
+	if err := e.processLogs(ctx, ld); err != nil {
+		if e.config.FailOnError {
+			return err
+		}
 	}
 
 	return nil
