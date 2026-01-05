@@ -47,7 +47,7 @@ func NewFactory() exporter.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
-		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
@@ -116,7 +116,7 @@ func createLogsExporter(
 		exporterhelper.WithStart(exporter.Start),
 		exporterhelper.WithShutdown(exporter.Shutdown),
 		exporterhelper.WithTimeout(c.TimeoutConfig),
-		exporterhelper.WithQueue(configoptional.Some(c.QueueBatchConfig)),
+		exporterhelper.WithQueue(c.QueueBatchConfig),
 		exporterhelper.WithRetry(c.BackOffConfig),
 	)
 }

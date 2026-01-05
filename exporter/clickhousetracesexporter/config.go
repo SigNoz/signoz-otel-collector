@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -31,8 +32,8 @@ type AttributesLimits struct {
 // Config defines configuration for tracing exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
 
 	Datasource string `mapstructure:"datasource"`
 	// LowCardinalExceptionGrouping is a flag to enable exception grouping by serviceName + exceptionType. Default is false.
@@ -46,11 +47,14 @@ var _ component.Config = (*Config)(nil)
 
 // Validate checks if the exporter configuration is valid
 func (cfg *Config) Validate() error {
-	if cfg.QueueBatchConfig.QueueSize <= 0 {
-		return fmt.Errorf("queue_size must be positive")
-	}
-	if cfg.QueueBatchConfig.NumConsumers <= 0 {
-		return fmt.Errorf("num_consumers must be positive")
+	q := cfg.QueueBatchConfig.Get()
+	if q != nil {
+		if q.QueueSize <= 0 {
+			return fmt.Errorf("queue_size must be positive")
+		}
+		if q.NumConsumers <= 0 {
+			return fmt.Errorf("num_consumers must be positive")
+		}
 	}
 	return nil
 }

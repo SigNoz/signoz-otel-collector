@@ -5,6 +5,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
@@ -12,9 +13,9 @@ import (
 
 // Config defines configuration for JSON Type exporter.
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"`        // squash ensures fields are correctly decoded in embedded struct.
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	DSN string `mapstructure:"dsn"`
@@ -43,8 +44,10 @@ func (cfg *Config) Validate() error {
 	if cfg.DSN == "" {
 		err = multierr.Append(err, errConfigNoDSN)
 	}
-	if validationErr := cfg.QueueBatchConfig.Validate(); validationErr != nil {
-		err = multierr.Append(err, validationErr)
+	if qc := cfg.QueueBatchConfig.Get(); qc != nil {
+		if validationErr := qc.Validate(); validationErr != nil {
+			err = multierr.Append(err, validationErr)
+		}
 	}
 	if validationErr := cfg.TimeoutConfig.Validate(); validationErr != nil {
 		err = multierr.Append(err, validationErr)

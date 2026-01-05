@@ -37,7 +37,7 @@ func createMeterMetricsExporter(ctx context.Context, params exporter.Settings, c
 		cfg,
 		chExporter.ConsumeMetrics,
 		exporterhelper.WithTimeout(chCfg.TimeoutConfig),
-		exporterhelper.WithQueue(configoptional.Some(chCfg.QueueBatchConfig)),
+		exporterhelper.WithQueue(chCfg.QueueBatchConfig),
 		exporterhelper.WithRetry(chCfg.BackOffConfig),
 		exporterhelper.WithStart(chExporter.Start),
 		exporterhelper.WithShutdown(chExporter.Shutdown),
@@ -53,7 +53,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
-		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 		DSN:              "tcp://localhost:9000",
 		Database:         "signoz_meter",
 		SamplesTable:     "distributed_samples",

@@ -93,7 +93,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
-		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 		Brokers:          []string{defaultBroker},
 		// using an empty topic to track when it has not been set by user, default is based on traces or metrics.
 		Topic:    "",
@@ -146,7 +146,7 @@ func (f *kafkaExporterFactory) createTracesExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -176,7 +176,7 @@ func (f *kafkaExporterFactory) createMetricsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }
 
@@ -206,6 +206,6 @@ func (f *kafkaExporterFactory) createLogsExporter(
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutConfig{Timeout: 0}),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
-		exporterhelper.WithQueue(configoptional.Some(oCfg.QueueBatchConfig)),
+		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithShutdown(exp.Close))
 }

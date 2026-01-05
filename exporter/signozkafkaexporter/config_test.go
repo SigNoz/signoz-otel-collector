@@ -11,9 +11,11 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
@@ -21,6 +23,11 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
 )
+
+func marshalInterface(inter any) string {
+	b, _ := json.Marshal(inter)
+	return string(b)
+}
 
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
@@ -46,11 +53,17 @@ func TestLoadConfig(t *testing.T) {
 					RandomizationFactor: backoff.DefaultRandomizationFactor,
 					Multiplier:          backoff.DefaultMultiplier,
 				},
-				QueueBatchConfig: exporterhelper.QueueBatchConfig{
+				QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
 					Sizer:        exporterhelper.RequestSizerTypeRequests,
 					NumConsumers: 2,
 					QueueSize:    10,
-				},
+					Batch: configoptional.Default(exporterhelper.BatchConfig{
+						FlushTimeout: 200 * time.Millisecond,
+						Sizer:        exporterhelper.RequestSizerTypeItems,
+						MinSize:      8192,
+						MaxSize:      0,
+					}),
+				}),
 				Topic:    "spans",
 				Encoding: "otlp_proto",
 				Brokers:  []string{"foo:123", "bar:456"},
@@ -88,18 +101,11 @@ func TestLoadConfig(t *testing.T) {
 			assert.NoError(t, xconfmap.Validate(cfg))
 			actualCfg := cfg.(*Config)
 			expectedCfg := tt.expected.(*Config)
-			// Compare fields individually to avoid issues with internal Enabled field in QueueBatchConfig
-			assert.Equal(t, expectedCfg.TimeoutConfig, actualCfg.TimeoutConfig)
-			assert.Equal(t, expectedCfg.BackOffConfig, actualCfg.BackOffConfig)
-			assert.Equal(t, expectedCfg.QueueBatchConfig.Sizer, actualCfg.QueueBatchConfig.Sizer)
-			assert.Equal(t, expectedCfg.QueueBatchConfig.NumConsumers, actualCfg.QueueBatchConfig.NumConsumers)
-			assert.Equal(t, expectedCfg.QueueBatchConfig.QueueSize, actualCfg.QueueBatchConfig.QueueSize)
-			assert.Equal(t, expectedCfg.Topic, actualCfg.Topic)
-			assert.Equal(t, expectedCfg.Encoding, actualCfg.Encoding)
-			assert.Equal(t, expectedCfg.Brokers, actualCfg.Brokers)
-			assert.Equal(t, expectedCfg.Authentication, actualCfg.Authentication)
-			assert.Equal(t, expectedCfg.Metadata, actualCfg.Metadata)
-			assert.Equal(t, expectedCfg.Producer, actualCfg.Producer)
+
+			t.Logf("actualCfg: %s", marshalInterface(actualCfg))
+			t.Logf("expectedCfg: %s", marshalInterface(expectedCfg))
+
+			assert.Equal(t, expectedCfg, actualCfg)
 		})
 	}
 }

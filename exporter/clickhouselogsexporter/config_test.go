@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
@@ -61,11 +62,17 @@ func TestLoadConfig(t *testing.T) {
 			RandomizationFactor: 0.7,
 			Multiplier:          1.3,
 		},
-		QueueBatchConfig: exporterhelper.QueueBatchConfig{
+		QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
 			Sizer:        exporterhelper.RequestSizerTypeRequests,
 			NumConsumers: 10,
 			QueueSize:    100,
-		},
+			Batch: configoptional.Default(exporterhelper.BatchConfig{
+				FlushTimeout: 200 * time.Millisecond,
+				Sizer:        exporterhelper.RequestSizerTypeItems,
+				MinSize:      8192,
+				MaxSize:      0,
+			}),
+		}),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
@@ -75,18 +82,7 @@ func TestLoadConfig(t *testing.T) {
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
 		BodyJSONOldBodyEnabled:    true,
 	}
-	// Compare fields individually to avoid issues with internal/unexported fields in QueueBatchConfig
-	assert.Equal(t, expectedConfig.DSN, r1.DSN)
-	assert.Equal(t, expectedConfig.TimeoutConfig, r1.TimeoutConfig)
-	assert.Equal(t, expectedConfig.BackOffConfig, r1.BackOffConfig)
-	assert.Equal(t, expectedConfig.QueueBatchConfig.Sizer, r1.QueueBatchConfig.Sizer)
-	assert.Equal(t, expectedConfig.QueueBatchConfig.NumConsumers, r1.QueueBatchConfig.NumConsumers)
-	assert.Equal(t, expectedConfig.QueueBatchConfig.QueueSize, r1.QueueBatchConfig.QueueSize)
-	assert.Equal(t, expectedConfig.AttributesLimits, r1.AttributesLimits)
-	assert.Equal(t, expectedConfig.LogLevelConcurrency, r1.LogLevelConcurrency)
-	assert.Equal(t, expectedConfig.BodyJSONEnabled, r1.BodyJSONEnabled)
-	assert.Equal(t, expectedConfig.PromotedPathsSyncInterval, r1.PromotedPathsSyncInterval)
-	assert.Equal(t, expectedConfig.BodyJSONOldBodyEnabled, r1.BodyJSONOldBodyEnabled)
+	assert.Equal(t, expectedConfig, r1)
 
 	defaultCfg.(*Config).UseNewSchema = true
 	r2 := cfg.Exporters[component.NewIDWithName(metadata.Type, "new_schema")]
