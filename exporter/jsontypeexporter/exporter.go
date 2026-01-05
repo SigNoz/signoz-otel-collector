@@ -249,7 +249,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					cur = maskArrayInt
 				default:
 					// move to next element
-					e.logger.Error("unknown element type in array at path", zap.String("path", prefix))
+					e.logger.Error("unknown element type in array at path", zap.String("path", prefix), zap.Any("type", el.Type()))
 				}
 				if i > 0 && cur != prev {
 					mixed = true
