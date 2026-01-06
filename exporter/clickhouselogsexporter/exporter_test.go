@@ -27,7 +27,7 @@ func eventually(t *testing.T, f func() bool) {
 	assert.Eventually(t, f, 10*time.Second, 100*time.Millisecond)
 }
 
-func testOptions() []LogExporterOption {
+func testOptions(t *testing.T) []LogExporterOption {
 	// keys cache is used to avoid duplicate inserts for the same attribute key.
 	keysCache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
@@ -46,6 +46,11 @@ func testOptions() []LogExporterOption {
 	)
 	go rfCache.Start()
 
+	t.Cleanup(func() {
+		keysCache.Stop()
+		rfCache.Stop()
+	})
+
 	return []LogExporterOption{
 		WithLogger(zap.NewNop()),
 		WithMeter(noop.NewMeterProvider().Meter(metadata.ScopeName)),
@@ -56,7 +61,7 @@ func testOptions() []LogExporterOption {
 
 // setupTestExporter creates a new exporter with mock ClickHouse client for testing
 func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseLogsExporter {
-	opts := testOptions()
+	opts := testOptions(t)
 	opts = append(opts, WithClickHouseClient(mock))
 	id := uuid.New()
 	opts = append(opts, WithNewUsageCollector(id, mock))
@@ -202,7 +207,7 @@ func TestGetResourceAttributesByte(t *testing.T) {
 
 // setupTestExporterWithConcurrency creates a new exporter with mock ClickHouse client and custom concurrency for testing
 func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrency int) *clickhouseLogsExporter {
-	opts := testOptions()
+	opts := testOptions(t)
 	id := uuid.New()
 	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock), WithConcurrency(concurrency))
 
@@ -449,7 +454,7 @@ func TestProcessBody(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create exporter with test configuration
-			opts := testOptions()
+			opts := testOptions(t)
 			opts = append(opts, WithClickHouseClient(nil))
 			id := uuid.New()
 			opts = append(opts, WithNewUsageCollector(id, nil))

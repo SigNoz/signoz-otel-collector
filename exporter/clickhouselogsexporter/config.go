@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/multierr"
@@ -36,8 +37,8 @@ type AttributesLimits struct {
 // Config defines configuration for ClickHouse exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
 
 	// DSN is the ClickHouse server Data Source Name.
 	// For tcp protocol reference: [ClickHouse/clickhouse-go#dsn](https://github.com/ClickHouse/clickhouse-go#dsn).

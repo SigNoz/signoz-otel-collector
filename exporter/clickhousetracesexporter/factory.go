@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -33,7 +34,7 @@ import (
 func createDefaultConfig() component.Config {
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
-		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
@@ -121,7 +122,11 @@ func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, err
 		return nil, err
 	}
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
-	maxIdleConnections := cfg.QueueBatchConfig.NumConsumers + 1
+	// default to 1 extra idle connection; if queue config present, align with consumer count.
+	maxIdleConnections := 1
+	if qc := cfg.QueueBatchConfig.Get(); qc != nil {
+		maxIdleConnections = qc.NumConsumers + 1
+	}
 	if options.MaxIdleConns < maxIdleConnections {
 		options.MaxIdleConns = maxIdleConnections
 		options.MaxOpenConns = maxIdleConnections + 5
