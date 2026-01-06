@@ -28,6 +28,7 @@ func createDefaultConfig() component.Config {
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
+		FailOnError:      false, // Default to logging errors only, not throwing them
 	}
 }
 

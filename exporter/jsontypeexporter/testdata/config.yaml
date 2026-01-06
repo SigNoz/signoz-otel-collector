@@ -2,3 +2,4 @@ jsontypeexporter:
   dsn: tcp://localhost:9000
   max_depth_traverse: 100
   max_array_elements_allowed: 5
+  fail_on_error: true

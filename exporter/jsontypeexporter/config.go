@@ -24,6 +24,11 @@ type Config struct {
 	MaxDepthTraverse *int `mapstructure:"max_depth_traverse"`
 	// MaxArrayElementsAllowed is the maximum number of elements in an array allowed or to be skipped.
 	MaxArrayElementsAllowed *int `mapstructure:"max_array_elements_allowed"`
+
+	// FailOnError determines whether to return errors or only log them.
+	// When false (default), errors are logged but not returned, allowing the exporter to continue processing.
+	// When true, errors are returned, which is useful for testing and debugging.
+	FailOnError bool `mapstructure:"fail_on_error"`
 }
 
 var _ component.Config = (*Config)(nil)
