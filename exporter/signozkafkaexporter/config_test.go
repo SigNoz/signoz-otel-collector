@@ -11,7 +11,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -23,11 +22,6 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter/internal/metadata"
 )
-
-func marshalInterface(inter any) string {
-	b, _ := json.Marshal(inter)
-	return string(b)
-}
 
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
@@ -101,9 +95,6 @@ func TestLoadConfig(t *testing.T) {
 			assert.NoError(t, xconfmap.Validate(cfg))
 			actualCfg := cfg.(*Config)
 			expectedCfg := tt.expected.(*Config)
-
-			t.Logf("actualCfg: %s", marshalInterface(actualCfg))
-			t.Logf("expectedCfg: %s", marshalInterface(expectedCfg))
 
 			assert.Equal(t, expectedCfg, actualCfg)
 		})
