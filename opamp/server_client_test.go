@@ -15,15 +15,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func eventually(t *testing.T, f func() bool) {
-	assert.Eventually(t, f, 5*time.Second, 10*time.Millisecond)
-}
-
 func TestNewClient(t *testing.T) {
 	// FIXME(srikanthccv): this test interferes with other tests that use the same port.
 	// Remove the sleep and find a better way to fix this.
 	time.Sleep(5 * time.Second)
 	srv := StartMockServer(t)
+	t.Cleanup(func() { srv.Close() })
 
 	var conn atomic.Value
 	srv.OnWSConnect = func(c *websocket.Conn) {
@@ -87,17 +84,17 @@ func TestNewClient(t *testing.T) {
 
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
 	// Start the client.
 	err = svrClient.Start(ctx)
-	defer func() {
-		err := svrClient.Stop(ctx)
-		require.NoError(t, err)
-	}()
+	t.Cleanup(func() {
+		_ = svrClient.Stop(ctx)
+	})
 	require.NoError(t, err)
 
 	// Wait for the client to connect.
-	eventually(t, func() bool {
+	assert.Eventually(t, func() bool {
 		return atomic.LoadInt64(&connected) == 1
-	})
+	}, 15*time.Second, 10*time.Millisecond)
 }
