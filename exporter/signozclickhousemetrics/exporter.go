@@ -1038,7 +1038,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
-		defer statement.Close()
+		defer func() { _ = statement.Close() }()
 
 		for _, ts := range timeSeries {
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
@@ -1095,7 +1095,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
-		defer statement.Close()
+		defer func() { _ = statement.Close() }()
 
 		for _, sample := range samples {
 			err = statement.Append(
@@ -1150,7 +1150,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
-		defer statement.Close()
+		defer func() { _ = statement.Close() }()
 
 		for _, expHist := range expHist {
 			err = statement.Append(
@@ -1195,7 +1195,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err != nil {
 			return err
 		}
-		defer statement.Close()
+		defer func() { _ = statement.Close() }()
 
 		for _, meta := range metadata {
 			err = statement.Append(
