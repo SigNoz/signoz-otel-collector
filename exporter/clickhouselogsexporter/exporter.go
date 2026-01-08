@@ -317,6 +317,11 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		return nil, err
 	}
 
+	maxAllowedDataAgeDays := defaultMaxAllowedDataAgeDays
+	if cfg.MaxAllowedDataAgeDays != nil {
+		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
+	}
+
 	e := &clickhouseLogsExporter{
 		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
@@ -329,7 +334,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
 		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
-		maxAllowedDataAgeDays:     15,
+		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
 	for _, opt := range opts {
 		opt(e)
