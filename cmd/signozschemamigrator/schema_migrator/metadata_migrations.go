@@ -1,5 +1,10 @@
 package schemamigrator
 
+import (
+	"fmt"
+	"time"
+)
+
 var MetadataMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1000,
@@ -59,6 +64,70 @@ var MetadataMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_metadata",
 				Table:    "attributes_metadata",
+			},
+		},
+	},
+	{
+		MigrationID: 1001,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "column_evolution_metadata",
+				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "column_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "release_time", Type: ColumnTypeUInt64, Codec: "DoubleDelta, ZSTD(1)"},
+				},
+				Engine: MergeTree{
+					OrderBy:     "(signal, column_name, column_type, field_context, field_name, release_time)",
+					PartitionBy: "toDate(release_time / 1000000000)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_column_evolution_metadata",
+				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "column_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "column_type", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_name", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "release_time", Type: ColumnTypeUInt64, Codec: "DoubleDelta, ZSTD(1)"},
+				},
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "column_evolution_metadata",
+					ShardingKey: "cityHash64(signal,column_name)",
+				},
+			},
+			InsertIntoTable{
+				Database:    "signoz_metadata",
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "release_time"},
+				Values:      "('logs', 'resources_string', 'Map(LowCardinality(String), Float64)', 'resource', '__all__', 0)",
+			},
+			InsertIntoTable{
+				Database:    "signoz_metadata",
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "release_time"},
+				Values:      fmt.Sprintf("('logs', 'resource', 'JSON()', 'resource', '__all__', %d)", time.Now().UnixNano()),
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_column_evolution_metadata",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "column_evolution_metadata",
 			},
 		},
 	},
