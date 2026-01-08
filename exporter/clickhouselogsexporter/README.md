@@ -20,6 +20,7 @@ The following settings are required:
 
 The following settings can be optionally configured:
 - `timeout` (default = 5s): The timeout for every attempt to send data to the backend.
+- `max_allowed_data_age_days` (default = 15): Drop logs older than now minus this many days.
 - `sending_queue`
   - `queue_size` (default = 5000): Maximum number of batches kept in memory before dropping data.
 - `retry_on_failure`
@@ -40,6 +41,7 @@ exporters:
   clickhouselogsexporter:
     dsn: tcp://127.0.0.1:9000
     timeout: 5s
+    max_allowed_data_age_days: 15
     retry_on_failure:
       enabled: true
       initial_interval: 5s

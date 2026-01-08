@@ -303,7 +303,7 @@ type clickhouseLogsExporter struct {
 	maxDistinctValues     int
 	fetchKeysInterval     time.Duration
 	shutdownFuncs         []func() error
-	maxAllowedDataAgeDays uint64
+	maxAllowedDataAgeDays int
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
@@ -315,6 +315,11 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	// view should be registered after exporter is initialized
 	if err := view.Register(LogsCountView, LogsSizeView); err != nil {
 		return nil, err
+	}
+
+	maxAllowedDataAgeDays := defaultMaxAllowedDataAgeDays
+	if cfg.MaxAllowedDataAgeDays != nil {
+		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
 	}
 
 	e := &clickhouseLogsExporter{
@@ -329,7 +334,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
 		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
-		maxAllowedDataAgeDays:     15,
+		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
 	for _, opt := range opts {
 		opt(e)
