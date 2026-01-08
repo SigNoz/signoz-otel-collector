@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	defaultPromotedPathsSyncInterval = 5 * time.Minute
-	defaultMaxAllowedDataAgeDays     uint64 = 15
+	defaultPromotedPathsSyncInterval     = 5 * time.Minute
+	defaultMaxAllowedDataAgeDays     int = 15
 )
 
 type AttributesLimits struct {
@@ -51,7 +51,7 @@ type Config struct {
 	BodyJSONEnabled           bool             `mapstructure:"body_json_enabled"`
 	BodyJSONOldBodyEnabled    bool             `mapstructure:"body_json_old_body_enabled"`
 	// MaxAllowedDataAgeDays drops logs older than now minus this many days.
-	MaxAllowedDataAgeDays     *uint64          `mapstructure:"max_allowed_data_age_days"`
+	MaxAllowedDataAgeDays *int `mapstructure:"max_allowed_data_age_days"`
 }
 
 var (

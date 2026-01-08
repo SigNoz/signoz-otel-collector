@@ -23,6 +23,7 @@ exporters:
     body_json_enabled: true
     promoted_paths_sync_interval: 10s
     body_json_old_body_enabled: true
+    max_allowed_data_age_days: 15
   clickhouselogsexporter/new_schema:
     dsn: tcp://127.0.0.1:9000/?dial_timeout=5s
     use_new_schema: true

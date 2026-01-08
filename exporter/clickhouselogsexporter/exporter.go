@@ -303,7 +303,7 @@ type clickhouseLogsExporter struct {
 	maxDistinctValues     int
 	fetchKeysInterval     time.Duration
 	shutdownFuncs         []func() error
-	maxAllowedDataAgeDays uint64
+	maxAllowedDataAgeDays int
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
