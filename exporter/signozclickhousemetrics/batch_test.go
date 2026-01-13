@@ -35,7 +35,6 @@ type metadataCall struct {
 }
 
 type metadataCheck struct {
-	seenKey                 string
 	expectedMetricName      string
 	expectedDescription     string
 	expectedUnit            string
@@ -85,7 +84,6 @@ func TestBatch_addMetadata(t *testing.T) {
 			expectedMetaCount: 2,
 			checks: []metadataCheck{
 				{
-					seenKey:                 "service.nametest.metric",
 					expectedMetricName:      "test.metric",
 					expectedDescription:     "Test metric description",
 					expectedUnit:            "ms",
@@ -99,7 +97,7 @@ func TestBatch_addMetadata(t *testing.T) {
 					expectedLastReported:    intPtr(baseTimestamp + timestampOffset1),
 				},
 				{
-					seenKey:                 "envtest.metric",
+					expectedMetricName:      "test.metric",
 					expectedAttrName:        "env",
 					expectedAttrStringValue: "prod",
 					expectedFirstReported:   intPtr(baseTimestamp),
@@ -136,7 +134,7 @@ func TestBatch_addMetadata(t *testing.T) {
 			},
 		},
 		{
-			name: "update existing metadata timestamps",
+			name: "multiple calls create multiple entries (no deduplication)",
 			setupAttrs: func() pcommon.Map {
 				attrs := pcommon.NewMap()
 				attrs.PutStr("service.name", "test-service")
@@ -165,17 +163,24 @@ func TestBatch_addMetadata(t *testing.T) {
 					lastSeen:    baseTimestamp + timestampOffset3,
 				},
 			},
-			expectedMetaCount: 1,
+			expectedMetaCount: 2, // Both entries are added, no deduplication
 			checks: []metadataCheck{
 				{
-					seenKey:               "service.nametest.metric",
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
+					expectedFirstReported: intPtr(baseTimestamp),
+					expectedLastReported:  intPtr(baseTimestamp + timestampOffset1),
+				},
+				{
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
 					expectedFirstReported: intPtr(baseTimestamp - timestampOffset5),
 					expectedLastReported:  intPtr(baseTimestamp + timestampOffset3),
 				},
 			},
 		},
 		{
-			name: "update existing metadata with nil timestamps updates with current time",
+			name: "multiple calls with nil timestamps create multiple entries",
 			setupAttrs: func() pcommon.Map {
 				attrs := pcommon.NewMap()
 				attrs.PutStr("service.name", "test-service")
@@ -204,18 +209,18 @@ func TestBatch_addMetadata(t *testing.T) {
 					lastSeen:    unsetTimestamp,
 				},
 			},
-			expectedMetaCount: 1,
+			expectedMetaCount: 2, // Both entries are added, no deduplication
 			customCheck: func(t *testing.T, b *batch) {
-				idx, exists := b.metaIdx["service.nametest.metric"]
-				require.True(t, exists)
-				meta := b.metadata[idx]
-				// firstReportedUnixMilli should remain at baseTimestamp because time.Now() > baseTimestamp,
-				// so the update logic (which only updates if new < existing) won't update it
-				assert.Equal(t, baseTimestamp, meta.firstReportedUnixMilli)
-				// lastReportedUnixMilli should be updated to time.Now() because time.Now() > existing last
-				assert.Greater(t, meta.lastReportedUnixMilli, baseTimestamp+timestampOffset1)
-				// First should be <= last
-				assert.LessOrEqual(t, meta.firstReportedUnixMilli, meta.lastReportedUnixMilli)
+				// First entry should have the original timestamps
+				meta1 := b.metadata[0]
+				assert.Equal(t, baseTimestamp, meta1.firstReportedUnixMilli)
+				assert.Equal(t, baseTimestamp+timestampOffset1, meta1.lastReportedUnixMilli)
+
+				// Second entry should have current time (set when unsetTimestamp is detected)
+				meta2 := b.metadata[1]
+				assert.Greater(t, meta2.firstReportedUnixMilli, int64(0))
+				assert.Greater(t, meta2.lastReportedUnixMilli, int64(0))
+				assert.Equal(t, meta2.firstReportedUnixMilli, meta2.lastReportedUnixMilli, "first and last should be equal when unset")
 			},
 		},
 		{
@@ -242,18 +247,18 @@ func TestBatch_addMetadata(t *testing.T) {
 			expectedMetaCount: 2,
 			checks: []metadataCheck{
 				{
-					seenKey:                 "letest.metric0.5",
+					expectedMetricName:      "test.metric",
 					expectedAttrName:        "le",
 					expectedAttrStringValue: "0.5",
 				},
 				{
-					seenKey:          "service.nametest.metric",
-					expectedAttrName: "service.name",
+					expectedMetricName: "test.metric",
+					expectedAttrName:   "service.name",
 				},
 			},
 		},
 		{
-			name: "update timestamps when firstReportedUnixMilli is zero",
+			name: "multiple calls with zero timestamps create multiple entries",
 			setupAttrs: func() pcommon.Map {
 				attrs := pcommon.NewMap()
 				attrs.PutStr("service.name", "test-service")
@@ -282,10 +287,17 @@ func TestBatch_addMetadata(t *testing.T) {
 					lastSeen:    baseTimestamp + timestampOffset1,
 				},
 			},
-			expectedMetaCount: 1,
+			expectedMetaCount: 2, // Both entries are added, no deduplication
 			checks: []metadataCheck{
 				{
-					seenKey:               "service.nametest.metric",
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
+					expectedFirstReported: intPtr(int64(0)),
+					expectedLastReported:  intPtr(int64(0)),
+				},
+				{
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
 					expectedFirstReported: intPtr(baseTimestamp),
 					expectedLastReported:  intPtr(baseTimestamp + timestampOffset1),
 				},
@@ -325,19 +337,19 @@ func TestBatch_addMetadata(t *testing.T) {
 			expectedMetaCount: 4,
 			checks: []metadataCheck{
 				{
-					seenKey:               "service.namemetric1",
 					expectedMetricName:    "metric1",
+					expectedAttrName:      "service.name",
 					expectedFirstReported: intPtr(baseTimestamp),
 				},
 				{
-					seenKey:               "service.namemetric2",
 					expectedMetricName:    "metric2",
+					expectedAttrName:      "service.name",
 					expectedFirstReported: intPtr(baseTimestamp + timestampOffset3),
 				},
 			},
 		},
 		{
-			name: "update timestamps only when new first is earlier or new last is later",
+			name: "multiple calls create multiple entries regardless of timestamp values",
 			setupAttrs: func() pcommon.Map {
 				attrs := pcommon.NewMap()
 				attrs.PutStr("service.name", "test-service")
@@ -366,12 +378,19 @@ func TestBatch_addMetadata(t *testing.T) {
 					lastSeen:    baseTimestamp + timestampOffset5,
 				},
 			},
-			expectedMetaCount: 1,
+			expectedMetaCount: 2, // Both entries are added, no deduplication
 			checks: []metadataCheck{
 				{
-					seenKey:               "service.nametest.metric",
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
 					expectedFirstReported: intPtr(baseTimestamp),
 					expectedLastReported:  intPtr(baseTimestamp + timestampOffset1),
+				},
+				{
+					expectedMetricName:    "test.metric",
+					expectedAttrName:      "service.name",
+					expectedFirstReported: intPtr(baseTimestamp + timestampOffset6),
+					expectedLastReported:  intPtr(baseTimestamp + timestampOffset5),
 				},
 			},
 		},
@@ -398,8 +417,9 @@ func TestBatch_addMetadata(t *testing.T) {
 			expectedMetaCount: 1,
 			checks: []metadataCheck{
 				{
-					seenKey:          "service.nametest.metric",
-					expectedAttrType: "resource",
+					expectedMetricName: "test.metric",
+					expectedAttrName:   "service.name",
+					expectedAttrType:   "resource",
 				},
 			},
 		},
@@ -426,8 +446,9 @@ func TestBatch_addMetadata(t *testing.T) {
 			expectedMetaCount: 1,
 			checks: []metadataCheck{
 				{
-					seenKey:          "scope.nametest.metric",
-					expectedAttrType: "scope",
+					expectedMetricName: "test.metric",
+					expectedAttrName:   "scope.name",
+					expectedAttrType:   "scope",
 				},
 			},
 		},
@@ -455,56 +476,63 @@ func TestBatch_addMetadata(t *testing.T) {
 			}
 
 			require.Equal(t, tc.expectedMetaCount, len(b.metadata), "metadata count mismatch")
-			require.Equal(t, tc.expectedMetaCount, len(b.metaIdx), "metaIdx count mismatch")
-			require.Equal(t, tc.expectedMetaCount, len(b.metaSeen), "metaSeen count mismatch")
 
 			for _, check := range tc.checks {
-				idx, exists := b.metaIdx[check.seenKey]
-				require.True(t, exists, "should have entry for seenKey: %s", check.seenKey)
-				meta := b.metadata[idx]
+				// Find the metadata entry matching the check criteria
+				var meta *metadata
+				for _, m := range b.metadata {
+					if m.metricName == check.expectedMetricName && m.attrName == check.expectedAttrName {
+						if check.expectedAttrStringValue == "" || m.attrStringValue == check.expectedAttrStringValue {
+							meta = m
+							break
+						}
+					}
+				}
+				require.NotNil(t, meta, "should have entry matching check criteria: metric=%s, attr=%s, value=%s", check.expectedMetricName, check.expectedAttrName, check.expectedAttrStringValue)
 
+				checkID := check.expectedMetricName + "/" + check.expectedAttrName
 				if check.expectedMetricName != "" {
-					assert.Equal(t, check.expectedMetricName, meta.metricName, "metric name mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedMetricName, meta.metricName, "metric name mismatch for %s", checkID)
 				}
 				if check.expectedDescription != "" {
-					assert.Equal(t, check.expectedDescription, meta.description, "description mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedDescription, meta.description, "description mismatch for %s", checkID)
 				}
 				if check.expectedUnit != "" {
-					assert.Equal(t, check.expectedUnit, meta.unit, "unit mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedUnit, meta.unit, "unit mismatch for %s", checkID)
 				}
 				if check.expectedType != pmetric.MetricTypeEmpty {
-					assert.Equal(t, check.expectedType, meta.typ, "type mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedType, meta.typ, "type mismatch for %s", checkID)
 				}
 				// Check temporality if it's not the default unspecified value or if explicitly set in first test case
 				if check.expectedTemporality != pmetric.AggregationTemporalityUnspecified {
-					assert.Equal(t, check.expectedTemporality, meta.temporality, "temporality mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedTemporality, meta.temporality, "temporality mismatch for %s", checkID)
 				}
 				// Check isMonotonic by finding the matching call
 				if len(tc.calls) > 0 {
 					for _, call := range tc.calls {
 						if call.name == meta.metricName {
-							assert.Equal(t, call.isMonotonic, meta.isMonotonic, "isMonotonic mismatch for %s", check.seenKey)
+							assert.Equal(t, call.isMonotonic, meta.isMonotonic, "isMonotonic mismatch for %s", checkID)
 							break
 						}
 					}
 				}
 				if check.expectedAttrName != "" {
-					assert.Equal(t, check.expectedAttrName, meta.attrName, "attrName mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedAttrName, meta.attrName, "attrName mismatch for %s", checkID)
 				}
 				if check.expectedAttrType != "" {
-					assert.Equal(t, check.expectedAttrType, meta.attrType, "attrType mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedAttrType, meta.attrType, "attrType mismatch for %s", checkID)
 				}
 				if check.expectedAttrDatatype != pcommon.ValueTypeEmpty {
-					assert.Equal(t, check.expectedAttrDatatype, meta.attrDatatype, "attrDatatype mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedAttrDatatype, meta.attrDatatype, "attrDatatype mismatch for %s", checkID)
 				}
 				if check.expectedAttrStringValue != "" {
-					assert.Equal(t, check.expectedAttrStringValue, meta.attrStringValue, "attrStringValue mismatch for %s", check.seenKey)
+					assert.Equal(t, check.expectedAttrStringValue, meta.attrStringValue, "attrStringValue mismatch for %s", checkID)
 				}
 				if check.expectedFirstReported != nil {
-					assert.Equal(t, *check.expectedFirstReported, meta.firstReportedUnixMilli, "firstReportedUnixMilli mismatch for %s", check.seenKey)
+					assert.Equal(t, *check.expectedFirstReported, meta.firstReportedUnixMilli, "firstReportedUnixMilli mismatch for %s", checkID)
 				}
 				if check.expectedLastReported != nil {
-					assert.Equal(t, *check.expectedLastReported, meta.lastReportedUnixMilli, "lastReportedUnixMilli mismatch for %s", check.seenKey)
+					assert.Equal(t, *check.expectedLastReported, meta.lastReportedUnixMilli, "lastReportedUnixMilli mismatch for %s", checkID)
 				}
 			}
 

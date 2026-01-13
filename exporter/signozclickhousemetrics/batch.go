@@ -15,9 +15,7 @@ type batch struct {
 	ts       []*ts
 	metadata []*metadata
 
-	metaSeen map[string]struct{}
-	metaIdx  map[string]int // maps seenKey -> index in metadata slice
-	logger   *zap.Logger
+	logger *zap.Logger
 }
 
 func newBatch(logger *zap.Logger) *batch {
@@ -26,8 +24,6 @@ func newBatch(logger *zap.Logger) *batch {
 		expHist:  make([]*exponentialHistogramSample, 0),
 		ts:       make([]*ts, 0),
 		metadata: make([]*metadata, 0),
-		metaSeen: make(map[string]struct{}),
-		metaIdx:  make(map[string]int),
 		logger:   logger,
 	}
 }
@@ -44,33 +40,16 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		)
 	}
 
+	// Append all metadata entries without deduplication.
+	// The AggregatingMergeTree engine in ClickHouse will handle merging rows
+	// with the same ORDER BY key (temporality, metric_name, attr_name, attr_type, attr_datatype, attr_string_value)
+	// during background merges, aggregating first_reported_unix_milli (min) and last_reported_unix_milli (max).
 	for key, value := range fingerprint.Attributes() {
-		seenKey := key + name
-		if key == "le" {
-			seenKey += value.Val
-		}
 		// there should never be a conflicting key (either with resource, scope, or point attributes) in metrics
 		// it breaks the fingerprinting, we assume this will never happen
 		// even if it does, we will not handle it on our end (because we can't reliably which should take
 		// precedence), the user should be responsible for ensuring no conflicting keys in their metrics
 
-		// Check if metadata already exists
-		if idx, exists := b.metaIdx[seenKey]; exists {
-			// Update timestamps
-			existing := b.metadata[idx]
-			if existing.firstReportedUnixMilli == 0 || firstSeenUnixMilli < existing.firstReportedUnixMilli {
-				existing.firstReportedUnixMilli = firstSeenUnixMilli
-			}
-			if lastSeenUnixMilli > existing.lastReportedUnixMilli {
-				existing.lastReportedUnixMilli = lastSeenUnixMilli
-			}
-			continue
-		}
-
-		// New metadata entry
-		b.metaSeen[seenKey] = struct{}{}
-		idx := len(b.metadata)
-		b.metaIdx[seenKey] = idx
 		b.metadata = append(b.metadata, &metadata{
 			metricName:             name,
 			temporality:            temporality,
