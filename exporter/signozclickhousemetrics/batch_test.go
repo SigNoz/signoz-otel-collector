@@ -478,14 +478,23 @@ func TestBatch_addMetadata(t *testing.T) {
 			require.Equal(t, tc.expectedMetaCount, len(b.metadata), "metadata count mismatch")
 
 			for _, check := range tc.checks {
-				// Find the metadata entry matching the check criteria
+				// Find the metadata entry matching all check criteria, including timestamps
 				var meta *metadata
 				for _, m := range b.metadata {
 					if m.metricName == check.expectedMetricName && m.attrName == check.expectedAttrName {
-						if check.expectedAttrStringValue == "" || m.attrStringValue == check.expectedAttrStringValue {
-							meta = m
-							break
+						// Match attribute value if specified
+						if check.expectedAttrStringValue != "" && m.attrStringValue != check.expectedAttrStringValue {
+							continue
 						}
+						// Match timestamps if specified
+						if check.expectedFirstReported != nil && m.firstReportedUnixMilli != *check.expectedFirstReported {
+							continue
+						}
+						if check.expectedLastReported != nil && m.lastReportedUnixMilli != *check.expectedLastReported {
+							continue
+						}
+						meta = m
+						break
 					}
 				}
 				require.NotNil(t, meta, "should have entry matching check criteria: metric=%s, attr=%s, value=%s", check.expectedMetricName, check.expectedAttrName, check.expectedAttrStringValue)
