@@ -281,6 +281,11 @@ func TestInferArrayMask(t *testing.T) {
 		want  uint16
 	}{
 		{
+			name:  "bool_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeBool, pcommon.ValueTypeBool},
+			want:  maskArrayBool,
+		},
+		{
 			name:  "int_and_float",
 			types: []pcommon.ValueType{pcommon.ValueTypeInt, pcommon.ValueTypeDouble},
 			want:  maskArrayFloat,

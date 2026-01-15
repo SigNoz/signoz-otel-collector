@@ -278,12 +278,12 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 }
 
 func inferArrayMask(types []pcommon.ValueType) uint16 {
-	unique := make(map[pcommon.ValueType]struct{}, len(types))
+	unique := make(map[pcommon.ValueType]bool, len(types))
 	for _, t := range types {
 		if t == pcommon.ValueTypeBytes {
 			t = pcommon.ValueTypeStr
 		}
-		unique[t] = struct{}{}
+		unique[t] = true
 	}
 
 	hasJSON := false
@@ -296,48 +296,36 @@ func inferArrayMask(types []pcommon.ValueType) uint16 {
 			continue
 		}
 
-		// group bytes as string already
-		if t == pcommon.ValueTypeStr || t == pcommon.ValueTypeBytes {
-			hasPrimitive = true
-			continue
-		}
-
 		hasPrimitive = true
 	}
 
-	// If there's JSON + any primitive → Dynamic
-	if hasJSON && hasPrimitive {
+	if hasJSON {
+		// If only JSON → Array(JSON) (no primitive types)
+		if !hasPrimitive {
+			return maskArrayJSON
+		}
+		// If there's JSON + any primitive → Dynamic
 		return maskArrayDynamic
 	}
 
-	// If only JSON → Array(JSON)
-	if hasJSON && !hasPrimitive {
-		return maskArrayJSON
-	}
-
 	// ---- Primitive Type Resolution ----
-	needFloat := false
-	for t := range unique {
-		switch t {
-		case pcommon.ValueTypeInt:
-			// nothing
-		case pcommon.ValueTypeDouble:
-			needFloat = true
-		case pcommon.ValueTypeBool:
-			// bool coerces to int -> handled automatically
-		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-			// strings cannot coerce with any other primitive
-			if len(unique) > 1 {
-				return maskArrayDynamic
-			}
-			return maskArrayString
+	if unique[pcommon.ValueTypeStr] {
+		// strings cannot coerce with any other primitive
+		if len(unique) > 1 {
+			return maskArrayDynamic
 		}
+		return maskArrayString
 	}
 
-	if needFloat {
+	if unique[pcommon.ValueTypeDouble] {
 		return maskArrayFloat
+	} else if unique[pcommon.ValueTypeInt] {
+		return maskArrayInt
+	} else if unique[pcommon.ValueTypeBool] {
+		return maskArrayBool
 	}
-	return maskArrayInt
+
+	return maskArrayDynamic
 }
 
 // persistTypes writes the collected types to the ClickHouse database
