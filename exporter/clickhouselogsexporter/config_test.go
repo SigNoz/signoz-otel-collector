@@ -75,6 +75,7 @@ func TestLoadConfig(t *testing.T) {
 		BodyJSONEnabled:           true,
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
 		BodyJSONOldBodyEnabled:    true,
+		MaxAllowedDataAgeDays:     utils.ToPointer(15),
 	})
 
 	defaultCfg.(*Config).UseNewSchema = true
