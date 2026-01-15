@@ -235,8 +235,8 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					}
 					types = append(types, el.Type())
 				case pcommon.ValueTypeSlice:
-					// pass via the array element
 					e.logger.Error("arrays inside arrays are not supported!", zap.String("path", prefix))
+					return nil
 				case pcommon.ValueTypeStr,
 					pcommon.ValueTypeBytes,
 					pcommon.ValueTypeBool,
@@ -244,9 +244,8 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					pcommon.ValueTypeInt:
 					types = append(types, el.Type())
 				default:
-					// move to next element
 					e.logger.Error("unknown element type in array at path", zap.String("path", prefix), zap.Any("type", el.Type()))
-					continue
+					return nil
 				}
 			}
 
@@ -279,11 +278,19 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 }
 
 func inferArrayMask(types []pcommon.ValueType) uint16 {
+	unique := make(map[pcommon.ValueType]struct{}, len(types))
+	for _, t := range types {
+		if t == pcommon.ValueTypeBytes {
+			t = pcommon.ValueTypeStr
+		}
+		unique[t] = struct{}{}
+	}
+
 	hasJSON := false
 	hasPrimitive := false
 
 	// classify types
-	for _, t := range types {
+	for t := range unique {
 		if t == pcommon.ValueTypeMap {
 			hasJSON = true
 			continue
@@ -310,7 +317,7 @@ func inferArrayMask(types []pcommon.ValueType) uint16 {
 
 	// ---- Primitive Type Resolution ----
 	needFloat := false
-	for _, t := range types {
+	for t := range unique {
 		switch t {
 		case pcommon.ValueTypeInt:
 			// nothing
@@ -320,7 +327,7 @@ func inferArrayMask(types []pcommon.ValueType) uint16 {
 			// bool coerces to int -> handled automatically
 		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 			// strings cannot coerce with any other primitive
-			if len(types) > 1 {
+			if len(unique) > 1 {
 				return maskArrayDynamic
 			}
 			return maskArrayString
