@@ -1026,6 +1026,9 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 		return nil, err
 	}
 
+	// default settings for allowing ClickHouse to handle duplicate paths in JSON type.
+	options.Settings["type_json_skip_duplicated_paths"] = 1
+
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxIdleConnections := cfg.QueueBatchConfig.NumConsumers + 1
 	if options.MaxIdleConns < maxIdleConnections {

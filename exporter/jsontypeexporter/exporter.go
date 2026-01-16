@@ -286,18 +286,8 @@ func inferArrayMask(types []pcommon.ValueType) uint16 {
 		unique[t] = true
 	}
 
-	hasJSON := false
-	hasPrimitive := false
-
-	// classify types
-	for t := range unique {
-		if t == pcommon.ValueTypeMap {
-			hasJSON = true
-			continue
-		}
-
-		hasPrimitive = true
-	}
+	hasJSON := unique[pcommon.ValueTypeMap]
+	hasPrimitive := (hasJSON && len(unique) > 1) || (!hasJSON && len(unique) > 0)
 
 	if hasJSON {
 		// If only JSON → Array(JSON) (no primitive types)
