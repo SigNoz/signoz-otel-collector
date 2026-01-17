@@ -80,7 +80,7 @@ func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
+func (e *jsonTypeExporter) processLogs(ctx context.Context, ld plog.Logs) error {
 	select {
 	case <-e.closeChan:
 		return errors.New("shutdown has been called")
@@ -134,6 +134,17 @@ logIteration:
 	if err := e.persistTypes(ctx, &types); err != nil {
 		e.logger.Error("Failed to persist types to database", zap.Error(err))
 		return err
+	}
+
+	return nil
+}
+
+func (e *jsonTypeExporter) pushLogs(ctx context.Context, ld plog.Logs) error {
+	if err := e.processLogs(ctx, ld); err != nil {
+		if e.config.FailOnError {
+			return err
+		}
+		e.logger.Error("Failed to process logs", zap.Error(err))
 	}
 
 	return nil
@@ -226,7 +237,8 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					}
 					cur = maskArrayJSON
 				case pcommon.ValueTypeSlice:
-					return fmt.Errorf("arrays inside arrays are not supported! found at path: %s", prefix)
+					// pass via the array element
+					e.logger.Error("arrays inside arrays are not supported!", zap.String("path", prefix))
 				case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 					cur = maskArrayString
 				case pcommon.ValueTypeBool:
@@ -236,7 +248,8 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 				case pcommon.ValueTypeInt:
 					cur = maskArrayInt
 				default:
-					return fmt.Errorf("unknown element type in array at path: %s", prefix)
+					// move to next element
+					e.logger.Error("unknown element type in array at path", zap.String("path", prefix), zap.Any("type", el.Type()))
 				}
 				if i > 0 && cur != prev {
 					mixed = true
