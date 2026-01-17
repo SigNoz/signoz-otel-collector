@@ -292,7 +292,7 @@ func (e *jsonTypeExporter) persistTypes(ctx context.Context, typeSet *TypeSet) e
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch statement: %w", err)
 	}
-	defer statement.Close()
+	defer func() { _ = statement.Close() }()
 
 	now := time.Now().UnixNano()
 	insertedCount := 0

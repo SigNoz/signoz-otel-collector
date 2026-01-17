@@ -81,7 +81,7 @@ func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
 	// restore the original file
 	defer func() {
 		_ = copy("./testdata/service-instance-id-copy.yaml", "./testdata/service-instance-id.yaml")
-		os.Remove("./testdata/service-instance-id-copy.yaml")
+		_ = os.Remove("./testdata/service-instance-id-copy.yaml")
 	}()
 
 	_, err := NewDynamicConfig("./testdata/service-instance-id.yaml", func(contents []byte) error { return nil }, nil)
@@ -103,8 +103,8 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 	defer func() {
 		_ = copy("./testdata/coll-config-path-copy.yaml", "./testdata/coll-config-path.yaml")
 		_ = copy("./testdata/coll-config-path-changed-copy.yaml", "./testdata/coll-config-path-changed.yaml")
-		os.Remove("./testdata/coll-config-path-copy.yaml")
-		os.Remove("./testdata/coll-config-path-changed-copy.yaml")
+		_ = os.Remove("./testdata/coll-config-path-copy.yaml")
+		_ = os.Remove("./testdata/coll-config-path-changed-copy.yaml")
 	}()
 
 	logger := newLogger(t)

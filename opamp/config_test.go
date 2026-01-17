@@ -45,7 +45,7 @@ func TestParseConfigAddsID(t *testing.T) {
 	defer func() {
 		err := copy("./testdata/agent-id-copy.yaml", "./testdata/agent-id.yaml")
 		assert.NoError(t, err, "failed to restore original file")
-		os.Remove("./testdata/agent-id-copy.yaml")
+		_ = os.Remove("./testdata/agent-id-copy.yaml")
 	}()
 
 	cfg, err := ParseAgentManagerConfig("./testdata/agent-id.yaml")
