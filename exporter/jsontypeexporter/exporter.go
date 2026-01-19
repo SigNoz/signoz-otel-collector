@@ -218,15 +218,13 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 		case pcommon.ValueTypeSlice:
 			s := val.Slice()
 			// skip this slice since it contains too many elements
-			if s.Len() > *e.config.MaxArrayElementsAllowed {
+			if s.Len() == 0 || s.Len() > *e.config.MaxArrayElementsAllowed {
 				return nil
 			}
 
-			var prev uint16
-			mixed := false
+			types := make([]pcommon.ValueType, 0, s.Len())
 			for i := 0; i < s.Len(); i++ {
 				el := s.At(i)
-				var cur uint16
 				switch el.Type() {
 				case pcommon.ValueTypeMap:
 					// When traversing into array element objects, do not increase depth level.
@@ -235,32 +233,28 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 					if err := closure(ctx, prefix+ArraySuffix, el, typeSet, level); err != nil {
 						return err
 					}
-					cur = maskArrayJSON
+					types = append(types, el.Type())
 				case pcommon.ValueTypeSlice:
-					// pass via the array element
 					e.logger.Error("arrays inside arrays are not supported!", zap.String("path", prefix))
-				case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-					cur = maskArrayString
-				case pcommon.ValueTypeBool:
-					cur = maskArrayBool
-				case pcommon.ValueTypeDouble:
-					cur = maskArrayFloat
-				case pcommon.ValueTypeInt:
-					cur = maskArrayInt
+					return nil
+				case pcommon.ValueTypeStr,
+					pcommon.ValueTypeBytes,
+					pcommon.ValueTypeBool,
+					pcommon.ValueTypeDouble,
+					pcommon.ValueTypeInt:
+					types = append(types, el.Type())
 				default:
-					// move to next element
 					e.logger.Error("unknown element type in array at path", zap.String("path", prefix), zap.Any("type", el.Type()))
+					return nil
 				}
-				if i > 0 && cur != prev {
-					mixed = true
-					break
-				}
-				prev = cur
 			}
-			if mixed {
-				typeSet.Insert(prefix, maskArrayDynamic)
-			} else if prev != 0 {
-				typeSet.Insert(prefix, prev)
+
+			if len(types) == 0 {
+				return nil
+			}
+
+			if mask := inferArrayMask(types); mask != 0 {
+				typeSet.Insert(prefix, mask)
 			}
 			return nil
 		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
@@ -281,6 +275,47 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 	}
 
 	return closure(ctx, "", val, typeSet, 0)
+}
+
+func inferArrayMask(types []pcommon.ValueType) uint16 {
+	unique := make(map[pcommon.ValueType]bool, len(types))
+	for _, t := range types {
+		if t == pcommon.ValueTypeBytes {
+			t = pcommon.ValueTypeStr
+		}
+		unique[t] = true
+	}
+
+	hasJSON := unique[pcommon.ValueTypeMap]
+	hasPrimitive := (hasJSON && len(unique) > 1) || (!hasJSON && len(unique) > 0)
+
+	if hasJSON {
+		// If only JSON → Array(JSON) (no primitive types)
+		if !hasPrimitive {
+			return maskArrayJSON
+		}
+		// If there's JSON + any primitive → Dynamic
+		return maskArrayDynamic
+	}
+
+	// ---- Primitive Type Resolution ----
+	if unique[pcommon.ValueTypeStr] {
+		// strings cannot coerce with any other primitive
+		if len(unique) > 1 {
+			return maskArrayDynamic
+		}
+		return maskArrayString
+	}
+
+	if unique[pcommon.ValueTypeDouble] {
+		return maskArrayFloat
+	} else if unique[pcommon.ValueTypeInt] {
+		return maskArrayInt
+	} else if unique[pcommon.ValueTypeBool] {
+		return maskArrayBool
+	}
+
+	return maskArrayDynamic
 }
 
 // persistTypes writes the collected types to the ClickHouse database
