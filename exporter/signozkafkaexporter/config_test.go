@@ -55,7 +55,6 @@ func TestLoadConfig(t *testing.T) {
 						FlushTimeout: 200 * time.Millisecond,
 						Sizer:        exporterhelper.RequestSizerTypeItems,
 						MinSize:      8192,
-						MaxSize:      0,
 					}),
 				}),
 				Topic:    "spans",

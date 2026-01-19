@@ -41,7 +41,6 @@ func Test_loadConfig(t *testing.T) {
 		FlushTimeout: 200 * time.Millisecond,
 		Sizer:        exporterhelper.RequestSizerTypeItems,
 		MinSize:      8192,
-		MaxSize:      0,
 	})
 	assert.Equal(t, &Config{
 		TimeoutConfig: exporterhelper.TimeoutConfig{Timeout: 5 * time.Second},
