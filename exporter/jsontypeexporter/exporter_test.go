@@ -273,3 +273,93 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestInferArrayMask(t *testing.T) {
+	tests := []struct {
+		name  string
+		types []pcommon.ValueType
+		want  uint16
+	}{
+		{
+			name:  "bool_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeBool, pcommon.ValueTypeBool},
+			want:  maskArrayBool,
+		},
+		{
+			name:  "int_and_float",
+			types: []pcommon.ValueType{pcommon.ValueTypeInt, pcommon.ValueTypeDouble},
+			want:  maskArrayFloat,
+		},
+		{
+			name:  "int_and_bool",
+			types: []pcommon.ValueType{pcommon.ValueTypeInt, pcommon.ValueTypeBool},
+			want:  maskArrayInt,
+		},
+		{
+			name:  "bool_and_float",
+			types: []pcommon.ValueType{pcommon.ValueTypeBool, pcommon.ValueTypeDouble},
+			want:  maskArrayFloat,
+		},
+		{
+			name:  "string_and_int_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeStr, pcommon.ValueTypeInt},
+			want:  maskArrayDynamic,
+		},
+		{
+			name:  "string_and_bool_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeStr, pcommon.ValueTypeBool},
+			want:  maskArrayDynamic,
+		},
+		{
+			name:  "string_and_float_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeBytes, pcommon.ValueTypeDouble},
+			want:  maskArrayDynamic,
+		},
+		{
+			name:  "string_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeStr},
+			want:  maskArrayString,
+		},
+		{
+			name:  "bytes_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeBytes},
+			want:  maskArrayString,
+		},
+		{
+			name:  "json_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeMap},
+			want:  maskArrayJSON,
+		},
+		{
+			name:  "json_and_int_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeMap, pcommon.ValueTypeInt},
+			want:  maskArrayDynamic,
+		},
+		{
+			name:  "json_and_string_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeMap, pcommon.ValueTypeStr},
+			want:  maskArrayDynamic,
+		},
+		{
+			name:  "duplicates_int_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeInt, pcommon.ValueTypeInt},
+			want:  maskArrayInt,
+		},
+		{
+			name:  "duplicates_string_only",
+			types: []pcommon.ValueType{pcommon.ValueTypeStr, pcommon.ValueTypeStr, pcommon.ValueTypeBytes},
+			want:  maskArrayString,
+		},
+		{
+			name:  "duplicates_string_and_int_dynamic",
+			types: []pcommon.ValueType{pcommon.ValueTypeStr, pcommon.ValueTypeStr, pcommon.ValueTypeInt},
+			want:  maskArrayDynamic,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, inferArrayMask(test.types))
+		})
+	}
+}

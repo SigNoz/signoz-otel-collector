@@ -55,6 +55,7 @@ func createDefaultConfig() component.Config {
 		},
 		LogLevelConcurrency:       utils.ToPointer(utils.Concurrency()),
 		PromotedPathsSyncInterval: utils.ToPointer(defaultPromotedPathsSyncInterval),
+		MaxAllowedDataAgeDays:     utils.ToPointer(defaultMaxAllowedDataAgeDays),
 	}
 }
 
