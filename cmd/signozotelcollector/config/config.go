@@ -14,6 +14,7 @@ var (
 	MigrateReady     migrateReady
 	MigrateBootstrap migrateBootstrap
 	MigrateSyncCheck migrateSyncCheck
+	MigrateSyncUp    migrateSyncUp
 )
 
 type collector struct {
@@ -64,4 +65,12 @@ type migrateBootstrap struct {
 
 func (cfg *migrateBootstrap) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(15*time.Minute), "Timeout for bootstrap operation")
+}
+
+type migrateSyncUp struct {
+	Timeout time.Duration
+}
+
+func (cfg *migrateSyncUp) RegisterFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for sync up operation")
 }
