@@ -136,16 +136,34 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 		"uninstall": false,
 	}
 
-	body := pcommon.NewValueEmpty()
-	require.NoError(t, body.FromRaw(input))
-
 	testCases := []struct {
 		name     string
+		input    map[string]any
 		config   *Config
 		expected map[string][]string
 	}{
 		{
+			name: "simple_datatype_test",
+			input: map[string]any{
+				"string": "hello",
+				"int": 123,
+				"float": 123.456,
+				"bool": true,
+			},
+			config: &Config{
+				MaxDepthTraverse:        utils.ToPointer(2),
+				MaxArrayElementsAllowed: utils.ToPointer(4),
+			},
+			expected: map[string][]string{
+				"string": {String},
+				"int": {Int64},
+				"float": {Float64},
+				"bool": {Bool},
+			},
+		},
+		{
 			name: "full_test",
+			input: input,
 			config: &Config{
 				MaxDepthTraverse:        utils.ToPointer(100),
 				MaxArrayElementsAllowed: utils.ToPointer(5),
@@ -200,6 +218,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 		},
 		{
 			name: "max_depth_traverse_test",
+			input: input,
 			config: &Config{
 				MaxDepthTraverse:        utils.ToPointer(2),
 				MaxArrayElementsAllowed: utils.ToPointer(4),
@@ -237,6 +256,9 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			exp.config = testCase.config
+			body := pcommon.NewValueEmpty()
+			require.NoError(t, body.FromRaw(testCase.input))
+
 			// Collect bitmasks via analyzePValue
 			typeSet := TypeSet{}
 			err := exp.analyzePValue(ctx, body, &typeSet)

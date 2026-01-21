@@ -14,6 +14,7 @@ import (
 
 type Processor struct {
 	signozstanzahelper.TransformerOperator
+	sonic.Config
 }
 
 // Process will parse an entry for JSON.
@@ -35,10 +36,12 @@ func (p *Processor) transform(entry *entry.Entry) error {
 		if !(strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}")) {
 			return nil
 		}
-		err := sonic.Unmarshal([]byte(unquoted), &parsedValue)
+		dec := p.Config.Froze().NewDecoder(strings.NewReader(unquoted))
+		err := dec.Decode(&parsedValue)
 		if err != nil { // failed to marshal as JSON; return as is
 			return nil
 		}
+
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
 		parsedValue = v
