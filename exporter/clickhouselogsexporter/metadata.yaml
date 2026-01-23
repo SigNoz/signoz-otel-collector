@@ -4,7 +4,6 @@ status:
   stability:
     stable: [logs]
 
-# ttlcache starts a background worker; cleanup stops it, but we ignore it as a safety net
 tests:
   skip_lifecycle: true
   skip_shutdown: true
@@ -13,4 +12,3 @@ tests:
       top:
         - "go.opencensus.io/stats/view.(*worker).start"
         - "go.opencensus.io/metric/metricexport.(*IntervalReader).startInternal"
-        - "github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"

@@ -3,11 +3,3 @@ status:
   class: exporter
   stability:
     stable: [traces, logs, metrics]
-
-# ttlcache starts a background worker; we ignore it to avoid false goleak failures
-tests:
-  goleak:
-    ignore:
-      top:
-        - "github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"
-
