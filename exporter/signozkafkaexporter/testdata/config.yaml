@@ -16,6 +16,7 @@ signozkafkaexporter:
       username: jdoe
       password: pass
   sending_queue:
+    enabled: true
     num_consumers: 2
     queue_size: 10
   retry_on_failure:

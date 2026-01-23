@@ -21,6 +21,7 @@ exporters:
       randomization_factor: 0.7
       multiplier: 1.3
     sending_queue:
+      enabled: true
       queue_size: 100
       num_consumers: 5
 service:

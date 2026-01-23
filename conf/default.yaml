@@ -59,6 +59,7 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
     sending_queue:
+      enabled: true
       queue_size: 100
       num_consumers: 5
   signozclickhousemetrics:
