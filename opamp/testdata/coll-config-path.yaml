@@ -6,7 +6,7 @@ extensions:
     zpages: {}
 processors:
     batch:
-        send_batch_size: 100000 # changed
+        send_batch_size: 10000
         timeout: 10s
 receivers:
     otlp:
