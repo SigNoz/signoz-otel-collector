@@ -5,7 +5,6 @@ package signozkafkaexporter
 
 import (
 	"context"
-	"crypto/tls"
 	"sort"
 	"testing"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configtls"
 )
-
-var _ = tls.CurveID(0) // Ensure crypto/tls is imported for CurvePreferences type
 
 func TestAuthentication(t *testing.T) {
 	saramaPlaintext := &sarama.Config{}
