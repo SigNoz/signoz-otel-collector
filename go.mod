@@ -23,6 +23,7 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jellydator/ttlcache/v3 v3.3.0
+	github.com/jonboulle/clockwork v0.5.0
 	github.com/knadh/koanf v1.5.0
 	github.com/lightstep/go-expohisto v1.0.0
 	github.com/oklog/ulid v1.3.1
@@ -204,6 +205,7 @@ require (
 	go.opentelemetry.io/collector/component/componenttest v0.128.0
 	go.opentelemetry.io/collector/config/configgrpc v0.128.0
 	go.opentelemetry.io/collector/config/confighttp v0.128.0
+	go.opentelemetry.io/collector/config/configoptional v0.128.0
 	go.opentelemetry.io/collector/config/configretry v1.34.0
 	go.opentelemetry.io/collector/config/configtelemetry v0.128.0
 	go.opentelemetry.io/collector/config/configtls v1.34.0
@@ -472,7 +474,6 @@ require (
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jaegertracing/jaeger-idl v0.5.0 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
-	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
@@ -631,7 +632,6 @@ require (
 	go.opentelemetry.io/collector/config/configmiddleware v0.128.0 // indirect
 	go.opentelemetry.io/collector/config/confignet v1.34.0 // indirect
 	go.opentelemetry.io/collector/config/configopaque v1.34.0 // indirect
-	go.opentelemetry.io/collector/config/configoptional v0.128.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/httpprovider v1.34.0 // indirect
 	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.34.0 // indirect
 	go.opentelemetry.io/collector/connector/xconnector v0.128.0 // indirect

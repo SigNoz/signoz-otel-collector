@@ -8,7 +8,6 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/roundrobinconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/sumconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alertmanagerexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awskinesisexporter"
@@ -171,6 +170,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector"
+	"github.com/SigNoz/signoz-otel-collector/connectors/signozspanmetricsconnector"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/jsontypeexporter"
@@ -391,7 +391,7 @@ func Components() (otelcol.Factories, error) {
 		roundrobinconnector.NewFactory(),
 		routingconnector.NewFactory(),
 		servicegraphconnector.NewFactory(),
-		spanmetricsconnector.NewFactory(),
+		signozspanmetricsconnector.NewFactory(),
 		sumconnector.NewFactory(),
 		signozmeterconnector.NewFactory(),
 	}
