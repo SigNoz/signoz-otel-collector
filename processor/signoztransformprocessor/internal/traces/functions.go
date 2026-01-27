@@ -10,12 +10,12 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
 )
 
-func SpanFunctions() map[string]ottl.Factory[ottlspan.TransformContext] {
+func SpanFunctions() map[string]ottl.Factory[*ottlspan.TransformContext] {
 	// No trace-only functions yet.
-	return ottlfuncs.StandardFuncs[ottlspan.TransformContext]()
+	return ottlfuncs.StandardFuncs[*ottlspan.TransformContext]()
 }
 
-func SpanEventFunctions() map[string]ottl.Factory[ottlspanevent.TransformContext] {
+func SpanEventFunctions() map[string]ottl.Factory[*ottlspanevent.TransformContext] {
 	// No trace-only functions yet.
-	return ottlfuncs.StandardFuncs[ottlspanevent.TransformContext]()
+	return ottlfuncs.StandardFuncs[*ottlspanevent.TransformContext]()
 }

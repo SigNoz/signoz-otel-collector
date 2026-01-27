@@ -19,7 +19,7 @@ import (
 var _ consumer.Logs = &logStatements{}
 
 type logStatements struct {
-	ottl.StatementSequence[ottllog.TransformContext]
+	ottl.StatementSequence[*ottllog.TransformContext]
 }
 
 func (l logStatements) Capabilities() consumer.Capabilities {
@@ -35,7 +35,7 @@ func (l logStatements) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 			slogs := rlogs.ScopeLogs().At(j)
 			logs := slogs.LogRecords()
 			for k := 0; k < logs.Len(); k++ {
-				tCtx := ottllog.NewTransformContext(logs.At(k), slogs.Scope(), rlogs.Resource(), slogs, rlogs)
+				tCtx := ottllog.NewTransformContextPtr(rlogs, slogs, logs.At(k))
 				err := l.Execute(ctx, tCtx)
 				if err != nil {
 					return err
@@ -48,12 +48,12 @@ func (l logStatements) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 
 type LogParserCollection struct {
 	parserCollection
-	logParser ottl.Parser[ottllog.TransformContext]
+	logParser ottl.Parser[*ottllog.TransformContext]
 }
 
 type LogParserCollectionOption func(*LogParserCollection) error
 
-func WithLogParser(functions map[string]ottl.Factory[ottllog.TransformContext]) LogParserCollectionOption {
+func WithLogParser(functions map[string]ottl.Factory[*ottllog.TransformContext]) LogParserCollectionOption {
 	return func(lp *LogParserCollection) error {
 		logParser, err := ottllog.NewParser(functions, lp.settings)
 		if err != nil {

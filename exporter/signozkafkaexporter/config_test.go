@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
@@ -46,12 +47,16 @@ func TestLoadConfig(t *testing.T) {
 					RandomizationFactor: backoff.DefaultRandomizationFactor,
 					Multiplier:          backoff.DefaultMultiplier,
 				},
-				QueueBatchConfig: exporterhelper.QueueBatchConfig{
-					Enabled:      true,
+				QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
 					Sizer:        exporterhelper.RequestSizerTypeRequests,
 					NumConsumers: 2,
 					QueueSize:    10,
-				},
+					Batch: configoptional.Default(exporterhelper.BatchConfig{
+						FlushTimeout: 200 * time.Millisecond,
+						Sizer:        exporterhelper.RequestSizerTypeItems,
+						MinSize:      8192,
+					}),
+				}),
 				Topic:    "spans",
 				Encoding: "otlp_proto",
 				Brokers:  []string{"foo:123", "bar:456"},
@@ -87,7 +92,10 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, sub.Unmarshal(cfg))
 
 			assert.NoError(t, xconfmap.Validate(cfg))
-			assert.Equal(t, tt.expected, cfg)
+			actualCfg := cfg.(*Config)
+			expectedCfg := tt.expected.(*Config)
+
+			assert.Equal(t, expectedCfg, actualCfg)
 		})
 	}
 }

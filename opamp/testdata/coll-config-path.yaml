@@ -26,7 +26,7 @@ service:
                 - otlp
         traces:
             exporters:
-                - debug
+                - logging
             processors:
                 - batch
             receivers:

@@ -68,6 +68,7 @@ exporters:
     dsn: tcp://host.docker.internal:9000
     timeout: 10s
     sending_queue:
+      enabled: true
       queue_size: 150
     retry_on_failure:
       enabled: true

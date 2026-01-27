@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
@@ -35,29 +36,32 @@ func Test_loadConfig(t *testing.T) {
 
 	// checks if the correct Config struct can be instantiated from testdata/config.yaml
 	e1 := cfg.Exporters[component.NewIDWithName(metadata.Type, "2")]
-	assert.Equal(t, e1,
-		&Config{
-			Datasource: "tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password",
-			TimeoutConfig: exporterhelper.TimeoutConfig{
-				Timeout: 5 * time.Second,
-			},
-			BackOffConfig: configretry.BackOffConfig{
-				Enabled:             true,
-				InitialInterval:     5 * time.Second,
-				MaxInterval:         30 * time.Second,
-				MaxElapsedTime:      300 * time.Second,
-				RandomizationFactor: 0.7,
-				Multiplier:          1.3,
-			},
-			QueueBatchConfig: exporterhelper.QueueBatchConfig{
-				Enabled:      true,
-				Sizer:        exporterhelper.RequestSizerTypeRequests,
-				NumConsumers: 5,
-				QueueSize:    100,
-			},
-			AttributesLimits: AttributesLimits{
-				FetchKeysInterval: 10 * time.Minute,
-				MaxDistinctValues: 25000,
-			},
-		})
+	actualCfg := e1.(*Config)
+	expectedBatch := configoptional.Default(exporterhelper.BatchConfig{
+		FlushTimeout: 200 * time.Millisecond,
+		Sizer:        exporterhelper.RequestSizerTypeItems,
+		MinSize:      8192,
+	})
+	assert.Equal(t, &Config{
+		TimeoutConfig: exporterhelper.TimeoutConfig{Timeout: 5 * time.Second},
+		BackOffConfig: configretry.BackOffConfig{
+			Enabled:             true,
+			InitialInterval:     5 * time.Second,
+			MaxInterval:         30 * time.Second,
+			MaxElapsedTime:      300 * time.Second,
+			RandomizationFactor: 0.7,
+			Multiplier:          1.3,
+		},
+		QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
+			Sizer:        exporterhelper.RequestSizerTypeRequests,
+			NumConsumers: 5,
+			QueueSize:    100,
+			Batch:        expectedBatch,
+		}),
+		Datasource: "tcp://127.0.0.1:9000/?database=signoz_traces&username=admin&password=password",
+		AttributesLimits: AttributesLimits{
+			FetchKeysInterval: 10 * time.Minute,
+			MaxDistinctValues: 25000,
+		},
+	}, actualCfg)
 }

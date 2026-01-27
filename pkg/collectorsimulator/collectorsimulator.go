@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/service"
+	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
 
 // Puts together a collector service with inmemory receiver and exporter
@@ -57,6 +58,7 @@ func NewCollectorSimulator(
 		Receivers:  receiverFactories,
 		Processors: processorFactories,
 		Exporters:  exporterFactories,
+		Telemetry:  otelconftelemetry.NewFactory(),
 	}
 
 	// Prepare collector config yaml for simulation
@@ -145,6 +147,8 @@ func NewCollectorSimulator(
 
 		ExtensionsConfigs:   collectorCfg.Extensions,
 		ExtensionsFactories: factories.Extensions,
+
+		TelemetryFactory: factories.Telemetry,
 
 		AsyncErrorChannel: collectorErrChan,
 	}

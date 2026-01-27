@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -541,30 +542,45 @@ func Test_ProcessTraces_MixContext(t *testing.T) {
 }
 
 func Test_ProcessTraces_Error(t *testing.T) {
+	// All cases use intentionally invalid OTTL (ParseJSON(1)) to ensure creation/processing fails
 	tests := []struct {
 		statement string
 		context   common.ContextID
+		expectErr bool
 	}{
 		{
-			context: "resource",
+			statement: `set(attributes["test"], ParseJSON(1))`,
+			context:   "resource",
+			expectErr: true,
 		},
 		{
-			context: "scope",
+			statement: `set(attributes["test"], ParseJSON(1))`,
+			context:   "scope",
+			expectErr: true,
 		},
 		{
-			context: "span",
+			statement: `set(attributes["test"], ParseJSON(1))`,
+			context:   "span",
+			expectErr: true,
 		},
 		{
-			context: "spanevent",
+			statement: `set(attributes["test"], ParseJSON(1))`,
+			context:   "spanevent",
+			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.context), func(t *testing.T) {
 			td := constructTraces()
-			processor, err := NewProcessor([]common.ContextStatements{{Context: tt.context, Statements: []string{`set(attributes["test"], ParseJSON(1))`}}}, ottl.PropagateError, componenttest.NewNopTelemetrySettings())
-			assert.NoError(t, err)
+			processor, err := NewProcessor([]common.ContextStatements{{Context: tt.context, Statements: []string{tt.statement}}}, ottl.PropagateError, componenttest.NewNopTelemetrySettings())
+			// NewProcessor returns error for invalid OTTL statements
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
 
+			require.NoError(t, err)
 			_, err = processor.ProcessTraces(context.Background(), td)
 			assert.Error(t, err)
 		})

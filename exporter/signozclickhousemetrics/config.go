@@ -4,15 +4,16 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for ClickHouse Metrics exporter.
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"`        // squash ensures fields are correctly decoded in embedded struct.
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
 
 	DSN string `mapstructure:"dsn"`
 
@@ -32,8 +33,10 @@ func (cfg *Config) Validate() error {
 	if cfg.DSN == "" {
 		return errors.New("dsn must be specified")
 	}
-	if err := cfg.QueueBatchConfig.Validate(); err != nil {
-		return err
+	if qc := cfg.QueueBatchConfig.Get(); qc != nil {
+		if err := qc.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if err := cfg.TimeoutConfig.Validate(); err != nil {
