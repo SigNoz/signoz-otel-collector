@@ -1,0 +1,48 @@
+# Full configuration showcasing optional fields supported by the connector.
+
+receivers:
+  jaeger:
+    protocols:
+      thrift_http:
+        endpoint: "0.0.0.0:14278"
+
+processors:
+  batch:
+
+connectors:
+  signozspanmetrics:
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 100ms, 250ms]
+    dimensions:
+      - name: http.method
+        default: GET
+      - name: http.status_code
+    dimensions_cache_size: 1500
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_DELTA"
+    metrics_flush_interval: 60s
+    max_services_to_track: 512
+    max_operations_to_track_per_service: 69420
+    time_bucket_interval: 30s
+    skip_spans_older_than: 24h
+    enable_exp_histogram: true
+    exclude_patterns:
+      - name: operation
+        pattern: "^/internal/"
+
+exporters:
+  otlp:
+    endpoint: "localhost:4317"
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [jaeger]
+      processors: [batch]
+      exporters: [signozspanmetrics, otlp]
+    metrics:
+      receivers: [signozspanmetrics]
+      exporters: [prometheus]
+
