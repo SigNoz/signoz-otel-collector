@@ -7,6 +7,7 @@ import (
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
+	"github.com/bytedance/sonic"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 )
 
@@ -42,5 +43,6 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	return &Processor{
 		TransformerOperator: transformerOperator,
+		Config:              sonic.Config{UseInt64: true},
 	}, nil
 }
