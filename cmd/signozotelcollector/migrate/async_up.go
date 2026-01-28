@@ -28,13 +28,7 @@ func registerAsyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Runs 'up' async migrations for the store. Up async migrations are used to apply new async migrations to the store.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			up, err := newAsyncUp(
-				config.Clickhouse.DSN,
-				config.Clickhouse.Cluster,
-				config.Clickhouse.Replication,
-				config.MigrateSyncUp.Timeout,
-				logger,
-			)
+			up, err := newAsyncUp(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncUp.Timeout, logger)
 			if err != nil {
 				return err
 			}
@@ -48,7 +42,7 @@ func registerAsyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		},
 	}
 
-	config.MigrateSyncUp.RegisterFlags(syncUpCommand)
+	config.MigrateAsyncUp.RegisterFlags(syncUpCommand)
 
 	parentCmd.AddCommand(syncUpCommand)
 }

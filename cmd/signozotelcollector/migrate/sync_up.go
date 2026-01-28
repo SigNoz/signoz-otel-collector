@@ -28,13 +28,7 @@ func registerSyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Runs 'up' sync migrations for the store. Up migrations are used to apply new migrations to the store.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			up, err := newSyncUp(
-				config.Clickhouse.DSN,
-				config.Clickhouse.Cluster,
-				config.Clickhouse.Replication,
-				config.MigrateSyncUp.Timeout,
-				logger,
-			)
+			up, err := newSyncUp(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncUp.Timeout, logger)
 			if err != nil {
 				return err
 			}
@@ -160,6 +154,7 @@ func (cmd *syncUp) run(ctx context.Context, migrations []schemamigrator.SchemaMi
 			continue
 		}
 
+		// TODO: Figure out how to run migrations on all shards when replication is not enabled.
 		ok, err := cmd.migrationManager.CheckMigrationStatus(ctx, db, migration.MigrationID, schemamigrator.FinishedStatus)
 		if err != nil {
 			return NewRetryableError(err)
