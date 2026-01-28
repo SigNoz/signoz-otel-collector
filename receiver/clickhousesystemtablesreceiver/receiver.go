@@ -34,30 +34,11 @@ type systemTablesReceiver struct {
 	shutdownCompleteWg sync.WaitGroup
 }
 
-func (r *systemTablesReceiver) Start(
-	ctx context.Context, host component.Host,
-) error {
-	err := r.init(ctx)
-	if err != nil {
-		return err
-	}
-
+func (r *systemTablesReceiver) Start(context.Context, component.Host) error {
 	receiverCtx, cancelReceiverCtx := context.WithCancel(context.Background())
 	r.requestShutdown = cancelReceiverCtx
 	r.shutdownCompleteWg.Add(1)
 	go r.run(receiverCtx)
-
-	return nil
-}
-
-func (r *systemTablesReceiver) init(ctx context.Context) error {
-	// The receiver starts scraping query_log entries that come at or after
-	// the timestamp at clickhouse server when the receiver is started.
-	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
-	if err != nil {
-		return fmt.Errorf("couldn't determine ts at clickhouse at receiver startup: %w", err)
-	}
-	r.nextScrapeIntervalStartTs = serverTsNow
 
 	return nil
 }
@@ -71,19 +52,14 @@ func (r *systemTablesReceiver) Shutdown(context.Context) error {
 func (r *systemTablesReceiver) run(ctx context.Context) {
 	defer r.shutdownCompleteWg.Done()
 
-	ticker := time.NewTicker(time.Second * time.Duration(
-		r.scrapeIntervalSeconds+r.scrapeDelaySeconds,
-	))
+	ticker := time.NewTicker(time.Second * time.Duration(r.scrapeIntervalSeconds+r.scrapeDelaySeconds))
 
-	r.logger.Info(fmt.Sprintf(
-		"starting system.query_log table scrape. scrape_interval: %d, min_scrape_delay: %d",
-		r.scrapeIntervalSeconds, r.scrapeDelaySeconds,
-	))
+	r.logger.Info("starting system.query_log table scrape", zap.Uint32("scrape_interval", r.scrapeIntervalSeconds), zap.Uint32("min_scrape_delay", r.scrapeDelaySeconds))
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info("Stopping ClickhouseSystemTablesReceiver")
+			r.logger.Info("stopping receiver run loop")
 			return
 		case <-ticker.C:
 			secondsToWaitBeforeNextAttempt, err := r.scrapeQueryLogIfReady(ctx)
@@ -99,14 +75,14 @@ func (r *systemTablesReceiver) run(ctx context.Context) {
 
 // Scrapes query_log table at clickhouse if the next set of query_log rows to be scraped are ready for scraping
 // Returns the number of seconds to wait before attempting a scrape again
-func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
-	uint32, error,
-) {
+func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint32, error) {
 	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
 	if err != nil {
-		return r.scrapeIntervalSeconds, fmt.Errorf(
-			"couldn't determine server ts while scraping query log: %w", err,
-		)
+		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't determine server timestamp: %w", err)
+	}
+
+	if r.nextScrapeIntervalStartTs == 0 {
+		r.nextScrapeIntervalStartTs = serverTsNow
 	}
 
 	// Events with ts in [r.nextScrapedMinEventTs, scrapeIntervalEndTs) are to be scraped next
@@ -116,15 +92,11 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	minServerTsForNextScrapeAttempt := scrapeIntervalEndTs + r.scrapeDelaySeconds
 	if serverTsNow < minServerTsForNextScrapeAttempt {
 		waitSeconds := minServerTsForNextScrapeAttempt - serverTsNow
-		r.logger.Debug(fmt.Sprintf(
-			"not ready to scrape yet. waiting %ds before next attempt. serverTsNow: %d, scrapeIntervalEndTs: %d",
-			waitSeconds, serverTsNow, scrapeIntervalEndTs,
-		))
+		r.logger.Debug("not ready to scrape yet", zap.Uint32("wait_seconds", waitSeconds), zap.Uint32("server_ts_now", serverTsNow), zap.Uint32("scrape_interval_end_ts", scrapeIntervalEndTs))
 		return waitSeconds, nil
 	}
 
 	// scrape the next batch of query_log rows to be scraped.
-
 	if r.obsrecv != nil {
 		ctx = r.obsrecv.StartLogsOp(ctx)
 	}
@@ -138,15 +110,10 @@ func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (
 	}
 
 	if scrapeErr != nil {
-		return r.scrapeIntervalSeconds, fmt.Errorf(
-			"couldn't scrape and push query logs: %w", scrapeErr,
-		)
+		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't scrape and push query logs: %w", scrapeErr)
 	}
 
-	r.logger.Debug(fmt.Sprintf(
-		"scraped %d query logs. serverTsNow: %d, minTs: %d, maxTs: %d",
-		pushedCount, serverTsNow, r.nextScrapeIntervalStartTs, scrapeIntervalEndTs,
-	))
+	r.logger.Debug("scraped query logs", zap.Int("pushed_count", pushedCount), zap.Uint32("server_ts_now", serverTsNow), zap.Uint32("min_ts", r.nextScrapeIntervalStartTs), zap.Uint32("max_ts", scrapeIntervalEndTs))
 
 	r.nextScrapeIntervalStartTs = scrapeIntervalEndTs
 
