@@ -104,12 +104,12 @@ func (cmd *syncUp) Run(ctx context.Context) error {
 }
 
 func (cmd *syncUp) SyncUp(ctx context.Context) error {
-	err := cmd.migrationManager.RunSquashedMigrations(ctx)
+	err := cmd.runSquashedMigrations(ctx)
 	if err != nil {
 		return err
 	}
 
-	cmd.logger.Info("Running sync migrations")
+	cmd.logger.Info("running sync migrations")
 	err = cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
 	if err != nil {
 		return err
@@ -148,6 +148,36 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 	return nil
 }
 
+func (cmd *syncUp) runSquashedMigrations(ctx context.Context) error {
+	squashedMigrations := map[string][]schemamigrator.SchemaMigrationRecord{
+		schemamigrator.SignozLogsDB:    schemamigrator.CustomRetentionLogsMigrations,
+		schemamigrator.SignozMetricsDB: schemamigrator.SquashedMetricsMigrations,
+		schemamigrator.SignozTracesDB:  schemamigrator.SquashedTracesMigrations,
+	}
+
+	for database, migrations := range squashedMigrations {
+		cmd.logger.Info("checking if should run squashed migrations", zap.String("database", database))
+		should, err := cmd.migrationManager.ShouldRunSquashedV2(ctx, database)
+		if err != nil {
+			return NewRetryableError(err)
+		}
+
+		if !should {
+			cmd.logger.Info("skipping squashed migrations", zap.String("database", database))
+			return nil
+		}
+
+		cmd.logger.Info("running squashed migrations", zap.String("database", database))
+
+		err = cmd.run(ctx, migrations, database)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (cmd *syncUp) run(ctx context.Context, migrations []schemamigrator.SchemaMigrationRecord, db string) error {
 	for _, migration := range migrations {
 		if !cmd.migrationManager.IsSync(migration) {
@@ -167,12 +197,19 @@ func (cmd *syncUp) run(ctx context.Context, migrations []schemamigrator.SchemaMi
 		for _, item := range migration.UpItems {
 			if err := cmd.migrationManager.RunOperationWithoutUpdate(ctx, item, migration.MigrationID, db); err != nil {
 				cmd.logger.Error("Error occurred while running operation", zap.Error(err))
+
+				// if any one of the operations fails, mark the migration as failed
 				if err := cmd.migrationManager.InsertMigrationEntry(ctx, db, migration.MigrationID, schemamigrator.FailedStatus); err != nil {
 					return err
 				}
 
 				return err
 			}
+		}
+
+		// if all the operations succeed, mark the migration as finished
+		if err := cmd.migrationManager.InsertMigrationEntry(ctx, db, migration.MigrationID, schemamigrator.FinishedStatus); err != nil {
+			return NewRetryableError(err)
 		}
 	}
 
