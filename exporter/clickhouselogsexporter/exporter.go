@@ -57,7 +57,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
-	distributedPromotedPathsTable    = constants.SignozMetadataDB + "." + constants.DistributedPromotedPathsTable
+	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -428,22 +428,26 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
-	query := fmt.Sprintf(`SELECT path FROM %s SETTINGS max_threads = 1`, distributedPromotedPathsTable)
-	e.logger.Debug("fetching promoted paths", zap.String("query", query))
+	// Query Evolution Table for promoted paths
+	// Format: signal, col_name, col_type, field_context, field_name, release_time
+	// Example: logs, body_json_promoted, JSON, body, user.name, Jan 10
+	query := fmt.Sprintf(
+		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' AND field_name != '__all__' SETTINGS max_threads = 1`,
+		distributedColumnEvolutionTable,
+		constants.BodyPromotedColumn,
+	)
+	e.logger.Debug("fetching promoted paths from evolution table", zap.String("query", query))
 
 	rows := []struct {
-		Path string `ch:"path"`
+		FieldName string `ch:"field_name"`
 	}{}
 	if err := e.db.Select(context.Background(), &rows, query); err != nil {
-		e.logger.Error("error while fetching promoted paths", zap.Error(err))
+		e.logger.Error("error while fetching promoted paths from evolution table", zap.Error(err))
 		return
 	}
 	updated := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
-		if r.Path == "" {
-			continue
-		}
-		updated[r.Path] = struct{}{}
+		updated[r.FieldName] = struct{}{}
 	}
 
 	e.promotedPaths.Store(updated)

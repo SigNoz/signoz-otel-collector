@@ -275,36 +275,6 @@ ORDER BY name ASC`,
 					ShardingKey: fmt.Sprintf("cityHash64(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
 				},
 			},
-			CreateTableOperation{
-				Database: SignozMetadataDB,
-				Table:    constants.LocalPromotedPathsTable,
-				Columns: []Column{
-					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: ReplacingMergeTree{
-					MergeTree: MergeTree{
-						OrderBy:     "path",
-						PartitionBy: "toDate(created_at / 1000000000)",
-						Settings: TableSettings{
-							{Name: "index_granularity", Value: "8192"},
-						},
-					},
-				},
-			},
-			CreateTableOperation{
-				Database: SignozMetadataDB,
-				Table:    constants.DistributedPromotedPathsTable,
-				Columns: []Column{
-					{Name: "path", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "created_at", Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
-				},
-				Engine: Distributed{
-					Database:    SignozMetadataDB,
-					Table:       constants.LocalPromotedPathsTable,
-					ShardingKey: "cityHash64(path)",
-				},
-			},
 			AlterTableModifySettings{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
@@ -365,14 +335,6 @@ ORDER BY name ASC`,
 					Name: constants.BodyJSONColumn,
 				},
 			},
-			InsertIntoTable{
-				Database:    SignozMetadataDB,
-				Table:       constants.DistributedPromotedPathsTable,
-				LightWeight: true,
-				Synchronous: true,
-				Columns:     []string{"path", "created_at"},
-				Values:      fmt.Sprintf("('message', %d)", time.Unix(0, 0).UnixMilli()), // Set to a fixed time to avoid flakiness
-			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
@@ -392,6 +354,14 @@ ORDER BY name ASC`,
 					Type:        "ngrambf_v1(4, 15000, 3, 0)",
 					Granularity: 1,
 				},
+			},
+			InsertIntoTable{
+				Database:    SignozMetadataDB,
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
+				Values: fmt.Sprintf("('logs', '%s', 'JSON()', 'body', 'message', 0, %d)", constants.BodyPromotedColumn, time.Unix(0, 0).UnixNano()),
 			},
 		},
 		DownItems: []Operation{
@@ -426,14 +396,6 @@ ORDER BY name ASC`,
 			DropTableOperation{
 				Database: SignozMetadataDB,
 				Table:    constants.DistributedPathTypesTable,
-			},
-			DropTableOperation{
-				Database: SignozMetadataDB,
-				Table:    constants.LocalPromotedPathsTable,
-			},
-			DropTableOperation{
-				Database: SignozMetadataDB,
-				Table:    constants.DistributedPromotedPathsTable,
 			},
 		},
 	},
