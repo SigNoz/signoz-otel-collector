@@ -9,12 +9,14 @@ import (
 )
 
 var (
-	Collector        collector
-	Clickhouse       clickhouse
-	MigrateReady     migrateReady
-	MigrateBootstrap migrateBootstrap
-	MigrateSyncCheck migrateSyncCheck
-	MigrateSyncUp    migrateSyncUp
+	Collector         collector
+	Clickhouse        clickhouse
+	MigrateReady      migrateReady
+	MigrateBootstrap  migrateBootstrap
+	MigrateSyncCheck  migrateSyncCheck
+	MigrateSyncUp     migrateSyncUp
+	MigrateAsyncCheck migrateAsyncCheck
+	MigrateAsyncUp    migrateAsyncUp
 )
 
 type collector struct {
@@ -40,7 +42,7 @@ type clickhouse struct {
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "DSN for clickhouse connection")
 	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "Name of the clickhouse cluster to connect")
-	cmd.PersistentFlags().BoolVar(&cfg.Replication, "clickhouse-replication", false, "Set true if replication is enabled in the clickhouse cluster")
+	cmd.PersistentFlags().BoolVar(&cfg.Replication, "clickhouse-replication", true, "Set true if replication is enabled in the clickhouse cluster")
 }
 
 type migrateReady struct {
@@ -73,4 +75,20 @@ type migrateSyncUp struct {
 
 func (cfg *migrateSyncUp) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for sync up operation")
+}
+
+type migrateAsyncCheck struct {
+	Timeout time.Duration
+}
+
+func (cfg *migrateAsyncCheck) RegisterFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for async check operation")
+}
+
+type migrateAsyncUp struct {
+	Timeout time.Duration
+}
+
+func (cfg *migrateAsyncUp) RegisterFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().DurationVar(&cfg.Timeout, "timeout", time.Duration(10*time.Second), "Timeout for async up operation")
 }

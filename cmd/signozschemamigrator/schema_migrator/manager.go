@@ -224,6 +224,7 @@ func (m *MigrationManager) shouldRunSquashed(ctx context.Context, db string) (bo
 	if err != nil {
 		return false, err
 	}
+
 	var countV2 uint64
 	err = m.conn.QueryRow(ctx, "SELECT count(*) FROM clusterAllReplicas($1, system.tables) WHERE database = $2 AND name = 'schema_migrations_v2'", m.clusterName, db).Scan(&countV2)
 	if err != nil {
@@ -243,6 +244,17 @@ func (m *MigrationManager) shouldRunSquashed(ctx context.Context, db string) (bo
 	// we want to run the squashed migrations only if the legacy migrations do not exist
 	// and v2 migrations did not run
 	return count == 0 && !didMigrateV2, nil
+}
+
+// Returns true if legacy migrations table does not exist
+func (m *MigrationManager) ShouldRunSquashedV2(ctx context.Context, db string) (bool, error) {
+	var count uint64
+	err := m.conn.QueryRow(ctx, "SELECT count(*) FROM clusterAllReplicas($1, system.tables) WHERE database = $2 AND name = $3", m.clusterName, db, legacyMigrationsTable).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count == 0, nil
 }
 
 func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Context) error {
@@ -1148,7 +1160,7 @@ func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operat
 	duration := time.Since(start)
 	m.logger.Info("Operation completed", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Duration("duration", duration))
 
-	return m.InsertMigrationEntry(ctx, database, migrationID, FinishedStatus)
+	return nil
 }
 
 func (m *MigrationManager) InsertMigrationEntry(ctx context.Context, db string, migrationID uint64, status string) error {

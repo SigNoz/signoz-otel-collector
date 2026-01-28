@@ -26,13 +26,7 @@ func registerBootstrap(parentCmd *cobra.Command, logger *zap.Logger) {
 		Use:   "bootstrap",
 		Short: "Creates the necessary tables to track status of migrations. A migration table is typically created to track the status of migrations. This command creates the necessary tables to track the status of migrations.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bootstrap, err := newBootstrap(
-				config.Clickhouse.DSN,
-				config.Clickhouse.Cluster,
-				config.Clickhouse.Replication,
-				config.MigrateBootstrap.Timeout,
-				logger,
-			)
+			bootstrap, err := newBootstrap(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateBootstrap.Timeout, logger)
 			if err != nil {
 				return err
 			}

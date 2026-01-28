@@ -28,7 +28,7 @@ func registerAsyncCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Checks the status of async migrations for the store by checking the status of async migrations in the migration table.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			check, err := newSyncCheck(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncCheck.Timeout, logger)
+			check, err := newAsyncCheck(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncCheck.Timeout, logger)
 			if err != nil {
 				return err
 			}
@@ -42,7 +42,7 @@ func registerAsyncCheck(parentCmd *cobra.Command, logger *zap.Logger) {
 		},
 	}
 
-	config.MigrateSyncCheck.RegisterFlags(syncCheckCommand)
+	config.MigrateAsyncCheck.RegisterFlags(syncCheckCommand)
 
 	parentCmd.AddCommand(syncCheckCommand)
 }

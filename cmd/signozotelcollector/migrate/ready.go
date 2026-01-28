@@ -156,6 +156,8 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 			if err := conn.Ping(ctx); err != nil {
 				return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
 			}
+
+			r.logger.Info("clickhouse is ready", zap.String("host", host.address), zap.Uint16("port", host.port))
 		}
 	}
 
@@ -163,8 +165,9 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 }
 
 func (r *ready) CheckKeeper(ctx context.Context) error {
-	query := "SELECT * FROM system.zookeeper_connection"
-	if _, err := r.conn.Query(ctx, query); err != nil {
+	query := "SELECT host, port FROM system.zookeeper_connection"
+	rows, err := r.conn.Query(ctx, query)
+	if err != nil {
 		var exception *clickhouse.Exception
 		if errors.As(err, &exception) {
 			if exception.Code == 999 {
@@ -175,6 +178,19 @@ func (r *ready) CheckKeeper(ctx context.Context) error {
 		}
 
 		return err
+	}
+
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	for rows.Next() {
+		var host string
+		var port uint16
+		if err := rows.Scan(&host, &port); err != nil {
+			return err
+		}
+		r.logger.Info("keeper is ready", zap.String("host", host), zap.Uint16("port", port))
 	}
 
 	return nil
