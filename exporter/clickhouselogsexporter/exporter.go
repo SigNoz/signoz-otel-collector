@@ -57,7 +57,7 @@ const (
 	distributedLogsResourceV2        = "distributed_logs_v2_resource"
 	distributedLogsAttributeKeys     = "distributed_logs_attribute_keys"
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
-	distributedColumnEvolutionTable = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
+	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
@@ -432,7 +432,7 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	// Format: signal, col_name, col_type, field_context, field_name, release_time
 	// Example: logs, body_json_promoted, JSON, body, user.name, Jan 10
 	query := fmt.Sprintf(
-		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' SETTINGS max_threads = 1`,
+		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' AND field_name != '__all__' SETTINGS max_threads = 1`,
 		distributedColumnEvolutionTable,
 		constants.BodyPromotedColumn,
 	)
@@ -447,9 +447,6 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	}
 	updated := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
-		if r.FieldName == "" {
-			continue
-		}
 		updated[r.FieldName] = struct{}{}
 	}
 
