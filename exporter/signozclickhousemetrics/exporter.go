@@ -10,12 +10,14 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/DataDog/datadog-agent/pkg/proto/pbgo/trace"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"google.golang.org/protobuf/proto"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -954,6 +956,297 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 }
 
+// preprocessDDStats processes dd.internal.stats.payload metrics and transforms them into standard OTLP metrics
+func (c *clickhouseMetricsExporter) preprocessDDStats(ctx context.Context, md pmetric.Metrics) pmetric.Metrics {
+	// Quick scan to see if any dd.internal.stats.payload metrics exist
+	foundDDStats := false
+	rms := md.ResourceMetrics()
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+		sms := rm.ScopeMetrics()
+		for j := 0; j < sms.Len(); j++ {
+			sm := sms.At(j)
+			metrics := sm.Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				if metrics.At(k).Name() == "dd.internal.stats.payload" {
+					foundDDStats = true
+					break
+				}
+			}
+			if foundDDStats {
+				break
+			}
+		}
+		if foundDDStats {
+			break
+		}
+	}
+
+	// If no dd.internal.stats.payload metrics found, return original
+	if !foundDDStats {
+		c.logger.Debug("No dd.internal.stats.payload metrics found, returning original")
+		return md
+	}
+
+	c.logger.Debug("Found dd.internal.stats.payload metrics, preprocessing")
+
+	// Create new metrics for output
+	outMetrics := pmetric.NewMetrics()
+
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+		sms := rm.ScopeMetrics()
+
+		// Create output resource metrics
+		outRM := outMetrics.ResourceMetrics().AppendEmpty()
+		rm.Resource().CopyTo(outRM.Resource())
+		outRM.SetSchemaUrl(rm.SchemaUrl())
+
+		for j := 0; j < sms.Len(); j++ {
+			sm := sms.At(j)
+			metrics := sm.Metrics()
+
+			// Create output scope metrics
+			outSM := outRM.ScopeMetrics().AppendEmpty()
+			sm.Scope().CopyTo(outSM.Scope())
+			outSM.SetSchemaUrl(sm.SchemaUrl())
+
+			for k := 0; k < metrics.Len(); k++ {
+				metric := metrics.At(k)
+
+				// Check if this is the special dd.internal.stats.payload metric
+				if metric.Name() == "dd.internal.stats.payload" {
+					c.logger.Debug("Processing dd.internal.stats.payload metric",
+						zap.String("metric_type", metric.Type().String()))
+
+					// dd.internal.stats.payload is always a Sum metric type
+					if metric.Type() != pmetric.MetricTypeSum {
+						c.logger.Warn("dd.internal.stats.payload has unexpected metric type, expected Sum",
+							zap.String("actual_type", metric.Type().String()))
+						continue
+					}
+
+					// Process all data points in the Sum metric
+					dps := metric.Sum().DataPoints()
+					for l := 0; l < dps.Len(); l++ {
+						dp := dps.At(l)
+						payloadAttr, exists := dp.Attributes().Get("dd.internal.stats.payload")
+						if !exists {
+							c.logger.Debug("dd.internal.stats.payload attribute not found in data point")
+							continue
+						}
+
+						payload, err := c.decodePayload(payloadAttr.Bytes().AsRaw())
+						if err != nil {
+							c.logger.Error("failed to decode dd.internal.stats.payload",
+								zap.Error(err))
+							continue
+						}
+
+						c.convertToOTLP(payload, rm.Resource(), outMetrics)
+
+					}
+				} else {
+					// Copy regular metrics to output
+					metric.CopyTo(outSM.Metrics().AppendEmpty())
+				}
+			}
+		}
+	}
+
+	c.logger.Debug("Returning preprocessed metrics",
+		zap.Int("resource_metrics_count", outMetrics.ResourceMetrics().Len()))
+	return outMetrics
+}
+
+// decodePayload decodes protobuf payload from raw bytes
+func (c *clickhouseMetricsExporter) decodePayload(data []byte) (*pb.ClientStatsPayload, error) {
+	// The data is a marshaled StatsPayload, not ClientStatsPayload directly
+	var statsPayload pb.StatsPayload
+	if err := proto.Unmarshal(data, &statsPayload); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal StatsPayload: %w", err)
+	}
+
+	// Extract the first ClientStatsPayload from the wrapper
+	if len(statsPayload.Stats) == 0 {
+		return nil, fmt.Errorf("StatsPayload contains no ClientStatsPayload")
+	}
+
+	c.logger.Debug("Successfully decoded StatsPayload",
+		zap.Int("client_stats_count", len(statsPayload.Stats)),
+		zap.Bool("client_computed", statsPayload.ClientComputed))
+
+	// Return the first ClientStatsPayload
+	return statsPayload.Stats[0], nil
+}
+
+// convertToOTLP converts the decoded Datadog stats payload to OTLP metrics
+func (c *clickhouseMetricsExporter) convertToOTLP(payload *pb.ClientStatsPayload, resource pcommon.Resource, outMetrics pmetric.Metrics) {
+	c.logger.Debug("Converting Datadog stats payload to OTLP",
+		zap.String("hostname", payload.Hostname),
+		zap.String("env", payload.Env),
+		zap.Int("stats_buckets", len(payload.Stats)))
+
+	// Create resource metrics
+	rmx := outMetrics.ResourceMetrics().AppendEmpty()
+
+	// Copy original resource attributes and add Datadog-specific ones
+	resource.CopyTo(rmx.Resource())
+	rattrs := rmx.Resource().Attributes()
+
+	if payload.Hostname != "" {
+		rattrs.PutStr("host.name", payload.Hostname)
+	}
+	if payload.Env != "" {
+		rattrs.PutStr("deployment.environment", payload.Env)
+	}
+	if payload.Service != "" {
+		rattrs.PutStr("service.name", payload.Service)
+	}
+	if payload.Version != "" {
+		rattrs.PutStr("service.version", payload.Version)
+	}
+	if payload.Lang != "" {
+		rattrs.PutStr("telemetry.sdk.language", payload.Lang)
+	}
+	if payload.TracerVersion != "" {
+		rattrs.PutStr("telemetry.sdk.version", payload.TracerVersion)
+	}
+	if payload.RuntimeID != "" {
+		rattrs.PutStr("process.runtime.id", payload.RuntimeID)
+	}
+	if payload.ContainerID != "" {
+		rattrs.PutStr("container.id", payload.ContainerID)
+	}
+
+	// Create scope metrics
+	smx := rmx.ScopeMetrics().AppendEmpty()
+	smx.Scope().SetName("datadog.apm.stats")
+	smx.Scope().SetVersion("1.0.0")
+	metrics := smx.Metrics()
+
+	// Process each stats bucket (time window)
+	for _, bucket := range payload.Stats {
+		startNs := bucket.Start
+		durationNs := bucket.Duration
+
+		// Process each grouped stats within the bucket
+		for _, groupedStats := range bucket.Stats {
+			c.logger.Debug("Processing grouped stats",
+				zap.String("service", groupedStats.Service),
+				zap.String("name", groupedStats.Name),
+				zap.Uint64("hits", groupedStats.Hits))
+
+			// Build metric name: trace.{name}
+			baseMetricName := fmt.Sprintf("trace.%s", groupedStats.Name)
+
+			// Create common attributes for this group
+			commonAttrs := pcommon.NewMap()
+			commonAttrs.PutStr("span.name", groupedStats.Name)
+			commonAttrs.PutStr("resource.name", groupedStats.Resource)
+			commonAttrs.PutStr("span.service", groupedStats.Service)
+			commonAttrs.PutStr("span.type", groupedStats.Type)
+			commonAttrs.PutBool("synthetics", groupedStats.Synthetics)
+
+			if groupedStats.HTTPStatusCode != 0 {
+				commonAttrs.PutInt("http.status_code", int64(groupedStats.HTTPStatusCode))
+			}
+
+			// Add peer tags if present
+			for _, peerTag := range groupedStats.PeerTags {
+				// PeerTags appear to be a slice, not a map
+				// Store as a multi-value attribute or concatenate
+				commonAttrs.PutStr("peer.tags", peerTag)
+			}
+
+			// 1. Hits metric - trace.{name}.hits
+			hitsMetric := metrics.AppendEmpty()
+			hitsMetric.SetName(baseMetricName + ".hits")
+			hitsMetric.SetUnit("1")
+			hitsSum := hitsMetric.SetEmptySum()
+			hitsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+			hitsSum.SetIsMonotonic(true)
+			hitsDp := hitsSum.DataPoints().AppendEmpty()
+			hitsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+			hitsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+			hitsDp.SetIntValue(int64(groupedStats.Hits))
+			commonAttrs.CopyTo(hitsDp.Attributes())
+
+			// 2. Hits by HTTP status metric
+			if groupedStats.HTTPStatusCode != 0 {
+				hitsByStatusMetric := metrics.AppendEmpty()
+				hitsByStatusMetric.SetName(baseMetricName + ".hits.by_http_status")
+				hitsByStatusMetric.SetUnit("1")
+				hitsByStatusSum := hitsByStatusMetric.SetEmptySum()
+				hitsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+				hitsByStatusSum.SetIsMonotonic(true)
+				hitsByStatusDp := hitsByStatusSum.DataPoints().AppendEmpty()
+				hitsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+				hitsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+				hitsByStatusDp.SetIntValue(int64(groupedStats.Hits))
+				commonAttrs.CopyTo(hitsByStatusDp.Attributes())
+				statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
+				hitsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
+			}
+
+			// 3. Errors metric - trace.{name}.errors
+			if groupedStats.Errors > 0 {
+				errorsMetric := metrics.AppendEmpty()
+				errorsMetric.SetName(baseMetricName + ".errors")
+				errorsMetric.SetUnit("1")
+				errorsSum := errorsMetric.SetEmptySum()
+				errorsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+				errorsSum.SetIsMonotonic(true)
+				errorsDp := errorsSum.DataPoints().AppendEmpty()
+				errorsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+				errorsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+				errorsDp.SetIntValue(int64(groupedStats.Errors))
+				commonAttrs.CopyTo(errorsDp.Attributes())
+			}
+
+			// 4. Errors by HTTP status metric
+			if groupedStats.Errors > 0 && groupedStats.HTTPStatusCode != 0 {
+				errorsByStatusMetric := metrics.AppendEmpty()
+				errorsByStatusMetric.SetName(baseMetricName + ".errors.by_http_status")
+				errorsByStatusMetric.SetUnit("1")
+				errorsByStatusSum := errorsByStatusMetric.SetEmptySum()
+				errorsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+				errorsByStatusSum.SetIsMonotonic(true)
+				errorsByStatusDp := errorsByStatusSum.DataPoints().AppendEmpty()
+				errorsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+				errorsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+				errorsByStatusDp.SetIntValue(int64(groupedStats.Errors))
+				commonAttrs.CopyTo(errorsByStatusDp.Attributes())
+				statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
+				errorsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
+			}
+
+			// 5. Duration metric (latency distribution) - trace.{name}
+			durationMetric := metrics.AppendEmpty()
+			durationMetric.SetName(baseMetricName)
+			durationMetric.SetUnit("ns")
+			durationHistogram := durationMetric.SetEmptyHistogram()
+			durationHistogram.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+			durationDp := durationHistogram.DataPoints().AppendEmpty()
+			durationDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+			durationDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+			durationDp.SetCount(groupedStats.Hits)
+			durationDp.SetSum(float64(groupedStats.Duration))
+
+			// Calculate average for min/max approximation
+			if groupedStats.Hits > 0 {
+				avgDuration := float64(groupedStats.Duration) / float64(groupedStats.Hits)
+				durationDp.SetMin(avgDuration)
+				durationDp.SetMax(avgDuration)
+			}
+			commonAttrs.CopyTo(durationDp.Attributes())
+		}
+	}
+
+	c.logger.Debug("Successfully converted Datadog stats to OTLP",
+		zap.Int("metrics_count", metrics.Len()))
+}
+
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
 	batch := newBatch(c.logger)
 	start := time.Now()
@@ -1012,7 +1305,9 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 	case <-c.closeChan:
 		return errors.New("shutdown has been called")
 	default:
-		return c.writeBatch(ctx, c.prepareBatch(ctx, md))
+		// Preprocess dd.internal.stats.payload metrics
+		processedMetrics := c.preprocessDDStats(ctx, md)
+		return c.writeBatch(ctx, c.prepareBatch(ctx, processedMetrics))
 	}
 }
 
