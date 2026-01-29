@@ -1,0 +1,15 @@
+type: signozddstats
+
+status:
+  class: processor
+  stability:
+    development: [metrics]
+  distributions: [signoz]
+  codeowners:
+    active: [SigNoz/backend]
+
+resource_attributes:
+
+attributes:
+
+metrics:
