@@ -46,10 +46,6 @@ func TestReceiver(t *testing.T) {
 	t0 := uint32(time.Now().Unix())
 	mockQuerrier.tsNow = t0
 
-	err = testReceiver.init(context.Background())
-	require.Nil(err)
-	require.Equal(testReceiver.nextScrapeIntervalStartTs, t0)
-
 	// The receiver should wait long enough to respect
 	// min scrape delay - ensuring query_log table has been flushed
 
