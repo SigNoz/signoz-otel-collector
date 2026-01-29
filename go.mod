@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/bytedance/sonic v1.14.1
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/expr-lang/expr v1.17.5
+	github.com/expr-lang/expr v1.17.7
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/goccy/go-json v0.10.5
 	github.com/gogo/protobuf v1.3.2
