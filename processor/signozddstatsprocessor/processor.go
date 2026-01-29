@@ -16,15 +16,10 @@ import (
 )
 
 const (
-	metricNameHits     = "%s.hits"
-	metricNameErrors   = "trace.stats.errors"
-	metricNameDuration = "trace.stats.duration"
-
 	attrService    = "service"
 	attrResource   = "resource"
 	attrStatusCode = "status_code"
 	attrType       = "type"
-	attrHTTPRoute  = "http.route"
 	attrSpanKind   = "span.kind"
 
 	ddStatsPayloadMetric = "dd.internal.stats.payload"

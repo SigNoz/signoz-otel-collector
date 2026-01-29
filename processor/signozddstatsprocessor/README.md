@@ -36,7 +36,6 @@ Each metric data point includes the following attributes (when available):
 - `resource` - Resource name from the stats group
 - `status_code` - HTTP status code (integer)
 - `type` - Span type (e.g., web, db, cache, sql)
-- `synthetics` - Boolean indicating synthetic monitoring (only when true)
 - `span.kind` - Span kind from the stats group
 
 ### HTTP Status Metrics Additional Attributes
