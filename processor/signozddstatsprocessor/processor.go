@@ -95,18 +95,6 @@ func (p *ddStatsProcessor) processStatsPayload(metric pmetric.Metric, resource p
 			continue
 		}
 
-		// // Decode base64 payload
-		// payloadBytes, err := base64.StdEncoding.DecodeString(payloadAttr.Str())
-		// if err != nil {
-		// 	return fmt.Errorf("failed to decode payload: %w", err)
-		// }
-
-		// // Unmarshal protobuf
-		// var statsPayload pb.StatsPayload
-		// if err := proto.Unmarshal(payloadBytes, &statsPayload); err != nil {
-		// 	return fmt.Errorf("failed to unmarshal stats payload: %w", err)
-		// }
-
 		statsPayload, err := p.decodePayload(payloadAttr.Bytes().AsRaw())
 		if err != nil {
 			p.logger.Error("failed to decode dd.internal.stats.payload",
