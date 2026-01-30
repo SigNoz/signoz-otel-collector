@@ -1048,11 +1048,6 @@ func (c *clickhouseMetricsExporter) convertToOTLP(statsPayload *pb.StatsPayload,
 					commonAttrs.PutInt("http.status_code", int64(groupedStats.HTTPStatusCode))
 				}
 
-				// Add peer tags if present
-				for _, peerTag := range groupedStats.PeerTags {
-					commonAttrs.PutStr("peer.tags", peerTag)
-				}
-
 				// 1. Hits metric - trace.{name}.hits
 				hitsMetric := metrics.AppendEmpty()
 				hitsMetric.SetName(baseMetricName + ".hits")
