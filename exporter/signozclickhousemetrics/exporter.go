@@ -1147,6 +1147,91 @@ func (c *clickhouseMetricsExporter) convertToOTLP(payload *pb.ClientStatsPayload
 		zap.Int("metrics_count", metrics.Len()))
 }
 
+// processDDStatsPayload processes dd.internal.stats.payload metrics and converts them to OTLP
+func (c *clickhouseMetricsExporter) processDDStatsPayload(
+	batch *batch,
+	metric pmetric.Metric,
+	rm pmetric.ResourceMetrics,
+) {
+	c.logger.Debug("Processing dd.internal.stats.payload metric",
+		zap.String("metric_type", metric.Type().String()))
+
+	// dd.internal.stats.payload is always a Sum metric type
+	if metric.Type() != pmetric.MetricTypeSum {
+		c.logger.Warn("dd.internal.stats.payload has unexpected metric type, expected Sum",
+			zap.String("actual_type", metric.Type().String()))
+		return
+	}
+
+	// Process all data points in the Sum metric
+	dps := metric.Sum().DataPoints()
+	for l := 0; l < dps.Len(); l++ {
+		dp := dps.At(l)
+		payloadAttr, exists := dp.Attributes().Get("dd.internal.stats.payload")
+		if !exists {
+			c.logger.Debug("dd.internal.stats.payload attribute not found in data point")
+			continue
+		}
+
+		payload, err := c.decodePayload(payloadAttr.Bytes().AsRaw())
+		if err != nil {
+			c.logger.Error("failed to decode dd.internal.stats.payload",
+				zap.Error(err))
+			continue
+		}
+
+		// Convert Datadog stats to OTLP and process them
+		convertedMetrics := pmetric.NewMetrics()
+		c.convertToOTLP(payload, rm.Resource(), convertedMetrics)
+
+		// Process the converted metrics recursively
+		for x := 0; x < convertedMetrics.ResourceMetrics().Len(); x++ {
+			convertedRM := convertedMetrics.ResourceMetrics().At(x)
+			convertedResourceFingerprint := pkgfingerprint.NewFingerprint(
+				pkgfingerprint.ResourceFingerprintType,
+				pkgfingerprint.InitialOffset,
+				convertedRM.Resource().Attributes(),
+				map[string]string{},
+			)
+
+			convertedEnv := ""
+			if de, ok := convertedRM.Resource().Attributes().Get(semconv.AttributeDeploymentEnvironment); ok {
+				convertedEnv = de.AsString()
+			}
+
+			for y := 0; y < convertedRM.ScopeMetrics().Len(); y++ {
+				convertedSM := convertedRM.ScopeMetrics().At(y)
+				convertedScopeFingerprint := pkgfingerprint.NewFingerprint(
+					pkgfingerprint.ScopeFingerprintType,
+					convertedResourceFingerprint.Hash(),
+					convertedSM.Scope().Attributes(),
+					map[string]string{
+						"__scope.name__":       convertedSM.Scope().Name(),
+						"__scope.version__":    convertedSM.Scope().Version(),
+						"__scope.schema_url__": convertedSM.SchemaUrl(),
+					},
+				)
+
+				for z := 0; z < convertedSM.Metrics().Len(); z++ {
+					convertedMetric := convertedSM.Metrics().At(z)
+					switch convertedMetric.Type() {
+					case pmetric.MetricTypeGauge:
+						c.processGauge(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
+					case pmetric.MetricTypeSum:
+						c.processSum(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
+					case pmetric.MetricTypeHistogram:
+						c.processHistogram(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
+					case pmetric.MetricTypeSummary:
+						c.processSummary(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
+					case pmetric.MetricTypeExponentialHistogram:
+						c.processExponentialHistogram(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
+					}
+				}
+			}
+		}
+	}
+}
+
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
 	batch := newBatch(c.logger)
 	start := time.Now()
@@ -1172,73 +1257,7 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 
 				// Check if this is the special dd.internal.stats.payload metric
 				if metric.Name() == "dd.internal.stats.payload" {
-					c.logger.Debug("Processing dd.internal.stats.payload metric",
-						zap.String("metric_type", metric.Type().String()))
-
-					// dd.internal.stats.payload is always a Sum metric type
-					if metric.Type() != pmetric.MetricTypeSum {
-						c.logger.Warn("dd.internal.stats.payload has unexpected metric type, expected Sum",
-							zap.String("actual_type", metric.Type().String()))
-						continue
-					}
-
-					// Process all data points in the Sum metric
-					dps := metric.Sum().DataPoints()
-					for l := 0; l < dps.Len(); l++ {
-						dp := dps.At(l)
-						payloadAttr, exists := dp.Attributes().Get("dd.internal.stats.payload")
-						if !exists {
-							c.logger.Debug("dd.internal.stats.payload attribute not found in data point")
-							continue
-						}
-
-						payload, err := c.decodePayload(payloadAttr.Bytes().AsRaw())
-						if err != nil {
-							c.logger.Error("failed to decode dd.internal.stats.payload",
-								zap.Error(err))
-							continue
-						}
-
-						// Convert Datadog stats to OTLP and process them
-						convertedMetrics := pmetric.NewMetrics()
-						c.convertToOTLP(payload, rm.Resource(), convertedMetrics)
-
-						// Process the converted metrics recursively
-						for x := 0; x < convertedMetrics.ResourceMetrics().Len(); x++ {
-							convertedRM := convertedMetrics.ResourceMetrics().At(x)
-							convertedResourceFingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.ResourceFingerprintType, pkgfingerprint.InitialOffset, convertedRM.Resource().Attributes(), map[string]string{})
-
-							convertedEnv := ""
-							if de, ok := convertedRM.Resource().Attributes().Get(semconv.AttributeDeploymentEnvironment); ok {
-								convertedEnv = de.AsString()
-							}
-
-							for y := 0; y < convertedRM.ScopeMetrics().Len(); y++ {
-								convertedSM := convertedRM.ScopeMetrics().At(y)
-								convertedScopeFingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.ScopeFingerprintType, convertedResourceFingerprint.Hash(), convertedSM.Scope().Attributes(), map[string]string{
-									"__scope.name__":       convertedSM.Scope().Name(),
-									"__scope.version__":    convertedSM.Scope().Version(),
-									"__scope.schema_url__": convertedSM.SchemaUrl(),
-								})
-
-								for z := 0; z < convertedSM.Metrics().Len(); z++ {
-									convertedMetric := convertedSM.Metrics().At(z)
-									switch convertedMetric.Type() {
-									case pmetric.MetricTypeGauge:
-										c.processGauge(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
-									case pmetric.MetricTypeSum:
-										c.processSum(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
-									case pmetric.MetricTypeHistogram:
-										c.processHistogram(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
-									case pmetric.MetricTypeSummary:
-										c.processSummary(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
-									case pmetric.MetricTypeExponentialHistogram:
-										c.processExponentialHistogram(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
-									}
-								}
-							}
-						}
-					}
+					c.processDDStatsPayload(batch, metric, rm)
 					continue
 				}
 
