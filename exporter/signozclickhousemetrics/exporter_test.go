@@ -11,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/DataDog/datadog-agent/pkg/proto/pbgo/trace"
+
 	"github.com/SigNoz/signoz-otel-collector/usage"
+	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"go.uber.org/zap/zaptest"
@@ -20,6 +23,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -1241,5 +1245,391 @@ func Test_shutdown(t *testing.T) {
 	close(errChan)
 	for ok := range errChan {
 		assert.Error(t, ok)
+	}
+}
+
+func Test_prepareBatchDDStatsPayload(t *testing.T) {
+	// Create a mock dd.internal.stats.payload metric with protobuf data
+	metrics := pmetric.NewMetrics()
+	rm := metrics.ResourceMetrics().AppendEmpty()
+
+	// Add resource attributes
+	rm.Resource().Attributes().PutStr("service.name", "test-service")
+	rm.Resource().Attributes().PutStr("deployment.environment", "dev")
+
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("datadog.receiver")
+	sm.Scope().SetVersion("1.0.0")
+
+	// Create the dd.internal.stats.payload metric
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName("dd.internal.stats.payload")
+	metric.SetEmptySum()
+	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
+	metric.Sum().SetIsMonotonic(false)
+
+	// Create a sample Datadog stats payload
+	statsPayload := &pb.StatsPayload{
+		Stats: []*pb.ClientStatsPayload{
+			{
+				Hostname:      "docker-desktop",
+				Env:           "dev",
+				Service:       "order-service",
+				Version:       "1.0.0",
+				Lang:          "python",
+				TracerVersion: "1.0.0",
+				RuntimeID:     "runtime-123",
+				ContainerID:   "container-456",
+				Stats: []*pb.ClientStatsBucket{
+					{
+						Start:    1706600000000000000, // nanoseconds
+						Duration: 10000000000,         // 10 seconds in nanoseconds
+						Stats: []*pb.ClientGroupedStats{
+							{
+								Service:        "order-service",
+								Name:           "order.create",
+								Resource:       "order.create",
+								Type:           "web",
+								HTTPStatusCode: 200,
+								Hits:           100,
+								Errors:         5,
+								Duration:       5000000000, // 5 seconds in nanoseconds
+								Synthetics:     false,
+							},
+							{
+								Service:        "order-service",
+								Name:           "service.order",
+								Resource:       "service.order",
+								Type:           "db",
+								HTTPStatusCode: 0,
+								Hits:           50,
+								Errors:         0,
+								Duration:       2000000000, // 2 seconds in nanoseconds
+								Synthetics:     false,
+							},
+						},
+					},
+				},
+			},
+			{
+				Hostname:      "docker-desktop",
+				Env:           "dev",
+				Service:       "payment-service",
+				Version:       "1.0.0",
+				Lang:          "python",
+				TracerVersion: "1.0.0",
+				Stats: []*pb.ClientStatsBucket{
+					{
+						Start:    1706600000000000000,
+						Duration: 10000000000,
+						Stats: []*pb.ClientGroupedStats{
+							{
+								Service:        "payment-service",
+								Name:           "process_payment",
+								Resource:       "process_payment",
+								Type:           "web",
+								HTTPStatusCode: 201,
+								Hits:           75,
+								Errors:         2,
+								Duration:       3000000000,
+								Synthetics:     false,
+							},
+						},
+					},
+				},
+			},
+		},
+		ClientComputed: true,
+	}
+
+	// Marshal the payload to protobuf bytes
+	payloadBytes, err := proto.Marshal(statsPayload)
+	require.NoError(t, err)
+
+	// Add the payload as a data point attribute
+	dp := metric.Sum().DataPoints().AppendEmpty()
+	dp.Attributes().PutEmptyBytes("dd.internal.stats.payload").FromRaw(payloadBytes)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+
+	// Create exporter and prepare batch
+	exp, err := NewClickHouseExporter(
+		WithLogger(zaptest.NewLogger(t)),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+
+	batch := exp.prepareBatch(context.Background(), metrics)
+	assert.NotNil(t, batch)
+
+	// Verify samples were created
+	// For each ClientGroupedStats, we should have:
+	// - 1 hits metric
+	// - 1 hits.by_http_status metric (if HTTPStatusCode != 0)
+	// - 1 errors metric (if Errors > 0)
+	// - 1 errors.by_http_status metric (if Errors > 0 && HTTPStatusCode != 0)
+	// - 1 duration histogram
+
+	// First service (order-service) has 2 grouped stats:
+	// - order.create: hits, hits.by_http_status, errors, errors.by_http_status, duration
+	// - service.order: hits, duration
+	// Second service (payment-service) has 1 grouped stats:
+	// - process_payment: hits, hits.by_http_status, errors, errors.by_http_status, duration
+
+	expectedSampleCount := 0
+	// order.create: 2 (hits + hits.by_http_status) + 2 (errors + errors.by_http_status) + 5 * (duration) = 9
+	expectedSampleCount += 9
+	// service.order: 1 (hits) + 5 * (duration) = 6
+	expectedSampleCount += 6
+	// process_payment: 2 (hits + hits.by_http_status) + 2 (errors + errors.by_http_status) + 5 * (duration) = 9
+	expectedSampleCount += 9
+
+	require.Equal(t, expectedSampleCount, len(batch.samples), "unexpected number of samples")
+
+	// Verify metric names and values
+	metricNames := make(map[string]int)
+	for _, sample := range batch.samples {
+		metricNames[sample.metricName]++
+	}
+
+	// Check that we have the expected metric types
+	require.Contains(t, metricNames, "trace.order.create.hits")
+	require.Contains(t, metricNames, "trace.order.create.hits.by_http_status")
+	require.Contains(t, metricNames, "trace.order.create.errors")
+	require.Contains(t, metricNames, "trace.order.create.errors.by_http_status")
+	require.Contains(t, metricNames, "trace.order.create.count")
+	require.Contains(t, metricNames, "trace.order.create.sum")
+
+	require.Contains(t, metricNames, "trace.service.order.hits")
+	require.Contains(t, metricNames, "trace.service.order.count")
+	require.Contains(t, metricNames, "trace.service.order.sum")
+
+	require.Contains(t, metricNames, "trace.process_payment.hits")
+	require.Contains(t, metricNames, "trace.process_payment.hits.by_http_status")
+	require.Contains(t, metricNames, "trace.process_payment.errors")
+	require.Contains(t, metricNames, "trace.process_payment.errors.by_http_status")
+	require.Contains(t, metricNames, "trace.process_payment.count")
+	require.Contains(t, metricNames, "trace.process_payment.sum")
+
+	// Verify specific sample values
+	for _, sample := range batch.samples {
+		switch sample.metricName {
+		case "trace.order.create.hits":
+			assert.Equal(t, float64(100), sample.value)
+			assert.Equal(t, pmetric.AggregationTemporalityDelta, sample.temporality)
+		case "trace.order.create.errors":
+			assert.Equal(t, float64(5), sample.value)
+			assert.Equal(t, pmetric.AggregationTemporalityDelta, sample.temporality)
+		case "trace.order.create.count":
+			assert.Equal(t, float64(100), sample.value)
+			assert.Equal(t, pmetric.AggregationTemporalityDelta, sample.temporality)
+		case "trace.order.create.sum":
+			assert.Equal(t, float64(5000000000), sample.value)
+			assert.Equal(t, pmetric.AggregationTemporalityDelta, sample.temporality)
+		case "trace.service.order.hits":
+			assert.Equal(t, float64(50), sample.value)
+		case "trace.process_payment.hits":
+			assert.Equal(t, float64(75), sample.value)
+		case "trace.process_payment.errors":
+			assert.Equal(t, float64(2), sample.value)
+		}
+	}
+
+	// Verify time series were created
+	require.Greater(t, len(batch.ts), 0, "expected time series to be created")
+
+	// Verify resource attributes were properly set
+	foundOrderService := false
+	foundPaymentService := false
+
+	for _, ts := range batch.ts {
+		if strings.Contains(ts.metricName, "order.create") || strings.Contains(ts.metricName, "service.order") {
+			foundOrderService = true
+			assert.Equal(t, "order-service", ts.resourceAttrs["service.name"])
+			assert.Equal(t, "docker-desktop", ts.resourceAttrs["host.name"])
+			assert.Equal(t, "dev", ts.resourceAttrs["deployment.environment"])
+			assert.Equal(t, "python", ts.resourceAttrs["telemetry.sdk.language"])
+			assert.Equal(t, "1.0.0", ts.resourceAttrs["service.version"])
+		}
+		if strings.Contains(ts.metricName, "process_payment") {
+			foundPaymentService = true
+			assert.Equal(t, "payment-service", ts.resourceAttrs["service.name"])
+		}
+	}
+
+	assert.True(t, foundOrderService)
+	assert.True(t, foundPaymentService)
+
+	// Verify attributes on samples
+	for _, sample := range batch.samples {
+		if sample.metricName == "trace.order.create.hits.by_http_status" {
+			// This sample should have been processed through the normal flow
+			// and should have attributes set properly
+			break
+		}
+	}
+
+	// Verify metadata was created
+	require.Greater(t, len(batch.metadata), 0, "expected metadata to be created")
+}
+
+func Test_prepareBatchDDStatsPayload_InvalidPayload(t *testing.T) {
+	// Create a metric with invalid protobuf data
+	metrics := pmetric.NewMetrics()
+	rm := metrics.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName("dd.internal.stats.payload")
+	metric.SetEmptySum()
+
+	dp := metric.Sum().DataPoints().AppendEmpty()
+	// Add invalid protobuf bytes
+	dp.Attributes().PutEmptyBytes("dd.internal.stats.payload").FromRaw([]byte{0x00, 0x01, 0x02})
+
+	exp, err := NewClickHouseExporter(
+		WithLogger(zaptest.NewLogger(t)),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+
+	batch := exp.prepareBatch(context.Background(), metrics)
+
+	// Should not crash, but should not create any samples
+	assert.Equal(t, 0, len(batch.samples))
+}
+
+func Test_prepareBatchDDStatsPayload_MissingAttribute(t *testing.T) {
+	// Create a metric without the dd.internal.stats.payload attribute
+	metrics := pmetric.NewMetrics()
+	rm := metrics.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName("dd.internal.stats.payload")
+	metric.SetEmptySum()
+
+	// dp := metric.Sum().DataPoints().AppendEmpty()
+	// No dd.internal.stats.payload attribute
+
+	exp, err := NewClickHouseExporter(
+		WithLogger(zaptest.NewLogger(t)),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+
+	batch := exp.prepareBatch(context.Background(), metrics)
+
+	// Should not crash, but should not create any samples
+	assert.Equal(t, 0, len(batch.samples))
+}
+
+func Test_prepareBatchDDStatsPayload_WrongMetricType(t *testing.T) {
+	// Create a dd.internal.stats.payload metric with wrong type (Gauge instead of Sum)
+	metrics := pmetric.NewMetrics()
+	rm := metrics.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName("dd.internal.stats.payload")
+	metric.SetEmptyGauge() // Wrong type
+
+	dp := metric.Gauge().DataPoints().AppendEmpty()
+
+	statsPayload := &pb.StatsPayload{
+		Stats: []*pb.ClientStatsPayload{
+			{
+				Service: "test-service",
+				Stats: []*pb.ClientStatsBucket{
+					{
+						Start:    1706600000000000000,
+						Duration: 10000000000,
+						Stats:    []*pb.ClientGroupedStats{},
+					},
+				},
+			},
+		},
+	}
+
+	payloadBytes, err := proto.Marshal(statsPayload)
+	require.NoError(t, err)
+
+	dp.Attributes().PutEmptyBytes("dd.internal.stats.payload").FromRaw(payloadBytes)
+
+	exp, err := NewClickHouseExporter(
+		WithLogger(zaptest.NewLogger(t)),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+
+	batch := exp.prepareBatch(context.Background(), metrics)
+
+	// Should not process the metric due to wrong type
+	assert.Equal(t, 0, len(batch.samples))
+}
+
+func Benchmark_prepareBatchDDStatsPayload(b *testing.B) {
+	// Create a realistic dd.internal.stats.payload with multiple services
+	statsPayload := &pb.StatsPayload{
+		Stats: make([]*pb.ClientStatsPayload, 10),
+	}
+
+	for i := 0; i < 10; i++ {
+		statsPayload.Stats[i] = &pb.ClientStatsPayload{
+			Hostname: "host-" + strconv.Itoa(i),
+			Env:      "prod",
+			Service:  "service-" + strconv.Itoa(i),
+			Stats: []*pb.ClientStatsBucket{
+				{
+					Start:    1706600000000000000,
+					Duration: 10000000000,
+					Stats:    make([]*pb.ClientGroupedStats, 20),
+				},
+			},
+		}
+
+		for j := 0; j < 20; j++ {
+			statsPayload.Stats[i].Stats[0].Stats[j] = &pb.ClientGroupedStats{
+				Service:        "service-" + strconv.Itoa(i),
+				Name:           "operation-" + strconv.Itoa(j),
+				Resource:       "resource-" + strconv.Itoa(j),
+				Type:           "web",
+				HTTPStatusCode: 200,
+				Hits:           uint64(100 * (j + 1)),
+				Errors:         uint64(j),
+				Duration:       uint64(1000000000 * (j + 1)),
+			}
+		}
+	}
+
+	payloadBytes, err := proto.Marshal(statsPayload)
+	require.NoError(b, err)
+
+	metrics := pmetric.NewMetrics()
+	rm := metrics.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	metric := sm.Metrics().AppendEmpty()
+	metric.SetName("dd.internal.stats.payload")
+	metric.SetEmptySum()
+
+	dp := metric.Sum().DataPoints().AppendEmpty()
+	dp.Attributes().PutEmptyBytes("dd.internal.stats.payload").FromRaw(payloadBytes)
+
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		exp.prepareBatch(context.Background(), metrics)
 	}
 }

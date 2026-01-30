@@ -1209,6 +1209,12 @@ func (c *clickhouseMetricsExporter) processDDStatsPayload(
 
 				for z := 0; z < convertedSM.Metrics().Len(); z++ {
 					convertedMetric := convertedSM.Metrics().At(z)
+
+					c.logger.Debug("Processing converted metric from dd.internal.stats.payload",
+						zap.String("metric_name", convertedMetric.Name()),
+						zap.String("metric_type", convertedMetric.Type().String()),
+					)
+
 					switch convertedMetric.Type() {
 					case pmetric.MetricTypeGauge:
 						c.processGauge(batch, convertedMetric, convertedEnv, convertedResourceFingerprint, convertedScopeFingerprint)
