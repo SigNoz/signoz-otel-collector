@@ -380,7 +380,6 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 
 	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
 		dp := metric.Sum().DataPoints().At(i)
-
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
 		// Track min/max timestamps for resource/scope metadata
@@ -427,8 +426,6 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			scopeAttrs:    scopeFingerprintMap,
 			resourceAttrs: resourceFingerprintMap,
 		})
-		// }
-
 	}
 
 	// Add resource/scope metadata AFTER loop with tracked timestamps
