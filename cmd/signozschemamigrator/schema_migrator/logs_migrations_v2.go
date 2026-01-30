@@ -2,7 +2,6 @@ package schemamigrator
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -239,7 +238,7 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		MigrationID: 2005,
+		MigrationID: 2001,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: SignozMetadataDB,
@@ -355,14 +354,6 @@ ORDER BY name ASC`,
 					Granularity: 1,
 				},
 			},
-			InsertIntoTable{
-				Database:    SignozMetadataDB,
-				Table:       "distributed_column_evolution_metadata",
-				LightWeight: true,
-				Synchronous: true,
-				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
-				Values: fmt.Sprintf("('logs', '%s', 'JSON()', 'body', 'message', 0, %d)", constants.BodyPromotedColumn, time.Unix(0, 0).UnixNano()),
-			},
 		},
 		DownItems: []Operation{
 			AlterTableDropIndex{
@@ -399,5 +390,5 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2006
+	// Next migration id will be 2002
 }
