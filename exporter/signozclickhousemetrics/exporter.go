@@ -957,14 +957,13 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 }
 
 // decodePayload decodes protobuf payload from raw bytes
-func (c *clickhouseMetricsExporter) decodePayload(data []byte) (*pb.ClientStatsPayload, error) {
-	// The data is a marshaled StatsPayload, not ClientStatsPayload directly
+func (c *clickhouseMetricsExporter) decodePayload(data []byte) (*pb.StatsPayload, error) {
 	var statsPayload pb.StatsPayload
 	if err := proto.Unmarshal(data, &statsPayload); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal StatsPayload: %w", err)
 	}
 
-	// Extract the first ClientStatsPayload from the wrapper
+	// Validate we have stats
 	if len(statsPayload.Stats) == 0 {
 		return nil, fmt.Errorf("StatsPayload contains no ClientStatsPayload")
 	}
@@ -973,175 +972,179 @@ func (c *clickhouseMetricsExporter) decodePayload(data []byte) (*pb.ClientStatsP
 		zap.Int("client_stats_count", len(statsPayload.Stats)),
 		zap.Bool("client_computed", statsPayload.ClientComputed))
 
-	// Return the first ClientStatsPayload
-	return statsPayload.Stats[0], nil
+	return &statsPayload, nil
 }
 
 // convertToOTLP converts the decoded Datadog stats payload to OTLP metrics
-func (c *clickhouseMetricsExporter) convertToOTLP(payload *pb.ClientStatsPayload, resource pcommon.Resource, outMetrics pmetric.Metrics) {
+func (c *clickhouseMetricsExporter) convertToOTLP(statsPayload *pb.StatsPayload, resource pcommon.Resource, outMetrics pmetric.Metrics) {
 	c.logger.Debug("Converting Datadog stats payload to OTLP",
-		zap.String("hostname", payload.Hostname),
-		zap.String("env", payload.Env),
-		zap.Int("stats_buckets", len(payload.Stats)))
+		zap.Int("client_stats_count", len(statsPayload.Stats)),
+		zap.Bool("client_computed", statsPayload.ClientComputed))
 
-	// Create resource metrics
-	rmx := outMetrics.ResourceMetrics().AppendEmpty()
+	// Process each ClientStatsPayload in the array
+	for _, payload := range statsPayload.Stats {
+		// Create resource metrics for each ClientStatsPayload
+		rmx := outMetrics.ResourceMetrics().AppendEmpty()
 
-	// Copy original resource attributes and add Datadog-specific ones
-	resource.CopyTo(rmx.Resource())
-	rattrs := rmx.Resource().Attributes()
+		// Copy original resource attributes and add Datadog-specific ones
+		resource.CopyTo(rmx.Resource())
+		rattrs := rmx.Resource().Attributes()
 
-	if payload.Hostname != "" {
-		rattrs.PutStr("host.name", payload.Hostname)
-	}
-	if payload.Env != "" {
-		rattrs.PutStr("deployment.environment", payload.Env)
-	}
-	if payload.Service != "" {
-		rattrs.PutStr("service.name", payload.Service)
-	}
-	if payload.Version != "" {
-		rattrs.PutStr("service.version", payload.Version)
-	}
-	if payload.Lang != "" {
-		rattrs.PutStr("telemetry.sdk.language", payload.Lang)
-	}
-	if payload.TracerVersion != "" {
-		rattrs.PutStr("telemetry.sdk.version", payload.TracerVersion)
-	}
-	if payload.RuntimeID != "" {
-		rattrs.PutStr("process.runtime.id", payload.RuntimeID)
-	}
-	if payload.ContainerID != "" {
-		rattrs.PutStr("container.id", payload.ContainerID)
-	}
-
-	// Create scope metrics
-	smx := rmx.ScopeMetrics().AppendEmpty()
-	smx.Scope().SetName("datadog.apm.stats")
-	smx.Scope().SetVersion("1.0.0")
-	metrics := smx.Metrics()
-
-	// Process each stats bucket (time window)
-	for _, bucket := range payload.Stats {
-		startNs := bucket.Start
-		durationNs := bucket.Duration
-
-		// Process each grouped stats within the bucket
-		for _, groupedStats := range bucket.Stats {
-			c.logger.Debug("Processing grouped stats",
-				zap.String("service", groupedStats.Service),
-				zap.String("name", groupedStats.Name),
-				zap.Uint64("hits", groupedStats.Hits))
-
-			// Build metric name: trace.{name}
-			baseMetricName := fmt.Sprintf("trace.%s", groupedStats.Name)
-
-			// Create common attributes for this group
-			commonAttrs := pcommon.NewMap()
-			commonAttrs.PutStr("span.name", groupedStats.Name)
-			commonAttrs.PutStr("resource.name", groupedStats.Resource)
-			commonAttrs.PutStr("span.service", groupedStats.Service)
-			commonAttrs.PutStr("span.type", groupedStats.Type)
-			commonAttrs.PutBool("synthetics", groupedStats.Synthetics)
-
-			if groupedStats.HTTPStatusCode != 0 {
-				commonAttrs.PutInt("http.status_code", int64(groupedStats.HTTPStatusCode))
-			}
-
-			// Add peer tags if present
-			for _, peerTag := range groupedStats.PeerTags {
-				// PeerTags appear to be a slice, not a map
-				// Store as a multi-value attribute or concatenate
-				commonAttrs.PutStr("peer.tags", peerTag)
-			}
-
-			// 1. Hits metric - trace.{name}.hits
-			hitsMetric := metrics.AppendEmpty()
-			hitsMetric.SetName(baseMetricName + ".hits")
-			hitsMetric.SetUnit("1")
-			hitsSum := hitsMetric.SetEmptySum()
-			hitsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-			hitsSum.SetIsMonotonic(true)
-			hitsDp := hitsSum.DataPoints().AppendEmpty()
-			hitsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
-			hitsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
-			hitsDp.SetIntValue(int64(groupedStats.Hits))
-			commonAttrs.CopyTo(hitsDp.Attributes())
-
-			// 2. Hits by HTTP status metric
-			if groupedStats.HTTPStatusCode != 0 {
-				hitsByStatusMetric := metrics.AppendEmpty()
-				hitsByStatusMetric.SetName(baseMetricName + ".hits.by_http_status")
-				hitsByStatusMetric.SetUnit("1")
-				hitsByStatusSum := hitsByStatusMetric.SetEmptySum()
-				hitsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-				hitsByStatusSum.SetIsMonotonic(true)
-				hitsByStatusDp := hitsByStatusSum.DataPoints().AppendEmpty()
-				hitsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
-				hitsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
-				hitsByStatusDp.SetIntValue(int64(groupedStats.Hits))
-				commonAttrs.CopyTo(hitsByStatusDp.Attributes())
-				statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
-				hitsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
-			}
-
-			// 3. Errors metric - trace.{name}.errors
-			if groupedStats.Errors > 0 {
-				errorsMetric := metrics.AppendEmpty()
-				errorsMetric.SetName(baseMetricName + ".errors")
-				errorsMetric.SetUnit("1")
-				errorsSum := errorsMetric.SetEmptySum()
-				errorsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-				errorsSum.SetIsMonotonic(true)
-				errorsDp := errorsSum.DataPoints().AppendEmpty()
-				errorsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
-				errorsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
-				errorsDp.SetIntValue(int64(groupedStats.Errors))
-				commonAttrs.CopyTo(errorsDp.Attributes())
-			}
-
-			// 4. Errors by HTTP status metric
-			if groupedStats.Errors > 0 && groupedStats.HTTPStatusCode != 0 {
-				errorsByStatusMetric := metrics.AppendEmpty()
-				errorsByStatusMetric.SetName(baseMetricName + ".errors.by_http_status")
-				errorsByStatusMetric.SetUnit("1")
-				errorsByStatusSum := errorsByStatusMetric.SetEmptySum()
-				errorsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-				errorsByStatusSum.SetIsMonotonic(true)
-				errorsByStatusDp := errorsByStatusSum.DataPoints().AppendEmpty()
-				errorsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
-				errorsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
-				errorsByStatusDp.SetIntValue(int64(groupedStats.Errors))
-				commonAttrs.CopyTo(errorsByStatusDp.Attributes())
-				statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
-				errorsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
-			}
-
-			// 5. Duration metric (latency distribution) - trace.{name}
-			durationMetric := metrics.AppendEmpty()
-			durationMetric.SetName(baseMetricName)
-			durationMetric.SetUnit("ns")
-			durationHistogram := durationMetric.SetEmptyHistogram()
-			durationHistogram.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-			durationDp := durationHistogram.DataPoints().AppendEmpty()
-			durationDp.SetStartTimestamp(pcommon.Timestamp(startNs))
-			durationDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
-			durationDp.SetCount(groupedStats.Hits)
-			durationDp.SetSum(float64(groupedStats.Duration))
-
-			// Calculate average for min/max approximation
-			if groupedStats.Hits > 0 {
-				avgDuration := float64(groupedStats.Duration) / float64(groupedStats.Hits)
-				durationDp.SetMin(avgDuration)
-				durationDp.SetMax(avgDuration)
-			}
-			commonAttrs.CopyTo(durationDp.Attributes())
+		if payload.Hostname != "" {
+			rattrs.PutStr("host.name", payload.Hostname)
 		}
+		if payload.Env != "" {
+			rattrs.PutStr("deployment.environment", payload.Env)
+		}
+		if payload.Service != "" {
+			rattrs.PutStr("service.name", payload.Service)
+		}
+		if payload.Version != "" {
+			rattrs.PutStr("service.version", payload.Version)
+		}
+		if payload.Lang != "" {
+			rattrs.PutStr("telemetry.sdk.language", payload.Lang)
+		}
+		if payload.TracerVersion != "" {
+			rattrs.PutStr("telemetry.sdk.version", payload.TracerVersion)
+		}
+		if payload.RuntimeID != "" {
+			rattrs.PutStr("process.runtime.id", payload.RuntimeID)
+		}
+		if payload.ContainerID != "" {
+			rattrs.PutStr("container.id", payload.ContainerID)
+		}
+
+		// Create scope metrics
+		smx := rmx.ScopeMetrics().AppendEmpty()
+		smx.Scope().SetName("datadog.apm.stats")
+		smx.Scope().SetVersion("1.0.0")
+		metrics := smx.Metrics()
+
+		// Process each stats bucket (time window)
+		for _, bucket := range payload.Stats {
+			startNs := bucket.Start
+			durationNs := bucket.Duration
+
+			// Process each grouped stats within the bucket
+			for _, groupedStats := range bucket.Stats {
+				c.logger.Debug("Processing grouped stats",
+					zap.String("service", groupedStats.Service),
+					zap.String("name", groupedStats.Name),
+					zap.Uint64("hits", groupedStats.Hits))
+
+				// Build metric name: trace.{name}
+				baseMetricName := fmt.Sprintf("trace.%s", groupedStats.Name)
+
+				// Create common attributes for this group
+				commonAttrs := pcommon.NewMap()
+				commonAttrs.PutStr("span.name", groupedStats.Name)
+				commonAttrs.PutStr("resource.name", groupedStats.Resource)
+				commonAttrs.PutStr("span.service", groupedStats.Service)
+				commonAttrs.PutStr("span.type", groupedStats.Type)
+				commonAttrs.PutBool("synthetics", groupedStats.Synthetics)
+
+				if groupedStats.HTTPStatusCode != 0 {
+					commonAttrs.PutInt("http.status_code", int64(groupedStats.HTTPStatusCode))
+				}
+
+				// Add peer tags if present
+				for _, peerTag := range groupedStats.PeerTags {
+					commonAttrs.PutStr("peer.tags", peerTag)
+				}
+
+				// 1. Hits metric - trace.{name}.hits
+				hitsMetric := metrics.AppendEmpty()
+				hitsMetric.SetName(baseMetricName + ".hits")
+				hitsMetric.SetUnit("1")
+				hitsSum := hitsMetric.SetEmptySum()
+				hitsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+				hitsSum.SetIsMonotonic(true)
+				hitsDp := hitsSum.DataPoints().AppendEmpty()
+				hitsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+				hitsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+				hitsDp.SetIntValue(int64(groupedStats.Hits))
+				commonAttrs.CopyTo(hitsDp.Attributes())
+
+				// 2. Hits by HTTP status metric
+				if groupedStats.HTTPStatusCode != 0 {
+					hitsByStatusMetric := metrics.AppendEmpty()
+					hitsByStatusMetric.SetName(baseMetricName + ".hits.by_http_status")
+					hitsByStatusMetric.SetUnit("1")
+					hitsByStatusSum := hitsByStatusMetric.SetEmptySum()
+					hitsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+					hitsByStatusSum.SetIsMonotonic(true)
+					hitsByStatusDp := hitsByStatusSum.DataPoints().AppendEmpty()
+					hitsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+					hitsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+					hitsByStatusDp.SetIntValue(int64(groupedStats.Hits))
+					commonAttrs.CopyTo(hitsByStatusDp.Attributes())
+					statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
+					hitsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
+				}
+
+				// 3. Errors metric - trace.{name}.errors
+				if groupedStats.Errors > 0 {
+					errorsMetric := metrics.AppendEmpty()
+					errorsMetric.SetName(baseMetricName + ".errors")
+					errorsMetric.SetUnit("1")
+					errorsSum := errorsMetric.SetEmptySum()
+					errorsSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+					errorsSum.SetIsMonotonic(true)
+					errorsDp := errorsSum.DataPoints().AppendEmpty()
+					errorsDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+					errorsDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+					errorsDp.SetIntValue(int64(groupedStats.Errors))
+					commonAttrs.CopyTo(errorsDp.Attributes())
+				}
+
+				// 4. Errors by HTTP status metric
+				if groupedStats.Errors > 0 && groupedStats.HTTPStatusCode != 0 {
+					errorsByStatusMetric := metrics.AppendEmpty()
+					errorsByStatusMetric.SetName(baseMetricName + ".errors.by_http_status")
+					errorsByStatusMetric.SetUnit("1")
+					errorsByStatusSum := errorsByStatusMetric.SetEmptySum()
+					errorsByStatusSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+					errorsByStatusSum.SetIsMonotonic(true)
+					errorsByStatusDp := errorsByStatusSum.DataPoints().AppendEmpty()
+					errorsByStatusDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+					errorsByStatusDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+					errorsByStatusDp.SetIntValue(int64(groupedStats.Errors))
+					commonAttrs.CopyTo(errorsByStatusDp.Attributes())
+					statusClass := fmt.Sprintf("%dxx", groupedStats.HTTPStatusCode/100)
+					errorsByStatusDp.Attributes().PutStr("http.status_class", statusClass)
+				}
+
+				// 5. Duration metric (latency distribution) - trace.{name}
+				durationMetric := metrics.AppendEmpty()
+				durationMetric.SetName(baseMetricName)
+				durationMetric.SetUnit("ns")
+				durationHistogram := durationMetric.SetEmptyHistogram()
+				durationHistogram.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+				durationDp := durationHistogram.DataPoints().AppendEmpty()
+				durationDp.SetStartTimestamp(pcommon.Timestamp(startNs))
+				durationDp.SetTimestamp(pcommon.Timestamp(startNs + durationNs))
+				durationDp.SetCount(groupedStats.Hits)
+				durationDp.SetSum(float64(groupedStats.Duration))
+
+				// Calculate average for min/max approximation
+				if groupedStats.Hits > 0 {
+					avgDuration := float64(groupedStats.Duration) / float64(groupedStats.Hits)
+					durationDp.SetMin(avgDuration)
+					durationDp.SetMax(avgDuration)
+				}
+				commonAttrs.CopyTo(durationDp.Attributes())
+			}
+		}
+
+		c.logger.Debug("Successfully converted ClientStatsPayload to OTLP",
+			zap.Int("metrics_count", metrics.Len()),
+			zap.String("service", payload.Service),
+			zap.String("hostname", payload.Hostname))
 	}
 
-	c.logger.Debug("Successfully converted Datadog stats to OTLP",
-		zap.Int("metrics_count", metrics.Len()))
+	c.logger.Debug("Completed converting all Datadog stats to OTLP",
+		zap.Int("total_client_stats", len(statsPayload.Stats)))
 }
 
 // processDDStatsPayload processes dd.internal.stats.payload metrics and converts them to OTLP
