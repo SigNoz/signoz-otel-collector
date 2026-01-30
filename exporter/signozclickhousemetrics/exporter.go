@@ -381,26 +381,6 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
 		dp := metric.Sum().DataPoints().At(i)
 
-		// // check if metric is
-		// if metric.Name() == "dd.internal.stats.payload" {
-		// 	c.logger.Debug("Processing dd.internal.stats.payload metric")
-
-		// 	payloadAttr, exists := dp.Attributes().Get("dd.internal.stats.payload")
-		// 	if !exists {
-		// 		c.logger.Debug("dd.internal.stats.payload attribute not found in data point")
-		// 		continue
-		// 	}
-		// 	payload, err := c.decodePayload(payloadAttr.Bytes().AsRaw())
-		// 	if err != nil {
-		// 		c.logger.Error("failed to decode dd.internal.stats.payload",
-		// 			zap.Error(err))
-		// 		continue
-		// 	}
-
-		// 	c.convertToOTLP(payload, rm.Resource(), outMetrics)
-
-		// }
-		// else{
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
 		// Track min/max timestamps for resource/scope metadata
@@ -977,109 +957,6 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-}
-
-// preprocessDDStats processes dd.internal.stats.payload metrics and transforms them into standard OTLP metrics
-func (c *clickhouseMetricsExporter) preprocessDDStats(ctx context.Context, md pmetric.Metrics) pmetric.Metrics {
-	// Quick scan to see if any dd.internal.stats.payload metrics exist
-	foundDDStats := false
-	rms := md.ResourceMetrics()
-	for i := 0; i < rms.Len(); i++ {
-		rm := rms.At(i)
-		sms := rm.ScopeMetrics()
-		for j := 0; j < sms.Len(); j++ {
-			sm := sms.At(j)
-			metrics := sm.Metrics()
-			for k := 0; k < metrics.Len(); k++ {
-				if metrics.At(k).Name() == "dd.internal.stats.payload" {
-					foundDDStats = true
-					break
-				}
-			}
-			if foundDDStats {
-				break
-			}
-		}
-		if foundDDStats {
-			break
-		}
-	}
-
-	// If no dd.internal.stats.payload metrics found, return original
-	if !foundDDStats {
-		c.logger.Debug("No dd.internal.stats.payload metrics found, returning original")
-		return md
-	}
-
-	c.logger.Debug("Found dd.internal.stats.payload metrics, preprocessing")
-
-	// Create new metrics for output
-	outMetrics := pmetric.NewMetrics()
-
-	for i := 0; i < rms.Len(); i++ {
-		rm := rms.At(i)
-		sms := rm.ScopeMetrics()
-
-		// Create output resource metrics
-		outRM := outMetrics.ResourceMetrics().AppendEmpty()
-		rm.Resource().CopyTo(outRM.Resource())
-		outRM.SetSchemaUrl(rm.SchemaUrl())
-
-		for j := 0; j < sms.Len(); j++ {
-			sm := sms.At(j)
-			metrics := sm.Metrics()
-
-			// Create output scope metrics
-			outSM := outRM.ScopeMetrics().AppendEmpty()
-			sm.Scope().CopyTo(outSM.Scope())
-			outSM.SetSchemaUrl(sm.SchemaUrl())
-
-			for k := 0; k < metrics.Len(); k++ {
-				metric := metrics.At(k)
-
-				// Check if this is the special dd.internal.stats.payload metric
-				if metric.Name() == "dd.internal.stats.payload" {
-					c.logger.Debug("Processing dd.internal.stats.payload metric",
-						zap.String("metric_type", metric.Type().String()))
-
-					// dd.internal.stats.payload is always a Sum metric type
-					if metric.Type() != pmetric.MetricTypeSum {
-						c.logger.Warn("dd.internal.stats.payload has unexpected metric type, expected Sum",
-							zap.String("actual_type", metric.Type().String()))
-						continue
-					}
-
-					// Process all data points in the Sum metric
-					dps := metric.Sum().DataPoints()
-					for l := 0; l < dps.Len(); l++ {
-						dp := dps.At(l)
-						payloadAttr, exists := dp.Attributes().Get("dd.internal.stats.payload")
-						if !exists {
-							c.logger.Debug("dd.internal.stats.payload attribute not found in data point")
-							continue
-						}
-
-						payload, err := c.decodePayload(payloadAttr.Bytes().AsRaw())
-						if err != nil {
-							c.logger.Error("failed to decode dd.internal.stats.payload",
-								zap.Error(err))
-							continue
-						}
-
-						c.convertToOTLP(payload, rm.Resource(), outMetrics)
-
-					}
-				} else {
-					// Copy regular metrics to output
-					metric.CopyTo(outSM.Metrics().AppendEmpty())
-				}
-			}
-		}
-	}
-
-	c.logger.Debug("Returning preprocessed metrics",
-		zap.Int("resource_metrics_count", outMetrics.ResourceMetrics().Len()))
-	return outMetrics
 }
 
 // decodePayload decodes protobuf payload from raw bytes
