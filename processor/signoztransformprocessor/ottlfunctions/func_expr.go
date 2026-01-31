@@ -13,11 +13,11 @@ type ExprArguments struct {
 	Expression string
 }
 
-func NewExprFactory() ottl.Factory[ottllog.TransformContext] {
+func NewExprFactory() ottl.Factory[*ottllog.TransformContext] {
 	return ottl.NewFactory("EXPR", &ExprArguments{}, createExprFunction)
 }
 
-func createExprFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottllog.TransformContext], error) {
+func createExprFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottllog.TransformContext], error) {
 	args, ok := oArgs.(*ExprArguments)
 
 	if !ok {
@@ -27,13 +27,13 @@ func createExprFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.Expr
 	return exprFunc(args.Expression)
 }
 
-func exprFunc(expression string) (ottl.ExprFunc[ottllog.TransformContext], error) {
+func exprFunc(expression string) (ottl.ExprFunc[*ottllog.TransformContext], error) {
 	program, err := expr.Compile(expression)
 	if err != nil {
 		return nil, fmt.Errorf("could not compile expression %s: %w", expression, err)
 	}
 
-	return func(ctx context.Context, tCtx ottllog.TransformContext) (interface{}, error) {
+	return func(ctx context.Context, tCtx *ottllog.TransformContext) (interface{}, error) {
 		// Need to match https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/stanza/docs/types/entry.md
 		// for parity
 		exprEnv := map[string]interface{}{

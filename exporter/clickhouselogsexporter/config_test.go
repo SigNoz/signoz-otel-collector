@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
@@ -48,7 +49,7 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, r0, defaultCfg)
 
 	r1 := cfg.Exporters[component.NewIDWithName(metadata.Type, "full")].(*Config)
-	assert.Equal(t, r1, &Config{
+	expectedConfig := &Config{
 		DSN: "tcp://127.0.0.1:9000/?dial_timeout=5s",
 		TimeoutConfig: exporterhelper.TimeoutConfig{
 			Timeout: 5 * time.Second,
@@ -61,12 +62,16 @@ func TestLoadConfig(t *testing.T) {
 			RandomizationFactor: 0.7,
 			Multiplier:          1.3,
 		},
-		QueueBatchConfig: exporterhelper.QueueBatchConfig{
-			Enabled:      true,
+		QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
 			Sizer:        exporterhelper.RequestSizerTypeRequests,
 			NumConsumers: 10,
 			QueueSize:    100,
-		},
+			Batch: configoptional.Default(exporterhelper.BatchConfig{
+				FlushTimeout: 200 * time.Millisecond,
+				Sizer:        exporterhelper.RequestSizerTypeItems,
+				MinSize:      8192,
+			}),
+		}),
 		AttributesLimits: AttributesLimits{
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
@@ -76,7 +81,8 @@ func TestLoadConfig(t *testing.T) {
 		PromotedPathsSyncInterval: utils.ToPointer(10 * time.Second),
 		BodyJSONOldBodyEnabled:    true,
 		MaxAllowedDataAgeDays:     utils.ToPointer(15),
-	})
+	}
+	assert.Equal(t, expectedConfig, r1)
 
 	defaultCfg.(*Config).UseNewSchema = true
 	r2 := cfg.Exporters[component.NewIDWithName(metadata.Type, "new_schema")]

@@ -9,15 +9,16 @@ import (
 
 	"github.com/Shopify/sarama"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // Config defines configuration for Kafka exporter.
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"`        // squash ensures fields are correctly decoded in embedded struct.
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
 
 	// The list of kafka brokers (default localhost:9092)
 	Brokers []string `mapstructure:"brokers"`
