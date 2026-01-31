@@ -14,7 +14,7 @@ import (
 func TestExprFunc(t *testing.T) {
 	tests := []struct {
 		name     string
-		context  ottllog.TransformContext
+		context  *ottllog.TransformContext
 		expr     string
 		expected interface{}
 		err      bool
@@ -102,20 +102,17 @@ func makeTestOttlLogContext(
 	timestampSeconds int64,
 	severityText string,
 	severity plog.SeverityNumber,
-) ottllog.TransformContext {
-	ctx := ottllog.NewTransformContext(
-		plog.NewLogRecord(),
-		pcommon.NewInstrumentationScope(),
-		pcommon.NewResource(),
-		plog.NewScopeLogs(),
-		plog.NewResourceLogs(),
-	)
-	ctx.GetLogRecord().Body().SetStr(body)
-	_ = ctx.GetLogRecord().Attributes().FromRaw(attributes)
-	_ = ctx.GetResource().Attributes().FromRaw(resource)
-	ctx.GetLogRecord().SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(timestampSeconds, 0)))
-	ctx.GetLogRecord().SetSeverityText(severityText)
-	ctx.GetLogRecord().SetSeverityNumber(severity)
+) *ottllog.TransformContext {
+	resourceLogs := plog.NewResourceLogs()
+	scopeLogs := resourceLogs.ScopeLogs().AppendEmpty()
+	logRecord := scopeLogs.LogRecords().AppendEmpty()
+	
+	logRecord.Body().SetStr(body)
+	_ = logRecord.Attributes().FromRaw(attributes)
+	_ = resourceLogs.Resource().Attributes().FromRaw(resource)
+	logRecord.SetTimestamp(pcommon.NewTimestampFromTime(time.Unix(timestampSeconds, 0)))
+	logRecord.SetSeverityText(severityText)
+	logRecord.SetSeverityNumber(severity)
 
-	return ctx
+	return ottllog.NewTransformContextPtr(resourceLogs, scopeLogs, logRecord)
 }
