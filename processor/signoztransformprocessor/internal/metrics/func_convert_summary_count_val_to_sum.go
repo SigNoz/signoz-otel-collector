@@ -18,11 +18,11 @@ type convertSummaryCountValToSumArguments struct {
 	Monotonic     bool
 }
 
-func newConvertSummaryCountValToSumFactory() ottl.Factory[ottldatapoint.TransformContext] {
+func newConvertSummaryCountValToSumFactory() ottl.Factory[*ottldatapoint.TransformContext] {
 	return ottl.NewFactory("convert_summary_count_val_to_sum", &convertSummaryCountValToSumArguments{}, createConvertSummaryCountValToSumFunction)
 }
 
-func createConvertSummaryCountValToSumFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottldatapoint.TransformContext], error) {
+func createConvertSummaryCountValToSumFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottldatapoint.TransformContext], error) {
 	args, ok := oArgs.(*convertSummaryCountValToSumArguments)
 
 	if !ok {
@@ -32,7 +32,7 @@ func createConvertSummaryCountValToSumFunction(_ ottl.FunctionContext, oArgs ott
 	return convertSummaryCountValToSum(args.StringAggTemp, args.Monotonic)
 }
 
-func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.ExprFunc[ottldatapoint.TransformContext], error) {
+func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.ExprFunc[*ottldatapoint.TransformContext], error) {
 	var aggTemp pmetric.AggregationTemporality
 	switch stringAggTemp {
 	case "delta":
@@ -42,7 +42,7 @@ func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.Exp
 	default:
 		return nil, fmt.Errorf("unknown aggregation temporality: %s", stringAggTemp)
 	}
-	return func(_ context.Context, tCtx ottldatapoint.TransformContext) (interface{}, error) {
+	return func(_ context.Context, tCtx *ottldatapoint.TransformContext) (interface{}, error) {
 		metric := tCtx.GetMetric()
 		if metric.Type() != pmetric.MetricTypeSummary {
 			return nil, nil

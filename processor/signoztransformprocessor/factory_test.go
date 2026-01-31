@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
@@ -66,32 +67,70 @@ func TestFactoryCreateTracesProcessor(t *testing.T) {
 	cfg := factory.CreateDefaultConfig()
 	oCfg := cfg.(*Config)
 	oCfg.ErrorMode = ottl.IgnoreError
-	oCfg.TraceStatements = []common.ContextStatements{
+
+	type testCase struct {
+		name       string
+		statements []common.ContextStatements
+		expectErr  bool
+	}
+
+	// Two-step: creation, then consumption. Creation should error with invalid OTTL.
+	tests := []testCase{
 		{
-			Context: "span",
-			Statements: []string{
-				`set(attributes["test"], "pass") where name == "operationA"`,
-				`set(attributes["test error mode"], ParseJSON(1)) where name == "operationA"`,
+			name: "invalid OTTL fails at creation",
+			statements: []common.ContextStatements{
+				{
+					Context: "span",
+					Statements: []string{
+						`set(attributes["test"], "pass") where name == "operationA"`,
+						`set(attributes["test error mode"], ParseJSON(1)) where name == "operationA"`,
+					},
+				},
 			},
+			expectErr: true,
+		},
+		{
+			name: "valid OTTL succeeds",
+			statements: []common.ContextStatements{
+				{
+					Context: "span",
+					Statements: []string{
+						`set(attributes["test"], "pass") where name == "operationA"`,
+					},
+				},
+			},
+			expectErr: false,
 		},
 	}
-	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
-	assert.NotNil(t, tp)
-	assert.NoError(t, err)
 
-	td := ptrace.NewTraces()
-	span := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
-	span.SetName("operationA")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oCfg.TraceStatements = tt.statements
+			tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Nil(t, tp)
+				return
+			}
 
-	_, ok := span.Attributes().Get("test")
-	assert.False(t, ok)
+			require.NoError(t, err)
+			assert.NotNil(t, tp)
 
-	err = tp.ConsumeTraces(context.Background(), td)
-	assert.NoError(t, err)
+			td := ptrace.NewTraces()
+			span := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+			span.SetName("operationA")
 
-	val, ok := span.Attributes().Get("test")
-	assert.True(t, ok)
-	assert.Equal(t, "pass", val.Str())
+			_, ok := span.Attributes().Get("test")
+			assert.False(t, ok)
+
+			err = tp.ConsumeTraces(context.Background(), td)
+			assert.NoError(t, err)
+
+			val, ok := span.Attributes().Get("test")
+			assert.True(t, ok)
+			assert.Equal(t, "pass", val.Str())
+		})
+	}
 }
 
 func TestFactoryCreateMetricsProcessor_InvalidActions(t *testing.T) {
@@ -115,32 +154,67 @@ func TestFactoryCreateMetricsProcessor(t *testing.T) {
 	cfg := factory.CreateDefaultConfig()
 	oCfg := cfg.(*Config)
 	oCfg.ErrorMode = ottl.IgnoreError
-	oCfg.MetricStatements = []common.ContextStatements{
+	// Two-step: creation, then consumption. Creation should error with invalid OTTL.
+	tests := []struct {
+		name       string
+		statements []common.ContextStatements
+		expectErr  bool
+	}{
 		{
-			Context: "datapoint",
-			Statements: []string{
-				`set(attributes["test"], "pass") where metric.name == "operationA"`,
-				`set(attributes["test error mode"], ParseJSON(1)) where metric.name == "operationA"`,
+			name: "invalid OTTL fails at creation",
+			statements: []common.ContextStatements{
+				{
+					Context: "datapoint",
+					Statements: []string{
+						`set(attributes["test"], "pass") where metric.name == "operationA"`,
+						`set(attributes["test error mode"], ParseJSON(1)) where metric.name == "operationA"`,
+					},
+				},
 			},
+			expectErr: true,
+		},
+		{
+			name: "valid OTTL succeeds",
+			statements: []common.ContextStatements{
+				{
+					Context: "datapoint",
+					Statements: []string{
+						`set(attributes["test"], "pass") where metric.name == "operationA"`,
+					},
+				},
+			},
+			expectErr: false,
 		},
 	}
-	metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
-	assert.NotNil(t, metricsProcessor)
-	assert.NoError(t, err)
 
-	metrics := pmetric.NewMetrics()
-	metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-	metric.SetName("operationA")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oCfg.MetricStatements = tt.statements
+			metricsProcessor, err := factory.CreateMetrics(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Nil(t, metricsProcessor)
+				return
+			}
 
-	_, ok := metric.SetEmptySum().DataPoints().AppendEmpty().Attributes().Get("test")
-	assert.False(t, ok)
+			require.NoError(t, err)
+			assert.NotNil(t, metricsProcessor)
 
-	err = metricsProcessor.ConsumeMetrics(context.Background(), metrics)
-	assert.NoError(t, err)
+			metrics := pmetric.NewMetrics()
+			metric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			metric.SetName("operationA")
 
-	val, ok := metric.Sum().DataPoints().At(0).Attributes().Get("test")
-	assert.True(t, ok)
-	assert.Equal(t, "pass", val.Str())
+			_, ok := metric.SetEmptySum().DataPoints().AppendEmpty().Attributes().Get("test")
+			assert.False(t, ok)
+
+			err = metricsProcessor.ConsumeMetrics(context.Background(), metrics)
+			assert.NoError(t, err)
+
+			val, ok := metric.Sum().DataPoints().At(0).Attributes().Get("test")
+			assert.True(t, ok)
+			assert.Equal(t, "pass", val.Str())
+		})
+	}
 }
 
 func TestFactoryCreateLogsProcessor(t *testing.T) {
@@ -148,32 +222,67 @@ func TestFactoryCreateLogsProcessor(t *testing.T) {
 	cfg := factory.CreateDefaultConfig()
 	oCfg := cfg.(*Config)
 	oCfg.ErrorMode = ottl.IgnoreError
-	oCfg.LogStatements = []common.ContextStatements{
+	// Two-step: creation, then consumption. Creation should error with invalid OTTL.
+	tests := []struct {
+		name       string
+		statements []common.ContextStatements
+		expectErr  bool
+	}{
 		{
-			Context: "log",
-			Statements: []string{
-				`set(attributes["test"], "pass") where body == "operationA"`,
-				`set(attributes["test error mode"], ParseJSON(1)) where body == "operationA"`,
+			name: "invalid OTTL fails at creation",
+			statements: []common.ContextStatements{
+				{
+					Context: "log",
+					Statements: []string{
+						`set(attributes["test"], "pass") where body == "operationA"`,
+						`set(attributes["test error mode"], ParseJSON(1)) where body == "operationA"`,
+					},
+				},
 			},
+			expectErr: true,
+		},
+		{
+			name: "valid OTTL succeeds",
+			statements: []common.ContextStatements{
+				{
+					Context: "log",
+					Statements: []string{
+						`set(attributes["test"], "pass") where body == "operationA"`,
+					},
+				},
+			},
+			expectErr: false,
 		},
 	}
-	lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
-	assert.NotNil(t, lp)
-	assert.NoError(t, err)
 
-	ld := plog.NewLogs()
-	log := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
-	log.Body().SetStr("operationA")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oCfg.LogStatements = tt.statements
+			lp, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(metadata.Type), cfg, consumertest.NewNop())
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Nil(t, lp)
+				return
+			}
 
-	_, ok := log.Attributes().Get("test")
-	assert.False(t, ok)
+			require.NoError(t, err)
+			assert.NotNil(t, lp)
 
-	err = lp.ConsumeLogs(context.Background(), ld)
-	assert.NoError(t, err)
+			ld := plog.NewLogs()
+			log := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+			log.Body().SetStr("operationA")
 
-	val, ok := log.Attributes().Get("test")
-	assert.True(t, ok)
-	assert.Equal(t, "pass", val.Str())
+			_, ok := log.Attributes().Get("test")
+			assert.False(t, ok)
+
+			err = lp.ConsumeLogs(context.Background(), ld)
+			assert.NoError(t, err)
+
+			val, ok := log.Attributes().Get("test")
+			assert.True(t, ok)
+			assert.Equal(t, "pass", val.Str())
+		})
+	}
 }
 
 func TestFactoryCreateLogsProcessor_InvalidActions(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
@@ -30,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 				BackOffConfig:    configretry.NewDefaultBackOffConfig(),
-				QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+				QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 				DSN:              "tcp://localhost:9000",
 				MaxDistinctValues: MaxDistinctValuesConfig{
 					Traces: LimitsConfig{

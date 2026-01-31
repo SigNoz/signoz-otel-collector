@@ -3,6 +3,7 @@ package metadataexporter
 import (
 	"time"
 
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -63,9 +64,9 @@ type CacheConfig struct {
 
 // Config defines configuration for Metadata exporter.
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"`        // squash ensures fields are correctly decoded in embedded struct.
-	QueueBatchConfig             exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
-	BackOffConfig                configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
+	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
+	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
+	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
 
 	DSN string `mapstructure:"dsn"`
 
