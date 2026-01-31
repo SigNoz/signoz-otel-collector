@@ -713,7 +713,7 @@ func (m *MigrationManager) executeSyncOperations(ctx context.Context, operations
 func (m *MigrationManager) IsSync(migration SchemaMigrationRecord) bool {
 	for _, item := range migration.UpItems {
 		// if any of the operations is a sync operation, return true
-		if item.ForceMigrate() || (!item.IsMutation() && item.IsIdempotent() && item.IsLightweight()) {
+		if ok := m.IsSyncOperation(item); ok {
 			return true
 		}
 	}
@@ -721,22 +721,35 @@ func (m *MigrationManager) IsSync(migration SchemaMigrationRecord) bool {
 	return false
 }
 
+func (m *MigrationManager) IsSyncOperation(item Operation) bool {
+	return item.ForceMigrate() || (!item.IsMutation() && item.IsIdempotent() && item.IsLightweight())
+}
+
 func (m *MigrationManager) IsAsync(migration SchemaMigrationRecord) bool {
 	for _, item := range migration.UpItems {
-		// if any of the operations is a force migrate operation, return false
-		if item.ForceMigrate() {
-			return false
+		// if any of the operations is an async operation, return true
+		if ok := m.IsAsyncOperation(item); ok {
+			return true
 		}
+	}
 
-		// If any of the operations is sync, return false
-		if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-			return false
-		}
+	return false
+}
 
-		// If any of the operations is not idempotent, return false
-		if !item.IsIdempotent() {
-			return false
-		}
+func (m *MigrationManager) IsAsyncOperation(item Operation) bool {
+	// if any of the operations is a force migrate operation, return false
+	if item.ForceMigrate() {
+		return false
+	}
+
+	// If any of the operations is sync, return false
+	if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
+		return false
+	}
+
+	// If any of the operations is not idempotent, return false
+	if !item.IsIdempotent() {
+		return false
 	}
 
 	return true
