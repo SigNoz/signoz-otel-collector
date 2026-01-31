@@ -3,6 +3,8 @@ package schemamigrator
 import (
 	"fmt"
 	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/constants"
 )
 
 var MetadataMigrations = []SchemaMigrationRecord{
@@ -150,5 +152,19 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Table:    "column_evolution_metadata",
 			},
 		},
+	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			InsertIntoTable{
+				Database:    SignozMetadataDB,
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
+				Values:      fmt.Sprintf("('logs', '%s', 'JSON()', 'body', 'message', 0, %d)", constants.BodyPromotedColumn, time.Unix(0, 0).UnixNano()),
+			},
+		},
+		// no downitems required for this migration
 	},
 }
