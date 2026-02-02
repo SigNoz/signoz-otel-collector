@@ -737,18 +737,13 @@ func (m *MigrationManager) IsAsync(migration SchemaMigrationRecord) bool {
 }
 
 func (m *MigrationManager) IsAsyncOperation(item Operation) bool {
-	// if any of the operations is a force migrate operation, return false
+	// If it is a force migrate operation, return false
 	if item.ForceMigrate() {
 		return false
 	}
 
-	// If any of the operations is sync, return false
+	// If it is a sync operation, return false
 	if !item.IsMutation() && item.IsIdempotent() && item.IsLightweight() {
-		return false
-	}
-
-	// If any of the operations is not idempotent, return false
-	if !item.IsIdempotent() {
 		return false
 	}
 
