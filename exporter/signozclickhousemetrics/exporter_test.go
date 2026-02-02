@@ -342,16 +342,19 @@ func Test_prepareBatchHistogram(t *testing.T) {
 	}
 
 	// metadata
-	// count, sum, min, max
-	// 1 => resource attr
-	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
-	// 2 => point attr + __temporality__
-	// bucket
-	// 1 => resource attr
-	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
-	// 23 => point attr + __temporality__ + 21 buckets
+	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
+	// Per datapoint (1 datapoint):
+	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries
+	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries
+	//   - min with point fingerprint (1 point attr + __temporality__) = 2 entries
+	//   - max with point fingerprint (1 point attr + __temporality__) = 2 entries
+	//   - 21 buckets (20 + +Inf) with point fingerprint (1 point attr + le + __temporality__) = 21*3 = 63 entries
+	//   Subtotal: 2+2+2+2+63 = 71
+	// After all datapoints (5 metrics: count, sum, min, max, bucket):
+	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 5*(1+4) = 25 entries
+	// Total: 71 + 25 = 96
 
-	assert.Equal(t, len(batch.metadata), 4*(2+4+1)+1*(1+4+23))
+	assert.Equal(t, len(batch.metadata), 1*(2+2+2+2+21*3)+5*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -551,16 +554,17 @@ func Test_prepareBatchSummary(t *testing.T) {
 	}
 
 	// metadata
-	// count, sum
-	// 1 => resource attr
-	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
-	// 2 => point attr + __temporality__
-	// bucket
-	// 1 => resource attr
-	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
-	// 3 => point attr + __temporality__ + 1 quantile
+	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
+	// Per datapoint (2 datapoints):
+	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
+	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
+	//   - 1 quantile with point fingerprint (1 point attr + quantile + __temporality__) = 3 entries per datapoint
+	//   Subtotal per datapoint: 2+2+3 = 7, total for 2 datapoints: 14
+	// After all datapoints (3 metrics: count, sum, quantile):
+	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 3*(1+4) = 15 entries
+	// Total: 14 + 15 = 29
 
-	assert.Equal(t, len(batch.metadata), 2*(1+4+2)+1*(1+4+3))
+	assert.Equal(t, len(batch.metadata), 2*(2+2+3)+3*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {

@@ -28,13 +28,7 @@ func registerAsyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Runs 'up' async migrations for the store. Up async migrations are used to apply new async migrations to the store.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			up, err := newAsyncUp(
-				config.Clickhouse.DSN,
-				config.Clickhouse.Cluster,
-				config.Clickhouse.Replication,
-				config.MigrateSyncUp.Timeout,
-				logger,
-			)
+			up, err := newAsyncUp(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncUp.Timeout, logger)
 			if err != nil {
 				return err
 			}
@@ -48,7 +42,7 @@ func registerAsyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		},
 	}
 
-	config.MigrateSyncUp.RegisterFlags(syncUpCommand)
+	config.MigrateAsyncUp.RegisterFlags(syncUpCommand)
 
 	parentCmd.AddCommand(syncUpCommand)
 }
@@ -111,13 +105,8 @@ func (cmd *asyncUp) Run(ctx context.Context) error {
 }
 
 func (cmd *asyncUp) Up(ctx context.Context) error {
-	err := cmd.migrationManager.RunSquashedMigrations(ctx)
-	if err != nil {
-		return err
-	}
-
-	cmd.logger.Info("Running migrations")
-	err = cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
+	cmd.logger.Info("Running async migrations")
+	err := cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
 	if err != nil {
 		return err
 	}
@@ -173,12 +162,19 @@ func (cmd *asyncUp) run(ctx context.Context, migrations []schemamigrator.SchemaM
 		for _, item := range migration.UpItems {
 			if err := cmd.migrationManager.RunOperationWithoutUpdate(ctx, item, migration.MigrationID, db); err != nil {
 				cmd.logger.Error("Error occurred while running operation", zap.Error(err))
+
+				// if any one of the operations fails, mark the migration as failed
 				if err := cmd.migrationManager.InsertMigrationEntry(ctx, db, migration.MigrationID, schemamigrator.FailedStatus); err != nil {
 					return err
 				}
 
 				return err
 			}
+		}
+
+		// if all the operations succeed, mark the migration as finished
+		if err := cmd.migrationManager.InsertMigrationEntry(ctx, db, migration.MigrationID, schemamigrator.FinishedStatus); err != nil {
+			return err
 		}
 	}
 

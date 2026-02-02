@@ -14,6 +14,7 @@ import (
 )
 
 type systemTablesReceiver struct {
+	config *Config
 	// next scrape will include events in query_log table with
 	// nextScrapeIntervalStartTs  <= event_timestamp < (nextScrapeIntervalStartTs + scrapeIntervalSeconds)
 	scrapeIntervalSeconds uint32
@@ -76,6 +77,14 @@ func (r *systemTablesReceiver) run(ctx context.Context) {
 // Scrapes query_log table at clickhouse if the next set of query_log rows to be scraped are ready for scraping
 // Returns the number of seconds to wait before attempting a scrape again
 func (r *systemTablesReceiver) scrapeQueryLogIfReady(ctx context.Context) (uint32, error) {
+	if r.clickhouse == nil {
+		db, err := newClickhouseClient(ctx, r.config.DSN)
+		if err != nil {
+			return r.scrapeIntervalSeconds, fmt.Errorf("couldn't create clickhouse client: %w", err)
+		}
+		r.clickhouse = newClickhouseQuerrier(db, r.config.ClusterName)
+	}
+
 	serverTsNow, err := r.clickhouse.unixTsNow(ctx)
 	if err != nil {
 		return r.scrapeIntervalSeconds, fmt.Errorf("couldn't determine server timestamp: %w", err)

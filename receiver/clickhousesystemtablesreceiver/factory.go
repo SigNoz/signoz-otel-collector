@@ -41,13 +41,6 @@ func createLogsReceiver(
 		scrapeIntervalSeconds = defaultScrapeIntervalSeconds
 	}
 
-	db, err := newClickhouseClient(ctx, rCfg.DSN)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create clickhouse client: %w", err)
-	}
-
-	chQuerrier := newClickhouseQuerrier(db, rCfg.ClusterName)
-
 	logger := params.Logger
 	if logger == nil {
 		return nil, fmt.Errorf("logger must be provided")
@@ -64,7 +57,7 @@ func createLogsReceiver(
 
 	return &systemTablesReceiver{
 		nextConsumer:          consumer,
-		clickhouse:            chQuerrier,
+		config:                rCfg,
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    rCfg.QueryLogScrapeConfig.MinScrapeDelaySeconds,
 		logger:                params.Logger,

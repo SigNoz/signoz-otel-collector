@@ -18,11 +18,11 @@ type extractSumMetricArguments struct {
 	Monotonic bool
 }
 
-func newExtractSumMetricFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newExtractSumMetricFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("extract_sum_metric", &extractSumMetricArguments{}, createExtractSumMetricFunction)
 }
 
-func createExtractSumMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createExtractSumMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*extractSumMetricArguments)
 
 	if !ok {
@@ -42,8 +42,8 @@ type SumCountDataPoint interface {
 	Timestamp() pcommon.Timestamp
 }
 
-func extractSumMetric(monotonic bool) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (interface{}, error) {
+func extractSumMetric(monotonic bool) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (interface{}, error) {
 		metric := tCtx.GetMetric()
 		invalidMetricTypeError := fmt.Errorf("extract_sum_metric requires an input metric of type Histogram, ExponentialHistogram or Summary, got %s", metric.Type())
 
