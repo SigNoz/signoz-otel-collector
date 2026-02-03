@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,9 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 }
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
+	var possibleHostAttr = []string{"http.host", "server.address", "client.address",
+		"http.request.header.host", "net.peer.name"}
+
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
@@ -100,6 +104,9 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
+			if span.HttpHost == "" {
+				span.HttpHost = value
+			}
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
 			span.ExternalHttpMethod = v.Str()
 			span.HttpMethod = v.Str()
@@ -107,8 +114,7 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
-		} else if k == "http.host" || k == "server.address" ||
-			k == "client.address" || k == "http.request.header.host" {
+		} else if slices.Contains(possibleHostAttr, k) {
 			span.HttpHost = v.Str()
 		} else if k == "db.name" || k == "db.namespace" {
 			span.DBName = v.Str()
