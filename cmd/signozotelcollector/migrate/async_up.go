@@ -105,8 +105,13 @@ func (cmd *asyncUp) Run(ctx context.Context) error {
 }
 
 func (cmd *asyncUp) Up(ctx context.Context) error {
+	err := cmd.runSquashedMigrations(ctx)
+	if err != nil {
+		return err
+	}
+
 	cmd.logger.Info("Running async migrations")
-	err := cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
+	err = cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
 	if err != nil {
 		return err
 	}
@@ -139,6 +144,36 @@ func (cmd *asyncUp) Up(ctx context.Context) error {
 	err = cmd.run(ctx, schemamigrator.MeterMigrations, schemamigrator.SignozMeterDB)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (cmd *asyncUp) runSquashedMigrations(ctx context.Context) error {
+	squashedMigrations := map[string][]schemamigrator.SchemaMigrationRecord{
+		schemamigrator.SignozLogsDB:    schemamigrator.CustomRetentionLogsMigrations,
+		schemamigrator.SignozMetricsDB: schemamigrator.SquashedMetricsMigrations,
+		schemamigrator.SignozTracesDB:  schemamigrator.SquashedTracesMigrations,
+	}
+
+	for database, migrations := range squashedMigrations {
+		cmd.logger.Info("checking if should run squashed migrations", zap.String("database", database))
+		should, err := cmd.migrationManager.ShouldRunSquashedV2(ctx, database)
+		if err != nil {
+			return NewRetryableError(err)
+		}
+
+		if !should {
+			cmd.logger.Info("skipping squashed migrations", zap.String("database", database))
+			return nil
+		}
+
+		cmd.logger.Info("running squashed migrations", zap.String("database", database))
+
+		err = cmd.run(ctx, migrations, database)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
