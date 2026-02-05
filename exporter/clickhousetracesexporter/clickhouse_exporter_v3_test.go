@@ -650,3 +650,65 @@ func TestExporterPushTracesData(t *testing.T) {
 		return mock.ExpectationsWereMet() == nil
 	})
 }
+
+func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
+	tests := []struct {
+		name             string
+		spanKind         int8
+		attrs            map[string]string
+		expectedHTTPHost string
+		expectedHTTPURL  string
+	}{
+		{
+			name:             "http.host sets HttpHost",
+			spanKind:         3,
+			attrs:            map[string]string{"http.host": "api.example.com"},
+			expectedHTTPHost: "api.example.com",
+		},
+		{
+			name:             "net.peer.name sets HttpHost",
+			spanKind:         3,
+			attrs:            map[string]string{"net.peer.name": "peer.example.com"},
+			expectedHTTPHost: "peer.example.com",
+		},
+		{
+			name:             "url.full sets HttpHost fallback for external span",
+			spanKind:         3,
+			attrs:            map[string]string{"url.full": "https://api.example.com:8080/path"},
+			expectedHTTPHost: "api.example.com",
+			expectedHTTPURL:  "https://api.example.com:8080/path",
+		},
+		{
+			name:             "url.full does not set HttpHost for non-external span",
+			spanKind:         2, // SERVER
+			attrs:            map[string]string{"url.full": "https://api.example.com/path"},
+			expectedHTTPHost: "",
+			expectedHTTPURL:  "https://api.example.com/path",
+		},
+		{
+			name:     "explicit host takes precedence over URL fallback",
+			spanKind: 3,
+			attrs: map[string]string{
+				"url.full":  "https://url-host.com/path",
+				"http.host": "explicit-host.com",
+			},
+			expectedHTTPHost: "explicit-host.com",
+			expectedHTTPURL:  "https://url-host.com/path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			span := &SpanV3{Kind: tt.spanKind}
+			attrs := pcommon.NewMap()
+			for k, v := range tt.attrs {
+				attrs.PutStr(k, v)
+			}
+
+			populateCustomAttrsAndAttrs(attrs, span)
+
+			assert.Equal(t, tt.expectedHTTPHost, span.HttpHost)
+			assert.Equal(t, tt.expectedHTTPURL, span.HttpUrl)
+		})
+	}
+}
