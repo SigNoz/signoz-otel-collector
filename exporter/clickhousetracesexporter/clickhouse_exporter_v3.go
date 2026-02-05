@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +23,11 @@ import (
 	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
+
+var possibleHostAttr = utils.ToLookUpMap([]string{
+	"http.host", "server.address", "client.address",
+	"http.request.header.host", "net.peer.name",
+})
 
 func makeJaegerProtoReferences(
 	links ptrace.SpanLinkSlice,
@@ -84,9 +88,6 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 }
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
-	var possibleHostAttr = []string{"http.host", "server.address", "client.address",
-		"http.request.header.host", "net.peer.name"}
-
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
@@ -104,7 +105,7 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			}
 			span.ExternalHttpUrl = value
 			span.HttpUrl = v.Str()
-			if span.HttpHost == "" {
+			if span.HttpHost == "" { // skip override if already set using possibleHostAttr
 				span.HttpHost = value
 			}
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
@@ -114,7 +115,7 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 			span.HttpUrl = v.Str()
 		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
 			span.HttpMethod = v.Str()
-		} else if slices.Contains(possibleHostAttr, k) {
+		} else if _, ok := possibleHostAttr[k]; ok {
 			span.HttpHost = v.Str()
 		} else if k == "db.name" || k == "db.namespace" {
 			span.DBName = v.Str()

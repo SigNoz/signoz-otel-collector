@@ -105,3 +105,11 @@ func Concurrency() int {
 func ToPointer[T any](v T) *T {
 	return &v
 }
+
+func ToLookUpMap[T comparable](s []T) map[T]struct{} {
+	lookUp := map[T]struct{}{}
+	for _, e := range s {
+		lookUp[e] = struct{}{}
+	}
+	return lookUp
+}
