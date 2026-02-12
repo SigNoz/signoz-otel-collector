@@ -41,7 +41,7 @@ var (
 	maxSuffix         = ".max"
 	bucketSuffix      = ".bucket"
 	quantilesSuffix   = ".quantile"
-	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli, start_timestamp_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -77,29 +77,31 @@ type clickhouseMetricsExporter struct {
 // sample represents a single metric sample
 // directly mapped to the table `samples_v4` schema
 type sample struct {
-	env         string
-	temporality pmetric.AggregationTemporality
-	metricName  string
-	fingerprint uint64
-	unixMilli   int64
-	value       float64
-	flags       uint32
+	env                string
+	temporality        pmetric.AggregationTemporality
+	metricName         string
+	fingerprint        uint64
+	unixMilli          int64
+	startTimeUnixMilli int64
+	value              float64
+	flags              uint32
 }
 
 // exponentialHistogramSample represents a single exponential histogram sample
 // directly mapped to the table `exp_hist` schema
 type exponentialHistogramSample struct {
-	env         string
-	temporality pmetric.AggregationTemporality
-	metricName  string
-	fingerprint uint64
-	unixMilli   int64
-	sketch      chproto.DD
-	count       float64
-	sum         float64
-	min         float64
-	max         float64
-	flags       uint32
+	env                string
+	temporality        pmetric.AggregationTemporality
+	metricName         string
+	fingerprint        uint64
+	unixMilli          int64
+	startTimeUnixMilli int64
+	sketch             chproto.DD
+	count              float64
+	sum                float64
+	min                float64
+	max                float64
+	flags              uint32
 }
 
 // ts represents a single time series
@@ -307,6 +309,13 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		dp := metric.Gauge().DataPoints().At(i)
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 
+		/*
+			While start time is ignored for gauge metrics (as per https://github.com/open-telemetry/opentelemetry-proto/blob/f24da8deeb50118271c9435972791ef05ec003b1/opentelemetry/proto/metrics/v1/metrics.proto#L229),
+			it's still good to have the code ready to store it in case we have some use case for it in the future, or if otel-sdk starts recommending it.
+			There is no storage overhead either as the column will be added anyway, and might as well store a value if present other than the default 0
+		*/
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
+
 		// Track min/max timestamps for resource/scope metadata
 		firstSeenUnixMilli = min(firstSeenUnixMilli, unixMilli)
 		lastSeenUnixMilli = max(lastSeenUnixMilli, unixMilli)
@@ -328,13 +337,14 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: temporality,
-			metricName:  name,
-			fingerprint: fingerprint.HashWithName(name),
-			unixMilli:   unixMilli,
-			value:       value,
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        temporality,
+			metricName:         name,
+			fingerprint:        fingerprint.HashWithName(name),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              value,
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 		batch.addTs(&ts{
@@ -379,6 +389,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 	for i := 0; i < metric.Sum().DataPoints().Len(); i++ {
 		dp := metric.Sum().DataPoints().At(i)
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 
 		// Track min/max timestamps for resource/scope metadata
 		firstSeenUnixMilli = min(firstSeenUnixMilli, unixMilli)
@@ -400,13 +411,14 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: temporality,
-			metricName:  name,
-			fingerprint: fingerprint.HashWithName(name),
-			unixMilli:   unixMilli,
-			value:       value,
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        temporality,
+			metricName:         name,
+			fingerprint:        fingerprint.HashWithName(name),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              value,
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 		batch.addTs(&ts{
@@ -446,6 +458,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		sampleTemporality := temporality
 		var value float64
@@ -470,13 +483,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: sampleTemporality,
-			metricName:  name + suffix,
-			fingerprint: fingerprint.HashWithName(name + suffix),
-			unixMilli:   unixMilli,
-			value:       value,
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        sampleTemporality,
+			metricName:         name + suffix,
+			fingerprint:        fingerprint.HashWithName(name + suffix),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              value,
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -500,6 +514,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 	addBucketSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		var cumulativeCount uint64
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		pointAttrs := dp.Attributes()
 
 		for i := 0; i < dp.ExplicitBounds().Len() && i < dp.BucketCounts().Len(); i++ {
@@ -514,13 +529,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			fingerprintMap := fingerprint.AttributesAsMap()
 
 			batch.addSample(&sample{
-				env:         env,
-				temporality: temporality,
-				metricName:  name + suffix,
-				fingerprint: fingerprint.HashWithName(name + suffix),
-				unixMilli:   unixMilli,
-				value:       float64(cumulativeCount),
-				flags:       uint32(dp.Flags()),
+				env:                env,
+				temporality:        temporality,
+				metricName:         name + suffix,
+				fingerprint:        fingerprint.HashWithName(name + suffix),
+				unixMilli:          unixMilli,
+				startTimeUnixMilli: startTimeUnixMilli,
+				value:              float64(cumulativeCount),
+				flags:              uint32(dp.Flags()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -548,13 +564,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: temporality,
-			metricName:  name + suffix,
-			fingerprint: fingerprint.HashWithName(name + suffix),
-			unixMilli:   unixMilli,
-			value:       float64(dp.Count()),
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        temporality,
+			metricName:         name + suffix,
+			fingerprint:        fingerprint.HashWithName(name + suffix),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              float64(dp.Count()),
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 		batch.addTs(&ts{
@@ -641,6 +658,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	addSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		var value float64
 		switch suffix {
@@ -656,13 +674,14 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: temporality,
-			metricName:  name + suffix,
-			fingerprint: fingerprint.HashWithName(name + suffix),
-			unixMilli:   unixMilli,
-			value:       value,
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        temporality,
+			metricName:         name + suffix,
+			fingerprint:        fingerprint.HashWithName(name + suffix),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              value,
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -685,6 +704,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		for i := 0; i < dp.QuantileValues().Len(); i++ {
 			quantile := dp.QuantileValues().At(i)
 			quantileStr := strconv.FormatFloat(quantile.Quantile(), 'f', -1, 64)
@@ -696,13 +716,14 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 			batch.addSample(&sample{
-				env:         env,
-				temporality: temporality,
-				metricName:  name + suffix,
-				fingerprint: fingerprint.HashWithName(name + suffix),
-				unixMilli:   unixMilli,
-				value:       quantileValue,
-				flags:       uint32(dp.Flags()),
+				env:                env,
+				temporality:        temporality,
+				metricName:         name + suffix,
+				fingerprint:        fingerprint.HashWithName(name + suffix),
+				unixMilli:          unixMilli,
+				startTimeUnixMilli: startTimeUnixMilli,
+				value:              quantileValue,
+				flags:              uint32(dp.Flags()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 			batch.addTs(&ts{
@@ -795,6 +816,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	addSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		sampleTemporality := temporality
 		var value float64
@@ -819,13 +841,14 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
-			env:         env,
-			temporality: sampleTemporality,
-			metricName:  name + suffix,
-			fingerprint: fingerprint.HashWithName(name + suffix),
-			unixMilli:   unixMilli,
-			value:       value,
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        sampleTemporality,
+			metricName:         name + suffix,
+			fingerprint:        fingerprint.HashWithName(name + suffix),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			value:              value,
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -861,6 +884,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 	addDDSketchSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		startTimeUnixMilli := dp.StartTimestamp().AsTime().UnixMilli()
 		positive := toStore(dp.Positive())
 		negative := toStore(dp.Negative())
 		gamma := math.Pow(2, math.Pow(2, float64(-dp.Scale())))
@@ -875,17 +899,18 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			"__temporality__": temporality.String(),
 		})
 		batch.addExpHist(&exponentialHistogramSample{
-			env:         env,
-			temporality: temporality,
-			metricName:  name,
-			fingerprint: fingerprint.HashWithName(name),
-			unixMilli:   unixMilli,
-			sketch:      dd,
-			count:       float64(dp.Count()),
-			sum:         dp.Sum(),
-			min:         dp.Min(),
-			max:         dp.Max(),
-			flags:       uint32(dp.Flags()),
+			env:                env,
+			temporality:        temporality,
+			metricName:         name,
+			fingerprint:        fingerprint.HashWithName(name),
+			unixMilli:          unixMilli,
+			startTimeUnixMilli: startTimeUnixMilli,
+			sketch:             dd,
+			count:              float64(dp.Count()),
+			sum:                dp.Sum(),
+			min:                dp.Min(),
+			max:                dp.Max(),
+			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -1107,6 +1132,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				sample.value,
 				sample.flags,
 				time.Now().UnixMilli(),
+				sample.startTimeUnixMilli,
 			)
 			if err != nil {
 				return err

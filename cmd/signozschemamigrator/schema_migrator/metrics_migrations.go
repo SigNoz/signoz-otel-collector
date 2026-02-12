@@ -975,4 +975,83 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1008,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "exp_hist",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_exp_hist",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_metrics",
+				Table:    "exp_hist",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_exp_hist",
+				Column: Column{
+					Name:  "start_timestamp_unix_milli",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+	},
 }
