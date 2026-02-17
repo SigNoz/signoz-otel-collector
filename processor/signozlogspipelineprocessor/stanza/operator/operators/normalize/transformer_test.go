@@ -21,8 +21,6 @@ type testCase struct {
 }
 
 func TestTransform(t *testing.T) {
-	t.Skip("skipping normalize transformer test")
-
 	now := time.Now()
 	newTestEntry := func() *entry.Entry {
 		e := entry.New()
@@ -67,6 +65,22 @@ func TestTransform(t *testing.T) {
 				e.Body = map[string]any{
 					"message": "test message",
 					"level":   "info",
+				}
+				return e
+			},
+		},
+		{
+			name:      "text_logs_transformed_to_json",
+			expectErr: false,
+			input: func() *entry.Entry {
+				e := newTestEntry()
+				e.Body = `Hello World`
+				return e
+			},
+			output: func() *entry.Entry {
+				e := newTestEntry()
+				e.Body = map[string]any{
+					"message": "Hello World",
 				}
 				return e
 			},
