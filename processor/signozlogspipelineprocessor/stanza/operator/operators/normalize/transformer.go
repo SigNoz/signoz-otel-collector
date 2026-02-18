@@ -10,6 +10,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/bytedance/sonic"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
+	"go.uber.org/zap"
 )
 
 const (
@@ -42,7 +43,7 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	case map[string]any:
 		parsedValue = v
 	default:
-		return nil // return nil to avoid erroring out the pipeline
+		parsedValue = map[string]any{MessageField: v} // set to message field regardless of type
 	}
 
 	// set parsed value to body
@@ -62,9 +63,10 @@ func (p *Processor) transform(entry *entry.Entry) error {
 		}
 		err := entry.Set(messageField, strValue)
 		if err != nil {
-			return err
+			p.Logger().Error("Failed to set message field", zap.Error(err))
+		} else {
+			entry.Delete(field)
 		}
-		entry.Delete(field)
 		break
 	}
 
