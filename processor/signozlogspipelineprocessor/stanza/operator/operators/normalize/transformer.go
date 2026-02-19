@@ -77,29 +77,6 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 // Step 3: if it's a Map, all keys will be shifted to top level and top level "message" will be removed.
 func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
-	_, exists := entry.Get(message)
-	if !exists {
-		// add first found msg compatible field to body
-		for _, fieldName := range msgCompatibleFields {
-			field := signozstanzaentry.NewBodyField(fieldName)
-			val, ok := entry.Get(field)
-			if !ok {
-				continue
-			}
-			// Only map String values to "message" field
-			strValue, ok := val.(string)
-			if !ok {
-				continue
-			}
-			err := entry.Set(message, strValue)
-			if err != nil {
-				p.Logger().Error("Failed to set message field", zap.Error(err))
-			} else {
-				entry.Delete(field)
-			}
-			break
-		}
-	}
 
 	val, exists := entry.Get(message)
 	if exists {
@@ -124,6 +101,30 @@ func (p *Processor) normalize(entry *entry.Entry) {
 					}
 				}
 			}
+		}
+	}
+
+	_, exists = entry.Get(message)
+	if !exists {
+		// add first found msg compatible field to body
+		for _, fieldName := range msgCompatibleFields {
+			field := signozstanzaentry.NewBodyField(fieldName)
+			val, ok := entry.Get(field)
+			if !ok {
+				continue
+			}
+			// Only map String values to "message" field
+			strValue, ok := val.(string)
+			if !ok {
+				continue
+			}
+			err := entry.Set(message, strValue)
+			if err != nil {
+				p.Logger().Error("Failed to set message field", zap.Error(err))
+			} else {
+				entry.Delete(field)
+			}
+			break
 		}
 	}
 
