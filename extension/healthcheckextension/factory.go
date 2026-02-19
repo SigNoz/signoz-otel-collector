@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/extension"
 
 	"github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension/internal/metadata"
@@ -29,7 +30,9 @@ func NewFactory() extension.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: fmt.Sprintf("0.0.0.0:%d", defaultPort),
+			NetAddr: confignet.AddrConfig{
+				Endpoint: fmt.Sprintf("0.0.0.0:%d", defaultPort),
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",

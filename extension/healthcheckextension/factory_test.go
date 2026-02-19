@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/extension/extensiontest"
 
 	"github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension/internal/metadata"
@@ -21,7 +22,9 @@ func TestFactory_CreateDefaultConfig(t *testing.T) {
 	cfg := createDefaultConfig()
 	assert.Equal(t, &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: "0.0.0.0:13133",
+			NetAddr: confignet.AddrConfig{
+				Endpoint: "0.0.0.0:13133",
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",
@@ -35,7 +38,9 @@ func TestFactory_CreateDefaultConfig(t *testing.T) {
 
 func TestFactory_CreateExtension(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
-	cfg.Endpoint = testutil.GetAvailableLocalAddress(t)
+	cfg.NetAddr = confignet.AddrConfig{
+		Endpoint: testutil.GetAvailableLocalAddress(t),
+	}
 
 	ext, err := createExtension(context.Background(), extensiontest.NewNopSettings(metadata.Type), cfg)
 	require.NoError(t, err)

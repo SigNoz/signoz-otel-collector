@@ -52,7 +52,8 @@ func (cfg *Config) Validate() error {
 	if err != nil {
 		return err
 	}
-	if cfg.Endpoint == "" {
+
+	if cfg.NetAddr.Endpoint == "" {
 		return errNoEndpointProvided
 	}
 	if cfg.CheckCollectorPipeline.ExporterFailureThreshold <= 0 {

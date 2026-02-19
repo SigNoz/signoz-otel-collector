@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 
 	"github.com/SigNoz/signoz-otel-collector/internal/common/testutil"
 )
@@ -47,7 +48,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			name: "WithoutCheckCollectorPipeline",
 			config: Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: testutil.GetAvailableLocalAddress(t),
+					NetAddr: confignet.AddrConfig{
+						Endpoint: testutil.GetAvailableLocalAddress(t),
+					},
 				},
 				CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 				Path:                   "/",
@@ -65,7 +68,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			name: "WithCustomizedPathWithoutCheckCollectorPipeline",
 			config: Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: testutil.GetAvailableLocalAddress(t),
+					NetAddr: confignet.AddrConfig{
+						Endpoint: testutil.GetAvailableLocalAddress(t),
+					},
 				},
 				CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 				Path:                   "/health",
@@ -81,7 +86,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			name: "WithBothCustomResponseBodyWithoutCheckCollectorPipeline",
 			config: Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: testutil.GetAvailableLocalAddress(t),
+					NetAddr: confignet.AddrConfig{
+						Endpoint: testutil.GetAvailableLocalAddress(t),
+					},
 				},
 				CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 				Path:                   "/",
@@ -99,7 +106,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			name: "WithHealthyCustomResponseBodyWithoutCheckCollectorPipeline",
 			config: Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: testutil.GetAvailableLocalAddress(t),
+					NetAddr: confignet.AddrConfig{
+						Endpoint: testutil.GetAvailableLocalAddress(t),
+					},
 				},
 				CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 				Path:                   "/",
@@ -117,7 +126,9 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 			name: "WithUnhealthyCustomResponseBodyWithoutCheckCollectorPipeline",
 			config: Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: testutil.GetAvailableLocalAddress(t),
+					NetAddr: confignet.AddrConfig{
+						Endpoint: testutil.GetAvailableLocalAddress(t),
+					},
 				},
 				CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 				Path:                   "/",
@@ -143,10 +154,10 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 
 			// Give a chance for the server goroutine to run.
 			runtime.Gosched()
-			require.Eventuallyf(t, ensureServerRunning(tt.config.Endpoint), 30*time.Second, 1*time.Second, "Failed to start the testing server.")
+			require.Eventuallyf(t, ensureServerRunning(tt.config.NetAddr.Endpoint), 30*time.Second, 1*time.Second, "Failed to start the testing server.")
 
 			client := &http.Client{}
-			url := "http://" + tt.config.Endpoint + tt.config.Path
+			url := "http://" + tt.config.NetAddr.Endpoint + tt.config.Path
 
 			for _, ts := range tt.teststeps {
 				if ts.step != nil {
@@ -182,7 +193,9 @@ func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: endpoint,
+			NetAddr: confignet.AddrConfig{
+				Endpoint: endpoint,
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 	}
@@ -195,7 +208,9 @@ func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 func TestHealthCheckMultipleStarts(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
+			NetAddr: confignet.AddrConfig{
+				Endpoint: testutil.GetAvailableLocalAddress(t),
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",
@@ -213,7 +228,9 @@ func TestHealthCheckMultipleStarts(t *testing.T) {
 func TestHealthCheckMultipleShutdowns(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
+			NetAddr: confignet.AddrConfig{
+				Endpoint: testutil.GetAvailableLocalAddress(t),
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",
@@ -230,7 +247,9 @@ func TestHealthCheckMultipleShutdowns(t *testing.T) {
 func TestHealthCheckShutdownWithoutStart(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
+			NetAddr: confignet.AddrConfig{
+				Endpoint: testutil.GetAvailableLocalAddress(t),
+			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 	}

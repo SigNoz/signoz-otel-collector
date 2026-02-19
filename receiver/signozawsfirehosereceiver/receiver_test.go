@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
@@ -77,7 +78,9 @@ func TestStart(t *testing.T) {
 		})
 		cfg := &Config{
 			ServerConfig: confighttp.ServerConfig{
-				Endpoint: listener.Addr().String(),
+				NetAddr: confignet.AddrConfig{
+					Endpoint: listener.Addr().String(),
+				},
 			},
 		}
 		ctx := context.TODO()

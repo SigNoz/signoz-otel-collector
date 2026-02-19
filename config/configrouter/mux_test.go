@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 )
@@ -30,7 +31,9 @@ func TestMuxConfig(t *testing.T) {
 	}).Methods(http.MethodGet)
 
 	serverConfig := confighttp.ServerConfig{
-		Endpoint: "localhost:0",
+		NetAddr: confignet.AddrConfig{
+			Endpoint: "localhost:0",
+		},
 	}
 
 	httpListener, err := serverConfig.ToListener(ctx)
