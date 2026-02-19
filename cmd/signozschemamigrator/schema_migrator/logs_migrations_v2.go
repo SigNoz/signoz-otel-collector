@@ -286,7 +286,7 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
@@ -300,7 +300,7 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
@@ -319,7 +319,7 @@ ORDER BY name ASC`,
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 				},
 			},
 			AlterTableAddColumn{
@@ -331,15 +331,25 @@ ORDER BY name ASC`,
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 				},
 			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
+					Name:        "body_v2_string_ngram_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_string_token_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
 					Type:        "tokenbf_v1(10000, 2, 0)",
 					Granularity: 1,
 				},
@@ -348,9 +358,19 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
+					Name:        "body_v2_paths_ngram_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
 					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_paths_token_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
+					Type:        "tokenbf_v1(10000, 2, 0)",
 					Granularity: 1,
 				},
 			},
@@ -360,14 +380,28 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
+					Name: "body_v2_string_ngram_idx",
 				},
 			},
 			AlterTableDropIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
+					Name: "body_v2_string_token_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_ngram_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_token_idx",
 				},
 			},
 			AlterTableDropColumn{
@@ -378,7 +412,7 @@ ORDER BY name ASC`,
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
-				Column:   Column{Name: constants.BodyJSONColumn},
+				Column:   Column{Name: constants.BodyV2Column},
 			},
 			DropTableOperation{
 				Database: SignozMetadataDB,

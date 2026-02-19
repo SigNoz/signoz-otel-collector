@@ -7,7 +7,7 @@ import (
 )
 
 // buildPromotedAndPruneBody extracts promoted paths from body and returns them as a separate map.
-// It mutates the body in place to remove extracted entries.
+// It retains the original body and extracted entries in place.
 //
 // Example:
 //
@@ -15,11 +15,11 @@ import (
 //	Promoted paths: {"user.id"}
 //	Result:
 //	  - Promoted: {"user.id": "123"}
-//	  - Body (mutated): {"message": "log", "user": {"name": "john"}}
+//	  - Body: {"message": "log", "user": {"id": "123", "name": "john"}}
 //
 // If all entries in a nested map are extracted, the empty map is automatically removed.
 // Example: If "user.id" is the only key in "user", then "user" map is removed entirely.
-func buildPromotedAndPruneBody(body pcommon.Value, promotedPaths map[string]struct{}) pcommon.Value {
+func buildPromoted(body pcommon.Value, promotedPaths map[string]struct{}) pcommon.Value {
 	promoted := pcommon.NewValueMap()
 	if body.Type() != pcommon.ValueTypeMap || len(promotedPaths) == 0 {
 		return promoted
@@ -61,10 +61,6 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 		if v.Type() != pcommon.ValueTypeMap {
 			dst := promotedMap.PutEmpty(fullPath)
 			v.CopyTo(dst)
-			bodyMap.Remove(remainingPath)
-			// Note: We can't remove bodyMap itself here, only its parent can do that after recursion
-			// the code is written in a way that the parent will remove the bodyMap itself after recursion
-			// check the end of the function for the cleanup
 			return
 		}
 	}
@@ -83,11 +79,5 @@ func handleSinglePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath str
 	if v, ok := bodyMap.Get(head); ok && v.Type() == pcommon.ValueTypeMap {
 		nestedMap := v.Map()
 		handleSinglePath(nestedMap, promotedMap, fullPath, tail)
-		// After recursion, check if the nested map is now empty and remove it immediately
-		// This cleanup happens in the same iteration cycle, avoiding a separate pass
-		// Example: If "user" map becomes empty after extracting "user.id", remove "user" key
-		if nestedMap.Len() == 0 {
-			bodyMap.Remove(head)
-		}
 	}
 }
