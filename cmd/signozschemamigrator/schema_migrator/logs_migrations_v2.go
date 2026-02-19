@@ -374,26 +374,6 @@ ORDER BY name ASC`,
 					Granularity: 1,
 				},
 			},
-			AlterTableAddIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
-					Type:        "tokenbf_v1(10000, 2, 0)",
-					Granularity: 1,
-				},
-			},
-			AlterTableAddIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
-					Type:        "ngrambf_v1(4, 15000, 3, 0)",
-					Granularity: 1,
-				},
-			},
 		},
 		DownItems: []Operation{
 			AlterTableDropIndex{
@@ -422,20 +402,6 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Index: Index{
 					Name: "body_v2_paths_token_idx",
-				},
-			},
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-				},
-			},
-			AlterTableDropIndex{
-				Database: "signoz_logs",
-				Table:    "logs_v2",
-				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
 				},
 			},
 			AlterTableDropColumn{
