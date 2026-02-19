@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
@@ -142,8 +141,4 @@ func (p *Processor) normalize(entry *entry.Entry) {
 			entry.Set(message, fmt.Sprintf("%v", val))
 		}
 	}
-}
-
-func init() {
-	sort.Strings(msgCompatibleFields)
 }
