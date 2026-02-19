@@ -2,6 +2,8 @@ package json
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -49,27 +51,7 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	// set parsed value to body
 	entry.Body = parsedValue
 
-	messageField := signozstanzaentry.NewBodyField("message")
-	// add first found msg compatible field to body
-	for _, fieldName := range msgCompatibleFields {
-		field := signozstanzaentry.NewBodyField(fieldName)
-		val, ok := entry.Get(field)
-		if !ok {
-			continue
-		}
-		strValue, ok := val.(string)
-		if !ok {
-			continue
-		}
-		err := entry.Set(messageField, strValue)
-		if err != nil {
-			p.Logger().Error("Failed to set message field", zap.Error(err))
-		} else {
-			entry.Delete(field)
-		}
-		break
-	}
-
+	p.normalize(entry)
 	return nil
 }
 
@@ -87,6 +69,78 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 	}
 	output[MessageField] = str
 	return output
+}
+
+// Step 1: if "message" missing from logs will try to extract it from msgCompatibleFields.
+// msgCompatibleFields are only allocated to "message" field if they're String else skipped.
+// Step 2: normalize casts "message" as String if Scalar.
+// Step 3: if it's a Map, all keys will be shifted to top level and top level "message" will be removed.
+func (p *Processor) normalize(entry *entry.Entry) {
+	message := signozstanzaentry.NewBodyField("message")
+	_, exists := entry.Get(message)
+	if !exists {
+		// add first found msg compatible field to body
+		for _, fieldName := range msgCompatibleFields {
+			field := signozstanzaentry.NewBodyField(fieldName)
+			val, ok := entry.Get(field)
+			if !ok {
+				continue
+			}
+			// Only map String values to "message" field
+			strValue, ok := val.(string)
+			if !ok {
+				continue
+			}
+			err := entry.Set(message, strValue)
+			if err != nil {
+				p.Logger().Error("Failed to set message field", zap.Error(err))
+			} else {
+				entry.Delete(field)
+			}
+			break
+		}
+	}
+
+	val, exists := entry.Get(message)
+	if exists {
+		switch reflect.TypeOf(val).Kind() {
+		case reflect.Map:
+			mapValue, ok := val.(map[string]any)
+			if !ok {
+				p.Logger().Error("Failed to cast message field to map", zap.Any("type", fmt.Sprintf("%T", val)))
+				break
+			}
+			// shift all keys to top level and remove "message" field
+			for key, value := range mapValue {
+				entry.Set(signozstanzaentry.NewBodyField(key), value)
+			}
+			// refetch the message field
+			refetchedVal, exists := entry.Get(message)
+			if exists {
+				switch value := refetchedVal.(type) {
+				case map[string]any:
+					if len(value) == 0 {
+						entry.Delete(message)
+					}
+				}
+			}
+		}
+	}
+
+	val, exists = entry.Get(message)
+	if exists {
+		switch reflect.TypeOf(val).Kind() {
+		case reflect.Slice:
+			marshaled, err := sonic.Marshal(val)
+			if err != nil {
+				p.Logger().Error("Failed to marshal message field", zap.Error(err))
+				break
+			}
+			entry.Set(message, string(marshaled))
+		default:
+			entry.Set(message, fmt.Sprintf("%v", val))
+		}
+	}
 }
 
 func init() {
