@@ -24,6 +24,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/rabbitmqexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/syslogexporter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/azureauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
@@ -493,6 +494,7 @@ func CoreComponents() (
 		pprofextension.NewFactory(),
 		signozhealthcheckextension.NewFactory(),
 		zpagesextension.NewFactory(),
+		azureauthextension.NewFactory(),
 	)
 	errs = multierr.Append(errs, err)
 
