@@ -1,15 +1,15 @@
 package constants
 
 const (
-	BodyJSONColumn           = "body_json"
-	BodyJSONColumnPrefix     = "body_json."
-	BodyPromotedColumn       = "body_json_promoted"
-	BodyPromotedColumnPrefix = "body_json_promoted."
+	BodyV2Column             = "body_v2"
+	BodyV2ColumnPrefix       = "body_v2."
+	BodyPromotedColumn       = "body_promoted"
+	BodyPromotedColumnPrefix = "body_promoted."
 
-	SignozMetadataDB              = "signoz_metadata"
-	LocalPathTypesTable           = "json_path_types"
-	DistributedPathTypesTable     = "distributed_json_path_types"
-	PathTypesTablePathColumn      = "path"
-	PathTypesTableTypeColumn      = "type"
-	PathTypesTableLastSeenColumn  = "last_seen"
+	SignozMetadataDB             = "signoz_metadata"
+	LocalPathTypesTable          = "json_path_types"
+	DistributedPathTypesTable    = "distributed_json_path_types"
+	PathTypesTablePathColumn     = "path"
+	PathTypesTableTypeColumn     = "type"
+	PathTypesTableLastSeenColumn = "last_seen"
 )
