@@ -375,3 +375,11 @@ func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
 
 	return "", "", fmt.Errorf("invalid expression: %s", expr)
 }
+
+func JSONPathsIndexExpr(column string) string {
+	return fmt.Sprintf("JSONAllPaths(%s)", column)
+}
+
+func JSONFullTextIndexExpr(column string) string {
+	return fmt.Sprintf("lower(toString(%s))", column)
+}
