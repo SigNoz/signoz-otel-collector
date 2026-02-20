@@ -153,6 +153,8 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 			dp.SetDoubleValue(val)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
 			for k, v := range metric.Dimensions {
+				// normalizing before adding dimensions as attributes to ensure 
+				// consistent naming of dimensions which may violate AWS standards
 				normalisedKey := normaliseAttributeName(k)
 				dp.Attributes().PutStr(ToSemConvAttributeKey(normalisedKey), v)
 			}
