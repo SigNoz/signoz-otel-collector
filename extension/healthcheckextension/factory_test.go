@@ -23,7 +23,8 @@ func TestFactory_CreateDefaultConfig(t *testing.T) {
 	assert.Equal(t, &Config{
 		ServerConfig: confighttp.ServerConfig{
 			NetAddr: confignet.AddrConfig{
-				Endpoint: "0.0.0.0:13133",
+				Endpoint:  "0.0.0.0:13133",
+				Transport: "tcp",
 			},
 		},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
@@ -39,7 +40,8 @@ func TestFactory_CreateDefaultConfig(t *testing.T) {
 func TestFactory_CreateExtension(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.NetAddr = confignet.AddrConfig{
-		Endpoint: testutil.GetAvailableLocalAddress(t),
+		Endpoint:  testutil.GetAvailableLocalAddress(t),
+		Transport: "tcp",
 	}
 
 	ext, err := createExtension(context.Background(), extensiontest.NewNopSettings(metadata.Type), cfg)

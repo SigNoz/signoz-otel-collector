@@ -45,7 +45,8 @@ func TestLoadConfig(t *testing.T) {
 					RecordType: configType,
 					ServerConfig: confighttp.ServerConfig{
 						NetAddr: confignet.AddrConfig{
-							Endpoint: "0.0.0.0:4433",
+							Endpoint:  "0.0.0.0:4433",
+							Transport: "tcp",
 						},
 						TLS: configoptional.Some(configtls.ServerConfig{
 							Config: configtls.Config{

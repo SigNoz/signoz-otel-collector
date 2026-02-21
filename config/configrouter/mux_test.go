@@ -32,7 +32,8 @@ func TestMuxConfig(t *testing.T) {
 
 	serverConfig := confighttp.ServerConfig{
 		NetAddr: confignet.AddrConfig{
-			Endpoint: "localhost:0",
+			Endpoint:  "localhost:0",
+			Transport: "tcp",
 		},
 	}
 

@@ -60,7 +60,7 @@ func TestStart(t *testing.T) {
 	}
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			cfg := &Config{}
+			cfg := createDefaultConfig().(*Config)
 			ctx := context.TODO()
 			r := testFirehoseReceiver(cfg, nil)
 			got := r.Start(ctx, testCase.host)
@@ -79,7 +79,8 @@ func TestStart(t *testing.T) {
 		cfg := &Config{
 			ServerConfig: confighttp.ServerConfig{
 				NetAddr: confignet.AddrConfig{
-					Endpoint: listener.Addr().String(),
+					Endpoint:  listener.Addr().String(),
+					Transport: "tcp",
 				},
 			},
 		}

@@ -37,7 +37,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: "localhost:13",
+						Endpoint:  "localhost:13",
+						Transport: "tcp",
 					},
 					TLS: configoptional.Some(configtls.ServerConfig{
 						Config: configtls.Config{

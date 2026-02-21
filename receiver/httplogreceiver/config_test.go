@@ -35,7 +35,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: "localhost:54321",
+						Endpoint:  "localhost:54321",
+						Transport: "tcp",
 					},
 				},
 			},
@@ -45,7 +46,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: ":54321",
+						Endpoint:  ":54321",
+						Transport: "tcp",
 					},
 					TLS: configoptional.Some(configtls.ServerConfig{
 						Config: configtls.Config{
@@ -61,7 +63,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: ":54321",
+						Endpoint:  ":54321",
+						Transport: "tcp",
 					},
 				},
 				Source: "heroku",
@@ -72,7 +75,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: ":54321",
+						Endpoint:  ":54321",
+						Transport: "tcp",
 					},
 				},
 				Source: "google",
@@ -83,7 +87,8 @@ func TestLoadConfig(t *testing.T) {
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
 					NetAddr: confignet.AddrConfig{
-						Endpoint: ":54321",
+						Endpoint:  ":54321",
+						Transport: "tcp",
 					},
 				},
 				Source: "json",
@@ -109,7 +114,7 @@ func TestLoadConfig(t *testing.T) {
 func TestCreateInvalidHTTPEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.ServerConfig.NetAddr.Endpoint = ""
+	cfg.NetAddr.Endpoint = ""
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, "must specify an endpoint for the httplogreceiver")
@@ -118,7 +123,7 @@ func TestCreateInvalidHTTPEndpoint(t *testing.T) {
 func TestCreateNoPortEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.ServerConfig.NetAddr.Endpoint = "localhost:"
+	cfg.NetAddr.Endpoint = "localhost:"
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, `endpoint port is not a number: strconv.ParseInt: parsing "": invalid syntax`)
@@ -127,7 +132,7 @@ func TestCreateNoPortEndpoint(t *testing.T) {
 func TestCreateLargePortEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.ServerConfig.NetAddr.Endpoint = "localhost:65536"
+	cfg.NetAddr.Endpoint = "localhost:65536"
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, "port number must be between 1 and 65535")

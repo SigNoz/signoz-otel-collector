@@ -38,7 +38,8 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
 			NetAddr: confignet.AddrConfig{
-				Endpoint: defaultEndpoint,
+				Endpoint:  defaultEndpoint,
+				Transport: "tcp",
 			},
 		},
 		Source: "",
@@ -128,7 +129,7 @@ func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error 
 	// set up the listener
 	ln, err := r.config.ServerConfig.ToListener(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to bind to address %s: %w", r.config.ServerConfig.NetAddr.Endpoint, err)
+		return fmt.Errorf("failed to bind to address %s: %w", r.config.NetAddr.Endpoint, err)
 	}
 
 	mx := mux.NewRouter()
