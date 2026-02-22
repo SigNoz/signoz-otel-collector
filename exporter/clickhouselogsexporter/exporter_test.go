@@ -382,7 +382,7 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     `{"level":1,"message":"test"}`,
-			expectedBodyJSON: `{"level":1}`,
+			expectedBodyJSON: `{"level":1,"message":"test"}`,
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
@@ -402,7 +402,7 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     `{"message":"test","user":{"id":"123","name":"john"}}`,
-			expectedBodyJSON: `{"user":{"name":"john"}}`,
+			expectedBodyJSON: `{"message":"test","user":{"id":"123","name":"john"}}`,
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
@@ -418,7 +418,7 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     "",
-			expectedBodyJSON: `{}`,
+			expectedBodyJSON: `{"message":"test"}`,
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
@@ -446,7 +446,7 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
-			expectedBodyJSON: `{"user":{"email":"john@example.com"}}`,
+			expectedBodyJSON: `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 	}

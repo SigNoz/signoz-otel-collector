@@ -122,8 +122,8 @@ const (
 		severity_text,
 		severity_number,
 		body,
-		body_json,
-		body_json_promoted,
+		body_v2,
+		body_promoted,
 		attributes_string,
 		attributes_number,
 		attributes_bool,
@@ -430,7 +430,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	// Query Evolution Table for promoted paths
 	// Format: signal, col_name, col_type, field_context, field_name, release_time
-	// Example: logs, body_json_promoted, JSON, body, user.name, Jan 10
+	// Example: logs, body_promoted, JSON, body, user.name, Jan 10
 	query := fmt.Sprintf(
 		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' AND field_name != '__all__' SETTINGS max_threads = 1`,
 		distributedColumnEvolutionTable,
@@ -833,17 +833,13 @@ func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
-		// Work on a local mutable copy of the body to avoid mutating
-		// the shared pdata across goroutines.
-		mutableBody := pcommon.NewValueMap()
-		body.CopyTo(mutableBody)
-
 		// promoted paths extraction using cached set
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
 		// set values to promoted and bodyJSON
-		promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
-		bodyJSON = mutableBody
+		promoted = buildPromoted(body, promotedSet)
+		// switch the reference to bodyJSON
+		bodyJSON = body
 
 		if !e.bodyJSONOldBodyEnabled {
 			// set body to empty string
