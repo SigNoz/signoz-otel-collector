@@ -1014,6 +1014,71 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					Codec: "ZSTD(1)",
 				},
 			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m_mv",
+				Column: Column{
+					Name:  "start_time_count",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m_mv",
+				Column: Column{
+					Name:  "start_time_count",
+					Type:  ColumnTypeInt64,
+					Codec: "ZSTD(1)",
+				},
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_5m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 300000) * 300000 as unix_milli,
+							anyLast(value) as last,
+							min(value) as min,
+							max(value) as max,
+							sum(value) as sum,
+							count(*) as count,
+							countDistinct(start_timestamp_unix_milli) as start_time_count
+						FROM signoz_metrics.samples_v4
+						WHERE bitAnd(flags, 1) = 0
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_30m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 1800000) * 1800000 AS unix_milli,
+							anyLast(last) AS last,
+							min(min) AS min,
+							max(max) AS max,
+							sum(sum) AS sum,
+							sum(count) AS count,
+							countDistinct(start_timestamp_unix_milli) as start_time_count
+						FROM signoz_metrics.samples_v4_agg_5m
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
 		},
 	},
 }
