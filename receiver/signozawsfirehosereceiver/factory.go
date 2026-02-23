@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
@@ -78,7 +79,10 @@ func defaultLogsUnmarshalers(logger *zap.Logger) map[string]unmarshaler.LogsUnma
 func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: fmt.Sprintf("0.0.0.0:%d", defaultPort),
+			NetAddr: confignet.AddrConfig{
+				Endpoint:  fmt.Sprintf("0.0.0.0:%d", defaultPort),
+				Transport: "tcp",
+			},
 		},
 	}
 }

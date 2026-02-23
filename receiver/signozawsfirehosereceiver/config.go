@@ -22,7 +22,7 @@ type Config struct {
 // Validate checks that the endpoint and record type exist and
 // are valid.
 func (c *Config) Validate() error {
-	if c.Endpoint == "" {
+	if c.NetAddr.Endpoint == "" {
 		return errors.New("must specify endpoint")
 	}
 	// If a record type is specified, it must be valid.
