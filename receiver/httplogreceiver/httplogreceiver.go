@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componentstatus"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
@@ -36,7 +37,10 @@ func NewFactory() receiver.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		ServerConfig: confighttp.ServerConfig{
-			Endpoint: defaultEndpoint,
+			NetAddr: confignet.AddrConfig{
+				Endpoint:  defaultEndpoint,
+				Transport: "tcp",
+			},
 		},
 		Source: "",
 	}
@@ -125,7 +129,7 @@ func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error 
 	// set up the listener
 	ln, err := r.config.ServerConfig.ToListener(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to bind to address %s: %w", r.config.Endpoint, err)
+		return fmt.Errorf("failed to bind to address %s: %w", r.config.NetAddr.Endpoint, err)
 	}
 
 	mx := mux.NewRouter()
