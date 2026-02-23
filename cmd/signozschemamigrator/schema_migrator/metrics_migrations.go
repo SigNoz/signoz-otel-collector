@@ -1030,8 +1030,11 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Database: "signoz_metrics",
 				Table:    "samples_v4_agg_30m",
 				Column: Column{
-					Name:  "num_start_timestamps",
-					Type:  ColumnTypeInt64,
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -1073,8 +1076,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							max(max) AS max,
 							sum(sum) AS sum,
 							sum(count) AS count,
-							uniqMerge(num_start_timestamps) AS num_start_timestamps
-						FROM signoz_metrics.samples_v4_agg_5m_mv
+							uniqMergeState(num_start_timestamps) AS num_start_timestamps
+						FROM signoz_metrics.samples_v4_agg_5m
 						GROUP BY
 							env,
 							temporality,
