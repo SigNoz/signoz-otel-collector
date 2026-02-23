@@ -33,10 +33,7 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		now := time.Now().UnixMilli()
 		firstSeenUnixMilli = now
 		lastSeenUnixMilli = now
-		b.logger.Warn("firstSeen/lastSeen not provided; defaulting to now",
-			zap.Int64("first_seen_unix_milli", firstSeenUnixMilli),
-			zap.Int64("last_seen_unix_milli", lastSeenUnixMilli),
-		)
+		b.logger.Debug("firstSeen/lastSeen not provided; defaulting to now", zap.Int64("first_seen_unix_milli", firstSeenUnixMilli), zap.Int64("last_seen_unix_milli", lastSeenUnixMilli))
 	}
 
 	for key, value := range fingerprint.Attributes() {
