@@ -1016,18 +1016,21 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 			AlterTableAddColumn{
 				Database: "signoz_metrics",
-				Table:    "samples_v4_agg_5m_mv",
+				Table:    "samples_v4_agg_5m",
 				Column: Column{
-					Name:  "start_time_count",
-					Type:  ColumnTypeInt64,
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
 					Codec: "ZSTD(1)",
 				},
 			},
 			AlterTableAddColumn{
 				Database: "signoz_metrics",
-				Table:    "samples_v4_agg_30m_mv",
+				Table:    "samples_v4_agg_30m",
 				Column: Column{
-					Name:  "start_time_count",
+					Name:  "num_start_timestamps",
 					Type:  ColumnTypeInt64,
 					Codec: "ZSTD(1)",
 				},
@@ -1046,7 +1049,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							max(value) as max,
 							sum(value) as sum,
 							count(*) as count,
-							countDistinct(start_timestamp_unix_milli) as start_time_count
+							uniqState(start_timestamp_unix_milli) as num_start_timestamps
 						FROM signoz_metrics.samples_v4
 						WHERE bitAnd(flags, 1) = 0
 						GROUP BY
@@ -1070,8 +1073,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							max(max) AS max,
 							sum(sum) AS sum,
 							sum(count) AS count,
-							countDistinct(start_timestamp_unix_milli) as start_time_count
-						FROM signoz_metrics.samples_v4_agg_5m
+							uniqMerge(num_start_timestamps) AS num_start_timestamps
+						FROM signoz_metrics.samples_v4_agg_5m_mv
 						GROUP BY
 							env,
 							temporality,
