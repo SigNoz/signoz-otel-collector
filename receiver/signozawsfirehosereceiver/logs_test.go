@@ -82,7 +82,8 @@ func TestLogsReceiverWithSuccess(t *testing.T) {
 	sink := &consumertest.LogsSink{}
 	cfg := createDefaultConfig().(*Config)
 	cfg.RecordType = "test"
-	cfg.ServerConfig.Endpoint = "localhost:0"
+	cfg.ServerConfig.NetAddr.Endpoint = "localhost:0"
+	cfg.ServerConfig.NetAddr.Transport = "tcp"
 
 	receiver, err := newLogsReceiver(
 		cfg,
@@ -128,7 +129,8 @@ func TestLogsReceiverWithError(t *testing.T) {
 
 	cfg := createDefaultConfig().(*Config)
 	cfg.RecordType = "test"
-	cfg.ServerConfig.Endpoint = "localhost:0"
+	cfg.ServerConfig.NetAddr.Endpoint = "localhost:0"
+	cfg.ServerConfig.NetAddr.Transport = "tcp"
 
 	receiver, err := newLogsReceiver(
 		cfg,
