@@ -1027,7 +1027,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec: "ZSTD(1)",
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
 				},
 			},
 			AlterTableAddColumn{
@@ -1039,7 +1040,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec: "ZSTD(1)",
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
 				},
 			},
 			AlterTableAddColumn{
@@ -1051,7 +1053,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec: "ZSTD(1)",
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
 				},
 			},
 			AlterTableAddColumn{
@@ -1063,7 +1066,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec: "ZSTD(1)",
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
 				},
 			},
 			ModifyQueryMaterializedViewOperation{
