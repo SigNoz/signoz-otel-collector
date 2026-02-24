@@ -1042,6 +1042,30 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					Codec: "ZSTD(1)",
 				},
 			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec: "ZSTD(1)",
+				},
+			},
 			ModifyQueryMaterializedViewOperation{
 				Database: "signoz_metrics",
 				ViewName: "samples_v4_agg_5m_mv",
