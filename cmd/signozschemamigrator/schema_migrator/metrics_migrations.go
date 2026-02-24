@@ -1027,8 +1027,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec:   "ZSTD(1)",
-					Default: "uniqState([1])",
+					Codec: "ZSTD(1)",
 				},
 			},
 			AlterTableAddColumn{
@@ -1040,8 +1039,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						FunctionName: "uniq",
 						Arguments:    []ColumnType{ColumnTypeInt64},
 					},
-					Codec:   "ZSTD(1)",
-					Default: "uniqState([1])",
+					Codec: "ZSTD(1)",
 				},
 			},
 			ModifyQueryMaterializedViewOperation{
