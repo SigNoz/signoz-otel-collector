@@ -111,7 +111,7 @@ func (r *ready) Ready(ctx context.Context) error {
 }
 
 func (r *ready) CheckClickhouse(ctx context.Context) error {
-	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1', '::1'] AND cluster = ?"
+	query := "SELECT DISTINCT host_name, host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1', '::1'] AND cluster = ?"
 	rows, err := r.conn.Query(ctx, query, r.cluster)
 	if err != nil {
 		return NewRetryableError(err)
@@ -121,46 +121,58 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 	}()
 
 	type hostAddr struct {
+		name    string
 		address string
 		port    uint16
 	}
 
 	var hosts []hostAddr
 	for rows.Next() {
+		var name string
 		var address string
 		var port uint16
-		if err := rows.Scan(&address, &port); err != nil {
+		if err := rows.Scan(&name, &address, &port); err != nil {
 			return err
 		}
-		hosts = append(hosts, hostAddr{address: address, port: port})
+		hosts = append(hosts, hostAddr{name: name, address: address, port: port})
+	}
+
+	var emptyHosts []string
+
+	for _, host := range hosts {
+		if host.address == "" {
+			emptyHosts = append(emptyHosts, host.name)
+		}
+	}
+
+	if len(emptyHosts) > 0 {
+		return NewRetryableError(fmt.Errorf("waiting for host address to be populated for hosts: %q", emptyHosts))
 	}
 
 	for _, host := range hosts {
-		if host.address != "" {
-			addr, err := netip.ParseAddr(host.address)
-			if err != nil {
-				return err
-			}
-
-			addrPort := netip.AddrPortFrom(addr, host.port)
-			connectionOpts := r.connOpts
-			// cannot pass all the address here as this is used for failover/ load-balancing. at any point of them one is selected and connection is established
-			// ref: https://github.com/ClickHouse/clickhouse-go/blob/main/clickhouse.go#L275
-			connectionOpts.Addr = []string{addrPort.String()}
-			conn, err := clickhouse.Open(connectionOpts)
-			if err != nil {
-				return err
-			}
-			defer func() {
-				_ = conn.Close()
-			}()
-
-			if err := conn.Ping(ctx); err != nil {
-				return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
-			}
-
-			r.logger.Info("clickhouse is ready", zap.String("host", host.address), zap.Uint16("port", host.port))
+		addr, err := netip.ParseAddr(host.address)
+		if err != nil {
+			return err
 		}
+
+		addrPort := netip.AddrPortFrom(addr, host.port)
+		connectionOpts := r.connOpts
+		// cannot pass all the address here as this is used for failover/ load-balancing. at any point of them one is selected and connection is established
+		// ref: https://github.com/ClickHouse/clickhouse-go/blob/main/clickhouse.go#L275
+		connectionOpts.Addr = []string{addrPort.String()}
+		conn, err := clickhouse.Open(connectionOpts)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+
+		if err := conn.Ping(ctx); err != nil {
+			return NewRetryableError(fmt.Errorf("clickhouse host %s:%d not reachable: %w", host.address, host.port, err))
+		}
+
+		r.logger.Info("clickhouse is ready", zap.String("host", host.address), zap.Uint16("port", host.port))
 	}
 
 	return nil
