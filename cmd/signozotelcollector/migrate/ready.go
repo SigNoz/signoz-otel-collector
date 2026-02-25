@@ -16,10 +16,11 @@ import (
 )
 
 type ready struct {
-	conn    clickhouse.Conn
-	cluster string
-	timeout time.Duration
-	logger  *zap.Logger
+	conn     clickhouse.Conn
+	connOpts *clickhouse.Options
+	cluster  string
+	timeout  time.Duration
+	logger   *zap.Logger
 }
 
 func registerReady(parentCmd *cobra.Command, logger *zap.Logger) {
@@ -62,10 +63,11 @@ func newReady(dsn string, cluster string, timeout time.Duration, logger *zap.Log
 	}
 
 	return &ready{
-		conn:    conn,
-		cluster: cluster,
-		timeout: timeout,
-		logger:  logger,
+		conn:     conn,
+		connOpts: opts,
+		cluster:  cluster,
+		timeout:  timeout,
+		logger:   logger,
 	}, nil
 }
 
@@ -141,11 +143,11 @@ func (r *ready) CheckClickhouse(ctx context.Context) error {
 			}
 
 			addrPort := netip.AddrPortFrom(addr, host.port)
-			conn, err := clickhouse.Open(&clickhouse.Options{
-				// cannot pass all the address here as this is used for failover/ load-balancing. at any point of them one is selected and connection is established
-				// ref: https://github.com/ClickHouse/clickhouse-go/blob/main/clickhouse.go#L275
-				Addr: []string{addrPort.String()},
-			})
+			connectionOpts := r.connOpts
+			// cannot pass all the address here as this is used for failover/ load-balancing. at any point of them one is selected and connection is established
+			// ref: https://github.com/ClickHouse/clickhouse-go/blob/main/clickhouse.go#L275
+			connectionOpts.Addr = []string{addrPort.String()}
+			conn, err := clickhouse.Open(connectionOpts)
 			if err != nil {
 				return err
 			}
