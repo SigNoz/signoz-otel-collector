@@ -1033,6 +1033,19 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 			AlterTableAddColumn{
 				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
 				Table:    "samples_v4_agg_30m",
 				Column: Column{
 					Name: "num_start_timestamps",
@@ -1042,6 +1055,19 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					},
 					Codec:   "ZSTD(1)",
 					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
 				},
 			},
 			AlterTableAddColumn{
@@ -1059,6 +1085,19 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 			AlterTableAddColumn{
 				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
 				Table:    "distributed_samples_v4_agg_30m",
 				Column: Column{
 					Name: "num_start_timestamps",
@@ -1068,6 +1107,19 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					},
 					Codec:   "ZSTD(1)",
 					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
 				},
 			},
 			ModifyQueryMaterializedViewOperation{
@@ -1084,7 +1136,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							max(value) as max,
 							sum(value) as sum,
 							count(*) as count,
-							uniqState(start_timestamp_unix_milli) as num_start_timestamps
+							uniqState(start_timestamp_unix_milli) as num_start_timestamps,
+							min(start_timestamp_unix_milli) as earliest_start_timestamp
 						FROM signoz_metrics.samples_v4
 						WHERE bitAnd(flags, 1) = 0
 						GROUP BY
@@ -1108,7 +1161,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							max(max) AS max,
 							sum(sum) AS sum,
 							sum(count) AS count,
-							uniqMergeState(num_start_timestamps) AS num_start_timestamps
+							uniqMergeState(num_start_timestamps) AS num_start_timestamps,
+							min(earliest_start_timestamp) as earliest_start_timestamp
 						FROM signoz_metrics.samples_v4_agg_5m
 						GROUP BY
 							env,
