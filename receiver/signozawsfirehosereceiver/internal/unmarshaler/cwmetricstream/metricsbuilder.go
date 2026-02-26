@@ -153,7 +153,10 @@ func (mb *metricBuilder) AddDataPoint(metric cWMetric) {
 			dp.SetDoubleValue(val)
 			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.UnixMilli(metric.Timestamp)))
 			for k, v := range metric.Dimensions {
-				dp.Attributes().PutStr(ToSemConvAttributeKey(k), v)
+				// normalizing before adding dimensions as attributes to ensure 
+				// consistent naming of dimensions which may violate AWS standards
+				normalisedKey := normaliseAttributeName(k)
+				dp.Attributes().PutStr(ToSemConvAttributeKey(normalisedKey), v)
 			}
 		}
 	}
@@ -203,4 +206,14 @@ func (m *cWMetric) statValues() map[string]float64 {
 		"min":   m.Value.Min,
 		"max":   m.Value.Max,
 	}
+}
+
+// normalizeAttributeName normalizes the attribute name to AWS standards for naming
+// dimensions i.e. (Dimensions provided by AWS are in PascalCase)
+// this is required to convert keys which are not following the standard
+// e.g. "Cluster Name" -> "ClusterName"
+// e.g. "Broker ID" -> "BrokerID"
+// we can evolve this function as we find cases which violate the standard
+func normaliseAttributeName(key string) string {
+	return strings.ReplaceAll(key, " ", "")
 }
