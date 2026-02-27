@@ -975,4 +975,256 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1008,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4",
+				Column: Column{
+					Name:    "start_timestamp_unix_milli",
+					Type:    ColumnTypeInt64,
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4",
+				Column: Column{
+					Name:    "start_timestamp_unix_milli",
+					Type:    ColumnTypeInt64,
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "exp_hist",
+				Column: Column{
+					Name:    "start_timestamp_unix_milli",
+					Type:    ColumnTypeInt64,
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_exp_hist",
+				Column: Column{
+					Name:    "start_timestamp_unix_milli",
+					Type:    ColumnTypeInt64,
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name: "num_start_timestamps",
+					Type: AggregateFunction{
+						FunctionName: "uniq",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "initializeAggregation('uniqState', toInt64(1))",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name: "earliest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "min",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name: "latest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "max",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name: "latest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "max",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name: "latest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "max",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name: "latest_start_timestamp",
+					Type: SimpleAggregateFunction{
+						FunctionName: "max",
+						Arguments:    []ColumnType{ColumnTypeInt64},
+					},
+					Codec:   "ZSTD(1)",
+					Default: "0",
+				},
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_5m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 300000) * 300000 as unix_milli,
+							anyLast(value) as last,
+							min(value) as min,
+							max(value) as max,
+							sum(value) as sum,
+							count(*) as count,
+							uniqState(start_timestamp_unix_milli) as num_start_timestamps,
+							min(start_timestamp_unix_milli) as earliest_start_timestamp,
+							max(start_timestamp_unix_milli) as latest_start_timestamp
+						FROM signoz_metrics.samples_v4
+						WHERE bitAnd(flags, 1) = 0
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_30m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 1800000) * 1800000 AS unix_milli,
+							anyLast(last) AS last,
+							min(min) AS min,
+							max(max) AS max,
+							sum(sum) AS sum,
+							sum(count) AS count,
+							uniqMergeState(num_start_timestamps) AS num_start_timestamps,
+							min(earliest_start_timestamp) as earliest_start_timestamp,
+							max(latest_start_timestamp) as latest_start_timestamp
+						FROM signoz_metrics.samples_v4_agg_5m
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+		},
+	},
 }
