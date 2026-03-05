@@ -11,6 +11,8 @@ import "strings"
 //   - \_ matches a literal '_'
 //   - \\ matches a literal '\'
 //   - \x (any other x) matches a literal 'x' (backslash is consumed)
+//
+// https://clickhouse.com/docs/sql-reference/functions/string-search-functions#likes
 func Like(s, pattern string) bool {
 	return matchLike([]rune(s), []rune(pattern))
 }
