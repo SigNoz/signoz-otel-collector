@@ -25,6 +25,12 @@ var envPool = sync.Pool{
 			"unquote": func(v any) string {
 				return utils.Unquote(v.(string))
 			},
+			"like": func(s, pattern string) bool {
+				return utils.Like(s, pattern)
+			},
+			"ilike": func(s, pattern string) bool {
+				return utils.ILike(s, pattern)
+			},
 		}
 	},
 }
