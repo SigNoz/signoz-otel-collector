@@ -132,6 +132,39 @@ func TestMetricBuilder(t *testing.T) {
 			require.Equal(t, 3, foundDp.Attributes().Len())
 		}
 	})
+
+	t.Run("WithAttributeNormalisation", func(t *testing.T) {
+		metric := cWMetric{
+			MetricName: "name",
+			Unit:       "unit",
+			Timestamp:  time.Now().UnixMilli(),
+			Value:      testCWMetricValue(),
+			Dimensions: map[string]string{"Cluster Name": "test"},
+		}
+		gots := pmetric.NewMetricSlice()
+		mb := newMetricBuilder(gots, metric.Namespace, metric.MetricName, metric.Unit)
+		mb.AddDataPoint(metric)
+		require.Equal(t, 4, gots.Len())
+
+		for stat, expectedValue := range metric.statValues() {
+			expectedName := otlpMetricName(metric.Namespace, metric.MetricName, stat)
+			found := findMetricByName(t, gots, expectedName)
+			require.Equal(t, expectedName, found.Name())
+
+			require.Equal(t, metric.Unit, found.Unit())
+
+			require.Equal(t, pmetric.MetricTypeGauge, found.Type())
+
+			foundDps := found.Gauge().DataPoints()
+			require.Equal(t, 1, foundDps.Len())
+			foundDp := foundDps.At(0)
+			require.Equal(t, expectedValue, foundDp.DoubleValue())
+			require.Equal(t, 1, foundDp.Attributes().Len())
+			v, ok := foundDp.Attributes().Get("ClusterName")
+			require.True(t, ok)
+			require.Equal(t, "test", v.Str())
+		}
+	})
 }
 
 func TestResourceMetricsBuilder(t *testing.T) {

@@ -447,12 +447,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		sampleTyp := typ
+		sampleUnit := unit
 		sampleTemporality := temporality
 		var value float64
 		switch suffix {
 		case countSuffix:
 			value = float64(dp.Count())
 			sampleTyp = pmetric.MetricTypeSum
+			sampleUnit = "1"
 		case sumSuffix:
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
@@ -478,14 +480,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
 		batch.addTs(&ts{
 			env:           env,
 			temporality:   sampleTemporality,
 			metricName:    name + suffix,
 			description:   desc,
-			unit:          unit,
+			unit:          sampleUnit,
 			typ:           sampleTyp,
 			isMonotonic:   isMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
@@ -642,11 +644,13 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 	addSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		sampleTyp := typ
+		sampleUnit := unit
 		var value float64
 		switch suffix {
 		case countSuffix:
 			value = float64(dp.Count())
 			sampleTyp = pmetric.MetricTypeSum
+			sampleUnit = "1"
 		case sumSuffix:
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
@@ -664,14 +668,14 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name+suffix, desc, unit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
 		batch.addTs(&ts{
 			env:           env,
 			temporality:   temporality,
 			metricName:    name + suffix,
 			description:   desc,
-			unit:          unit,
+			unit:          sampleUnit,
 			typ:           sampleTyp,
 			isMonotonic:   isMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
@@ -797,11 +801,13 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		sampleTemporality := temporality
+		sampleUnit := unit
 		var value float64
 		switch suffix {
 		case countSuffix:
 			value = float64(dp.Count())
 			sampleTyp = pmetric.MetricTypeSum
+			sampleUnit = "1"
 		case sumSuffix:
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
@@ -827,14 +833,14 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name+suffix, desc, unit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
 		batch.addTs(&ts{
 			env:           env,
 			temporality:   sampleTemporality,
 			metricName:    name + suffix,
 			description:   desc,
-			unit:          unit,
+			unit:          sampleUnit,
 			typ:           sampleTyp,
 			isMonotonic:   isMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
