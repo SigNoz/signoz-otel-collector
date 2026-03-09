@@ -1,5 +1,6 @@
-// Mostly brought in as-is from otel-collector-contrib with minor changes
-// For example: includes severity_text and severity_number in GetExprEnv
+// Mostly brought in as-is from otel-collector-contrib with the following changes:
+// - GetExprEnv includes severity_text and severity_number
+// - signozExprPatcher rewrites like/ilike AST nodes for compile-time pattern compilation
 
 package signozstanzahelper
 
@@ -99,66 +100,101 @@ func ExprCompileBool(input string) (
 	return program, patcher.foundBodyFieldRef, patcher.compiledPatterns, nil
 }
 
+// signozExprPatcher is an expr AST visitor that runs once during expression
+// compilation (i.e. at pipeline startup, not per log entry). It performs two
+// independent rewrites on the AST:
+//
+//  1. Body field redirection — `body.x` → `body_map.x`
+//  2. like/ilike pre-compilation — `like(s, "pat")` → `__like_HASH(s)`
+//
+// Both rewrites mutate the AST nodes in place. The expr library calls Visit
+// on every node in a bottom-up traversal, so by the time expr.Compile returns,
+// the compiled *vm.Program already contains the rewritten bytecode.
 type signozExprPatcher struct {
-	// set to true if the patcher encounters a reference to a body field
-	// (like `body.request.id`) while compiling an expression
+	// foundBodyFieldRef is set to true when the patcher sees a reference to a
+	// field inside body (e.g. body.request.id). Callers use this flag to
+	// decide whether to JSON-parse the log body into body_map at runtime.
 	foundBodyFieldRef bool
-	// compiledPatterns holds pre-compiled like/ilike matchers keyed by their
-	// env slot name (e.g. "__like_a1b2c3d4"). The patcher populates this map
-	// when it finds a like/ilike call whose pattern argument is a string
-	// literal; the call is then rewritten to use the slot-name function so
-	// that no pattern compilation happens at log-processing time.
+
+	// compiledPatterns is populated by the like/ilike rewrite (see Visit).
+	// Keys are env slot names (e.g. "__like_3f8a1c2d"); values are the
+	// corresponding pre-compiled matcher functions. This map is returned to
+	// the caller by ExprCompile/ExprCompileBool and must be injected into the
+	// expr env before every vm.Run call so the rewritten bytecode can resolve
+	// the slot-name identifiers.
 	compiledPatterns map[string]func(s string) bool
 }
 
+// Visit implements ast.Visitor. It is called once per AST node during
+// expr.Compile and applies the two rewrites described on signozExprPatcher.
 func (p *signozExprPatcher) Visit(node *ast.Node) {
-	// Change all references to fields inside body (eg: body.request.id)
-	// to refer inside body_map instead (eg: body_map.request.id)
+	// ── Rewrite 1: body field redirection ────────────────────────────────────
 	//
-	// `body_map` is supplied in expr env's by JSON parsing the log body
-	// when it contains serialized JSON
-	memberAccessNode, isMemberNode := (*node).(*ast.MemberNode)
-	if isMemberNode {
-		// MemberNode represents a member access in expr
-		// It can be a field access, a method call, or an array element access.
-		// Example: `foo.bar` or `foo["bar"]` or `foo.bar()` or `array[0]`
-		//
-		// `memberNode.Node` is the node whose property/member is being accessed.
-		// Eg: the node for `body` in `body.request.id`
-		//
-		// `memberNode.Property` is the property being accessed on `memberNode.Node`
-		// Eg: the AST for `request.id` in `body.request.id`
-		//
-		// Change all `MemberNode`s where the target (`memberNode.Node`)
-		// is `body` to target `body_map` instead.
-		identifierNode, isIdentifierNode := (memberAccessNode.Node).(*ast.IdentifierNode)
-		if isIdentifierNode && identifierNode.Value == "body" {
-			identifierNode.Value = "body_map"
+	// expr represents `body.request.id` as:
+	//   MemberNode { Node: IdentifierNode{"body"}, Property: ... }
+	//
+	// We rename the root identifier from "body" to "body_map" so the
+	// expression reads from the JSON-parsed body map at runtime instead of
+	// the raw body string. body_map is populated by GetExprEnv when
+	// foundBodyFieldRef is true.
+	if memberNode, ok := (*node).(*ast.MemberNode); ok {
+		if id, ok := memberNode.Node.(*ast.IdentifierNode); ok && id.Value == "body" {
+			id.Value = "body_map"
 			p.foundBodyFieldRef = true
 		}
 	}
 
+	// The remaining rewrites only apply to function call nodes.
 	n, ok := (*node).(*ast.CallNode)
 	if !ok {
 		return
 	}
-	c, ok := (n.Callee).(*ast.IdentifierNode)
+	c, ok := n.Callee.(*ast.IdentifierNode)
 	if !ok {
 		return
 	}
+
+	// ── Rewrite 2a: env() → os_env_func() ────────────────────────────────────
+	//
+	// The expr built-in `env` conflicts with the pipeline keyword, so we
+	// renamed it to os_env_func in the env map. Mirror that here.
 	if c.Value == "env" {
 		c.Value = "os_env_func"
 		return
 	}
 
-	// Pre-compile like/ilike calls whose pattern argument is a string literal.
-	// like(s, "pattern")  → __like_HASH(s)
-	// ilike(s, "pattern") → __ilike_HASH(s)
-	// The generic like/ilike functions remain in the env as a fallback for
-	// the rare case where the pattern is a runtime (non-literal) value.
+	// ── Rewrite 2b: like/ilike pre-compilation ────────────────────────────────
+	//
+	// Pipeline expressions always use constant patterns, e.g.:
+	//   like(body, "%error%")
+	//
+	// Compiling the LIKE pattern to a *regexp.Regexp on every log entry would
+	// be wasteful. Instead, we do it once here at expression compile time:
+	//
+	//   Step 1 — detect:  second argument must be a StringNode (compile-time
+	//             constant). If it is a runtime value we leave the call alone.
+	//
+	//   Step 2 — compile: turn the LIKE pattern into a *regexp.Regexp and
+	//             wrap it as a func(string) bool.
+	//
+	//   Step 3 — store:   save the matcher under a stable slot name derived
+	//             from the pattern (fnv32a hash), e.g. "__like_3f8a1c2d".
+	//             The slot name is added to compiledPatterns so callers can
+	//             inject it into the env before vm.Run.
+	//
+	//   Step 4 — rewrite: mutate the CallNode so the compiled program calls
+	//             __like_3f8a1c2d(body) instead of like(body, "%error%").
+	//             The pattern argument is dropped because it is now baked into
+	//             the closure.
+	//
+	// At runtime vm.Run looks up "__like_3f8a1c2d" in the env map, finds the
+	// pre-compiled func(string) bool, and calls it — one RE2 scan, no allocs.
 	if (c.Value == "like" || c.Value == "ilike") && len(n.Arguments) == 2 {
 		strNode, isStr := n.Arguments[1].(*ast.StringNode)
 		if !isStr {
+			// Dynamic pattern — leave the call as-is. Note: the generic
+			// like/ilike functions must be present in the env for this to
+			// work at runtime.
 			return
 		}
 		pattern := strNode.Value
@@ -173,11 +209,12 @@ func (p *signozExprPatcher) Visit(node *ast.Node) {
 			slotName = iLikeSlotName(pattern)
 		}
 		if compileErr != nil {
-			// Leave the call as-is; the generic function will handle it.
+			// Invalid pattern — leave the call as-is so the error surfaces
+			// at runtime with a useful message rather than silently here.
 			return
 		}
-		p.compiledPatterns[slotName] = matcher
-		c.Value = slotName
-		n.Arguments = n.Arguments[:1] // drop the now-baked-in pattern arg
+		p.compiledPatterns[slotName] = matcher // step 3
+		c.Value = slotName                     // step 4a: rename callee
+		n.Arguments = n.Arguments[:1]          // step 4b: drop pattern arg
 	}
 }
