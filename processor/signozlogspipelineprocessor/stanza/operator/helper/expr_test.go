@@ -8,8 +8,8 @@ import (
 )
 
 // runBoolExpr compiles the expression, builds an env from the given entry, and
-// returns the boolean result. It is the same path that operators take at
-// runtime, so it exercises ExprCompileBool → GetExprEnv → vm.Run end-to-end.
+// returns the boolean result. It exercises the full operator path:
+// ExprCompileBool → GetExprEnv → vm.Run → PutExprEnv.
 func runBoolExpr(t *testing.T, expression string, e *entry.Entry) bool {
 	t.Helper()
 	program, hasBodyFieldRef, compiledPatterns, err := ExprCompileBool(expression)
@@ -32,14 +32,17 @@ func entryWithBody(body any) *entry.Entry {
 	return e
 }
 
-func entryWithAttrs(attrs map[string]any) *entry.Entry {
-	e := entry.New()
-	e.Attributes = attrs
-	return e
-}
+// Note on escape sequences in expr string literals:
+// expr parses string literals with the same escape rules as Go, so a single
+// backslash in the LIKE pattern must be written as \\ inside the expr string.
+// Examples:
+//   LIKE pattern  │  expr string literal
+//   ─────────────────────────────────────
+//   100\%         │  "100\\%"
+//   a\_b          │  "a\\_b"
+//   a\\b          │  "a\\\\b"
+//   a\xb          │  "a\\xb"
 
-// TestExprLike verifies that like() inside an expr expression produces the
-// expected boolean result through the full compile → run pipeline.
 func TestExprLike(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -47,119 +50,65 @@ func TestExprLike(t *testing.T) {
 		entry      *entry.Entry
 		want       bool
 	}{
-		// --- prefix / suffix / substring ---
-		{
-			name:       "prefix match",
-			expression: `like(body, "hello%")`,
-			entry:      entryWithBody("hello world"),
-			want:       true,
-		},
-		{
-			name:       "prefix no match",
-			expression: `like(body, "hello%")`,
-			entry:      entryWithBody("world hello"),
-			want:       false,
-		},
-		{
-			name:       "suffix match",
-			expression: `like(body, "%world")`,
-			entry:      entryWithBody("hello world"),
-			want:       true,
-		},
-		{
-			name:       "substring match",
-			expression: `like(body, "%error%")`,
-			entry:      entryWithBody("an error occurred"),
-			want:       true,
-		},
-		{
-			name:       "substring no match",
-			expression: `like(body, "%error%")`,
-			entry:      entryWithBody("everything is fine"),
-			want:       false,
-		},
-		// --- exact match ---
-		{
-			name:       "exact match",
-			expression: `like(body, "exact")`,
-			entry:      entryWithBody("exact"),
-			want:       true,
-		},
-		{
-			name:       "exact no match",
-			expression: `like(body, "exact")`,
-			entry:      entryWithBody("not exact"),
-			want:       false,
-		},
-		// --- single-char wildcard ---
-		{
-			name:       "underscore wildcard",
-			expression: `like(body, "h_llo")`,
-			entry:      entryWithBody("hello"),
-			want:       true,
-		},
-		{
-			name:       "underscore wildcard no match",
-			expression: `like(body, "h_llo")`,
-			entry:      entryWithBody("hllo"),
-			want:       false,
-		},
-		// --- escape sequences ---
-		// In expr string literals backslashes must be doubled, so "100\\%"
-		// is the expr string 100\% which is the LIKE pattern for literal 100%.
-		{
-			name:       `escaped percent literal`,
-			expression: `like(body, "100\\%")`,
-			entry:      entryWithBody("100%"),
-			want:       true,
-		},
-		{
-			name:       `escaped percent does not match wildcard`,
-			expression: `like(body, "100\\%")`,
-			entry:      entryWithBody("100x"),
-			want:       false,
-		},
-		// --- case sensitivity ---
-		{
-			name:       "like is case sensitive – mismatch",
-			expression: `like(body, "HELLO%")`,
-			entry:      entryWithBody("hello world"),
-			want:       false,
-		},
-		// --- attribute field ---
-		{
-			name:       "match on attribute",
-			expression: `like(attributes["service.name"], "frontend%")`,
-			entry:      entryWithAttrs(map[string]any{"service.name": "frontend-api"}),
-			want:       true,
-		},
-		// --- boolean composition ---
-		{
-			name:       "AND two like patterns",
-			expression: `like(body, "hello%") && like(body, "%world")`,
-			entry:      entryWithBody("hello world"),
-			want:       true,
-		},
-		{
-			name:       "OR two like patterns",
-			expression: `like(body, "error%") || like(body, "warn%")`,
-			entry:      entryWithBody("warn: disk usage high"),
-			want:       true,
-		},
+		// Exact match
+		{name: "exact match", expression: `like(body, "hello")`, entry: entryWithBody("hello"), want: true},
+		{name: "exact mismatch", expression: `like(body, "world")`, entry: entryWithBody("hello"), want: false},
+		{name: "empty both", expression: `like(body, "")`, entry: entryWithBody(""), want: true},
+		{name: "empty string non-empty pattern", expression: `like(body, "a")`, entry: entryWithBody(""), want: false},
+		{name: "non-empty string empty pattern", expression: `like(body, "")`, entry: entryWithBody("a"), want: false},
+
+		// % wildcard
+		{name: "% matches empty suffix", expression: `like(body, "hello%")`, entry: entryWithBody("hello"), want: true},
+		{name: "% matches non-empty suffix", expression: `like(body, "hello%")`, entry: entryWithBody("hello world"), want: true},
+		{name: "% matches empty prefix", expression: `like(body, "%hello")`, entry: entryWithBody("hello"), want: true},
+		{name: "% matches non-empty prefix", expression: `like(body, "%hello")`, entry: entryWithBody("say hello"), want: true},
+		{name: "% matches middle", expression: `like(body, "hello%world")`, entry: entryWithBody("helloworld"), want: true},
+		{name: "% alone matches anything", expression: `like(body, "%")`, entry: entryWithBody("anything"), want: true},
+		{name: "% alone matches empty", expression: `like(body, "%")`, entry: entryWithBody(""), want: true},
+		{name: "%% is same as %", expression: `like(body, "%%")`, entry: entryWithBody("abc"), want: true},
+		{name: "% does not match wrong prefix", expression: `like(body, "hello%")`, entry: entryWithBody("world"), want: false},
+
+		// _ wildcard
+		{name: "_ matches single char", expression: `like(body, "_")`, entry: entryWithBody("a"), want: true},
+		{name: "_ does not match empty", expression: `like(body, "_")`, entry: entryWithBody(""), want: false},
+		{name: "_ does not match two chars", expression: `like(body, "_")`, entry: entryWithBody("ab"), want: false},
+		{name: "_ in middle", expression: `like(body, "a_c")`, entry: entryWithBody("abc"), want: true},
+		{name: "_ in middle mismatch length", expression: `like(body, "a_c")`, entry: entryWithBody("ac"), want: false},
+		{name: "multiple _", expression: `like(body, "___")`, entry: entryWithBody("abc"), want: true},
+		{name: "multiple _ mismatch", expression: `like(body, "___")`, entry: entryWithBody("ab"), want: false},
+
+		// Escape sequences
+		{name: `\% matches literal %`, expression: `like(body, "100\\%")`, entry: entryWithBody("100%"), want: true},
+		{name: `\% does not match regular char`, expression: `like(body, "100\\%")`, entry: entryWithBody("100x"), want: false},
+		{name: `\_ matches literal _`, expression: `like(body, "a\\_b")`, entry: entryWithBody("a_b"), want: true},
+		{name: `\_ does not match other char`, expression: `like(body, "a\\_b")`, entry: entryWithBody("axb"), want: false},
+		{name: `\\ matches literal backslash`, expression: `like(body, "a\\\\b")`, entry: entryWithBody(`a\b`), want: true},
+		{name: `\\ does not match regular char`, expression: `like(body, "a\\\\b")`, entry: entryWithBody("axb"), want: false},
+		{name: `\x matches literal x`, expression: `like(body, "a\\xb")`, entry: entryWithBody("axb"), want: true},
+		{name: `\x does not match other char`, expression: `like(body, "a\\xb")`, entry: entryWithBody("ayb"), want: false},
+
+		// Combined
+		{name: "% and _ combined", expression: `like(body, "f%b_r")`, entry: entryWithBody("foobar"), want: true},
+		{name: "% at both ends", expression: `like(body, "%needle%")`, entry: entryWithBody("needle"), want: true},
+		{name: "% at both ends with extra chars", expression: `like(body, "%needle%")`, entry: entryWithBody("find needle here"), want: true},
+		{name: "no match with % at both ends", expression: `like(body, "%needle%")`, entry: entryWithBody("no match here"), want: false},
+
+		// Case sensitivity (like is case-sensitive)
+		{name: "case sensitive mismatch", expression: `like(body, "hello")`, entry: entryWithBody("Hello"), want: false},
+		{name: "case sensitive match", expression: `like(body, "hello")`, entry: entryWithBody("hello"), want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := runBoolExpr(t, tt.expression, tt.entry)
 			if got != tt.want {
-				t.Errorf("expr %q on entry %v: got %v, want %v",
+				t.Errorf("expr %q on body %v: got %v, want %v",
 					tt.expression, tt.entry.Body, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestExprILike mirrors TestExprLike but for the case-insensitive variant.
 func TestExprILike(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -167,65 +116,39 @@ func TestExprILike(t *testing.T) {
 		entry      *entry.Entry
 		want       bool
 	}{
-		{
-			name:       "upper string lower pattern",
-			expression: `ilike(body, "hello%")`,
-			entry:      entryWithBody("HELLO WORLD"),
-			want:       true,
-		},
-		{
-			name:       "lower string upper pattern",
-			expression: `ilike(body, "HELLO%")`,
-			entry:      entryWithBody("hello world"),
-			want:       true,
-		},
-		{
-			name:       "mixed case substring",
-			expression: `ilike(body, "%ERROR%")`,
-			entry:      entryWithBody("An Error Occurred"),
-			want:       true,
-		},
-		{
-			name:       "ilike no match",
-			expression: `ilike(body, "%error%")`,
-			entry:      entryWithBody("everything is fine"),
-			want:       false,
-		},
-		{
-			name:       "ilike underscore case-insensitive",
-			expression: `ilike(body, "h_llo")`,
-			entry:      entryWithBody("HELLO"),
-			want:       true,
-		},
-		{
-			name:       `ilike escaped percent`,
-			expression: `ilike(body, "50\\%off")`,
-			entry:      entryWithBody("50%OFF"),
-			want:       true,
-		},
-		{
-			name:       "ilike on attribute",
-			expression: `ilike(attributes["env"], "%PROD%")`,
-			entry:      entryWithAttrs(map[string]any{"env": "us-prod-1"}),
-			want:       true,
-		},
+		// Case-insensitive basics
+		{name: "same case", expression: `ilike(body, "hello")`, entry: entryWithBody("hello"), want: true},
+		{name: "upper string lower pattern", expression: `ilike(body, "hello")`, entry: entryWithBody("HELLO"), want: true},
+		{name: "lower string upper pattern", expression: `ilike(body, "HELLO")`, entry: entryWithBody("hello"), want: true},
+		{name: "mixed case", expression: `ilike(body, "hElLO")`, entry: entryWithBody("HeLLo"), want: true},
+
+		// Wildcards still work
+		{name: "% case insensitive", expression: `ilike(body, "hello%")`, entry: entryWithBody("Hello World"), want: true},
+		{name: "_ case insensitive", expression: `ilike(body, "H_llo")`, entry: entryWithBody("Hello"), want: true},
+		{name: "_ case insensitive upper", expression: `ilike(body, "h_llo")`, entry: entryWithBody("HELLO"), want: true},
+
+		// Escape sequences still work
+		{name: `\% literal case insensitive`, expression: `ilike(body, "50\\%off")`, entry: entryWithBody("50%OFF"), want: true},
+		{name: `\_ literal case insensitive`, expression: `ilike(body, "a\\_b")`, entry: entryWithBody("A_B"), want: true},
+
+		// Mismatch
+		{name: "mismatch different word", expression: `ilike(body, "WORLD")`, entry: entryWithBody("hello"), want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := runBoolExpr(t, tt.expression, tt.entry)
 			if got != tt.want {
-				t.Errorf("expr %q on entry %v: got %v, want %v",
+				t.Errorf("expr %q on body %v: got %v, want %v",
 					tt.expression, tt.entry.Body, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestExprLikePatternIsPrecompiled checks that the patcher injected a
-// compiled pattern slot (i.e. the literal pattern was recognised at compile
-// time), and that reusing the same program across multiple entries works
-// correctly without recompiling the pattern each time.
+// TestExprLikePatternIsPrecompiled asserts that the patcher detected the
+// literal pattern at compile time and injected a compiled slot rather than
+// leaving a runtime like() call.
 func TestExprLikePatternIsPrecompiled(t *testing.T) {
 	const expression = `like(body, "%error%")`
 
@@ -236,8 +159,6 @@ func TestExprLikePatternIsPrecompiled(t *testing.T) {
 	if len(compiledPatterns) == 0 {
 		t.Fatal("expected at least one pre-compiled pattern, got none")
 	}
-
-	// Verify the slot key follows the expected naming convention.
 	for k := range compiledPatterns {
 		if len(k) < 7 || k[:7] != "__like_" {
 			t.Errorf("unexpected slot name %q; want prefix __like_", k)
@@ -245,8 +166,8 @@ func TestExprLikePatternIsPrecompiled(t *testing.T) {
 	}
 }
 
-// TestExprLikeReuseProgram verifies that a compiled *vm.Program can be reused
-// across many entries — i.e. the env is properly cleaned up between runs.
+// TestExprLikeReuseProgram compiles once and runs the same *vm.Program over
+// multiple entries, verifying that env pool cleanup between calls is correct.
 func TestExprLikeReuseProgram(t *testing.T) {
 	const expression = `like(body, "%error%")`
 
