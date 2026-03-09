@@ -20,7 +20,8 @@ import (
 // Transformer is an operator that routes entries based on matching expressions
 type Transformer struct {
 	helper.BasicOperator
-	routes []*Route
+	routes              []*Route
+	allCompiledPatterns map[string]func(s string) bool
 }
 
 // Route is a route on a router operator
@@ -44,8 +45,8 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	routesHaveBodyFieldRef := slices.ContainsFunc(
 		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
 	)
-	env := signozstanzahelper.GetExprEnv(entry, routesHaveBodyFieldRef)
-	defer signozstanzahelper.PutExprEnv(env)
+	env := signozstanzahelper.GetExprEnv(entry, routesHaveBodyFieldRef, t.allCompiledPatterns)
+	defer signozstanzahelper.PutExprEnv(env, t.allCompiledPatterns)
 
 	for _, route := range t.routes {
 		matches, err := vm.Run(route.Expression, env)

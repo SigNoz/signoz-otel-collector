@@ -58,12 +58,13 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	exprStr := strings.TrimPrefix(strVal, "EXPR(")
 	exprStr = strings.TrimSuffix(exprStr, ")")
 
-	compiled, hasBodyFieldRef, err := signozstanzahelper.ExprCompile(exprStr)
+	compiled, hasBodyFieldRef, compiledPatterns, err := signozstanzahelper.ExprCompile(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression '%s': %w", c.IfExpr, err)
 	}
 
 	addOperator.program = compiled
 	addOperator.valueExprHasBodyFieldRef = hasBodyFieldRef
+	addOperator.valueExprCompiledPatterns = compiledPatterns
 	return addOperator, nil
 }

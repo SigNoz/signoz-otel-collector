@@ -56,12 +56,13 @@ func (c TransformerConfig) Build(set component.TelemetrySettings) (TransformerOp
 	}
 
 	if c.IfExpr != "" {
-		compiled, hasBodyFieldRef, err := ExprCompileBool(c.IfExpr)
+		compiled, hasBodyFieldRef, compiledPatterns, err := ExprCompileBool(c.IfExpr)
 		if err != nil {
 			return TransformerOperator{}, fmt.Errorf("failed to compile expression '%s': %w", c.IfExpr, err)
 		}
 		transformerOperator.IfExpr = compiled
 		transformerOperator.ifExprHasBodyFieldRef = hasBodyFieldRef
+		transformerOperator.ifExprCompiledPatterns = compiledPatterns
 	}
 
 	return transformerOperator, nil
@@ -70,9 +71,10 @@ func (c TransformerConfig) Build(set component.TelemetrySettings) (TransformerOp
 // TransformerOperator provides a basic implementation of a transformer operator.
 type TransformerOperator struct {
 	otelStanzaHelper.WriterOperator
-	OnError               string
-	IfExpr                *vm.Program
-	ifExprHasBodyFieldRef bool
+	OnError                string
+	IfExpr                 *vm.Program
+	ifExprHasBodyFieldRef  bool
+	ifExprCompiledPatterns map[string]func(s string) bool
 }
 
 // CanProcess will always return true for a transformer operator.
@@ -132,8 +134,8 @@ func (t *TransformerOperator) Skip(_ context.Context, entry *entry.Entry) (bool,
 		return false, nil
 	}
 
-	env := GetExprEnv(entry, t.ifExprHasBodyFieldRef)
-	defer PutExprEnv(env)
+	env := GetExprEnv(entry, t.ifExprHasBodyFieldRef, t.ifExprCompiledPatterns)
+	defer PutExprEnv(env, t.ifExprCompiledPatterns)
 
 	matches, err := vm.Run(t.IfExpr, env)
 	if err != nil {
