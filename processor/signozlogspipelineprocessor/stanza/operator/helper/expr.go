@@ -5,6 +5,8 @@
 package signozstanzahelper
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"sync"
 
@@ -81,7 +83,7 @@ func ExprCompile(input string) (
 		return nil, false, nil, err
 	}
 
-	return program, patcher.foundBodyFieldRef, patcher.compiledPatterns, nil
+	return program, patcher.foundBodyFieldRef, patcher.compiledPatterns, patcher.error()
 }
 
 // ExprCompileBool is like ExprCompile but additionally requires the expression
@@ -97,7 +99,7 @@ func ExprCompileBool(input string) (
 		return nil, false, nil, err
 	}
 
-	return program, patcher.foundBodyFieldRef, patcher.compiledPatterns, nil
+	return program, patcher.foundBodyFieldRef, patcher.compiledPatterns, patcher.error()
 }
 
 // signozExprPatcher is an expr AST visitor that runs once during expression
@@ -123,6 +125,22 @@ type signozExprPatcher struct {
 	// expr env before every vm.Run call so the rewritten bytecode can resolve
 	// the slot-name identifiers.
 	compiledPatterns map[string]func(s string) bool
+
+	// errs holds compile-time errors detected during the AST walk, for
+	// example a like/ilike call with the wrong number of arguments or a
+	// non-string literal pattern. expr.Compile itself cannot surface these
+	// because AllowUndefinedVariables suppresses unknown-function errors; the
+	// patcher catches them explicitly so callers get a meaningful error at
+	// pipeline startup rather than at log-entry evaluation time.
+	errs []error
+}
+
+// firstErr returns the first accumulated patcher error, or nil.
+func (p *signozExprPatcher) error() error {
+	if len(p.errs) == 0 {
+		return nil
+	}
+	return errors.Join(p.errs...)
 }
 
 // Visit implements ast.Visitor. It is called once per AST node during
@@ -189,14 +207,25 @@ func (p *signozExprPatcher) Visit(node *ast.Node) {
 	//
 	// At runtime vm.Run looks up "__like_3f8a1c2d" in the env map, finds the
 	// pre-compiled func(string) bool, and calls it — one RE2 scan, no allocs.
-	if (c.Value == "like" || c.Value == "ilike") && len(n.Arguments) == 2 {
-		strNode, isStr := n.Arguments[1].(*ast.StringNode)
-		if !isStr {
-			// Dynamic pattern — leave the call as-is. Note: the generic
-			// like/ilike functions must be present in the env for this to
-			// work at runtime.
+	if c.Value == "like" || c.Value == "ilike" {
+		// ── Arity check ───────────────────────────────────────────────────────
+		if len(n.Arguments) != 2 {
+			p.errs = append(p.errs, fmt.Errorf(
+				"%s() requires exactly 2 arguments, got %d", c.Value, len(n.Arguments),
+			))
 			return
 		}
+
+		// ── Pattern type check ────────────────────────────────────────────────
+		strNode, isStr := n.Arguments[1].(*ast.StringNode)
+		if !isStr {
+			p.errs = append(p.errs, fmt.Errorf(
+				"%s() pattern (second argument) must be a string literal", c.Value,
+			))
+			return
+		}
+
+		// ── Pattern compilation + rewrite ─────────────────────────────────────
 		pattern := strNode.Value
 		var matcher func(string) bool
 		var slotName string
@@ -209,8 +238,9 @@ func (p *signozExprPatcher) Visit(node *ast.Node) {
 			slotName = iLikeSlotName(pattern)
 		}
 		if compileErr != nil {
-			// Invalid pattern — leave the call as-is so the error surfaces
-			// at runtime with a useful message rather than silently here.
+			p.errs = append(p.errs, fmt.Errorf(
+				"%s() invalid pattern %q: %w", c.Value, pattern, compileErr,
+			))
 			return
 		}
 		p.compiledPatterns[slotName] = matcher // step 3

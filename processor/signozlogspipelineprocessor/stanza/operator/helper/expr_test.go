@@ -87,6 +87,13 @@ func TestExprLike(t *testing.T) {
 		{name: `\x matches literal x`, expression: `like(body, "a\\xb")`, entry: entryWithBody("axb"), want: true},
 		{name: `\x does not match other char`, expression: `like(body, "a\\xb")`, entry: entryWithBody("ayb"), want: false},
 
+		// Prefix+suffix tier (prefix%suffix)
+		{name: "prefix%suffix match", expression: `like(body, "hello%world")`, entry: entryWithBody("hello beautiful world"), want: true},
+		{name: "prefix%suffix adjacent", expression: `like(body, "hello%world")`, entry: entryWithBody("helloworld"), want: true},
+		{name: "prefix%suffix wrong prefix", expression: `like(body, "hello%world")`, entry: entryWithBody("greetings world"), want: false},
+		{name: "prefix%suffix wrong suffix", expression: `like(body, "hello%world")`, entry: entryWithBody("hello earth"), want: false},
+		{name: "prefix%suffix too short", expression: `like(body, "hello%world")`, entry: entryWithBody("helloworl"), want: false},
+
 		// Combined
 		{name: "% and _ combined", expression: `like(body, "f%b_r")`, entry: entryWithBody("foobar"), want: true},
 		{name: "% at both ends", expression: `like(body, "%needle%")`, entry: entryWithBody("needle"), want: true},
@@ -131,6 +138,11 @@ func TestExprILike(t *testing.T) {
 		{name: `\% literal case insensitive`, expression: `ilike(body, "50\\%off")`, entry: entryWithBody("50%OFF"), want: true},
 		{name: `\_ literal case insensitive`, expression: `ilike(body, "a\\_b")`, entry: entryWithBody("A_B"), want: true},
 
+		// Prefix+suffix tier, case-insensitive
+		{name: "prefix%suffix ilike match", expression: `ilike(body, "HELLO%WORLD")`, entry: entryWithBody("hello beautiful world"), want: true},
+		{name: "prefix%suffix ilike adjacent", expression: `ilike(body, "HELLO%WORLD")`, entry: entryWithBody("helloworld"), want: true},
+		{name: "prefix%suffix ilike wrong prefix", expression: `ilike(body, "HELLO%WORLD")`, entry: entryWithBody("greetings world"), want: false},
+
 		// Mismatch
 		{name: "mismatch different word", expression: `ilike(body, "WORLD")`, entry: entryWithBody("hello"), want: false},
 	}
@@ -141,6 +153,51 @@ func TestExprILike(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("expr %q on body %v: got %v, want %v",
 					tt.expression, tt.entry.Body, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExprCompileBoolErrors verifies that like() expressions with syntax errors,
+// wrong arity, non-string patterns, or a non-bool result type are rejected by
+// ExprCompileBool at compile time.
+//
+// Arity and pattern-type errors are caught by signozExprPatcher.Visit during
+// the expr.Compile AST walk and returned by ExprCompileBool immediately —
+// they never reach vm.Run. Syntax errors are caught by expr.Compile itself.
+func TestExprCompileBoolErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression string
+	}{
+		{
+			name:       "syntax: unclosed string pattern",
+			expression: `like(body, "unterminated`,
+		},
+		{
+			name:       "syntax: missing comma between args",
+			expression: `like(body "pat")`,
+		},
+		{
+			name:       "arity: like with one arg",
+			expression: `like(body)`,
+		},
+		{
+			name:       "arity: ilike with three args",
+			expression: `ilike(body, "a", "b")`,
+		},
+		{
+			name:       "pattern: like with integer literal",
+			expression: `like(body, 42)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, err := ExprCompileBool(tt.expression)
+			if err == nil {
+				t.Errorf("ExprCompileBool(%q): expected error, got nil", tt.expression)
+				return
 			}
 		})
 	}

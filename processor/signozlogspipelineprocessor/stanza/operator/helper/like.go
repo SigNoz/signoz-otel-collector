@@ -11,79 +11,113 @@ import (
 type patternKind int
 
 const (
-	kindExact    patternKind = iota // no wildcards → s == literal
-	kindPrefix                      // literal%     → strings.HasPrefix
-	kindSuffix                      // %literal     → strings.HasSuffix
-	kindContains                    // %literal%    → strings.Contains
-	kindRegexp                      // everything else → RE2
+	kindExact        patternKind = iota // no wildcards  → s == lit1
+	kindPrefix                          // lit1%          → strings.HasPrefix(s, lit1)
+	kindSuffix                          // %lit1          → strings.HasSuffix(s, lit1)
+	kindContains                        // %lit1%         → strings.Contains(s, lit1)
+	kindPrefixSuffix                    // lit1%lit2      → HasPrefix && HasSuffix
+	kindRegexp                          // everything else → RE2
 )
 
-// parseLikePattern analyses pattern and returns the cheapest tier plus the
-// extracted literal (empty for kindRegexp). A pattern qualifies for a string
-// tier only when it has no '_' wildcards and at most two unescaped '%' signs
-// located exclusively at the very beginning and/or very end.
+// parseLikePattern inspects pattern and returns the cheapest matching tier
+// along with the one or two literal strings needed for matching.
+//
+// Supported fast tiers (no '_' wildcard, '%' only at boundaries):
+//
+//	literal     → kindExact,        lit1=literal
+//	literal%    → kindPrefix,       lit1=literal
+//	%literal    → kindSuffix,       lit1=literal
+//	%literal%   → kindContains,     lit1=literal
+//	lit1%lit2   → kindPrefixSuffix, lit1=prefix, lit2=suffix
+//
+// Any '_' wildcard or more than one interior '%' forces kindRegexp (lit1=""
+// lit2=""), and the caller must fall back to RE2.
 //
 // Escape rules: \% → literal %, \_ → literal _, \\ → literal \, \x → literal x.
-func parseLikePattern(pattern string) (kind patternKind, literal string) {
+func parseLikePattern(pattern string) (kind patternKind, lit1, lit2 string) {
 	runes := []rune(pattern)
 	n := len(runes)
 
 	leadingPct := n > 0 && runes[0] == '%'
 	trailingPct := n > 0 && runes[n-1] == '%' && !(n > 1 && runes[n-2] == '\\')
 
-	// Walk the pattern collecting the literal content and checking for
-	// characters that force the RE2 fallback.
-	var sb strings.Builder
+	// Walk the pattern collecting literal characters. When we encounter an
+	// unescaped '%' in the interior (not the leading/trailing sentinel), we
+	// snapshot the first half and start collecting the second half. A second
+	// interior '%' means we can't avoid RE2.
+	var left, right strings.Builder
+	cur := &left  // writing into left until an interior '%' is seen
+	middlePct := false
+
 	for i := 0; i < n; {
 		ch := runes[i]
 		switch {
-		case ch == '%':
-			// A '%' is allowed only as the first or last rune; anywhere else
-			// we can't express it as a simple string op.
-			if i != 0 && !(i == n-1 && trailingPct) {
-				return kindRegexp, ""
-			}
-			i++
 		case ch == '_':
-			// Any unescaped '_' requires RE2.
-			return kindRegexp, ""
+			return kindRegexp, "", ""
 		case ch == '\\' && i+1 < n:
-			// Escape sequence: consume both runes, emit the escaped character.
-			sb.WriteRune(runes[i+1])
+			cur.WriteRune(runes[i+1])
 			i += 2
+		case ch == '%':
+			isLeading := i == 0
+			isTrailing := i == n-1 && trailingPct
+			if isLeading || isTrailing {
+				i++ // boundary sentinel — skip, don't emit
+			} else if !middlePct {
+				// First interior '%': everything written so far is the prefix;
+				// switch cur to right so the rest becomes the suffix.
+				middlePct = true
+				cur = &right
+				i++
+			} else {
+				// Second interior '%': too complex for string ops.
+				return kindRegexp, "", ""
+			}
 		default:
-			sb.WriteRune(ch)
+			cur.WriteRune(ch)
 			i++
 		}
 	}
-	lit := sb.String()
+
+	l, r := left.String(), right.String()
 
 	switch {
+	case middlePct:
+		// Interior '%' only makes sense when there is no leading/trailing '%'
+		// (e.g. `%a%b` or `a%b%` would mix tiers; fall back to RE2).
+		if leadingPct || trailingPct {
+			return kindRegexp, "", ""
+		}
+		return kindPrefixSuffix, l, r
 	case leadingPct && trailingPct:
-		return kindContains, lit
+		return kindContains, l, ""
 	case leadingPct:
-		return kindSuffix, lit
+		return kindSuffix, l, ""
 	case trailingPct:
-		return kindPrefix, lit
+		return kindPrefix, l, ""
 	default:
-		return kindExact, lit
+		return kindExact, l, ""
 	}
 }
 
 // compileLike compiles a LIKE pattern into a reusable case-sensitive matcher.
-// Simple patterns (exact / prefix / suffix / contains) are handled with fast
-// string operations; everything else falls back to RE2.
+// Simple patterns (exact / prefix / suffix / contains / prefix+suffix) are
+// handled with fast string operations; everything else falls back to RE2.
 func compileLike(pattern string) (func(string) bool, error) {
-	kind, lit := parseLikePattern(pattern)
+	kind, lit1, lit2 := parseLikePattern(pattern)
 	switch kind {
 	case kindExact:
-		return func(s string) bool { return s == lit }, nil
+		return func(s string) bool { return s == lit1 }, nil
 	case kindPrefix:
-		return func(s string) bool { return strings.HasPrefix(s, lit) }, nil
+		return func(s string) bool { return strings.HasPrefix(s, lit1) }, nil
 	case kindSuffix:
-		return func(s string) bool { return strings.HasSuffix(s, lit) }, nil
+		return func(s string) bool { return strings.HasSuffix(s, lit1) }, nil
 	case kindContains:
-		return func(s string) bool { return strings.Contains(s, lit) }, nil
+		return func(s string) bool { return strings.Contains(s, lit1) }, nil
+	case kindPrefixSuffix:
+		min := len(lit1) + len(lit2)
+		return func(s string) bool {
+			return len(s) >= min && strings.HasPrefix(s, lit1) && strings.HasSuffix(s, lit2)
+		}, nil
 	default:
 		re, err := regexp.Compile(likePatternToRegexp(pattern))
 		if err != nil {
@@ -103,38 +137,39 @@ func compileLike(pattern string) (func(string) bool, error) {
 // the same UTF-8 byte length. For the rare cases where they differ (e.g. 'ß'
 // ↔ "SS") the RE2 fallback handles them correctly via the kindRegexp path.
 func compileILike(pattern string) (func(string) bool, error) {
-	kind, lit := parseLikePattern(pattern)
+	kind, lit1, lit2 := parseLikePattern(pattern)
 	switch kind {
 	case kindExact:
-		return func(s string) bool { return strings.EqualFold(s, lit) }, nil
+		return func(s string) bool { return strings.EqualFold(s, lit1) }, nil
 	case kindPrefix:
-		n := len(lit)
+		n := len(lit1)
 		return func(s string) bool {
-			if len(s) < n {
-				return false
-			}
-			return strings.EqualFold(s[:n], lit)
+			return len(s) >= n && strings.EqualFold(s[:n], lit1)
 		}, nil
 	case kindSuffix:
-		n := len(lit)
+		n := len(lit1)
 		return func(s string) bool {
-			if len(s) < n {
-				return false
-			}
-			return strings.EqualFold(s[len(s)-n:], lit)
+			return len(s) >= n && strings.EqualFold(s[len(s)-n:], lit1)
 		}, nil
 	case kindContains:
-		n := len(lit)
+		n := len(lit1)
 		return func(s string) bool {
 			if len(s) < n {
 				return false
 			}
 			for i := 0; i <= len(s)-n; i++ {
-				if strings.EqualFold(s[i:i+n], lit) {
+				if strings.EqualFold(s[i:i+n], lit1) {
 					return true
 				}
 			}
 			return false
+		}, nil
+	case kindPrefixSuffix:
+		np, ns, min := len(lit1), len(lit2), len(lit1)+len(lit2)
+		return func(s string) bool {
+			return len(s) >= min &&
+				strings.EqualFold(s[:np], lit1) &&
+				strings.EqualFold(s[len(s)-ns:], lit2)
 		}, nil
 	default:
 		re, err := regexp.Compile(`(?i)` + likePatternToRegexp(pattern))
