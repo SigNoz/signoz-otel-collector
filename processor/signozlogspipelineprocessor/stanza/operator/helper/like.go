@@ -11,7 +11,7 @@ import (
 type patternKind int
 
 const (
-	kindExact        patternKind = iota // no wildcards  → s == lit1
+	kindNoWildcards  patternKind = iota // no wildcards  → s == lit1
 	kindPrefix                          // lit1%          → strings.HasPrefix(s, lit1)
 	kindSuffix                          // %lit1          → strings.HasSuffix(s, lit1)
 	kindContains                        // %lit1%         → strings.Contains(s, lit1)
@@ -24,7 +24,7 @@ const (
 //
 // Supported fast tiers (no '_' wildcard, '%' only at boundaries):
 //
-//	literal     → kindExact,        lit1=literal
+//	literal     → kindNoWildcards,        lit1=literal
 //	literal%    → kindPrefix,       lit1=literal
 //	%literal    → kindSuffix,       lit1=literal
 //	%literal%   → kindContains,     lit1=literal
@@ -46,7 +46,7 @@ func parseLikePattern(pattern string) (kind patternKind, lit1, lit2 string) {
 	// snapshot the first half and start collecting the second half. A second
 	// interior '%' means we can't avoid RE2.
 	var left, right strings.Builder
-	cur := &left  // writing into left until an interior '%' is seen
+	cur := &left // writing into left until an interior '%' is seen
 	middlePct := false
 
 	for i := 0; i < n; {
@@ -95,7 +95,7 @@ func parseLikePattern(pattern string) (kind patternKind, lit1, lit2 string) {
 	case trailingPct:
 		return kindPrefix, l, ""
 	default:
-		return kindExact, l, ""
+		return kindNoWildcards, l, ""
 	}
 }
 
@@ -105,7 +105,7 @@ func parseLikePattern(pattern string) (kind patternKind, lit1, lit2 string) {
 func compileLike(pattern string) (func(string) bool, error) {
 	kind, lit1, lit2 := parseLikePattern(pattern)
 	switch kind {
-	case kindExact:
+	case kindNoWildcards:
 		return func(s string) bool { return s == lit1 }, nil
 	case kindPrefix:
 		return func(s string) bool { return strings.HasPrefix(s, lit1) }, nil
@@ -120,59 +120,6 @@ func compileLike(pattern string) (func(string) bool, error) {
 		}, nil
 	default:
 		re, err := regexp.Compile(likePatternToRegexp(pattern))
-		if err != nil {
-			return nil, err
-		}
-		return re.MatchString, nil
-	}
-}
-
-// compileILike compiles a LIKE pattern into a reusable case-insensitive matcher.
-// Simple patterns use zero-allocation string operations (strings.EqualFold for
-// exact/prefix/suffix; sliding EqualFold window for contains); everything else
-// falls back to RE2 (?i).
-//
-// Note: the EqualFold-window approach compares byte-length slices. This is
-// correct for ASCII and for Unicode code points whose upper/lower forms have
-// the same UTF-8 byte length. For the rare cases where they differ (e.g. 'ß'
-// ↔ "SS") the RE2 fallback handles them correctly via the kindRegexp path.
-func compileILike(pattern string) (func(string) bool, error) {
-	kind, lit1, lit2 := parseLikePattern(pattern)
-	switch kind {
-	case kindExact:
-		return func(s string) bool { return strings.EqualFold(s, lit1) }, nil
-	case kindPrefix:
-		n := len(lit1)
-		return func(s string) bool {
-			return len(s) >= n && strings.EqualFold(s[:n], lit1)
-		}, nil
-	case kindSuffix:
-		n := len(lit1)
-		return func(s string) bool {
-			return len(s) >= n && strings.EqualFold(s[len(s)-n:], lit1)
-		}, nil
-	case kindContains:
-		n := len(lit1)
-		return func(s string) bool {
-			if len(s) < n {
-				return false
-			}
-			for i := 0; i <= len(s)-n; i++ {
-				if strings.EqualFold(s[i:i+n], lit1) {
-					return true
-				}
-			}
-			return false
-		}, nil
-	case kindPrefixSuffix:
-		np, ns, min := len(lit1), len(lit2), len(lit1)+len(lit2)
-		return func(s string) bool {
-			return len(s) >= min &&
-				strings.EqualFold(s[:np], lit1) &&
-				strings.EqualFold(s[len(s)-ns:], lit2)
-		}, nil
-	default:
-		re, err := regexp.Compile(`(?i)` + likePatternToRegexp(pattern))
 		if err != nil {
 			return nil, err
 		}
@@ -235,9 +182,11 @@ func iLikeSlotName(pattern string) string {
 }
 
 func likeSlotNameF(funcName, pattern string) string {
-	h := fnv.New32a()
+	h := fnv.New64a()
 	_, _ = h.Write([]byte(funcName))
 	_, _ = h.Write([]byte{':'})
 	_, _ = h.Write([]byte(pattern))
-	return fmt.Sprintf("__%s_%08x", funcName, h.Sum32())
+	// %016x is the full 64-bit hash,
+	// not truncation (16 hex chars = 64 bits).
+	return fmt.Sprintf("__%s_%016x", funcName, h.Sum64())
 }

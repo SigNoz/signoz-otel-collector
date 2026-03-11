@@ -17,11 +17,11 @@ import (
 type Transformer struct {
 	signozstanzahelper.TransformerOperator
 
-	Field                     entry.Field
-	Value                     any
-	program                   *vm.Program
-	valueExprHasBodyFieldRef  bool
-	valueExprCompiledPatterns map[string]func(s string) bool
+	Field                        entry.Field
+	Value                        any
+	program                      *vm.Program
+	valueExprHasBodyFieldRef     bool
+	valueExprCompiledPatterns    map[string]func(s string) bool
 }
 
 // Process will process an entry with a add transformation.
@@ -39,14 +39,13 @@ func (t *Transformer) Transform(e *entry.Entry) error {
 		return e.Set(t.Field, t.Value)
 	}
 	if t.program != nil {
-		env := signozstanzahelper.GetExprEnv(e, t.valueExprHasBodyFieldRef, t.valueExprCompiledPatterns)
-		defer signozstanzahelper.PutExprEnv(env, t.valueExprCompiledPatterns)
-
-		result, err := vm.Run(t.program, env)
-		if err != nil {
-			return fmt.Errorf("evaluate value_expr: %w", err)
-		}
-		return e.Set(t.Field, result)
+		return signozstanzahelper.RunWithExprEnv(e, t.valueExprHasBodyFieldRef, t.valueExprCompiledPatterns, func(env map[string]any) error {
+			result, err := vm.Run(t.program, env)
+			if err != nil {
+				return fmt.Errorf("evaluate value_expr: %w", err)
+			}
+			return e.Set(t.Field, result)
+		})
 	}
 	return fmt.Errorf("add: missing required field 'value'")
 }

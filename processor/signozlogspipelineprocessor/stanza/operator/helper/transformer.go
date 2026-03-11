@@ -134,15 +134,16 @@ func (t *TransformerOperator) Skip(_ context.Context, entry *entry.Entry) (bool,
 		return false, nil
 	}
 
-	env := GetExprEnv(entry, t.ifExprHasBodyFieldRef, t.ifExprCompiledPatterns)
-	defer PutExprEnv(env, t.ifExprCompiledPatterns)
-
-	matches, err := vm.Run(t.IfExpr, env)
-	if err != nil {
-		return false, fmt.Errorf("running if expr: %w", err)
-	}
-
-	return !matches.(bool), nil
+	var skip bool
+	err := RunWithExprEnv(entry, t.ifExprHasBodyFieldRef, t.ifExprCompiledPatterns, func(env map[string]any) error {
+		matches, err := vm.Run(t.IfExpr, env)
+		if err != nil {
+			return fmt.Errorf("running if expr: %w", err)
+		}
+		skip = !matches.(bool)
+		return nil
+	})
+	return skip, err
 }
 
 // TransformFunction is function that transforms an entry.

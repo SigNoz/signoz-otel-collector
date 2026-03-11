@@ -32,10 +32,17 @@ var envPool = sync.Pool{
 	},
 }
 
-// GetExprEnv returns a map of key/value pairs that can be used to evaluate an
-// expression. compiledPatterns contains pre-compiled like/ilike matchers
-// produced by ExprCompile; pass nil if the expression has none.
-func GetExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool, compiledPatterns map[string]func(s string) bool) map[string]any {
+// RunWithExprEnv builds an expression environment for the given entry, calls fn
+// with it, then returns the map to the pool. compiledPatterns contains
+// pre-compiled like/ilike matchers produced by ExprCompile; pass nil if the
+// expression has none.
+func RunWithExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool, compiledPatterns map[string]func(s string) bool, fn func(map[string]any) error) error {
+	env := getExprEnv(e, forExprWithBodyFieldRef, compiledPatterns)
+	defer putExprEnv(env, compiledPatterns)
+	return fn(env)
+}
+
+func getExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool, compiledPatterns map[string]func(s string) bool) map[string]any {
 	env := envPool.Get().(map[string]any)
 	env["$"] = e.Body
 	env["body"] = e.Body
@@ -59,10 +66,7 @@ func GetExprEnv(e *entry.Entry, forExprWithBodyFieldRef bool, compiledPatterns m
 	return env
 }
 
-// PutExprEnv returns an env map to the pool. compiledPatterns must be the same
-// map that was passed to GetExprEnv so that the per-expression slots are
-// removed before the map is reused.
-func PutExprEnv(e map[string]any, compiledPatterns map[string]func(s string) bool) {
+func putExprEnv(e map[string]any, compiledPatterns map[string]func(s string) bool) {
 	for k := range compiledPatterns {
 		delete(e, k)
 	}
