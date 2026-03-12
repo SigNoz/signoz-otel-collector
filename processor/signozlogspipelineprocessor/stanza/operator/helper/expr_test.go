@@ -43,17 +43,6 @@ func entryWithAttr(key, value string) *entry.Entry {
 	return e
 }
 
-// Note on escape sequences in expr string literals:
-// expr parses string literals with the same escape rules as Go, so a single
-// backslash in the LIKE pattern must be written as \\ inside the expr string.
-// Examples:
-//   LIKE pattern  │  expr string literal
-//   ─────────────────────────────────────
-//   100\%         │  "100\\%"
-//   a\_b          │  "a\\_b"
-//   a\\b          │  "a\\\\b"
-//   a\xb          │  "a\\xb"
-
 func TestExprLike(t *testing.T) {
 	tests := []struct {
 		name       string

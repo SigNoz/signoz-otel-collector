@@ -17,11 +17,10 @@ import (
 type Transformer struct {
 	signozstanzahelper.TransformerOperator
 
-	Field                        entry.Field
-	Value                        any
-	program                      *vm.Program
-	valueExprHasBodyFieldRef     bool
-	valueExprCompiledPatterns    map[string]func(s string) bool
+	Field                    entry.Field
+	Value                    any
+	program                  *vm.Program
+	valueExprHasBodyFieldRef bool
 }
 
 // Process will process an entry with a add transformation.
@@ -39,7 +38,7 @@ func (t *Transformer) Transform(e *entry.Entry) error {
 		return e.Set(t.Field, t.Value)
 	}
 	if t.program != nil {
-		return signozstanzahelper.RunWithExprEnv(e, t.valueExprHasBodyFieldRef, t.valueExprCompiledPatterns, func(env map[string]any) error {
+		return signozstanzahelper.RunWithExprEnv(e, t.valueExprHasBodyFieldRef, nil, func(env map[string]any) error {
 			result, err := vm.Run(t.program, env)
 			if err != nil {
 				return fmt.Errorf("evaluate value_expr: %w", err)

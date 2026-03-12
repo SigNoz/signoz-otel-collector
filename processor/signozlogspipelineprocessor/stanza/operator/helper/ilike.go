@@ -57,3 +57,8 @@ func compileILike(pattern string) (func(string) bool, error) {
 		return re.MatchString, nil
 	}
 }
+
+// iLikeSlotName returns the env slot name for a pre-compiled ilike matcher.
+func iLikeSlotName(pattern string) string {
+	return likeSlotNameF("ilike", pattern)
+}

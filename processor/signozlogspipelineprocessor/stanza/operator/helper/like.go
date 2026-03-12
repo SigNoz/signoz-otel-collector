@@ -170,15 +170,10 @@ func likePatternToRegexp(pattern string) string {
 	return sb.String()
 }
 
-// LikeSlotName returns the env slot name used to inject a pre-compiled like
+// likeSlotName returns the env slot name used to inject a pre-compiled like
 // matcher into the expr environment. The name is stable for a given pattern.
 func likeSlotName(pattern string) string {
 	return likeSlotNameF("like", pattern)
-}
-
-// ILikeSlotName returns the env slot name for a pre-compiled ilike matcher.
-func iLikeSlotName(pattern string) string {
-	return likeSlotNameF("ilike", pattern)
 }
 
 func likeSlotNameF(funcName, pattern string) string {
@@ -186,7 +181,5 @@ func likeSlotNameF(funcName, pattern string) string {
 	_, _ = h.Write([]byte(funcName))
 	_, _ = h.Write([]byte{':'})
 	_, _ = h.Write([]byte(pattern))
-	// %016x is the full 64-bit hash,
-	// not truncation (16 hex chars = 64 bits).
-	return fmt.Sprintf("__%s_%016x", funcName, h.Sum64())
+	return fmt.Sprintf("__%s_%x", funcName, h.Sum64())
 }
