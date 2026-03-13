@@ -186,69 +186,64 @@ func (p *signozExprPatcher) Visit(node *ast.Node) {
 	}
 
 	// ── Rewrite 2b: like/ilike pre-compilation ────────────────────────────────
-	//
-	// Pipeline expressions always use constant patterns, e.g.:
-	//   like(body, "%error%")
-	//
-	// Compiling the LIKE pattern to a *regexp.Regexp on every log entry would
-	// be wasteful. Instead, we do it once here at expression compile time:
-	//
-	//   Step 1 — detect:  second argument must be a StringNode (compile-time
-	//             constant). If it is a runtime value we leave the call alone.
-	//
-	//   Step 2 — compile: turn the LIKE pattern into a *regexp.Regexp and
-	//             wrap it as a func(string) bool.
-	//
-	//   Step 3 — store:   save the matcher under a stable slot name derived
-	//             from the pattern (fnv32a hash), e.g. "__like_3f8a1c2d".
-	//             The slot name is added to compiledPatterns so callers can
-	//             inject it into the env before vm.Run.
-	//
-	//   Step 4 — rewrite: mutate the CallNode so the compiled program calls
-	//             __like_3f8a1c2d(body) instead of like(body, "%error%").
-	//             The pattern argument is dropped because it is now baked into
-	//             the closure.
-	//
-	// At runtime vm.Run looks up "__like_3f8a1c2d" in the env map, finds the
-	// pre-compiled func(string) bool, and calls it — one RE2 scan, no allocs.
 	if c.Value == "like" || c.Value == "ilike" {
-		// ── Arity check ───────────────────────────────────────────────────────
-		if len(n.Arguments) != 2 {
-			p.errs = append(p.errs, fmt.Errorf(
-				"%s() requires exactly 2 arguments, got %d", c.Value, len(n.Arguments),
-			))
-			return
-		}
-
-		// ── Pattern type check ────────────────────────────────────────────────
-		strNode, isStr := n.Arguments[1].(*ast.StringNode)
-		if !isStr {
-			p.errs = append(p.errs, fmt.Errorf(
-				"%s() pattern (second argument) must be a string literal", c.Value,
-			))
-			return
-		}
-
-		// ── Pattern compilation + rewrite ─────────────────────────────────────
-		pattern := strNode.Value
-		var matcher func(string) bool
-		var slotName string
-		var compileErr error
-		if c.Value == "like" {
-			matcher, compileErr = compileLike(pattern)
-			slotName = likeSlotName(pattern)
-		} else {
-			matcher, compileErr = compileILike(pattern)
-			slotName = iLikeSlotName(pattern)
-		}
-		if compileErr != nil {
-			p.errs = append(p.errs, fmt.Errorf(
-				"%s() invalid pattern %q: %w", c.Value, pattern, compileErr,
-			))
-			return
-		}
-		p.compiledPatterns[slotName] = matcher // step 3
-		c.Value = slotName                     // step 4a: rename callee
-		n.Arguments = n.Arguments[:1]          // step 4b: drop pattern arg
+		p.rewriteLikeCall(n, c)
 	}
+}
+
+// rewriteLikeCall pre-compiles a like/ilike call node at expression compile
+// time so the pattern is not recompiled on every log entry.
+//
+// Pipeline expressions always use constant patterns, e.g.:
+//
+//	like(body, "%error%")
+//
+// Steps:
+//
+//	1 — detect:  second argument must be a StringNode (compile-time constant).
+//	2 — compile: turn the LIKE pattern into a *regexp.Regexp wrapped as func(string) bool.
+//	3 — store:   save the matcher under a stable slot name derived from the
+//	             pattern (fnv64a hash), e.g. "__like_3f8a1c2d", so callers can
+//	             inject it into the env before vm.Run.
+//	4 — rewrite: mutate the CallNode to call __like_3f8a1c2d(body) instead of
+//	             like(body, "%error%"), dropping the now-baked-in pattern arg.
+func (p *signozExprPatcher) rewriteLikeCall(n *ast.CallNode, c *ast.IdentifierNode) {
+	// ── Arity check ───────────────────────────────────────────────────────
+	if len(n.Arguments) != 2 {
+		p.errs = append(p.errs, fmt.Errorf(
+			"%s() requires exactly 2 arguments, got %d", c.Value, len(n.Arguments),
+		))
+		return
+	}
+
+	// ── Pattern type check ────────────────────────────────────────────────
+	strNode, isStr := n.Arguments[1].(*ast.StringNode)
+	if !isStr {
+		p.errs = append(p.errs, fmt.Errorf(
+			"%s() pattern (second argument) must be a string literal", c.Value,
+		))
+		return
+	}
+
+	// ── Pattern compilation + rewrite ─────────────────────────────────────
+	pattern := strNode.Value
+	var matcher func(string) bool
+	var slotName string
+	var compileErr error
+	if c.Value == "like" {
+		matcher, compileErr = compileLike(pattern)
+		slotName = likeSlotName(pattern)
+	} else {
+		matcher, compileErr = compileILike(pattern)
+		slotName = iLikeSlotName(pattern)
+	}
+	if compileErr != nil {
+		p.errs = append(p.errs, fmt.Errorf(
+			"%s() invalid pattern %q: %w", c.Value, pattern, compileErr,
+		))
+		return
+	}
+	p.compiledPatterns[slotName] = matcher // step 3
+	c.Value = slotName                     // step 4a: rename callee
+	n.Arguments = n.Arguments[:1]          // step 4b: drop pattern arg
 }
