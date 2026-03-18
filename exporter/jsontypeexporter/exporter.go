@@ -37,8 +37,8 @@ type jsonTypeExporter struct {
 	conn    clickhouse.Conn
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
-	keyCache  *lru.Cache[string, struct{}]
-	closeChan chan struct{}
+	cardinalKeyCache *lru.Cache[string, struct{}]
+	closeChan        chan struct{}
 }
 
 func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
@@ -59,18 +59,17 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 	}
 
 	return &jsonTypeExporter{
-		config:    &cfg,
-		logger:    set.Logger,
-		limiter:   make(chan struct{}, utils.Concurrency()),
-		conn:      conn,
-		keyCache:  keyCache,
-		closeChan: make(chan struct{}),
+		config:           &cfg,
+		logger:           set.Logger,
+		limiter:          make(chan struct{}, utils.Concurrency()),
+		conn:             conn,
+		cardinalKeyCache: keyCache,
+		closeChan:        make(chan struct{}),
 	}, nil
 }
 
 func (e *jsonTypeExporter) Start(ctx context.Context, host component.Host) error {
 	e.logger.Info("JSON Type exporter started")
-	e.initFlushCache()
 	return nil
 }
 
@@ -81,24 +80,6 @@ func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 		return e.conn.Close()
 	}
 	return nil
-}
-
-func (e *jsonTypeExporter) initFlushCache() {
-	if *e.config.CacheFlushInterval > 0 {
-		go func() {
-			ticker := time.NewTicker(*e.config.CacheFlushInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-e.closeChan:
-					return
-				case <-ticker.C:
-					e.keyCache.Purge()
-					e.logger.Info("Key cache purged to refresh last_seen in database")
-				}
-			}
-		}()
-	}
 }
 
 func (e *jsonTypeExporter) processLogs(ctx context.Context, ld plog.Logs) error {
@@ -198,7 +179,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 		if strings.HasPrefix(prefix, MessageField+".") {
 			return nil
 		} else if prefix == MessageField {
-			typeSet.Insert(prefix, maskBool)
+			typeSet.Insert(prefix, maskString)
 			return nil
 		}
 
@@ -226,13 +207,13 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 				default:
 				}
 
-				contains := e.keyCache.Contains(key)
+				contains := e.cardinalKeyCache.Contains(key)
 				// if high cardinality, skip the key
 				if !contains && keycheck.IsCardinal(key) {
 					return true
 				}
 				if !contains {
-					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+					e.cardinalKeyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
 				}
 
 				if err := closure(ctx, generatePath(prefix, key), value, typeSet, level+1); err != nil {

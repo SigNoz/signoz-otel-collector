@@ -22,7 +22,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 		t.Fatalf("failed to create key cache: %v", err)
 	}
 	exp := &jsonTypeExporter{
-		keyCache: keyCache,
+		cardinalKeyCache: keyCache,
 	}
 	ctx := context.Background()
 
