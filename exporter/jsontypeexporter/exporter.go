@@ -172,7 +172,7 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 
 	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
 	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
-		// Skip paths that are type hints (fixed columns in the JSON type)
+		// Skip paths inside of type hints (fixed columns in the JSON type)
 		// So diving into nestedness of "message" will pollute types table
 		//
 		// TODO(Piyush): Check this again if typehints becomes a part of system
