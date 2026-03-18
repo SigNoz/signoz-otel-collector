@@ -2,6 +2,7 @@ package jsontypeexporter
 
 import (
 	"errors"
+	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/component"
@@ -29,6 +30,10 @@ type Config struct {
 	// When false (default), errors are logged but not returned, allowing the exporter to continue processing.
 	// When true, errors are returned, which is useful for testing and debugging.
 	FailOnError bool `mapstructure:"fail_on_error"`
+
+	// CacheFlushInterval is how often the key cache is purged so that last_seen is kept fresh in the DB.
+	// Defaults to 4h.
+	CacheFlushInterval *time.Duration `mapstructure:"cache_flush_interval"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -37,6 +42,7 @@ const (
 	defaultMaxDepthTraverse        = 22
 	defaultMaxArrayElementsAllowed = 100
 	defaultMaxKeysAtLevel          = 1024
+	defaultCacheFlushInterval      = 24 * time.Hour
 )
 
 var (
@@ -66,6 +72,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxArrayElementsAllowed == nil {
 		cfg.MaxArrayElementsAllowed = utils.ToPointer(defaultMaxArrayElementsAllowed)
+	}
+	if cfg.CacheFlushInterval == nil {
+		cfg.CacheFlushInterval = utils.ToPointer(defaultCacheFlushInterval)
 	}
 
 	if *cfg.MaxDepthTraverse < 1 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ const (
 	defaultKeyCacheSize           = 10_000
 	ArraySeparator                = "[]."
 	ArraySuffix                   = "[]"
+	MessageField                  = "message"
 )
 
 type jsonTypeExporter struct {
@@ -68,6 +70,7 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 
 func (e *jsonTypeExporter) Start(ctx context.Context, host component.Host) error {
 	e.logger.Info("JSON Type exporter started")
+	e.initFlushCache()
 	return nil
 }
 
@@ -78,6 +81,24 @@ func (e *jsonTypeExporter) Shutdown(ctx context.Context) error {
 		return e.conn.Close()
 	}
 	return nil
+}
+
+func (e *jsonTypeExporter) initFlushCache() {
+	if *e.config.CacheFlushInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(*e.config.CacheFlushInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-e.closeChan:
+					return
+				case <-ticker.C:
+					e.keyCache.Purge()
+					e.logger.Info("Key cache purged to refresh last_seen in database")
+				}
+			}
+		}()
+	}
 }
 
 func (e *jsonTypeExporter) processLogs(ctx context.Context, ld plog.Logs) error {
@@ -170,6 +191,17 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 
 	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
 	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
+		// Skip paths that are type hints (fixed columns in the JSON type)
+		// So diving into nestedness of "message" will pollute types table
+		//
+		// TODO(Piyush): Check this again if typehints becomes a part of system
+		if strings.HasPrefix(prefix, MessageField+".") {
+			return nil
+		} else if prefix == MessageField {
+			typeSet.Insert(prefix, maskBool)
+			return nil
+		}
+
 		// skip if level is greater than the allowed limit
 		shouldSkipNesting := level >= *e.config.MaxDepthTraverse
 		// If current value is a container (map/array) and we've exceeded depth, do not descend further
