@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,7 +26,6 @@ const (
 	defaultKeyCacheSize           = 10_000
 	ArraySeparator                = "[]."
 	ArraySuffix                   = "[]"
-	MessageField                  = "message"
 )
 
 type jsonTypeExporter struct {
@@ -172,11 +170,6 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 
 	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
 	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
-		// skip paths that are type hints (fixed columns in the JSON type)
-		if prefix == MessageField || strings.HasPrefix(prefix, MessageField+".") {
-			return nil
-		}
-
 		// skip if level is greater than the allowed limit
 		shouldSkipNesting := level >= *e.config.MaxDepthTraverse
 		// If current value is a container (map/array) and we've exceeded depth, do not descend further
