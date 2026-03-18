@@ -38,14 +38,13 @@ func (t *Transformer) Transform(e *entry.Entry) error {
 		return e.Set(t.Field, t.Value)
 	}
 	if t.program != nil {
-		env := signozstanzahelper.GetExprEnv(e, t.valueExprHasBodyFieldRef)
-		defer signozstanzahelper.PutExprEnv(env)
-
-		result, err := vm.Run(t.program, env)
-		if err != nil {
-			return fmt.Errorf("evaluate value_expr: %w", err)
-		}
-		return e.Set(t.Field, result)
+		return signozstanzahelper.RunWithExprEnv(e, t.valueExprHasBodyFieldRef, nil, func(env map[string]any) error {
+			result, err := vm.Run(t.program, env)
+			if err != nil {
+				return fmt.Errorf("evaluate value_expr: %w", err)
+			}
+			return e.Set(t.Field, result)
+		})
 	}
 	return fmt.Errorf("add: missing required field 'value'")
 }
