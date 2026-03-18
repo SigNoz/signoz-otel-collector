@@ -155,7 +155,8 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				MaxArrayElementsAllowed: utils.ToPointer(4),
 			},
 			expected: map[string][]string{
-				"test": {String},
+				"message": {String},
+				"test":    {String},
 			},
 		},
 		{
@@ -241,6 +242,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				"log_processed.message":                           {String},
 				"log_processed.target":                            {String},
 				"log_processed.timestamp":                         {String},
+				"message":                                         {String},
 				"stream":                                          {String},
 				"uninstall":                                       {Bool},
 			},
@@ -274,6 +276,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				"log_processed.message":            {String},
 				"log_processed.target":             {String},
 				"log_processed.timestamp":          {String},
+				"message":                          {String},
 				"sage.number":                      {String},
 				"stream":                           {String},
 				"uninstall":                        {Bool},
