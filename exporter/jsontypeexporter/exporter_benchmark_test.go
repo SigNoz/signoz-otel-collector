@@ -51,7 +51,7 @@ func BenchmarkPushLogs_10k(b *testing.B) {
 		logger:   zap.NewNop(),
 		limiter:  make(chan struct{}, utils.Concurrency()),
 		conn:     conn,
-		keyCache: keyCache,
+		cardinalKeyCache: keyCache,
 	}
 	b.ReportAllocs()
 	b.ResetTimer()

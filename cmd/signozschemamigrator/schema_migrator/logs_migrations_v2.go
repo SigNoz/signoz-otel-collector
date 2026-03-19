@@ -317,6 +317,12 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
@@ -331,6 +337,12 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
