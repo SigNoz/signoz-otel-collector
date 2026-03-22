@@ -15,10 +15,10 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
-	"github.com/SigNoz/signoz-otel-collector/receiver/azureeventhubreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/httplogreceiver"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver"
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozazureeventhub"
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozkafkareceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/countconnector"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/connector/datadogconnector"
@@ -240,7 +240,7 @@ func Components() (otelcol.Factories, error) {
 		awss3receiver.NewFactory(),
 		awsxrayreceiver.NewFactory(),
 		azureblobreceiver.NewFactory(),
-		azureeventhubreceiver.NewFactory(),
+		signozazureeventhub.NewFactory(),
 		azuremonitorreceiver.NewFactory(),
 		bigipreceiver.NewFactory(),
 		carbonreceiver.NewFactory(),

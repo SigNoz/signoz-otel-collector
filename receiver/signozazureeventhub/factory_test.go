@@ -1,0 +1,31 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package signozazureeventhub // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signozazureeventhub"
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/receiver/receivertest"
+)
+
+func Test_NewFactory(t *testing.T) {
+	f := NewFactory()
+	assert.Equal(t, metadata.Type, f.Type())
+}
+
+func Test_NewLogsReceiver(t *testing.T) {
+	f := NewFactory()
+	receiver, err := f.CreateLogs(t.Context(), receivertest.NewNopSettings(metadata.Type), f.CreateDefaultConfig(), consumertest.NewNop())
+	assert.NoError(t, err)
+	assert.NotNil(t, receiver)
+}
+
+func Test_NewMetricsReceiver(t *testing.T) {
+	f := NewFactory()
+	receiver, err := f.CreateMetrics(t.Context(), receivertest.NewNopSettings(metadata.Type), f.CreateDefaultConfig(), consumertest.NewNop())
+	assert.NoError(t, err)
+	assert.NotNil(t, receiver)
+}
