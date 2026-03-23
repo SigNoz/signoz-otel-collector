@@ -6,6 +6,7 @@ package signozazureeventhub // import "github.com/open-telemetry/opentelemetry-c
 import (
 	"testing"
 
+	"github.com/SigNoz/signoz-otel-collector/receiver/signozazureeventhub/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
