@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ const (
 	defaultKeyCacheSize           = 10_000
 	ArraySeparator                = "[]."
 	ArraySuffix                   = "[]"
+	MessageField                  = "message"
 )
 
 type jsonTypeExporter struct {
@@ -35,8 +37,8 @@ type jsonTypeExporter struct {
 	conn    clickhouse.Conn
 	// this cache doesn't contains full paths, only keys from different levels
 	// it is used to avoid checking if a key is high cardinality or not for every log record
-	keyCache  *lru.Cache[string, struct{}]
-	closeChan chan struct{}
+	cardinalKeyCache *lru.Cache[string, struct{}]
+	closeChan        chan struct{}
 }
 
 func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
@@ -57,12 +59,12 @@ func newExporter(cfg Config, set exporter.Settings) (*jsonTypeExporter, error) {
 	}
 
 	return &jsonTypeExporter{
-		config:    &cfg,
-		logger:    set.Logger,
-		limiter:   make(chan struct{}, utils.Concurrency()),
-		conn:      conn,
-		keyCache:  keyCache,
-		closeChan: make(chan struct{}),
+		config:           &cfg,
+		logger:           set.Logger,
+		limiter:          make(chan struct{}, utils.Concurrency()),
+		conn:             conn,
+		cardinalKeyCache: keyCache,
+		closeChan:        make(chan struct{}),
 	}, nil
 }
 
@@ -170,6 +172,17 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 
 	var closure func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error
 	closure = func(ctx context.Context, prefix string, val pcommon.Value, typeSet *TypeSet, level int) error {
+		// Skip paths inside of type hints (fixed columns in the JSON type)
+		// So diving into nestedness of "message" will pollute types table
+		//
+		// TODO(Piyush): Check this again if typehints becomes a part of system
+		if strings.HasPrefix(prefix, MessageField+".") {
+			return nil
+		} else if prefix == MessageField {
+			typeSet.Insert(prefix, maskString)
+			return nil
+		}
+
 		// skip if level is greater than the allowed limit
 		shouldSkipNesting := level >= *e.config.MaxDepthTraverse
 		// If current value is a container (map/array) and we've exceeded depth, do not descend further
@@ -194,13 +207,13 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 				default:
 				}
 
-				contains := e.keyCache.Contains(key)
+				contains := e.cardinalKeyCache.Contains(key)
 				// if high cardinality, skip the key
 				if !contains && keycheck.IsCardinal(key) {
 					return true
 				}
 				if !contains {
-					e.keyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
+					e.cardinalKeyCache.Add(key, struct{}{}) // add key to cache to avoid checking it again for next log records
 				}
 
 				if err := closure(ctx, generatePath(prefix, key), value, typeSet, level+1); err != nil {

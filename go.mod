@@ -125,6 +125,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureblobreceiver v0.144.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azuremonitorreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/bigipreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v0.144.0

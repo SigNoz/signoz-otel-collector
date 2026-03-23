@@ -362,10 +362,12 @@ func TestCollectTraceMeterMetrics(t *testing.T) {
 
 	metric := metrics.At(0)
 	assert.Equal(t, metricNameSpansCount, metric.Name())
+	assert.Equal(t, "1", metric.Unit())
 	assert.Equal(t, int64(10), metric.Sum().DataPoints().At(0).IntValue())
 
 	metric = metrics.At(1)
 	assert.Equal(t, metricNameSpansSize, metric.Name())
+	assert.Equal(t, "By", metric.Unit())
 	assert.Equal(t, int64(590), metric.Sum().DataPoints().At(0).IntValue())
 }
 
@@ -390,10 +392,12 @@ func TestCollectMetricMeterMetrics(t *testing.T) {
 
 	metric := metrics.At(0)
 	assert.Equal(t, metricNameMetricsDataPointsCount, metric.Name())
+	assert.Equal(t, "1", metric.Unit())
 	assert.Equal(t, int64(100), metric.Sum().DataPoints().At(0).IntValue())
 
 	metric = metrics.At(1)
 	assert.Equal(t, metricNameMetricsDataPointsSize, metric.Name())
+	assert.Equal(t, "By", metric.Unit())
 	assert.Equal(t, int64(0), metric.Sum().DataPoints().At(0).IntValue())
 }
 
@@ -418,9 +422,11 @@ func TestCollectLogMeterMetrics(t *testing.T) {
 
 	metric := metrics.At(0)
 	assert.Equal(t, metricNameLogsCount, metric.Name())
+	assert.Equal(t, "1", metric.Unit())
 	assert.Equal(t, int64(10), metric.Sum().DataPoints().At(0).IntValue())
 
 	metric = metrics.At(1)
 	assert.Equal(t, metricNameLogsSize, metric.Name())
+	assert.Equal(t, "By", metric.Unit())
 	assert.Equal(t, int64(590), metric.Sum().DataPoints().At(0).IntValue())
 }

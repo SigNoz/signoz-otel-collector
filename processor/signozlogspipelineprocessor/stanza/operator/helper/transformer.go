@@ -56,12 +56,13 @@ func (c TransformerConfig) Build(set component.TelemetrySettings) (TransformerOp
 	}
 
 	if c.IfExpr != "" {
-		compiled, hasBodyFieldRef, err := ExprCompileBool(c.IfExpr)
+		compiled, hasBodyFieldRef, compiledPatterns, err := ExprCompileBool(c.IfExpr)
 		if err != nil {
 			return TransformerOperator{}, fmt.Errorf("failed to compile expression '%s': %w", c.IfExpr, err)
 		}
 		transformerOperator.IfExpr = compiled
 		transformerOperator.ifExprHasBodyFieldRef = hasBodyFieldRef
+		transformerOperator.ifExprCompiledPatterns = compiledPatterns
 	}
 
 	return transformerOperator, nil
@@ -70,9 +71,10 @@ func (c TransformerConfig) Build(set component.TelemetrySettings) (TransformerOp
 // TransformerOperator provides a basic implementation of a transformer operator.
 type TransformerOperator struct {
 	otelStanzaHelper.WriterOperator
-	OnError               string
-	IfExpr                *vm.Program
-	ifExprHasBodyFieldRef bool
+	OnError                string
+	IfExpr                 *vm.Program
+	ifExprHasBodyFieldRef  bool
+	ifExprCompiledPatterns map[string]func(s string) bool
 }
 
 // CanProcess will always return true for a transformer operator.
@@ -132,15 +134,16 @@ func (t *TransformerOperator) Skip(_ context.Context, entry *entry.Entry) (bool,
 		return false, nil
 	}
 
-	env := GetExprEnv(entry, t.ifExprHasBodyFieldRef)
-	defer PutExprEnv(env)
-
-	matches, err := vm.Run(t.IfExpr, env)
-	if err != nil {
-		return false, fmt.Errorf("running if expr: %w", err)
-	}
-
-	return !matches.(bool), nil
+	var skip bool
+	err := RunWithExprEnv(entry, t.ifExprHasBodyFieldRef, t.ifExprCompiledPatterns, func(env map[string]any) error {
+		matches, err := vm.Run(t.IfExpr, env)
+		if err != nil {
+			return fmt.Errorf("running if expr: %w", err)
+		}
+		skip = !matches.(bool)
+		return nil
+	})
+	return skip, err
 }
 
 // TransformFunction is function that transforms an entry.

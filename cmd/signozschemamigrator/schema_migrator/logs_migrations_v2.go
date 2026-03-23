@@ -238,6 +238,35 @@ ORDER BY name ASC`,
 		},
 	},
 	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "trace_id_idx", Expression: "trace_id", Type: "tokenbf_v1(10000, 5,0)", Granularity: 1},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "span_id_idx", Expression: "span_id", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "trace_id_idx"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "span_id_idx"},
+			},
+		},
+	},
+
+	// JSON migrations
+	{
 		MigrationID: 2001,
 		UpItems: []Operation{
 			CreateTableOperation{
@@ -288,6 +317,12 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
@@ -302,6 +337,12 @@ ORDER BY name ASC`,
 				Column: Column{
 					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
