@@ -163,10 +163,6 @@ func (e *jsonTypeExporter) analyzePValue(ctx context.Context, val pcommon.Value,
 			return key
 		}
 
-		if keycheck.IsBacktickRequired(key) {
-			key = "`" + key + "`"
-		}
-
 		return prefix + "." + key
 	}
 

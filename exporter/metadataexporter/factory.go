@@ -79,6 +79,12 @@ func createDefaultConfig() component.Config {
 			Debug: false,
 		},
 		Enabled: false,
+		JSON: JSONConfig{
+			Enabled:                 false,
+			MaxDepthTraverse:        defaultJSONMaxDepthTraverse,
+			MaxArrayElementsAllowed: defaultJSONMaxArrayElementsAllowed,
+			MaxKeysAtLevel:          defaultJSONMaxKeysAtLevel,
+		},
 	}
 }
 

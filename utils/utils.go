@@ -39,6 +39,7 @@ const (
 
 	TagTypeSpanField TagType = "spanfield"
 	TagTypeLogField  TagType = "logfield"
+	TagTypeBody      TagType = "body"
 )
 
 func (t TagType) String() string {

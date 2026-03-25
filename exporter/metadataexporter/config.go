@@ -62,6 +62,25 @@ type CacheConfig struct {
 	Debug bool `mapstructure:"debug"`
 }
 
+const (
+	defaultJSONMaxDepthTraverse        = 22
+	defaultJSONMaxArrayElementsAllowed = 100
+	defaultJSONMaxKeysAtLevel          = 1024
+	defaultJSONKeyCacheSize            = 10_000
+)
+
+// JSONConfig holds configuration for JSON field processing (body, attributes, etc.).
+type JSONConfig struct {
+	// Enabled gates all JSON field processing (type collection + value suggestions).
+	Enabled bool `mapstructure:"enabled"`
+	// MaxDepthTraverse is the maximum nesting depth to traverse.
+	MaxDepthTraverse int `mapstructure:"max_depth_traverse"`
+	// MaxArrayElementsAllowed is the maximum number of array elements to inspect.
+	MaxArrayElementsAllowed int `mapstructure:"max_array_elements_allowed"`
+	// MaxKeysAtLevel is the maximum number of keys allowed at any single map level.
+	MaxKeysAtLevel int `mapstructure:"max_keys_at_level"`
+}
+
 // Config defines configuration for Metadata exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
@@ -79,4 +98,7 @@ type Config struct {
 	TenantID string `mapstructure:"tenant_id"`
 
 	Enabled bool `mapstructure:"enabled"`
+
+	// JSON configures JSON field processing for body (and attributes in future).
+	JSON JSONConfig `mapstructure:"json"`
 }

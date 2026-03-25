@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	kash "github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/cache"
 )
@@ -63,6 +64,11 @@ type metadataExporter struct {
 	alwaysIncludeTracesAttributes  map[string]struct{}
 	alwaysIncludeLogsAttributes    map[string]struct{}
 	alwaysIncludeMetricsAttributes map[string]struct{}
+
+	// logsMetadataWriters is the ordered list of writers dispatched in parallel on
+	// every PushLogs call. Append to this slice in newMetadataExporter to add a
+	// new logs responsibility without touching existing writer code.
+	logsMetadataWriters []MetadataWriter
 }
 
 type writeToStatementBatchRecord struct {
@@ -211,6 +217,25 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	e.logTagValueCountFromDB.Store(initMap())
 	e.tracesTagValueCountFromDB.Store(initMap())
 	e.metricsTagValueCountFromDB.Store(initMap())
+
+	// Wire logs metadata writers. Each writer owns one responsibility (one table /
+	// one logical unit). To add a new responsibility, implement MetadataWriter
+	// and append here — no existing writer is touched.
+	e.logsMetadataWriters = []MetadataWriter{
+		newAttributeMetadataWriter(e),
+	}
+	if cfg.JSON.Enabled {
+		jsonProc, err := newJSONMetadataWriter(
+			[]utils.TagType{utils.TagTypeBody},
+			cfg.JSON,
+			set.Logger,
+			e,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create json processor")
+		}
+		e.logsMetadataWriters = append(e.logsMetadataWriters, jsonProc)
+	}
 
 	return e, nil
 }
@@ -836,69 +861,13 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	if !e.cfg.Enabled {
 		return nil
 	}
-	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
-	if err != nil {
-		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
-		return nil
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, proc := range e.logsMetadataWriters {
+		proc := proc
+		g.Go(func() error { return proc.ProcessMetadata(gCtx, ld) })
 	}
-	defer stmt.Close()
-
-	totalLogRecords := 0
-	records := make([]writeToStatementBatchRecord, 0)
-
-	rls := ld.ResourceLogs()
-	for i := 0; i < rls.Len(); i++ {
-		rl := rls.At(i)
-		resourceAttrs := make(map[string]any, rl.Resource().Attributes().Len())
-		rl.Resource().Attributes().Range(func(k string, v pcommon.Value) bool {
-			if e.shouldSkipAttributeFromDB(ctx, k, pipeline.SignalLogs.String()) {
-				return true
-			}
-			resourceAttrs[k] = v.AsRaw()
-			return true
-		})
-		flattenedResourceAttrs := flatten.FlattenJSON(resourceAttrs, "")
-		resourceFingerprint := fingerprint.FingerprintHash(flattenedResourceAttrs)
-
-		sls := rl.ScopeLogs()
-		for j := 0; j < sls.Len(); j++ {
-			logs := sls.At(j).LogRecords()
-			for k := 0; k < logs.Len(); k++ {
-				totalLogRecords++
-				logRecord := logs.At(k)
-				logRecordAttrs := make(map[string]any, logRecord.Attributes().Len())
-
-				logRecord.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
-					if e.shouldSkipAttributeFromDB(ctx, attrKey, pipeline.SignalLogs.String()) {
-						return true
-					}
-					logRecordAttrs[attrKey] = v.AsRaw()
-					return true
-				})
-
-				flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
-				filteredLogRecordAttrs := e.filterAttrs(ctx, flattenedLogRecordAttrs, pipeline.SignalLogs.String())
-				logRecordFingerprint := fingerprint.FingerprintHash(filteredLogRecordAttrs)
-
-				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
-				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
-
-				records = append(records, writeToStatementBatchRecord{
-					resourceFingerprint:    resourceFingerprint,
-					fprint:                 logRecordFingerprint,
-					rAttrs:                 flattenedResourceAttrs,
-					attrs:                  filteredLogRecordAttrs,
-					roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
-				})
-			}
-		}
+	if err := g.Wait(); err != nil {
+		e.set.Logger.Error("logs processor error", zap.Error(err))
 	}
-
-	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalLogs)
-	if err != nil {
-		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
-	}
-	skipped := totalLogRecords - written
-	e.set.Logger.Debug("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))
 	return nil
 }

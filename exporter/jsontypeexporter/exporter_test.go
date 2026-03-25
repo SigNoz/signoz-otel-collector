@@ -218,7 +218,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 				"array_primitives_same_type":                      {ArrayInt64},
 				"sage.number":                                     {String},
 				"created_by":                                      {String},
-				"details.game.`beta-tester`":                      {Bool},
+				"details.game.beta-tester":                      {Bool},
 				"details.game.is_game":                            {String},
 				"details.game.marked_favourite":                   {Bool},
 				"details.game.play_time_hours":                    {Float64},
