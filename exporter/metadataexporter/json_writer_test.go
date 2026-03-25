@@ -24,9 +24,6 @@ func newTestWriter(t *testing.T, cfg JSONConfig) *jsonMetadataWriter {
 	return &jsonMetadataWriter{
 		cfg:              cfg,
 		cardinalKeyCache: cache,
-		shouldSkipFromDB: func(_ context.Context, _, _ string) bool { return false },
-		shouldSkipUVT:    func(_ context.Context, _, _ string) bool { return false },
-		addToUVT:         func(_ context.Context, _, _, _ string) {},
 	}
 }
 
@@ -39,9 +36,9 @@ func newTestValueAccumulator(t *testing.T) *valueAccumulator {
 	require.NoError(t, err)
 	return &valueAccumulator{
 		stmt:             batch,
-		shouldSkipFromDB: func(_ context.Context, _, _ string) bool { return false },
-		shouldSkipUVT:    func(_ context.Context, _, _ string) bool { return false },
-		addToUVT:         func(_ context.Context, _, _, _ string) {},
+		shouldSkipFromDB: func(_ string) bool { return false },
+		shouldSkipUVT:    func(_ string) bool { return false },
+		addToUVT:         func(_ string, _ any) {},
 	}
 }
 

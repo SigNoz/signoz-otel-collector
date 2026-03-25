@@ -90,7 +90,7 @@ func flattenJSONToStringMap(data map[string]any) map[string]string {
 	return res
 }
 
-func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, error) {
+func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings) (*metadataExporter, error) {
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, err
@@ -226,6 +226,7 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	}
 	if cfg.JSON.Enabled {
 		jsonProc, err := newJSONMetadataWriter(
+			ctx,
 			[]utils.TagType{utils.TagTypeBody},
 			cfg.JSON,
 			set.Logger,
@@ -451,7 +452,7 @@ func makeUVTKey(key, datasource string) string {
 }
 
 // addToUVT adds a value to the unique value tracker
-func (e *metadataExporter) addToUVT(_ context.Context, key, value, datasource string) {
+func (e *metadataExporter) addToUVT(_ context.Context, key string, value any, datasource string) {
 	switch datasource {
 	case pipeline.SignalTraces.String():
 		e.tracesTracker.AddValue(key, value)

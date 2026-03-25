@@ -97,7 +97,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}

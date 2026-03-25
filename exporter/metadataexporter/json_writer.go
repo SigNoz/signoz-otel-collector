@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -32,34 +33,55 @@ const (
 type valueAccumulator struct {
 	stmt driver.Batch
 
-	shouldSkipFromDB func(ctx context.Context, key, datasource string) bool
-	shouldSkipUVT    func(ctx context.Context, key, datasource string) bool
-	addToUVT         func(ctx context.Context, uvtKey, value, datasource string)
+	shouldSkipFromDB func(key string) bool
+	shouldSkipUVT    func(key string) bool
+	addToUVT         func(key string, value any)
 }
 
-// record appends a single path/value pair to the batch. Only String and Bytes
-// values are written; any other type is a caller error.
-func (va *valueAccumulator) record(ctx context.Context, path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
+// guard runs the DB and UVT skip checks. When tracking is non-nil it also
+// records the value in UVT. Returns true when the record should be skipped.
+func (va *valueAccumulator) guard(path string, value any, tagType utils.TagType) bool {
+	key := utils.MakeKeyForAttributeKeys(path, tagType, utils.TagDataTypeString)
+	if va.shouldSkipFromDB(key) {
+		return true
+	}
+	if value == nil {
+		return false
+	}
+	if va.shouldSkipUVT(key) {
+		return true
+	}
+	va.addToUVT(key, value)
+	return false
+}
+
+// record appends a single path/value pair to the batch. Supports String,
+// Bytes, Int, Double, and Bool values; any other type is a caller error.
+func (va *valueAccumulator) record(path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
+	var value any
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-		s := val.AsString()
-		if len(s) == 0 || len(s) > common.MaxAttributeValueLength {
+		str := val.AsString()
+		if len(str) == 0 || len(str) > common.MaxAttributeValueLength {
 			return nil
 		}
-
-		ds := pipeline.SignalLogs.String()
-		key := utils.MakeKeyForAttributeKeys(path, tagType, utils.TagDataTypeString)
-		if va.shouldSkipFromDB(ctx, key, ds) {
-			return nil
+		value = str
+	case pcommon.ValueTypeInt, pcommon.ValueTypeDouble:
+		f := val.Double()
+		if val.Type() == pcommon.ValueTypeInt {
+			f = float64(val.Int())
 		}
-		if va.shouldSkipUVT(ctx, key, ds) {
-			return nil
-		}
-		va.addToUVT(ctx, makeUVTKey(key, ds), s, ds)
-		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeString, s, nil)
+		value = f
+	case pcommon.ValueTypeBool:
+		// Cardinality is always 2; no UVT tracking needed.
 	default:
 		return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 	}
+
+	if va.guard(path, value, tagType) {
+		return nil
+	}
+	return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeBool, nil, nil)
 }
 
 func (va *valueAccumulator) flush() error {
@@ -90,7 +112,7 @@ func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now i
 //
 // It writes to two tables per flush:
 //   - signoz_metadata.distributed_json_path_types  (path → ClickHouse type)
-//   - signoz_logs.distributed_tag_attributes_v2    (path → string value, tag_type=source)
+//   - signoz_logs.distributed_tag_attributes_v2    (path → value, tag_type=source)
 type jsonMetadataWriter struct {
 	sources          []utils.TagType
 	cfg              JSONConfig
@@ -98,12 +120,17 @@ type jsonMetadataWriter struct {
 	cardinalKeyCache *lru.Cache[string, struct{}]
 	conn             driver.Conn
 
-	shouldSkipFromDB func(ctx context.Context, key, datasource string) bool
-	shouldSkipUVT    func(ctx context.Context, key, datasource string) bool
-	addToUVT         func(ctx context.Context, uvtKey, value, datasource string)
+	// skipKeys is swapped atomically by the background fetcher.
+	// Presence in the map means the key's distinct-value count exceeded the limit.
+	skipKeys atomic.Pointer[map[string]struct{}]
+
+	// inherited fields from metadataexporter
+	valueTracker *ValueTracker
+	limits       LimitsConfig
 }
 
 func newJSONMetadataWriter(
+	ctx context.Context,
 	sources []utils.TagType,
 	cfg JSONConfig,
 	logger *zap.Logger,
@@ -113,16 +140,101 @@ func newJSONMetadataWriter(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cardinal key cache: %w", err)
 	}
-	return &jsonMetadataWriter{
+	w := &jsonMetadataWriter{
 		sources:          sources,
 		cfg:              cfg,
 		logger:           logger,
 		cardinalKeyCache: cache,
 		conn:             e.conn,
-		shouldSkipFromDB: e.shouldSkipAttributeFromDB,
-		shouldSkipUVT:    e.shouldSkipAttributeUVT,
-		addToUVT:         e.addToUVT,
-	}, nil
+		valueTracker:     e.logsTracker,
+		limits:           e.cfg.MaxDistinctValues.Logs,
+	}
+	empty := make(map[string]struct{})
+	w.skipKeys.Store(&empty)
+
+	go w.skipKeysTicker(ctx)
+
+	return w, nil
+}
+
+func (w *jsonMetadataWriter) skipKeysTicker(ctx context.Context) {
+	w.fetchSkipKeys(ctx)
+	if w.limits.FetchInterval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(w.limits.FetchInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.fetchSkipKeys(ctx)
+		}
+	}
+}
+
+// doFetchSkipKeys queries distributed_tag_attributes_v2 for keys whose
+// distinct-value count exceeds the limit and atomically replaces skipKeys.
+func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
+	if w.limits.MaxStringDistinctValues == 0 {
+		return
+	}
+	tagTypeQuoted := make([]string, len(w.sources))
+	for i, s := range w.sources {
+		tagTypeQuoted[i] = "'" + string(s) + "'"
+	}
+	query := fmt.Sprintf(`
+		SELECT tag_key, tag_type, tag_data_type
+		FROM %s
+		WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
+		  AND tag_type IN (%s)
+		GROUP BY tag_key, tag_type, tag_data_type
+		HAVING uniq(string_value) > %d OR uniq(number_value) > %d
+		SETTINGS max_threads = 2`,
+		distributedTagAttrsV2Table,
+		strings.Join(tagTypeQuoted, ", "),
+		w.limits.MaxStringDistinctValues,
+		w.limits.MaxStringDistinctValues,
+	)
+	type row struct {
+		TagKey      string `ch:"tag_key"`
+		TagType     string `ch:"tag_type"`
+		TagDataType string `ch:"tag_data_type"`
+	}
+	var rows []row
+	if err := w.conn.Select(ctx, &rows, query); err != nil {
+		w.logger.Error("failed to fetch json skip keys", zap.Error(err))
+		return
+	}
+	newMap := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		key := utils.MakeKeyForAttributeKeys(r.TagKey, utils.TagType(r.TagType), utils.TagDataType(r.TagDataType))
+		newMap[key] = struct{}{}
+	}
+	w.skipKeys.Store(&newMap)
+}
+
+// skipStoringInDB returns true when the key is present in the skip map,
+// meaning its distinct-value count exceeded the limit at the last DB fetch.
+func (w *jsonMetadataWriter) skipStoringInDB(key string) bool {
+	m := w.skipKeys.Load()
+	if m == nil {
+		return false
+	}
+	_, ok := (*m)[key]
+	return ok
+}
+
+// skipUVT returns true when the in-memory distinct-value count for
+// this key already exceeds the configured limit.  Unlike the parent exporter's
+// implementation it does NOT unconditionally skip number or bool keys.
+func (w *jsonMetadataWriter) skipUVT(key string) bool {
+	// TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
+	if w.limits.MaxStringDistinctValues == 0 {
+		return false
+	}
+	return w.valueTracker.GetUniqueValueCount(key) > int(w.limits.MaxStringDistinctValues)
 }
 
 func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) error {
@@ -140,9 +252,9 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 
 	va := &valueAccumulator{
 		stmt:             vaStmt,
-		shouldSkipFromDB: w.shouldSkipFromDB,
-		shouldSkipUVT:    w.shouldSkipUVT,
-		addToUVT:         w.addToUVT,
+		shouldSkipFromDB: w.skipStoringInDB,
+		shouldSkipUVT:    w.skipUVT,
+		addToUVT:         w.valueTracker.AddValue,
 	}
 
 	rls := ld.ResourceLogs()
@@ -244,7 +356,7 @@ func (w *jsonMetadataWriter) walkNode(
 		ts.record(prefix, maskString)
 		// Record value suggestions only for string-typed message fields.
 		if val.Type() == pcommon.ValueTypeStr || val.Type() == pcommon.ValueTypeBytes {
-			return va.record(ctx, prefix, val, tagType, unixMilli)
+			return va.record(prefix, val, tagType, unixMilli)
 		}
 		return nil
 	}
@@ -262,7 +374,6 @@ func (w *jsonMetadataWriter) walkNode(
 		return w.walkSlice(ctx, prefix, val, level, tagType, unixMilli, ts, va)
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		ts.record(prefix, maskString)
-		return va.record(ctx, prefix, val, tagType, unixMilli)
 	case pcommon.ValueTypeBool:
 		ts.record(prefix, maskBool)
 	case pcommon.ValueTypeDouble:
@@ -272,7 +383,8 @@ func (w *jsonMetadataWriter) walkNode(
 	default:
 		return fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
 	}
-	return nil
+
+	return va.record(prefix, val, tagType, unixMilli)
 }
 
 // walkMap iterates over a map, skips high-cardinality keys, and recurses into
