@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -38,8 +37,8 @@ type valueAccumulator struct {
 	addToUVT         func(ctx context.Context, uvtKey, value, datasource string)
 }
 
-// record appends a single path/value pair to the batch. Only String, Slices
-// is written; all other types are silently skipped.
+// record appends a single path/value pair to the batch. Only String, Bytes,
+// and Slice values are written; any other type is a caller error.
 func (va *valueAccumulator) record(ctx context.Context, path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes, pcommon.ValueTypeSlice:
@@ -60,7 +59,7 @@ func (va *valueAccumulator) record(ctx context.Context, path string, val pcommon
 		va.addToUVT(ctx, makeUVTKey(key, ds), s, ds)
 		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeString, s, nil)
 	default:
-		return nil
+		return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 	}
 }
 
@@ -68,22 +67,15 @@ func (va *valueAccumulator) flush() error {
 	return va.stmt.Send()
 }
 
-// typeSetFlusher wraps typeSet with a flush method that writes to distributed_json_path_types.
-type typeSetFlusher struct {
-	ts      *typeSet
-	signal  string
-	context string
-}
-
-// Append appends this flusher's type records to the provided shared batch statement.
-// The caller is responsible for calling stmt.Send() after all flushers have appended.
-func (f *typeSetFlusher) Append(stmt driver.Batch, now int64) error {
+// appendTypeSet appends all type records from ts to stmt using the given signal and context.
+// The caller is responsible for calling stmt.Send() after all type sets have been appended.
+func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now int64) error {
 	var iterErr error
-	f.ts.types.Range(func(key, value any) bool {
+	ts.types.Range(func(key, value any) bool {
 		path := key.(string)
 		cs := value.(*utils.ConcurrentSet[string])
 		for _, typeStr := range cs.Keys() {
-			if err := stmt.Append(f.signal, f.context, path, typeStr, now); err != nil {
+			if err := stmt.Append(signal, context, path, typeStr, now); err != nil {
 				iterErr = err
 				return false
 			}
@@ -135,14 +127,10 @@ func newJSONMetadataWriter(
 }
 
 func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) error {
-	// One typeSet (and flusher) per source so each gets the correct signal/context.
-	tsFlushers := make([]*typeSetFlusher, len(w.sources))
-	for i, src := range w.sources {
-		tsFlushers[i] = &typeSetFlusher{
-			ts:      &typeSet{types: sync.Map{}},
-			signal:  pipeline.SignalLogs.String(),
-			context: string(src),
-		}
+	// One typeSet per source so each gets its own signal/context on flush.
+	typeSets := make([]*typeSet, len(w.sources))
+	for i := range w.sources {
+		typeSets[i] = &typeSet{}
 	}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())
@@ -168,11 +156,15 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 				unixMilli := lr.Timestamp().AsTime().UnixMilli()
 
 				for si, src := range w.sources {
-					val := w.extractSource(lr, src)
+					val, err := extractSource(lr, src)
+					if err != nil {
+						w.logger.Error("unsupported json source", zap.String("source", string(src)), zap.Error(err))
+						continue
+					}
 					if val.Type() != pcommon.ValueTypeMap {
 						continue
 					}
-					if err := w.walk(ctx, val, src, unixMilli, tsFlushers[si].ts, va); err != nil {
+					if err := w.walk(ctx, val, src, unixMilli, typeSets[si], va); err != nil {
 						w.logger.Error("json walk failed", zap.String("source", string(src)), zap.Error(err))
 					}
 				}
@@ -181,14 +173,14 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return w.AppendAndFlush(gCtx, tsFlushers) })
+	g.Go(func() error { return w.flushTypeSets(gCtx, typeSets) })
 	g.Go(va.flush)
 	return g.Wait()
 }
 
-// AppendAndFlush creates a single shared batch statement for all typeSetFlushers,
-// appends each flusher's records to it, and sends the batch in one shot.
-func (w *jsonMetadataWriter) AppendAndFlush(ctx context.Context, flushers []*typeSetFlusher) error {
+// flushTypeSets creates a single shared batch for all type sets, appends each
+// set's records using the corresponding source as context, and sends in one shot.
+func (w *jsonMetadataWriter) flushTypeSets(ctx context.Context, typeSets []*typeSet) error {
 	sql := fmt.Sprintf("INSERT INTO %s (signal, context, path, type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedPathTypesTable)
 	stmt, err := w.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
@@ -197,25 +189,28 @@ func (w *jsonMetadataWriter) AppendAndFlush(ctx context.Context, flushers []*typ
 	defer stmt.Close()
 
 	now := time.Now().UnixNano()
-	for _, f := range flushers {
-		if err := f.Append(stmt, now); err != nil {
+	signal := pipeline.SignalLogs.String()
+	for i, ts := range typeSets {
+		if err := appendTypeSet(ts, signal, string(w.sources[i]), stmt, now); err != nil {
 			return fmt.Errorf("failed to append to path types batch: %w", err)
 		}
 	}
 	return stmt.Send()
 }
 
-func (w *jsonMetadataWriter) extractSource(lr plog.LogRecord, tagType utils.TagType) pcommon.Value {
+// extractSource returns the pcommon.Value for the given tag type from a log record.
+// It returns an error for unsupported tag types so callers cannot silently skip input.
+func extractSource(lr plog.LogRecord, tagType utils.TagType) (pcommon.Value, error) {
 	switch tagType {
 	case utils.TagTypeBody:
-		return lr.Body()
+		return lr.Body(), nil
 	default:
-		return pcommon.NewValueEmpty()
+		return pcommon.NewValueEmpty(), fmt.Errorf("unsupported tag type %q", tagType)
 	}
 }
 
-// walk traverses a pcommon.Value without converting to Go maps, feeding both
-// the typeSet (for distributed_json_path_types) and the valueAccumulator (for
+// walk traverses a pcommon.Value, feeding both the typeSet (for
+// distributed_json_path_types) and the valueAccumulator (for
 // distributed_tag_attributes_v2) in a single pass.
 func (w *jsonMetadataWriter) walk(
 	ctx context.Context,
@@ -225,115 +220,148 @@ func (w *jsonMetadataWriter) walk(
 	ts *typeSet,
 	va *valueAccumulator,
 ) error {
-	generatePath := func(prefix, key string) string {
-		if prefix == "" {
-			return key
-		}
-		return prefix + "." + key
-	}
+	return w.walkNode(ctx, "", val, 0, tagType, unixMilli, ts, va)
+}
 
-	var closure func(prefix string, val pcommon.Value, level int) error
-	closure = func(prefix string, val pcommon.Value, level int) error {
-		// Skip diving into type-hint fields (e.g. "message" is a fixed column).
-		if strings.HasPrefix(prefix, jsonMessageField+".") {
-			return nil
-		}
-		if prefix == jsonMessageField {
-			ts.record(prefix, maskString)
-			// record value suggestions
+// walkNode is the recursive core of walk. It handles type-hint guards, depth
+// limiting, and dispatches to walkMap / walkSlice for container types.
+func (w *jsonMetadataWriter) walkNode(
+	ctx context.Context,
+	prefix string,
+	val pcommon.Value,
+	level int,
+	tagType utils.TagType,
+	unixMilli int64,
+	ts *typeSet,
+	va *valueAccumulator,
+) error {
+	// Skip children of the "message" type-hint field (fixed column).
+	if strings.HasPrefix(prefix, jsonMessageField+".") {
+		return nil
+	} else if prefix == jsonMessageField {
+		ts.record(prefix, maskString)
+		// Record value suggestions only for string-typed message fields.
+		if val.Type() == pcommon.ValueTypeStr || val.Type() == pcommon.ValueTypeBytes {
 			return va.record(ctx, prefix, val, tagType, unixMilli)
 		}
-
-		// Depth guard: do not descend into containers beyond the configured limit.
-		if level >= w.cfg.MaxDepthTraverse &&
-			(val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
-			return nil
-		}
-
-		switch val.Type() {
-		case pcommon.ValueTypeMap:
-			m := val.Map()
-			if m.Len() > w.cfg.MaxKeysAtLevel {
-				return nil
-			}
-			var iterErr error
-			m.Range(func(key string, value pcommon.Value) bool {
-				select {
-				case <-ctx.Done():
-					return false
-				default:
-				}
-				// Skip high-cardinality keys (e.g. UUIDs used as map keys).
-				if !w.cardinalKeyCache.Contains(key) {
-					if keycheck.IsCardinal(key) {
-						return true
-					}
-					w.cardinalKeyCache.Add(key, struct{}{})
-				}
-				if err := closure(generatePath(prefix, key), value, level+1); err != nil {
-					iterErr = err
-					return false
-				}
-				return true
-			})
-			return iterErr
-		case pcommon.ValueTypeSlice:
-			s := val.Slice()
-			if s.Len() == 0 || s.Len() > w.cfg.MaxArrayElementsAllowed {
-				return nil
-			}
-			types := make([]pcommon.ValueType, 0, s.Len())
-			for i := 0; i < s.Len(); i++ {
-				el := s.At(i)
-				switch el.Type() {
-				case pcommon.ValueTypeMap:
-					// Do not increment depth for array element objects — array indexing
-					// should not consume depth budget.
-					if err := closure(prefix+jsonArraySuffix, el, level); err != nil {
-						return err
-					}
-					types = append(types, el.Type())
-				case pcommon.ValueTypeSlice:
-					w.logger.Error("nested arrays not supported", zap.String("path", prefix))
-					return nil
-				default:
-					if el.Type() == pcommon.ValueTypeEmpty {
-						continue
-					}
-					types = append(types, el.Type())
-				}
-			}
-			if len(types) == 0 {
-				return nil
-			}
-			if mask := inferArrayMask(types); mask != 0 {
-				ts.record(prefix, mask)
-				switch mask {
-				case maskArrayDynamic, maskArrayJSON:
-					// skip recording complex array types
-				default:
-					return va.record(ctx, prefix, val, tagType, unixMilli)
-				}
-			}
-			return nil
-		// handle primitive types
-		case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-			ts.record(prefix, maskString)
-			return va.record(ctx, prefix, val, tagType, unixMilli)
-		case pcommon.ValueTypeBool:
-			ts.record(prefix, maskBool)
-		case pcommon.ValueTypeDouble:
-			ts.record(prefix, maskFloat)
-		case pcommon.ValueTypeInt:
-			ts.record(prefix, maskInt)
-		default:
-			return fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
-		}
-
 		return nil
 	}
 
-	return closure("", val, 0)
+	// Depth guard: do not descend into containers beyond the configured limit.
+	if level >= w.cfg.MaxDepthTraverse &&
+		(val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
+		return nil
+	}
+
+	switch val.Type() {
+	case pcommon.ValueTypeMap:
+		return w.walkMap(ctx, prefix, val, level, tagType, unixMilli, ts, va)
+	case pcommon.ValueTypeSlice:
+		return w.walkSlice(ctx, prefix, val, level, tagType, unixMilli, ts, va)
+	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+		ts.record(prefix, maskString)
+		return va.record(ctx, prefix, val, tagType, unixMilli)
+	case pcommon.ValueTypeBool:
+		ts.record(prefix, maskBool)
+	case pcommon.ValueTypeDouble:
+		ts.record(prefix, maskFloat)
+	case pcommon.ValueTypeInt:
+		ts.record(prefix, maskInt)
+	default:
+		return fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
+	}
+	return nil
+}
+
+// walkMap iterates over a map, skips high-cardinality keys, and recurses into
+// each child value.
+func (w *jsonMetadataWriter) walkMap(
+	ctx context.Context,
+	prefix string,
+	val pcommon.Value,
+	level int,
+	tagType utils.TagType,
+	unixMilli int64,
+	ts *typeSet,
+	va *valueAccumulator,
+) error {
+	m := val.Map()
+	if m.Len() > w.cfg.MaxKeysAtLevel {
+		return nil
+	}
+	var iterErr error
+	m.Range(func(key string, child pcommon.Value) bool {
+		// Skip high-cardinality keys (e.g. UUIDs used as map keys).
+		if !w.cardinalKeyCache.Contains(key) {
+			if keycheck.IsCardinal(key) {
+				return true
+			}
+			w.cardinalKeyCache.Add(key, struct{}{})
+		}
+		childPath := joinPath(prefix, key)
+		if err := w.walkNode(ctx, childPath, child, level+1, tagType, unixMilli, ts, va); err != nil {
+			iterErr = err
+			return false
+		}
+		return true
+	})
+	return iterErr
+}
+
+// walkSlice collects element types, recurses into map elements, and records
+// the inferred array type mask.
+func (w *jsonMetadataWriter) walkSlice(
+	ctx context.Context,
+	prefix string,
+	val pcommon.Value,
+	level int,
+	tagType utils.TagType,
+	unixMilli int64,
+	ts *typeSet,
+	va *valueAccumulator,
+) error {
+	s := val.Slice()
+	if s.Len() == 0 || s.Len() > w.cfg.MaxArrayElementsAllowed {
+		return nil
+	}
+	types := make([]pcommon.ValueType, 0, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		el := s.At(i)
+		switch el.Type() {
+		case pcommon.ValueTypeMap:
+			// Do not increment depth for array element objects — array indexing
+			// should not consume depth budget.
+			if err := w.walkNode(ctx, prefix+jsonArraySuffix, el, level, tagType, unixMilli, ts, va); err != nil {
+				return err
+			}
+			types = append(types, el.Type())
+		case pcommon.ValueTypeSlice:
+			w.logger.Error("nested arrays not supported", zap.String("path", prefix))
+			return nil
+		case pcommon.ValueTypeEmpty:
+			// skip empty elements
+		default:
+			types = append(types, el.Type())
+		}
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	if mask := inferArrayMask(types); mask != 0 {
+		ts.record(prefix, mask)
+		if mask != maskArrayDynamic && mask != maskArrayJSON {
+			return va.record(ctx, prefix, val, tagType, unixMilli)
+		}
+	}
+	return nil
+}
+
+// joinPath builds a dotted JSON path from a parent prefix and a child key.
+func joinPath(prefix, key string) string {
+	if prefix == "" {
+		return key
+	}
+	return prefix + "." + key
 }
 
 // inferArrayMask determines the correct array type bitmask from a slice of element types.
