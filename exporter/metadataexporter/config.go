@@ -1,6 +1,7 @@
 package metadataexporter
 
 import (
+	"errors"
 	"time"
 
 	"go.opentelemetry.io/collector/config/configoptional"
@@ -81,6 +82,19 @@ type JSONConfig struct {
 	MaxKeysAtLevel int `mapstructure:"max_keys_at_level"`
 }
 
+func (c *JSONConfig) Validate() error {
+	if c.MaxDepthTraverse <= 0 {
+		c.MaxDepthTraverse = defaultJSONMaxDepthTraverse
+	}
+	if c.MaxArrayElementsAllowed <= 0 {
+		c.MaxArrayElementsAllowed = defaultJSONMaxArrayElementsAllowed
+	}
+	if c.MaxKeysAtLevel <= 0 {
+		c.MaxKeysAtLevel = defaultJSONMaxKeysAtLevel
+	}
+	return nil
+}
+
 // Config defines configuration for Metadata exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
@@ -101,4 +115,14 @@ type Config struct {
 
 	// JSON configures JSON field processing for body (and attributes in future).
 	JSON JSONConfig `mapstructure:"json"`
+}
+
+func (c *Config) Validate() error {
+	errs := []error{}
+	errs = append(errs, c.TimeoutConfig.Validate())
+	errs = append(errs, c.BackOffConfig.Validate())
+	errs = append(errs, c.QueueBatchConfig.Validate())
+	errs = append(errs, c.JSON.Validate())
+
+	return errors.Join(errs...)
 }

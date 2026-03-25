@@ -37,12 +37,11 @@ type valueAccumulator struct {
 	addToUVT         func(ctx context.Context, uvtKey, value, datasource string)
 }
 
-// record appends a single path/value pair to the batch. Only String, Bytes,
-// and Slice values are written; any other type is a caller error.
+// record appends a single path/value pair to the batch. Only String and Bytes
+// values are written; any other type is a caller error.
 func (va *valueAccumulator) record(ctx context.Context, path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
 	switch val.Type() {
-	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes, pcommon.ValueTypeSlice:
-		// record string + slices value
+	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		s := val.AsString()
 		if len(s) == 0 || len(s) > common.MaxAttributeValueLength {
 			return nil
@@ -349,9 +348,6 @@ func (w *jsonMetadataWriter) walkSlice(
 	}
 	if mask := inferArrayMask(types); mask != 0 {
 		ts.record(prefix, mask)
-		if mask != maskArrayDynamic && mask != maskArrayJSON {
-			return va.record(ctx, prefix, val, tagType, unixMilli)
-		}
 	}
 	return nil
 }
