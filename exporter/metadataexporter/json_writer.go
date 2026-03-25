@@ -84,7 +84,7 @@ func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now i
 	return iterErr
 }
 
-// jsonMetadataWriter is a logsMetadataWriter that performs a single walk over
+// jsonMetadataWriter is a MetadataWriter that performs a single walk over
 // configured JSON sources (body today, attributes in future) per log record,
 // feeding both type collection and value suggestions from one traversal.
 //
@@ -152,7 +152,10 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 			logs := sls.At(j).LogRecords()
 			for k := 0; k < logs.Len(); k++ {
 				lr := logs.At(k)
-				unixMilli := lr.Timestamp().AsTime().UnixMilli()
+				ts := lr.Timestamp()
+				if ts == 0 {
+					ts = lr.ObservedTimestamp()
+				}
 
 				for si, src := range w.sources {
 					val, err := extractSource(lr, src)
@@ -163,7 +166,7 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 					if val.Type() != pcommon.ValueTypeMap {
 						continue
 					}
-					if err := w.walk(ctx, val, src, unixMilli, typeSets[si], va); err != nil {
+					if err := w.walk(ctx, val, src, ts.AsTime().UnixMilli(), typeSets[si], va); err != nil {
 						w.logger.Error("json walk failed", zap.String("source", string(src)), zap.Error(err))
 					}
 				}
