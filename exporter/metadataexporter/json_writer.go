@@ -58,30 +58,30 @@ func (va *valueAccumulator) guard(path string, value any, tagType utils.TagType)
 // record appends a single path/value pair to the batch. Supports String,
 // Bytes, Int, Double, and Bool values; any other type is a caller error.
 func (va *valueAccumulator) record(path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
-	var value any
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		str := val.AsString()
 		if len(str) == 0 || len(str) > common.MaxAttributeValueLength {
 			return nil
 		}
-		value = str
-	case pcommon.ValueTypeInt, pcommon.ValueTypeDouble:
-		f := val.Double()
-		if val.Type() == pcommon.ValueTypeInt {
-			f = float64(val.Int())
+		if va.guard(path, str, tagType) {
+			return nil
 		}
-		value = f
+		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeString, str, nil)
+	case pcommon.ValueTypeInt, pcommon.ValueTypeDouble:
+		floatVal := val.Double()
+		if val.Type() == pcommon.ValueTypeInt {
+			floatVal = float64(val.Int())
+		}
+		if va.guard(path, floatVal, tagType) {
+			return nil
+		}
+		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeNumber, nil, floatVal)
 	case pcommon.ValueTypeBool:
 		// Cardinality is always 2; no UVT tracking needed.
-	default:
-		return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
+		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeBool, nil, nil)
 	}
-
-	if va.guard(path, value, tagType) {
-		return nil
-	}
-	return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeBool, nil, nil)
+	return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 }
 
 func (va *valueAccumulator) flush() error {
