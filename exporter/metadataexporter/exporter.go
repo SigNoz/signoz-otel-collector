@@ -66,8 +66,7 @@ type metadataExporter struct {
 	alwaysIncludeMetricsAttributes map[string]struct{}
 
 	// logsMetadataWriters is the ordered list of writers dispatched in parallel on
-	// every PushLogs call. Append to this slice in newMetadataExporter to add a
-	// new logs responsibility without touching existing writer code.
+	// every PushLogs call.
 	logsMetadataWriters []MetadataWriter
 }
 
@@ -218,9 +217,6 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	e.tracesTagValueCountFromDB.Store(initMap())
 	e.metricsTagValueCountFromDB.Store(initMap())
 
-	// Wire logs metadata writers. Each writer owns one responsibility (one table /
-	// one logical unit). To add a new responsibility, implement MetadataWriter
-	// and append here — no existing writer is touched.
 	e.logsMetadataWriters = []MetadataWriter{
 		newAttributeMetadataWriter(e),
 	}
