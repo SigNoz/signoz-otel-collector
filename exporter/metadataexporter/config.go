@@ -70,7 +70,7 @@ const (
 	defaultJSONKeyCacheSize            = 10_000
 )
 
-// JSONConfig holds configuration for JSON field processing (body, attributes, etc.).
+// JSONConfig holds configuration for JSON field processing (body).
 type JSONConfig struct {
 	// Enabled gates all JSON field processing (type collection + value suggestions).
 	Enabled bool `mapstructure:"enabled"`

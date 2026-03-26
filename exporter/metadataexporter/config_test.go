@@ -73,6 +73,12 @@ func TestLoadConfig(t *testing.T) {
 					},
 				},
 				Enabled: false,
+				JSON: JSONConfig{
+					Enabled:                 true,
+					MaxDepthTraverse:        defaultJSONMaxDepthTraverse,
+					MaxArrayElementsAllowed: defaultJSONMaxArrayElementsAllowed,
+					MaxKeysAtLevel:          100,
+				},
 			},
 		},
 	}

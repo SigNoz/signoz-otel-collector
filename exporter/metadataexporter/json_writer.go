@@ -38,7 +38,7 @@ type valueAccumulator struct {
 	addToUVT         func(key string, value any)
 }
 
-// guard runs the DB and UVT skip checks. When tracking is non-nil it also
+// guard runs the DB and UVT skip checks. When value is non-nil it also
 // records the value in UVT. Returns true when the record should be skipped.
 func (va *valueAccumulator) guard(path string, value any, tagType utils.TagType) bool {
 	key := utils.MakeKeyForAttributeKeys(path, tagType, utils.TagDataTypeString)
@@ -174,8 +174,10 @@ func (w *jsonMetadataWriter) skipKeysTicker(ctx context.Context) {
 	}
 }
 
-// doFetchSkipKeys queries distributed_tag_attributes_v2 for keys whose
+// fetchSkipKeys queries distributed_tag_attributes_v2 for keys whose
 // distinct-value count exceeds the limit and atomically replaces skipKeys.
+//
+// TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
 func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 	if w.limits.MaxStringDistinctValues == 0 {
 		return
