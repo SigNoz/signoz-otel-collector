@@ -106,7 +106,7 @@ func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now i
 	return iterErr
 }
 
-// jsonMetadataWriter is a MetadataWriter that performs a single walk over
+// jsonMetadataWriter is a LogsMetadataWriter that performs a single walk over
 // configured JSON sources (body today, attributes in future) per log record,
 // feeding both type collection and value suggestions from one traversal.
 //
@@ -351,7 +351,7 @@ func (w *jsonMetadataWriter) walkNode(
 	}
 
 	// Depth guard: do not descend into containers beyond the configured limit.
-	if level >= w.cfg.MaxDepthTraverse &&
+	if level > *w.cfg.MaxDepthTraverse &&
 		(val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
 		return nil
 	}
@@ -389,7 +389,7 @@ func (w *jsonMetadataWriter) walkMap(
 	va *valueAccumulator,
 ) error {
 	m := val.Map()
-	if m.Len() > w.cfg.MaxKeysAtLevel {
+	if m.Len() > *w.cfg.MaxKeysAtLevel {
 		return nil
 	}
 	var iterErr error
@@ -424,7 +424,7 @@ func (w *jsonMetadataWriter) walkSlice(
 	va *valueAccumulator,
 ) error {
 	s := val.Slice()
-	if s.Len() == 0 || s.Len() > w.cfg.MaxArrayElementsAllowed {
+	if s.Len() == 0 || s.Len() > *w.cfg.MaxArrayElementsAllowed {
 		return nil
 	}
 	types := make([]pcommon.ValueType, 0, s.Len())

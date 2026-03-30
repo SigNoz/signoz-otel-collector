@@ -6,12 +6,12 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-// MetadataWriter is the extension point for all metadata writing
+// LogsMetadataWriter is the extension point for all logs metadata writing
 // responsibilities in the metadata exporter. Each implementation owns exactly
 // one concern (one table or one logical unit of work). New responsibilities are
 // added by implementing this interface and appending to
-// metadataExporter.metadataWriters in the constructor — existing writers
+// metadataExporter.logsMetadataWriters in the constructor — existing writers
 // are never touched.
-type MetadataWriter interface {
+type LogsMetadataWriter interface {
 	ProcessMetadata(ctx context.Context, ld plog.Logs) error
 }

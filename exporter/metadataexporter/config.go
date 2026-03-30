@@ -1,7 +1,6 @@
 package metadataexporter
 
 import (
-	"errors"
 	"time"
 
 	"go.opentelemetry.io/collector/config/configoptional"
@@ -75,24 +74,11 @@ type JSONConfig struct {
 	// Enabled gates all JSON field processing (type collection + value suggestions).
 	Enabled bool `mapstructure:"enabled"`
 	// MaxDepthTraverse is the maximum nesting depth to traverse.
-	MaxDepthTraverse int `mapstructure:"max_depth_traverse"`
+	MaxDepthTraverse *int `mapstructure:"max_depth_traverse"`
 	// MaxArrayElementsAllowed is the maximum number of array elements to inspect.
-	MaxArrayElementsAllowed int `mapstructure:"max_array_elements_allowed"`
+	MaxArrayElementsAllowed *int `mapstructure:"max_array_elements_allowed"`
 	// MaxKeysAtLevel is the maximum number of keys allowed at any single map level.
-	MaxKeysAtLevel int `mapstructure:"max_keys_at_level"`
-}
-
-func (c *JSONConfig) Validate() error {
-	if c.MaxDepthTraverse <= 0 {
-		c.MaxDepthTraverse = defaultJSONMaxDepthTraverse
-	}
-	if c.MaxArrayElementsAllowed <= 0 {
-		c.MaxArrayElementsAllowed = defaultJSONMaxArrayElementsAllowed
-	}
-	if c.MaxKeysAtLevel <= 0 {
-		c.MaxKeysAtLevel = defaultJSONMaxKeysAtLevel
-	}
-	return nil
+	MaxKeysAtLevel *int `mapstructure:"max_keys_at_level"`
 }
 
 // Config defines configuration for Metadata exporter.
@@ -115,14 +101,4 @@ type Config struct {
 
 	// JSON configures JSON field processing for body (and attributes in future).
 	JSON JSONConfig `mapstructure:"json"`
-}
-
-func (c *Config) Validate() error {
-	errs := []error{}
-	errs = append(errs, c.TimeoutConfig.Validate())
-	errs = append(errs, c.BackOffConfig.Validate())
-	errs = append(errs, c.QueueBatchConfig.Validate())
-	errs = append(errs, c.JSON.Validate())
-
-	return errors.Join(errs...)
 }

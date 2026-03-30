@@ -67,7 +67,7 @@ type metadataExporter struct {
 
 	// logsMetadataWriters is the ordered list of writers dispatched in parallel on
 	// every PushLogs call.
-	logsMetadataWriters []MetadataWriter
+	logsMetadataWriters []LogsMetadataWriter
 }
 
 type writeToStatementBatchRecord struct {
@@ -217,7 +217,7 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	e.tracesTagValueCountFromDB.Store(initMap())
 	e.metricsTagValueCountFromDB.Store(initMap())
 
-	e.logsMetadataWriters = []MetadataWriter{
+	e.logsMetadataWriters = []LogsMetadataWriter{
 		newAttributeMetadataWriter(e),
 	}
 	if cfg.JSON.Enabled {

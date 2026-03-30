@@ -8,6 +8,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -127,7 +128,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"message": map[string]any{"level": "info"},
 				"test":    "value",
 			},
-			cfg: JSONConfig{MaxDepthTraverse: 2, MaxArrayElementsAllowed: 4, MaxKeysAtLevel: 1024},
+			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
 			expected: map[string][]string{
 				"message": {typeString},
 				"test":    {typeString},
@@ -139,7 +140,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"message.level": "info",
 				"test":          "value",
 			},
-			cfg: JSONConfig{MaxDepthTraverse: 2, MaxArrayElementsAllowed: 4, MaxKeysAtLevel: 1024},
+			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
 			expected: map[string][]string{
 				"test": {typeString},
 			},
@@ -152,7 +153,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"float":  123.456,
 				"bool":   true,
 			},
-			cfg: JSONConfig{MaxDepthTraverse: 2, MaxArrayElementsAllowed: 4, MaxKeysAtLevel: 1024},
+			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
 			expected: map[string][]string{
 				"string": {typeString},
 				"int":    {typeInt64},
@@ -163,7 +164,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 		{
 			name:  "full_test",
 			input: input,
-			cfg:   JSONConfig{MaxDepthTraverse: 100, MaxArrayElementsAllowed: 5, MaxKeysAtLevel: 1024},
+			cfg:   JSONConfig{MaxDepthTraverse: to.Ptr(100), MaxArrayElementsAllowed: to.Ptr(5), MaxKeysAtLevel: to.Ptr(1024)},
 			expected: map[string][]string{
 				"_p":                                              {typeString},
 				"array_objects":                                   {typeArrayJSON},
@@ -215,7 +216,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 		{
 			name:  "max_depth_traverse_test",
 			input: input,
-			cfg:   JSONConfig{MaxDepthTraverse: 2, MaxArrayElementsAllowed: 4, MaxKeysAtLevel: 1024},
+			cfg:   JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
 			expected: map[string][]string{
 				"_p":                               {typeString},
 				"array_objects":                    {typeArrayJSON},
