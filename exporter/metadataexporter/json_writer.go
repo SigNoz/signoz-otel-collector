@@ -179,9 +179,6 @@ func (w *jsonMetadataWriter) skipKeysTicker(ctx context.Context) {
 //
 // TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
 func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
-	if w.limits.MaxStringDistinctValues == 0 {
-		return
-	}
 	tagTypeQuoted := make([]string, len(w.sources))
 	for i, s := range w.sources {
 		tagTypeQuoted[i] = "'" + string(s) + "'"
@@ -221,21 +218,14 @@ func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 // meaning its distinct-value count exceeded the limit at the last DB fetch.
 func (w *jsonMetadataWriter) skipStoringInDB(key string) bool {
 	m := w.skipKeys.Load()
-	if m == nil {
-		return false
-	}
 	_, ok := (*m)[key]
 	return ok
 }
 
 // skipUVT returns true when the in-memory distinct-value count for
-// this key already exceeds the configured limit.  Unlike the parent exporter's
+// this key already exceeds the configured limit. Unlike the parent exporter's
 // implementation it does NOT unconditionally skip number or bool keys.
 func (w *jsonMetadataWriter) skipUVT(key string) bool {
-	// TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
-	if w.limits.MaxStringDistinctValues == 0 {
-		return false
-	}
 	return w.valueTracker.GetUniqueValueCount(key) > int(w.limits.MaxStringDistinctValues)
 }
 
@@ -356,10 +346,7 @@ func (w *jsonMetadataWriter) walkNode(
 		return nil
 	} else if prefix == jsonMessageField {
 		ts.record(prefix, maskString)
-		// Record value suggestions only for string-typed message fields.
-		if val.Type() == pcommon.ValueTypeStr || val.Type() == pcommon.ValueTypeBytes {
-			return va.record(prefix, val, tagType, unixMilli)
-		}
+		// We intentionally skip recording value suggestions for message field, due to high cardinality.
 		return nil
 	}
 
@@ -371,7 +358,7 @@ func (w *jsonMetadataWriter) walkNode(
 
 	switch val.Type() {
 	case pcommon.ValueTypeMap:
-		return w.walkMap(ctx, prefix, val, level, tagType, unixMilli, ts, va)
+		return w.walkMap(ctx, prefix, val, level+1, tagType, unixMilli, ts, va)
 	case pcommon.ValueTypeSlice:
 		return w.walkSlice(ctx, prefix, val, level, tagType, unixMilli, ts, va)
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
@@ -452,7 +439,7 @@ func (w *jsonMetadataWriter) walkSlice(
 			}
 			types = append(types, el.Type())
 		case pcommon.ValueTypeSlice:
-			w.logger.Error("nested arrays not supported", zap.String("path", prefix))
+			w.logger.Debug("nested arrays not supported", zap.String("path", prefix))
 			return nil
 		case pcommon.ValueTypeEmpty:
 			// skip empty elements
