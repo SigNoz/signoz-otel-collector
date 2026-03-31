@@ -254,7 +254,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 				if val.Type() != pcommon.ValueTypeMap {
 					continue
 				}
-				if err := w.walk(ctx, val, utils.TagTypeBody, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
+				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBody, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
 					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBody)), zap.Error(err))
 				}
 			}
@@ -280,20 +280,6 @@ func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) erro
 		return fmt.Errorf("failed to append to path types batch: %w", err)
 	}
 	return stmt.Send()
-}
-
-// walk traverses a pcommon.Value, feeding both the typeSet (for
-// distributed_json_path_types) and the valueAccumulator (for
-// distributed_tag_attributes_v2) in a single pass.
-func (w *jsonMetadataWriter) walk(
-	ctx context.Context,
-	val pcommon.Value,
-	tagType utils.TagType,
-	unixMilli int64,
-	ts *typeSet,
-	va *valueAccumulator,
-) error {
-	return w.walkNode(ctx, "", val, 0, tagType, unixMilli, ts, va)
 }
 
 // walkNode is the recursive core of walk. It handles type-hint guards, depth
@@ -406,6 +392,8 @@ func (w *jsonMetadataWriter) walkSlice(
 			}
 			types = append(types, el.Type())
 		case pcommon.ValueTypeSlice:
+			// skip recording the type for entire array
+			// e.g. alphabets: ["a", "b", ["c", "d"]]; we don't want to record type for alphabets as array
 			w.logger.Debug("nested arrays not supported", zap.String("path", prefix))
 			return nil
 		case pcommon.ValueTypeEmpty:
