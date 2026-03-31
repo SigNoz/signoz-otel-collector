@@ -859,8 +859,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 	g, gCtx := errgroup.WithContext(ctx)
 	for _, proc := range e.logsMetadataWriters {
-		proc := proc
-		g.Go(func() error { return proc.ProcessMetadata(gCtx, ld) })
+		g.Go(func() error { return proc.Process(gCtx, ld) })
 	}
 	if err := g.Wait(); err != nil {
 		e.set.Logger.Error("logs processor error", zap.Error(err))

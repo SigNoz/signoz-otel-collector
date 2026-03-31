@@ -18,8 +18,8 @@ type attributeMetadataWriter struct {
 	conn   driver.Conn
 	logger *zap.Logger
 
-	shouldSkipFromDB    func(ctx context.Context, key, datasource string) bool
-	filterAttrs         func(ctx context.Context, attrs map[string]any, datasource string) map[string]any
+	shouldSkipFromDB      func(ctx context.Context, key, datasource string) bool
+	filterAttrs           func(ctx context.Context, attrs map[string]any, datasource string) map[string]any
 	writeToStatementBatch func(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error)
 }
 
@@ -33,7 +33,7 @@ func newAttributeMetadataWriter(e *metadataExporter) *attributeMetadataWriter {
 	}
 }
 
-func (w *attributeMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) error {
+func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 	stmt, err := w.conn.PrepareBatch(ctx, insertStmtQuery)
 	if err != nil {
 		w.logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))

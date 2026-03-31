@@ -13,5 +13,5 @@ import (
 // metadataExporter.logsMetadataWriters in the constructor — existing writers
 // are never touched.
 type LogsMetadataWriter interface {
-	ProcessMetadata(ctx context.Context, ld plog.Logs) error
+	Process(ctx context.Context, ld plog.Logs) error
 }

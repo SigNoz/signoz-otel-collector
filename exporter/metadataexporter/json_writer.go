@@ -222,7 +222,7 @@ func (w *jsonMetadataWriter) skipUVT(key string) bool {
 	return w.valueTracker.GetUniqueValueCount(key) > int(w.limits.MaxStringDistinctValues)
 }
 
-func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) error {
+func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 	bodyTypes := &typeSet{}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())
@@ -281,7 +281,6 @@ func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) erro
 	}
 	return stmt.Send()
 }
-
 
 // walk traverses a pcommon.Value, feeding both the typeSet (for
 // distributed_json_path_types) and the valueAccumulator (for
