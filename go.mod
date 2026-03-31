@@ -422,7 +422,7 @@ require (
 	github.com/beevik/ntp v1.5.0 // indirect
 	github.com/bits-and-blooms/bitset v1.12.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
