@@ -223,7 +223,6 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	if cfg.JSON.Enabled {
 		jsonProc, err := newJSONMetadataWriter(
 			ctx,
-			[]utils.TagType{utils.TagTypeBody},
 			cfg.JSON,
 			set.Logger,
 			e,

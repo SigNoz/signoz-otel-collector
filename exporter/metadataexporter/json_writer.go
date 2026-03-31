@@ -114,7 +114,6 @@ func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now i
 //   - signoz_metadata.distributed_json_path_types  (path → ClickHouse type)
 //   - signoz_logs.distributed_tag_attributes_v2    (path → value, tag_type=source)
 type jsonMetadataWriter struct {
-	sources          []utils.TagType
 	cfg              JSONConfig
 	logger           *zap.Logger
 	cardinalKeyCache *lru.Cache[string, struct{}]
@@ -131,7 +130,6 @@ type jsonMetadataWriter struct {
 
 func newJSONMetadataWriter(
 	ctx context.Context,
-	sources []utils.TagType,
 	cfg JSONConfig,
 	logger *zap.Logger,
 	e *metadataExporter,
@@ -141,7 +139,6 @@ func newJSONMetadataWriter(
 		return nil, fmt.Errorf("failed to create cardinal key cache: %w", err)
 	}
 	w := &jsonMetadataWriter{
-		sources:          sources,
 		cfg:              cfg,
 		logger:           logger,
 		cardinalKeyCache: cache,
@@ -179,20 +176,16 @@ func (w *jsonMetadataWriter) skipKeysTicker(ctx context.Context) {
 //
 // TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
 func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
-	tagTypeQuoted := make([]string, len(w.sources))
-	for i, s := range w.sources {
-		tagTypeQuoted[i] = "'" + string(s) + "'"
-	}
 	query := fmt.Sprintf(`
 		SELECT tag_key, tag_type, tag_data_type
 		FROM %s
 		WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
-		  AND tag_type IN (%s)
+		  AND tag_type = '%s'
 		GROUP BY tag_key, tag_type, tag_data_type
 		HAVING uniq(string_value) > %d OR uniq(number_value) > %d
 		SETTINGS max_threads = 2`,
 		distributedTagAttrsV2Table,
-		strings.Join(tagTypeQuoted, ", "),
+		utils.TagTypeBody,
 		w.limits.MaxStringDistinctValues,
 		w.limits.MaxStringDistinctValues,
 	)
@@ -230,11 +223,7 @@ func (w *jsonMetadataWriter) skipUVT(key string) bool {
 }
 
 func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) error {
-	// One typeSet per source so each gets its own signal/context on flush.
-	typeSets := make([]*typeSet, len(w.sources))
-	for i := range w.sources {
-		typeSets[i] = &typeSet{}
-	}
+	bodyTypes := &typeSet{}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())
 	if err != nil {
@@ -261,32 +250,25 @@ func (w *jsonMetadataWriter) ProcessMetadata(ctx context.Context, ld plog.Logs) 
 					ts = lr.ObservedTimestamp()
 				}
 
-				for si, src := range w.sources {
-					val, err := extractSource(lr, src)
-					if err != nil {
-						w.logger.Error("unsupported json source", zap.String("source", string(src)), zap.Error(err))
-						continue
-					}
-					if val.Type() != pcommon.ValueTypeMap {
-						continue
-					}
-					if err := w.walk(ctx, val, src, ts.AsTime().UnixMilli(), typeSets[si], va); err != nil {
-						w.logger.Error("json walk failed", zap.String("source", string(src)), zap.Error(err))
-					}
+				val := lr.Body()
+				if val.Type() != pcommon.ValueTypeMap {
+					continue
+				}
+				if err := w.walk(ctx, val, utils.TagTypeBody, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
+					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBody)), zap.Error(err))
 				}
 			}
 		}
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error { return w.flushTypeSets(gCtx, typeSets) })
+	g.Go(func() error { return w.flushTypeSet(gCtx, bodyTypes) })
 	g.Go(va.flush)
 	return g.Wait()
 }
 
-// flushTypeSets creates a single shared batch for all type sets, appends each
-// set's records using the corresponding source as context, and sends in one shot.
-func (w *jsonMetadataWriter) flushTypeSets(ctx context.Context, typeSets []*typeSet) error {
+// flushTypeSet writes all path-type records for the body source to distributed_json_path_types.
+func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) error {
 	sql := fmt.Sprintf("INSERT INTO %s (signal, context, path, type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedPathTypesTable)
 	stmt, err := w.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
@@ -294,26 +276,12 @@ func (w *jsonMetadataWriter) flushTypeSets(ctx context.Context, typeSets []*type
 	}
 	defer stmt.Close()
 
-	now := time.Now().UnixNano()
-	signal := pipeline.SignalLogs.String()
-	for i, ts := range typeSets {
-		if err := appendTypeSet(ts, signal, string(w.sources[i]), stmt, now); err != nil {
-			return fmt.Errorf("failed to append to path types batch: %w", err)
-		}
+	if err := appendTypeSet(ts, pipeline.SignalLogs.String(), string(utils.TagTypeBody), stmt, time.Now().UnixNano()); err != nil {
+		return fmt.Errorf("failed to append to path types batch: %w", err)
 	}
 	return stmt.Send()
 }
 
-// extractSource returns the pcommon.Value for the given tag type from a log record.
-// It returns an error for unsupported tag types so callers cannot silently skip input.
-func extractSource(lr plog.LogRecord, tagType utils.TagType) (pcommon.Value, error) {
-	switch tagType {
-	case utils.TagTypeBody:
-		return lr.Body(), nil
-	default:
-		return pcommon.NewValueEmpty(), fmt.Errorf("unsupported tag type %q", tagType)
-	}
-}
 
 // walk traverses a pcommon.Value, feeding both the typeSet (for
 // distributed_json_path_types) and the valueAccumulator (for
