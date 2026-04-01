@@ -69,6 +69,7 @@ func (va *valueAccumulator) record(path string, val pcommon.Value, context utils
 	return va.appendValue(path, val, context, mapPCommonValueTypeToDataType[val.Type()], unixMilli)
 }
 
+// recordForSlice only records primitive types inside slices
 func (va *valueAccumulator) recordForSlice(path string, val pcommon.Value, context utils.TagType, datatype utils.TagDataType, unixMilli int64) error {
 	return va.appendValue(path, val, context, datatype, unixMilli)
 }
@@ -434,11 +435,7 @@ func (w *jsonMetadataWriter) walkSlice(
 	mask := inferArrayMask(types)
 	ts.record(prefix, mask)
 
-	// for primitive array types only OR dynamic
-	if maskToType(mask) == typeArrayJSON {
-		return nil
-	}
-
+	// recordForSlice will only account for primitive types inside slices
 	return va.recordForSlice(prefix, val, tagType, mapArrayTypesToTagDataType[maskToType(mask)], unixMilli)
 }
 
