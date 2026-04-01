@@ -105,10 +105,9 @@ func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context 
 				return err
 			}
 		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 	}
+
+	return nil
 }
 
 func (va *valueAccumulator) flush() error {
