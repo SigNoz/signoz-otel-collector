@@ -49,9 +49,13 @@ func (t TagType) String() string {
 type TagDataType string
 
 const (
-	TagDataTypeString TagDataType = "string"
-	TagDataTypeBool   TagDataType = "bool"
-	TagDataTypeNumber TagDataType = "float64"
+	TagDataTypeString       TagDataType = "string"
+	TagDataTypeBool         TagDataType = "bool"
+	TagDataTypeNumber       TagDataType = "float64"
+	TagDataTypeStringArray  TagDataType = "[]string"
+	TagDataTypeNumberArray  TagDataType = "[]float64"
+	TagDataTypeBoolArray    TagDataType = "[]bool"
+	TagDataTypeDynamicArray TagDataType = "[]dynamic"
 )
 
 func (t TagDataType) String() string {
@@ -73,6 +77,14 @@ func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagData
 	key.WriteString(string(tagType))
 	key.WriteString(":")
 	key.WriteString(string(tagDataType))
+	return key.String()
+}
+
+func MakeKeyForSkipKeys(context TagType, tagKey string) string {
+	var key strings.Builder
+	key.WriteString(string(context))
+	key.WriteString(":")
+	key.WriteString(tagKey)
 	return key.String()
 }
 

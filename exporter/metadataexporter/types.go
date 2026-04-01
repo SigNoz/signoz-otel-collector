@@ -20,6 +20,15 @@ const (
 	typeArrayJSON    = "Array(JSON)"
 )
 
+// mapArrayTypesToTagDataType excludes Array(JSON) type
+var mapArrayTypesToTagDataType = map[string]utils.TagDataType{
+	typeArrayString:  utils.TagDataTypeStringArray,
+	typeArrayInt64:   utils.TagDataTypeNumberArray,
+	typeArrayFloat64: utils.TagDataTypeNumberArray,
+	typeArrayBool:    utils.TagDataTypeBoolArray,
+	typeArrayDynamic: utils.TagDataTypeDynamicArray,
+}
+
 // bitmasks for compact per-leaf type aggregation across a batch.
 const (
 	maskString       uint16 = 1 << 0
@@ -34,6 +43,40 @@ const (
 	maskArrayJSON    uint16 = 1 << 9
 )
 
+func maskToType(mask uint16) string {
+	if mask&maskString != 0 {
+		return typeString
+	}
+	if mask&maskInt != 0 {
+		return typeInt64
+	}
+	if mask&maskFloat != 0 {
+		return typeFloat64
+	}
+	if mask&maskBool != 0 {
+		return typeBool
+	}
+	if mask&maskArrayString != 0 {
+		return typeArrayString
+	}
+	if mask&maskArrayInt != 0 {
+		return typeArrayInt64
+	}
+	if mask&maskArrayFloat != 0 {
+		return typeArrayFloat64
+	}
+	if mask&maskArrayBool != 0 {
+		return typeArrayBool
+	}
+	if mask&maskArrayJSON != 0 {
+		return typeArrayJSON
+	}
+	if mask&maskArrayDynamic != 0 {
+		return typeArrayDynamic
+	}
+	return ""
+}
+
 // typeSet is a per-batch accumulator mapping JSON paths to their observed ClickHouse types.
 // sync.Map is used because the jsonProcessor walk may be called from concurrent contexts
 // in the future; it is safe to use sequentially too.
@@ -45,34 +88,5 @@ func (t *typeSet) record(path string, mask uint16) {
 	actual, _ := t.types.LoadOrStore(path, utils.WithCapacityConcurrentSet[string](3))
 	cs := actual.(*utils.ConcurrentSet[string])
 
-	if mask&maskString != 0 {
-		cs.Insert(typeString)
-	}
-	if mask&maskInt != 0 {
-		cs.Insert(typeInt64)
-	}
-	if mask&maskFloat != 0 {
-		cs.Insert(typeFloat64)
-	}
-	if mask&maskBool != 0 {
-		cs.Insert(typeBool)
-	}
-	if mask&maskArrayString != 0 {
-		cs.Insert(typeArrayString)
-	}
-	if mask&maskArrayInt != 0 {
-		cs.Insert(typeArrayInt64)
-	}
-	if mask&maskArrayFloat != 0 {
-		cs.Insert(typeArrayFloat64)
-	}
-	if mask&maskArrayBool != 0 {
-		cs.Insert(typeArrayBool)
-	}
-	if mask&maskArrayJSON != 0 {
-		cs.Insert(typeArrayJSON)
-	}
-	if mask&maskArrayDynamic != 0 {
-		cs.Insert(typeArrayDynamic)
-	}
+	cs.Insert(maskToType(mask))
 }

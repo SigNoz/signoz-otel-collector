@@ -28,6 +28,16 @@ const (
 	jsonMessageField = "message"
 )
 
+var (
+	mapPCommonValueTypeToDataType = map[pcommon.ValueType]utils.TagDataType{
+		pcommon.ValueTypeStr:    utils.TagDataTypeString,
+		pcommon.ValueTypeBytes:  utils.TagDataTypeString,
+		pcommon.ValueTypeInt:    utils.TagDataTypeNumber,
+		pcommon.ValueTypeDouble: utils.TagDataTypeNumber,
+		pcommon.ValueTypeBool:   utils.TagDataTypeBool,
+	}
+)
+
 // valueAccumulator writes tag attribute rows directly to a ClickHouse batch,
 // applying cardinality guards before each append.
 type valueAccumulator struct {
@@ -40,8 +50,8 @@ type valueAccumulator struct {
 
 // guard runs the DB and UVT skip checks. When value is non-nil it also
 // records the value in UVT. Returns true when the record should be skipped.
-func (va *valueAccumulator) guard(path string, value any, tagType utils.TagType) bool {
-	key := utils.MakeKeyForAttributeKeys(path, tagType, utils.TagDataTypeString)
+func (va *valueAccumulator) guard(path string, context utils.TagType, value any) bool {
+	key := utils.MakeKeyForSkipKeys(context, path)
 	if va.shouldSkipFromDB(key) {
 		return true
 	}
@@ -55,33 +65,49 @@ func (va *valueAccumulator) guard(path string, value any, tagType utils.TagType)
 	return false
 }
 
-// record appends a single path/value pair to the batch. Supports String,
-// Bytes, Int, Double, and Bool values; any other type is a caller error.
-func (va *valueAccumulator) record(path string, val pcommon.Value, tagType utils.TagType, unixMilli int64) error {
+func (va *valueAccumulator) record(path string, val pcommon.Value, context utils.TagType, unixMilli int64) error {
+	return va.appendValue(path, val, context, mapPCommonValueTypeToDataType[val.Type()], unixMilli)
+}
+
+func (va *valueAccumulator) recordForSlice(path string, val pcommon.Value, context utils.TagType, datatype utils.TagDataType, unixMilli int64) error {
+	return va.appendValue(path, val, context, datatype, unixMilli)
+}
+
+// Supports String, Bytes, Int, Double, and Bool values; any other type is a caller error.
+func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context utils.TagType, datatype utils.TagDataType, unixMilli int64) error {
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		str := val.AsString()
 		if len(str) == 0 || len(str) > common.MaxAttributeValueLength {
 			return nil
 		}
-		if va.guard(path, str, tagType) {
+		if va.guard(path, context, str) {
 			return nil
 		}
-		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeString, str, nil)
+		return va.stmt.Append(unixMilli, path, context, datatype, str, nil)
 	case pcommon.ValueTypeInt, pcommon.ValueTypeDouble:
 		floatVal := val.Double()
 		if val.Type() == pcommon.ValueTypeInt {
 			floatVal = float64(val.Int())
 		}
-		if va.guard(path, floatVal, tagType) {
+		if va.guard(path, context, floatVal) {
 			return nil
 		}
-		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeNumber, nil, floatVal)
+		return va.stmt.Append(unixMilli, path, context, datatype, nil, floatVal)
 	case pcommon.ValueTypeBool:
 		// Cardinality is always 2; no UVT tracking needed.
-		return va.stmt.Append(unixMilli, path, tagType, utils.TagDataTypeBool, nil, nil)
+		return va.stmt.Append(unixMilli, path, context, datatype, nil, nil)
+	case pcommon.ValueTypeSlice:
+		for i := 0; i < val.Slice().Len(); i++ {
+			err := va.appendValue(path, val.Slice().At(i), context, datatype, unixMilli)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 	}
-	return fmt.Errorf("unsupported value type %v at path %q", val.Type(), path)
 }
 
 func (va *valueAccumulator) flush() error {
@@ -177,11 +203,11 @@ func (w *jsonMetadataWriter) skipKeysTicker(ctx context.Context) {
 // TODO(Piyush): We've used MaxStringDistinctValues for all the types, look into it in future
 func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 	query := fmt.Sprintf(`
-		SELECT tag_key, tag_type, tag_data_type
+		SELECT tag_key, tag_type
 		FROM %s
 		WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
 		  AND tag_type = '%s'
-		GROUP BY tag_key, tag_type, tag_data_type
+		GROUP BY tag_key, tag_type
 		HAVING uniq(string_value) > %d OR uniq(number_value) > %d
 		SETTINGS max_threads = 2`,
 		distributedTagAttrsV2Table,
@@ -190,9 +216,8 @@ func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 		w.limits.MaxStringDistinctValues,
 	)
 	type row struct {
-		TagKey      string `ch:"tag_key"`
-		TagType     string `ch:"tag_type"`
-		TagDataType string `ch:"tag_data_type"`
+		TagKey  string `ch:"tag_key"`
+		TagType string `ch:"tag_type"`
 	}
 	var rows []row
 	if err := w.conn.Select(ctx, &rows, query); err != nil {
@@ -201,7 +226,7 @@ func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 	}
 	newMap := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
-		key := utils.MakeKeyForAttributeKeys(r.TagKey, utils.TagType(r.TagType), utils.TagDataType(r.TagDataType))
+		key := utils.MakeKeyForSkipKeys(utils.TagType(r.TagType), r.TagKey)
 		newMap[key] = struct{}{}
 	}
 	w.skipKeys.Store(&newMap)
@@ -381,6 +406,7 @@ func (w *jsonMetadataWriter) walkSlice(
 		return nil
 	}
 	types := make([]pcommon.ValueType, 0, s.Len())
+
 	for i := 0; i < s.Len(); i++ {
 		el := s.At(i)
 		switch el.Type() {
@@ -405,10 +431,15 @@ func (w *jsonMetadataWriter) walkSlice(
 	if len(types) == 0 {
 		return nil
 	}
-	if mask := inferArrayMask(types); mask != 0 {
-		ts.record(prefix, mask)
+	mask := inferArrayMask(types)
+	ts.record(prefix, mask)
+
+	// for primitive array types only OR dynamic
+	if maskToType(mask) == typeArrayJSON {
+		return nil
 	}
-	return nil
+
+	return va.recordForSlice(prefix, val, tagType, mapArrayTypesToTagDataType[maskToType(mask)], unixMilli)
 }
 
 // joinPath builds a dotted JSON path from a parent prefix and a child key.
