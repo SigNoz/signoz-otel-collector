@@ -2321,6 +2321,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiv
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiver v0.144.0/go.mod h1:PwLoXgspEdFUDGRxtsLXO2FDzz3fye2JIanb/vKz4lo=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureblobreceiver v0.144.0 h1:gbGtlPucaKwJ/W51JFaG8D7nBr7wMwYg8dPIs3j1OAM=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureblobreceiver v0.144.0/go.mod h1:NnqEdfxGstss4TvNi/56hZlYUQbVgWpDassoAM9i9Pw=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.144.0 h1:HemQJsRp40m3PqWPQGzlgOKBcCkKvPPQXaI2BLPU4jg=
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.144.0/go.mod h1:ok1vI/Wlq+oQfNW+ciURk8HUh1PAvh3ujLMnuFGKCEg=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azuremonitorreceiver v0.144.0 h1:0cQUKCTOSRO9TvCzi6FrneocS47e6Yo8BM+QLAJs1T0=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azuremonitorreceiver v0.144.0/go.mod h1:Jq7hUAUCi896CQpbQrAvjup7hSk/IlWcnYtt/dWLPg4=
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/bigipreceiver v0.144.0 h1:c/FcV95aj2z7X4NTuhBaf46dcMsFIGtjtwBq6lew7Mc=
