@@ -12,6 +12,7 @@ import (
 
 	"github.com/goccy/go-json"
 
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -150,7 +151,7 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 			return true
 		})
 		errorEvent := ErrorEvent{}
-		if event.Name == "exception" {
+		if tracesschema.IsExceptionEvent(event.Name) {
 			event.IsError = true
 			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
