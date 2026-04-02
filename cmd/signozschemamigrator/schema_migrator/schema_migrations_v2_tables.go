@@ -235,47 +235,6 @@ var V2MigrationTablesAnalytics = []SchemaMigrationRecord{
 	},
 }
 
-var V2MigrationTablesAudit = []SchemaMigrationRecord{
-	{
-		MigrationID: 11,
-		UpItems: []Operation{
-			CreateTableOperation{
-				Database: "signoz_audit",
-				Table:    "schema_migrations_v2",
-				Columns: []Column{
-					{Name: "migration_id", Type: ColumnTypeUInt64},
-					{Name: "status", Type: ColumnTypeString},
-					{Name: "error", Type: ColumnTypeString},
-					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
-					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
-				},
-				Engine: ReplacingMergeTree{
-					MergeTree{
-						OrderBy:    "migration_id",
-						PrimaryKey: "migration_id",
-					},
-				},
-			},
-			CreateTableOperation{
-				Database: "signoz_audit",
-				Table:    "distributed_schema_migrations_v2",
-				Columns: []Column{
-					{Name: "migration_id", Type: ColumnTypeUInt64},
-					{Name: "status", Type: ColumnTypeString},
-					{Name: "error", Type: ColumnTypeString},
-					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
-					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
-				},
-				Engine: Distributed{
-					Database:    "signoz_audit",
-					Table:       "schema_migrations_v2",
-					ShardingKey: "rand()",
-				},
-			},
-		},
-	},
-}
-
 var V2MigrationTablesMeter = []SchemaMigrationRecord{
 	{
 		MigrationID: 10,
@@ -309,6 +268,47 @@ var V2MigrationTablesMeter = []SchemaMigrationRecord{
 				},
 				Engine: Distributed{
 					Database:    "signoz_meter",
+					Table:       "schema_migrations_v2",
+					ShardingKey: "rand()",
+				},
+			},
+		},
+	},
+}
+
+var V2MigrationTablesAudit = []SchemaMigrationRecord{
+	{
+		MigrationID: 11,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_audit",
+				Table:    "schema_migrations_v2",
+				Columns: []Column{
+					{Name: "migration_id", Type: ColumnTypeUInt64},
+					{Name: "status", Type: ColumnTypeString},
+					{Name: "error", Type: ColumnTypeString},
+					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
+					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree{
+						OrderBy:    "migration_id",
+						PrimaryKey: "migration_id",
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_audit",
+				Table:    "distributed_schema_migrations_v2",
+				Columns: []Column{
+					{Name: "migration_id", Type: ColumnTypeUInt64},
+					{Name: "status", Type: ColumnTypeString},
+					{Name: "error", Type: ColumnTypeString},
+					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
+					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
+				},
+				Engine: Distributed{
+					Database:    "signoz_audit",
 					Table:       "schema_migrations_v2",
 					ShardingKey: "rand()",
 				},
