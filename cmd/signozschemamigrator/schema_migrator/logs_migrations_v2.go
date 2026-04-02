@@ -273,13 +273,15 @@ ORDER BY name ASC`,
 				Database: SignozMetadataDB,
 				Table:    constants.LocalPathTypesTable,
 				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
-						OrderBy:     fmt.Sprintf("(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
+						OrderBy:     fmt.Sprintf("(signal, context, %s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
 						PartitionBy: "toDate(last_seen / 1000000000)",
 						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
@@ -293,6 +295,8 @@ ORDER BY name ASC`,
 				Database: SignozMetadataDB,
 				Table:    constants.DistributedPathTypesTable,
 				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
@@ -300,7 +304,7 @@ ORDER BY name ASC`,
 				Engine: Distributed{
 					Database:    SignozMetadataDB,
 					Table:       constants.LocalPathTypesTable,
-					ShardingKey: fmt.Sprintf("cityHash64(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
+					ShardingKey: fmt.Sprintf("cityHash64(signal, context, %s)", constants.PathTypesTablePathColumn),
 				},
 			},
 			AlterTableModifySettings{
