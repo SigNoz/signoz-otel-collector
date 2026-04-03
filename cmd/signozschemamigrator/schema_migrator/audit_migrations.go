@@ -280,13 +280,13 @@ var AuditMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
-	// Migration 1004: tag_attributes_v2 + distributed_tag_attributes_v2
+	// Migration 1004: tag_attributes + distributed_tag_attributes
 	{
 		MigrationID: 1004,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: "signoz_audit",
-				Table:    "tag_attributes_v2",
+				Table:    "tag_attributes",
 				Columns: []Column{
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "tag_key", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
@@ -310,7 +310,7 @@ var AuditMigrations = []SchemaMigrationRecord{
 			},
 			CreateTableOperation{
 				Database: "signoz_audit",
-				Table:    "distributed_tag_attributes_v2",
+				Table:    "distributed_tag_attributes",
 				Columns: []Column{
 					{Name: "unix_milli", Type: ColumnTypeInt64, Codec: "Delta(8), ZSTD(1)"},
 					{Name: "tag_key", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
@@ -322,7 +322,7 @@ var AuditMigrations = []SchemaMigrationRecord{
 				},
 				Engine: Distributed{
 					Database:    "signoz_audit",
-					Table:       "tag_attributes_v2",
+					Table:       "tag_attributes",
 					ShardingKey: "cityHash64(tag_key)",
 				},
 			},
@@ -330,11 +330,11 @@ var AuditMigrations = []SchemaMigrationRecord{
 		DownItems: []Operation{
 			DropTableOperation{
 				Database: "signoz_audit",
-				Table:    "distributed_tag_attributes_v2",
+				Table:    "distributed_tag_attributes",
 			},
 			DropTableOperation{
 				Database: "signoz_audit",
-				Table:    "tag_attributes_v2",
+				Table:    "tag_attributes",
 			},
 		},
 	},
