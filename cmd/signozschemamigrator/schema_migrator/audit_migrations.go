@@ -142,10 +142,6 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "`attribute_string_signoz$$audit$$action_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.action'), true, false)", Codec: "ZSTD(1)"},
 					{Name: "`attribute_string_signoz$$audit$$outcome`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.outcome']", Codec: "ZSTD(1)"},
 					{Name: "`attribute_string_signoz$$audit$$outcome_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.outcome'), true, false)", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$name`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.resource.name']", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$name_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.resource.name'), true, false)", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$id`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.resource.id']", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$id_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.resource.id'), true, false)", Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
 					{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
@@ -203,10 +199,6 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "`attribute_string_signoz$$audit$$action_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.action'), true, false)", Codec: "ZSTD(1)"},
 					{Name: "`attribute_string_signoz$$audit$$outcome`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.outcome']", Codec: "ZSTD(1)"},
 					{Name: "`attribute_string_signoz$$audit$$outcome_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.outcome'), true, false)", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$name`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.resource.name']", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$name_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.resource.name'), true, false)", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$id`", Type: ColumnTypeString, Default: "attributes_string['signoz.audit.resource.id']", Codec: "ZSTD(1)"},
-					{Name: "`attribute_string_signoz$$audit$$resource$$id_exists`", Type: ColumnTypeBool, Default: "if(mapContains(attributes_string, 'signoz.audit.resource.id'), true, false)", Codec: "ZSTD(1)"},
 				},
 				Engine: Distributed{
 					Database:    "signoz_audit",
