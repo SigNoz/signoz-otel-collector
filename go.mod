@@ -5,10 +5,6 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
-	github.com/Azure/azure-amqp-common-go/v4 v4.2.0
-	github.com/Azure/azure-event-hubs-go/v3 v3.6.2
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0
-	github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs/v2 v2.0.1
 	github.com/ClickHouse/ch-go v0.66.0
 	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -79,8 +75,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.144.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.144.0
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azurelogs v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.144.0
@@ -125,6 +119,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awsxrayreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureblobreceiver v0.144.0
+	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azuremonitorreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/bigipreceiver v0.144.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver v0.144.0
@@ -227,7 +222,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zookeeperreceiver v0.144.0
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/relvacode/iso8601 v1.7.0
 	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -318,9 +312,13 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/AthenZ/athenz v1.12.13 // indirect
+	github.com/Azure/azure-amqp-common-go/v4 v4.2.0 // indirect
+	github.com/Azure/azure-event-hubs-go/v3 v3.6.2 // indirect
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs/v2 v2.0.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azmetrics v1.3.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor v0.11.0 // indirect
@@ -628,6 +626,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.144.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/sampling v0.144.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/status v0.144.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.144.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azurelogs v0.144.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/faro v0.144.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/loki v0.144.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.144.0 // indirect
@@ -666,6 +666,7 @@ require (
 	github.com/prometheus/sigv4 v0.3.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
+	github.com/relvacode/iso8601 v1.7.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.36 // indirect

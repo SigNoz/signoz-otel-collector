@@ -13,6 +13,30 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// IsExceptionEvent reports whether the given span event name represents an
+// exception event per the OpenTelemetry semantic conventions.
+//
+// Recognized event names:
+//
+//   - "exception" (stable)
+//     https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-spans/
+//
+//   - "http.client.request.exception", "http.server.request.exception" (development)
+//     https://opentelemetry.io/docs/specs/semconv/http/http-exceptions/
+//
+//   - "db.client.operation.exception" (development)
+//     https://opentelemetry.io/docs/specs/semconv/db/database-exceptions/
+//
+//   - "rpc.client.call.exception", "rpc.server.call.exception" (development)
+//     https://opentelemetry.io/docs/specs/semconv/rpc/rpc-exceptions/
+//
+// The OTel semconv naming pattern for domain-specific exception events follows 
+// the pattern: "{domain}.{component}.{operation}.exception", 
+// we match on the suffix ".exception" to be forward compatible with new conventions.
+func IsExceptionEvent(eventName string) bool {
+	return eventName == "exception" || strings.HasSuffix(eventName, ".exception")
+}
+
 // This has been copied from the exporter. The exporter needs to read from here.
 type Event struct {
 	Name         string            `json:"name,omitempty"`
@@ -53,7 +77,7 @@ func NewEventsAndErrorEvents(input ptrace.SpanEventSlice, serviceName string, lo
 			return true
 		})
 		errorEvent := ErrorEvent{}
-		if event.Name == "exception" {
+		if IsExceptionEvent(event.Name) {
 			event.IsError = true
 			errorEvent.Event = event
 			uuidWithHyphen := uuid.New()
