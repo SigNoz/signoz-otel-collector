@@ -1,14 +1,5 @@
 package signozclickhouseauditexporter
 
-import (
-	"context"
-	"time"
-
-	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-)
-
 const (
 	distributedLogsTable           = "distributed_logs"
 	distributedLogsResource        = "distributed_logs_resource"
@@ -50,12 +41,3 @@ const (
 		seen_at_ts_bucket_start
 	) VALUES (?, ?, ?)`
 )
-
-func flushBatch(ctx context.Context, statement driver.Batch, tableName string, histogram metric.Float64Histogram) error {
-	start := time.Now()
-	err := statement.Send()
-	histogram.Record(ctx, float64(time.Since(start).Milliseconds()),
-		metric.WithAttributes(attribute.String("table", tableName)),
-	)
-	return err
-}

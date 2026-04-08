@@ -13,6 +13,7 @@ import (
 	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -253,12 +254,21 @@ func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	// Flush all batches in parallel
 	networkStart := time.Now()
 
+	flush := func(batch driver.Batch, table string) error {
+		sendStart := time.Now()
+		err := batch.Send()
+		e.durationHistogram.Record(ctx, float64(time.Since(sendStart).Milliseconds()),
+			metric.WithAttributes(attribute.String("table", table)),
+		)
+		return err
+	}
+
 	errc := make(chan error, 5)
-	go func() { errc <- flushBatch(ctx, insertLogsStmt, distributedLogsTable, e.durationHistogram) }()
-	go func() { errc <- flushBatch(ctx, insertResourcesStmt, distributedLogsResource, e.durationHistogram) }()
-	go func() { errc <- flushBatch(ctx, attrKeysStmt, distributedLogsAttributeKeys, e.durationHistogram) }()
-	go func() { errc <- flushBatch(ctx, resourceKeysStmt, distributedLogsResourceKeys, e.durationHistogram) }()
-	go func() { errc <- flushBatch(ctx, tagStmt, distributedTagAttributes, e.durationHistogram) }()
+	go func() { errc <- flush(insertLogsStmt, distributedLogsTable) }()
+	go func() { errc <- flush(insertResourcesStmt, distributedLogsResource) }()
+	go func() { errc <- flush(attrKeysStmt, distributedLogsAttributeKeys) }()
+	go func() { errc <- flush(resourceKeysStmt, distributedLogsResourceKeys) }()
+	go func() { errc <- flush(tagStmt, distributedTagAttributes) }()
 
 	var errs []error
 	for range 5 {
