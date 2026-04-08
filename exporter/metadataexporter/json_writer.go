@@ -48,9 +48,9 @@ type valueAccumulator struct {
 	addToUVT         func(key string, value any)
 }
 
-// guard runs the DB and UVT skip checks. When value is non-nil it also
+// shouldSkipOrTrack runs the DB and UVT skip checks. When value is non-nil it also
 // records the value in UVT. Returns true when the record should be skipped.
-func (va *valueAccumulator) guard(path string, context utils.TagType, value any) bool {
+func (va *valueAccumulator) shouldSkipOrTrack(path string, context utils.TagType, value any) bool {
 	key := utils.MakeKeyForSkipKeys(context, path)
 	if va.shouldSkipFromDB(key) {
 		return true
@@ -82,7 +82,7 @@ func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context 
 		if len(str) == 0 || len(str) > common.MaxAttributeValueLength {
 			return nil
 		}
-		if va.guard(path, context, str) {
+		if va.shouldSkipOrTrack(path, context, str) {
 			return nil
 		}
 		return va.stmt.Append(unixMilli, path, context, datatype, str, nil)
@@ -91,7 +91,7 @@ func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context 
 		if val.Type() == pcommon.ValueTypeInt {
 			floatVal = float64(val.Int())
 		}
-		if va.guard(path, context, floatVal) {
+		if va.shouldSkipOrTrack(path, context, floatVal) {
 			return nil
 		}
 		return va.stmt.Append(unixMilli, path, context, datatype, nil, floatVal)
@@ -211,7 +211,7 @@ func (w *jsonMetadataWriter) fetchSkipKeys(ctx context.Context) {
 		HAVING uniq(string_value) > %d OR uniq(number_value) > %d
 		SETTINGS max_threads = 2`,
 		distributedTagAttrsV2Table,
-		utils.TagTypeBody,
+		utils.TagTypeBodyField,
 		w.limits.MaxStringDistinctValues,
 		w.limits.MaxStringDistinctValues,
 	)
@@ -279,8 +279,8 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 				if val.Type() != pcommon.ValueTypeMap {
 					continue
 				}
-				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBody, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
-					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBody)), zap.Error(err))
+				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBodyField, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
+					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBodyField)), zap.Error(err))
 				}
 			}
 		}
@@ -301,7 +301,7 @@ func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) erro
 	}
 	defer stmt.Close()
 
-	if err := appendTypeSet(ts, pipeline.SignalLogs.String(), string(utils.TagTypeBody), stmt, time.Now().UnixNano()); err != nil {
+	if err := appendTypeSet(ts, pipeline.SignalLogs.String(), string(utils.TagTypeBodyField), stmt, time.Now().UnixNano()); err != nil {
 		return fmt.Errorf("failed to append to path types batch: %w", err)
 	}
 	return stmt.Send()

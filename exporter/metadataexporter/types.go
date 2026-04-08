@@ -44,37 +44,30 @@ const (
 )
 
 func maskToType(mask uint16) string {
-	if mask&maskString != 0 {
+	switch {
+	case mask&maskString != 0:
 		return typeString
-	}
-	if mask&maskInt != 0 {
+	case mask&maskInt != 0:
 		return typeInt64
-	}
-	if mask&maskFloat != 0 {
+	case mask&maskFloat != 0:
 		return typeFloat64
-	}
-	if mask&maskBool != 0 {
+	case mask&maskBool != 0:
 		return typeBool
-	}
-	if mask&maskArrayString != 0 {
+	case mask&maskArrayString != 0:
 		return typeArrayString
-	}
-	if mask&maskArrayInt != 0 {
+	case mask&maskArrayInt != 0:
 		return typeArrayInt64
-	}
-	if mask&maskArrayFloat != 0 {
+	case mask&maskArrayFloat != 0:
 		return typeArrayFloat64
-	}
-	if mask&maskArrayBool != 0 {
+	case mask&maskArrayBool != 0:
 		return typeArrayBool
-	}
-	if mask&maskArrayJSON != 0 {
+	case mask&maskArrayJSON != 0:
 		return typeArrayJSON
-	}
-	if mask&maskArrayDynamic != 0 {
+	case mask&maskArrayDynamic != 0:
 		return typeArrayDynamic
+	default:
+		return ""
 	}
-	return ""
 }
 
 // typeSet is a per-batch accumulator mapping JSON paths to their observed ClickHouse types.

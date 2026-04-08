@@ -256,7 +256,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 			require.NoError(t, body.FromRaw(tc.input))
 
 			ts := &typeSet{}
-			err := w.walkNode(context.Background(), "", body, 0, utils.TagTypeBody, 0, ts, va)
+			err := w.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, ts, va)
 			require.NoError(t, err)
 
 			got := map[string][]string{}
