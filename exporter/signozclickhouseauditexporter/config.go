@@ -24,9 +24,11 @@ func (cfg *Config) Validate() error {
 	if cfg.DSN == "" {
 		return errors.New("dsn must be specified")
 	}
+
 	if _, err := cfg.buildClickHouseOptions(); err != nil {
 		return fmt.Errorf("invalid dsn: %w", err)
 	}
+
 	return nil
 }
 

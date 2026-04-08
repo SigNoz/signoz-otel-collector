@@ -43,7 +43,7 @@ func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProv
 	}
 }
 
-func (e *logsExporter) start(_ context.Context, _ component.Host) error {
+func (e *logsExporter) start(ctx context.Context, _ component.Host) error {
 	options, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse options: %w", err)
@@ -54,9 +54,10 @@ func (e *logsExporter) start(_ context.Context, _ component.Host) error {
 		return fmt.Errorf("failed to open clickhouse connection: %w", err)
 	}
 
-	if err := db.Ping(context.Background()); err != nil {
+	if err := db.Ping(ctx); err != nil {
 		return fmt.Errorf("failed to ping clickhouse: %w", err)
 	}
+
 	e.db = db
 
 	e.keysCache = ttlcache.New(
@@ -108,41 +109,46 @@ func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 
 	tagStmt, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributes), driver.WithReleaseConnection())
 	if err != nil {
-		return fmt.Errorf("PrepareTagBatch: %w", err)
+		e.logger.Error("failed to prepare batch", zap.Error(err), zap.String("table", distributedTagAttributes))
+		return err
 	}
+
 	defer func() {
 		if err := tagStmt.Close(); err != nil {
-			e.logger.Warn("failed to close tag batch", zap.Error(err))
+			e.logger.Warn("failed to close batch", zap.Error(err), zap.String("table", distributedTagAttributes))
 		}
 	}()
 
 	attrKeysStmt, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
 	if err != nil {
-		return fmt.Errorf("PrepareAttributeKeysBatch: %w", err)
+		e.logger.Error("failed to prepare batch", zap.Error(err), zap.String("table", distributedLogsAttributeKeys))
+		return err
 	}
 	defer func() {
 		if err := attrKeysStmt.Close(); err != nil {
-			e.logger.Warn("failed to close attribute keys batch", zap.Error(err))
+			e.logger.Warn("failed to close batch", zap.Error(err), zap.String("table", distributedLogsAttributeKeys))
 		}
 	}()
 
 	resourceKeysStmt, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
 	if err != nil {
-		return fmt.Errorf("PrepareResourceKeysBatch: %w", err)
+		e.logger.Error("failed to prepare batch", zap.Error(err), zap.String("table", distributedLogsResourceKeys))
+		return err
 	}
 	defer func() {
 		if err := resourceKeysStmt.Close(); err != nil {
-			e.logger.Warn("failed to close resource keys batch", zap.Error(err))
+			e.logger.Warn("failed to close batch", zap.Error(err), zap.String("table", distributedLogsResourceKeys))
 		}
 	}()
 
 	insertLogsStmt, err := e.db.PrepareBatch(ctx, e.insertLogsSQL, driver.WithReleaseConnection())
 	if err != nil {
-		return fmt.Errorf("PrepareLogsBatch: %w", err)
+		e.logger.Error("failed to prepare batch", zap.Error(err), zap.String("table", distributedLogsTable))
+		return err
 	}
 	defer func() {
 		if err := insertLogsStmt.Close(); err != nil {
-			e.logger.Warn("failed to close logs batch", zap.Error(err))
+			e.logger.Warn("failed to close batch", zap.Error(err), zap.String("table", distributedLogsTable))
 		}
 	}()
 
@@ -244,9 +250,11 @@ func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 			if e.rfCache.Get(key) != nil {
 				continue
 			}
+
 			if err := insertResourcesStmt.Append(resourceLabels, fp, bucketTs); err != nil {
 				return fmt.Errorf("failed to append resource row: %w", err)
 			}
+
 			e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 		}
 	}
