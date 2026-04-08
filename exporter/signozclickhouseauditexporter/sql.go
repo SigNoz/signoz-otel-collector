@@ -1,6 +1,7 @@
 package signozclickhouseauditexporter
 
 const (
+	databaseName                   = "signoz_audit"
 	distributedLogsTable           = "distributed_logs"
 	distributedLogsResource        = "distributed_logs_resource"
 	distributedLogsAttributeKeys   = "distributed_logs_attribute_keys"

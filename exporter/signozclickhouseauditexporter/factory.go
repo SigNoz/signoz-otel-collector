@@ -12,10 +12,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
 )
 
-const (
-	databaseName = "signoz_audit"
-)
-
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		metadata.Type,
