@@ -1,0 +1,9 @@
+type: signozauditexporter
+status:
+  class: exporter
+  stability:
+    beta: [logs]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
