@@ -67,13 +67,13 @@ const (
 	) VALUES (?, ?, ?)`
 )
 
-type attributeMap struct {
+type typedAttributes struct {
 	StringData map[string]string
 	NumberData map[string]float64
 	BoolData   map[string]bool
 }
 
-type statementSendDuration struct {
+type batchFlushDuration struct {
 	Name     string
 	duration time.Duration
 }
@@ -165,7 +165,7 @@ func (e *signozAuditExporter) pushLogsData(ctx context.Context, ld plog.Logs) er
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	err := e.pushToClickhouse(ctx, ld)
+	err := e.exportLogs(ctx, ld)
 	if err != nil {
 		if strings.Contains(err.Error(), "code: 252") {
 			e.logger.Warn("too many partitions for single INSERT block, dropping the batch")
@@ -176,7 +176,7 @@ func (e *signozAuditExporter) pushLogsData(ctx context.Context, ld plog.Logs) er
 	return nil
 }
 
-func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
+func (e *signozAuditExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	start := time.Now()
 	const batchCount = 5
 
@@ -236,7 +236,7 @@ func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs
 	for i := range ld.ResourceLogs().Len() {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
-		resourcesMap := attributesToMap(res.Attributes(), true)
+		resourcesMap := convertAttributes(res.Attributes(), true)
 		serializedRes, err := json.Marshal(resourcesMap.StringData)
 		if err != nil {
 			return fmt.Errorf("failed to marshal resource attributes: %w", err)
@@ -247,7 +247,7 @@ func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs
 			scope := logs.ScopeLogs().At(j).Scope()
 			scopeName := scope.Name()
 			scopeVersion := scope.Version()
-			scopeMap := attributesToMap(scope.Attributes(), true)
+			scopeMap := convertAttributes(scope.Attributes(), true)
 
 			records := logs.ScopeLogs().At(j).LogRecords()
 			for k := range records.Len() {
@@ -267,15 +267,15 @@ func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs
 					return fmt.Errorf("failed to generate id: %w", err)
 				}
 
-				lBucketStart := tsBucket(int64(ts/1000000000), distributedLogsResourceSeconds)
+				lBucketStart := bucketTimestamp(int64(ts/1000000000), distributedLogsResourceSeconds)
 
-				fp := getOrCreateFingerprint(resourcesSeen, lBucketStart, resourceJSON, res)
-				attrsMap := attributesToMap(record.Attributes(), false)
+				fp := resolveFingerprint(resourcesSeen, lBucketStart, resourceJSON, res)
+				attrsMap := convertAttributes(record.Attributes(), false)
 
 				// Add attributes to tag and keys statements
-				e.addAttrsToTagStatement(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeResource, resourcesMap)
-				e.addAttrsToTagStatement(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeScope, scopeMap)
-				e.addAttrsToTagStatement(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attrsMap)
+				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeResource, resourcesMap)
+				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeScope, scopeMap)
+				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attrsMap)
 
 				// Build column values as slice (19 columns)
 				columnValues := make([]any, 0, 19)
@@ -339,14 +339,14 @@ func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs
 
 	var wg sync.WaitGroup
 	chErr := make(chan error, batchCount)
-	chDuration := make(chan statementSendDuration, batchCount)
+	chDuration := make(chan batchFlushDuration, batchCount)
 
 	wg.Add(batchCount)
-	go send(insertLogsStmt, distributedLogsTable, chDuration, chErr, &wg)
-	go send(insertResourcesStmt, distributedLogsResource, chDuration, chErr, &wg)
-	go send(attrKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
-	go send(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
-	go send(tagStmt, distributedTagAttributes, chDuration, chErr, &wg)
+	go flushBatch(insertLogsStmt, distributedLogsTable, chDuration, chErr, &wg)
+	go flushBatch(insertResourcesStmt, distributedLogsResource, chDuration, chErr, &wg)
+	go flushBatch(attrKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
+	go flushBatch(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
+	go flushBatch(tagStmt, distributedTagAttributes, chDuration, chErr, &wg)
 	wg.Wait()
 	close(chErr)
 
@@ -378,12 +378,12 @@ func (e *signozAuditExporter) pushToClickhouse(ctx context.Context, ld plog.Logs
 	return nil
 }
 
-func (e *signozAuditExporter) addAttrsToTagStatement(
+func (e *signozAuditExporter) appendTagAttributes(
 	tagStmt driver.Batch,
 	attrKeysStmt driver.Batch,
 	resourceKeysStmt driver.Batch,
 	tagType utils.TagType,
-	attrs attributeMap,
+	attrs typedAttributes,
 ) {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	now := time.Now()
@@ -392,7 +392,7 @@ func (e *signozAuditExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(key) {
 			continue
 		}
-		e.addAttrsToKeysStatement(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeString, now)
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeString, now)
 
 		// 7 columns: unix_milli, tag_key, tag_type, tag_data_type, string_value, int64_value, float64_value
 		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeString, val, (*int64)(nil), (*float64)(nil))
@@ -402,7 +402,7 @@ func (e *signozAuditExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(key) {
 			continue
 		}
-		e.addAttrsToKeysStatement(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeNumber, now)
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeNumber, now)
 
 		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeNumber, "", (*int64)(nil), &val)
 	}
@@ -411,13 +411,13 @@ func (e *signozAuditExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(key) {
 			continue
 		}
-		e.addAttrsToKeysStatement(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeBool, now)
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeBool, now)
 
 		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeBool, "", (*int64)(nil), (*float64)(nil))
 	}
 }
 
-func (e *signozAuditExporter) addAttrsToKeysStatement(
+func (e *signozAuditExporter) appendAttributeKey(
 	attrKeysStmt driver.Batch,
 	resourceKeysStmt driver.Batch,
 	key string,
@@ -443,11 +443,11 @@ func (e *signozAuditExporter) addAttrsToKeysStatement(
 	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
 }
 
-func tsBucket(ts int64, bucketSize int64) int64 {
+func bucketTimestamp(ts int64, bucketSize int64) int64 {
 	return (ts / bucketSize) * bucketSize
 }
 
-func getOrCreateFingerprint(
+func resolveFingerprint(
 	resourcesSeen map[int64]map[string]string,
 	bucket int64,
 	resourceJSON string,
@@ -466,8 +466,8 @@ func getOrCreateFingerprint(
 	return fp
 }
 
-func attributesToMap(attributes pcommon.Map, forceStringValues bool) attributeMap {
-	result := attributeMap{
+func convertAttributes(attributes pcommon.Map, forceStringValues bool) typedAttributes {
+	result := typedAttributes{
 		StringData: make(map[string]string),
 		NumberData: make(map[string]float64),
 		BoolData:   make(map[string]bool),
@@ -492,12 +492,12 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) attributeMa
 	return result
 }
 
-func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
+func flushBatch(statement driver.Batch, tableName string, durationCh chan<- batchFlushDuration, chErr chan<- error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	start := time.Now()
 	err := statement.Send()
 	chErr <- err
-	durationCh <- statementSendDuration{
+	durationCh <- batchFlushDuration{
 		Name:     tableName,
 		duration: time.Since(start),
 	}
