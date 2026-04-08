@@ -1,4 +1,4 @@
-package signozauditexporter
+package signozclickhouseauditexporter
 
 import (
 	"errors"

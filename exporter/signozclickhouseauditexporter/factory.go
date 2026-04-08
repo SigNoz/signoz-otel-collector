@@ -1,4 +1,4 @@
-package signozauditexporter
+package signozclickhouseauditexporter
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-otel-collector/exporter/signozauditexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
 )
 
 const (

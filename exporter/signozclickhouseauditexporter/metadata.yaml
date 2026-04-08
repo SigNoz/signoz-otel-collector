@@ -1,4 +1,4 @@
-type: signozauditexporter
+type: signozclickhouseaudit
 status:
   class: exporter
   stability:

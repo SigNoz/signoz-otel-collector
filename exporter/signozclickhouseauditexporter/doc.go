@@ -1,3 +1,3 @@
 //go:generate mdatagen metadata.yaml
 
-package signozauditexporter
+package signozclickhouseauditexporter
