@@ -13,7 +13,6 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/otel/attribute"
@@ -21,63 +20,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
-	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
-
-const (
-	distributedLogsTable           = "distributed_logs"
-	distributedLogsResource        = "distributed_logs_resource"
-	distributedLogsAttributeKeys   = "distributed_logs_attribute_keys"
-	distributedLogsResourceKeys    = "distributed_logs_resource_keys"
-	distributedTagAttributes       = "distributed_tag_attributes"
-	distributedLogsResourceSeconds = 1800
-
-	// language=ClickHouse SQL
-	insertLogsSQLTemplate = `INSERT INTO %s.%s (
-		ts_bucket_start,
-		resource_fingerprint,
-		timestamp,
-		observed_timestamp,
-		id,
-		trace_id,
-		span_id,
-		trace_flags,
-		severity_text,
-		severity_number,
-		body,
-		scope_name,
-		scope_version,
-		scope_string,
-		attributes_string,
-		attributes_number,
-		attributes_bool,
-		resource,
-		event_name
-	) VALUES (
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?
-	)`
-
-	// language=ClickHouse SQL
-	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
-		labels,
-		fingerprint,
-		seen_at_ts_bucket_start
-	) VALUES (?, ?, ?)`
-)
-
-type typedAttributes struct {
-	StringData map[string]string
-	NumberData map[string]float64
-	BoolData   map[string]bool
-}
-
-type batchFlushDuration struct {
-	Name     string
-	duration time.Duration
-}
 
 type signozAuditExporter struct {
 	db                clickhouse.Conn
@@ -111,7 +55,6 @@ func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProv
 // start initializes all runtime resources: ClickHouse connection, TTL caches,
 // and metrics. Called by the collector lifecycle, not during factory construction.
 func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
-	// ClickHouse connection
 	options, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse options: %w", err)
@@ -127,7 +70,6 @@ func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
 	}
 	e.db = db
 
-	// TTL caches for deduplication
 	e.keysCache = ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](240*time.Minute),
 		ttlcache.WithCapacity[string, struct{}](50000),
@@ -142,7 +84,6 @@ func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
 	)
 	go e.rfCache.Start()
 
-	// Metrics
 	meter := e.meterProvider.Meter(metadata.ScopeName)
 	e.durationHistogram, err = meter.Float64Histogram(
 		"exporter_db_write_latency",
@@ -284,12 +225,10 @@ func (e *signozAuditExporter) exportLogs(ctx context.Context, ld plog.Logs) erro
 				fp := resolveFingerprint(resourcesSeen, lBucketStart, resourceJSON, res)
 				attrsMap := convertAttributes(record.Attributes(), false)
 
-				// Add attributes to tag and keys statements
 				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeResource, resourcesMap)
 				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeScope, scopeMap)
 				e.appendTagAttributes(tagStmt, attrKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, attrsMap)
 
-				// Build column values as slice (19 columns)
 				columnValues := make([]any, 0, 19)
 				columnValues = append(columnValues,
 					uint64(lBucketStart),
@@ -388,129 +327,4 @@ func (e *signozAuditExporter) exportLogs(ctx context.Context, ld plog.Logs) erro
 	)
 
 	return nil
-}
-
-func (e *signozAuditExporter) appendTagAttributes(
-	tagStmt driver.Batch,
-	attrKeysStmt driver.Batch,
-	resourceKeysStmt driver.Batch,
-	tagType utils.TagType,
-	attrs typedAttributes,
-) {
-	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
-	now := time.Now()
-
-	for key, val := range attrs.StringData {
-		if keycheck.IsRandomKey(key) {
-			continue
-		}
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeString, now)
-
-		// 7 columns: unix_milli, tag_key, tag_type, tag_data_type, string_value, int64_value, float64_value
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeString, val, (*int64)(nil), (*float64)(nil))
-	}
-
-	for key, val := range attrs.NumberData {
-		if keycheck.IsRandomKey(key) {
-			continue
-		}
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeNumber, now)
-
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeNumber, "", (*int64)(nil), &val)
-	}
-
-	for key := range attrs.BoolData {
-		if keycheck.IsRandomKey(key) {
-			continue
-		}
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeBool, now)
-
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeBool, "", (*int64)(nil), (*float64)(nil))
-	}
-}
-
-func (e *signozAuditExporter) appendAttributeKey(
-	attrKeysStmt driver.Batch,
-	resourceKeysStmt driver.Batch,
-	key string,
-	tagType utils.TagType,
-	datatype utils.TagDataType,
-	now time.Time,
-) {
-	if keycheck.IsRandomKey(key) {
-		return
-	}
-	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
-	if item := e.keysCache.Get(cacheKey); item != nil {
-		return
-	}
-
-	// Audit keys tables have 3 columns: name, datatype, timestamp (no DEFAULT on timestamp)
-	switch tagType {
-	case utils.TagTypeResource:
-		_ = resourceKeysStmt.Append(key, string(datatype), now)
-	case utils.TagTypeAttribute:
-		_ = attrKeysStmt.Append(key, string(datatype), now)
-	}
-	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
-}
-
-func bucketTimestamp(ts int64, bucketSize int64) int64 {
-	return (ts / bucketSize) * bucketSize
-}
-
-func resolveFingerprint(
-	resourcesSeen map[int64]map[string]string,
-	bucket int64,
-	resourceJSON string,
-	res pcommon.Resource,
-) string {
-	inner, ok := resourcesSeen[bucket]
-	if !ok {
-		inner = make(map[string]string)
-		resourcesSeen[bucket] = inner
-	}
-	if fp, exists := inner[resourceJSON]; exists {
-		return fp
-	}
-	fp := fingerprint.CalculateFingerprint(res.Attributes().AsRaw(), fingerprint.ResourceHierarchy())
-	inner[resourceJSON] = fp
-	return fp
-}
-
-func convertAttributes(attributes pcommon.Map, forceStringValues bool) typedAttributes {
-	result := typedAttributes{
-		StringData: make(map[string]string),
-		NumberData: make(map[string]float64),
-		BoolData:   make(map[string]bool),
-	}
-	attributes.Range(func(k string, v pcommon.Value) bool {
-		if forceStringValues {
-			result.StringData[k] = v.AsString()
-		} else {
-			switch v.Type() {
-			case pcommon.ValueTypeInt:
-				result.NumberData[k] = float64(v.Int())
-			case pcommon.ValueTypeDouble:
-				result.NumberData[k] = v.Double()
-			case pcommon.ValueTypeBool:
-				result.BoolData[k] = v.Bool()
-			default:
-				result.StringData[k] = v.AsString()
-			}
-		}
-		return true
-	})
-	return result
-}
-
-func flushBatch(statement driver.Batch, tableName string, durationCh chan<- batchFlushDuration, chErr chan<- error, wg *sync.WaitGroup) {
-	defer wg.Done()
-	start := time.Now()
-	err := statement.Send()
-	chErr <- err
-	durationCh <- batchFlushDuration{
-		Name:     tableName,
-		duration: time.Since(start),
-	}
 }
