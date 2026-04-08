@@ -5,5 +5,7 @@ status:
     beta: [logs]
 
 tests:
+  config:
+    dsn: tcp://localhost:9000
   skip_lifecycle: true
   skip_shutdown: true
