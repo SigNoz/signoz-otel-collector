@@ -5,7 +5,6 @@ import (
 	"time"
 
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -56,10 +55,7 @@ func flushBatch(ctx context.Context, statement driver.Batch, tableName string, h
 	start := time.Now()
 	err := statement.Send()
 	histogram.Record(ctx, float64(time.Since(start).Milliseconds()),
-		metric.WithAttributes(
-			attribute.String("table", tableName),
-			attribute.String("exporter", pipeline.SignalLogs.String()),
-		),
+		metric.WithAttributes(attribute.String("table", tableName)),
 	)
 	return err
 }
