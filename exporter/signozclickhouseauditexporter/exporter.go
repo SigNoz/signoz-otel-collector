@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -83,8 +84,9 @@ type signozAuditExporter struct {
 	insertLogsSQL     string
 	insertResourceSQL string
 
-	logger *zap.Logger
-	cfg    *Config
+	logger        *zap.Logger
+	cfg           *Config
+	meterProvider metric.MeterProvider
 
 	wg        *sync.WaitGroup
 	closeChan chan struct{}
@@ -94,39 +96,22 @@ type signozAuditExporter struct {
 	rfCache           *ttlcache.Cache[string, struct{}]
 }
 
-func newExporter(
-	logger *zap.Logger,
-	cfg *Config,
-	keysCache *ttlcache.Cache[string, struct{}],
-	rfCache *ttlcache.Cache[string, struct{}],
-	meter metric.Meter,
-) (*signozAuditExporter, error) {
-	durationHistogram, err := meter.Float64Histogram(
-		"exporter_db_write_latency",
-		metric.WithDescription("Time taken to write audit data to ClickHouse"),
-		metric.WithUnit("ms"),
-		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating duration histogram: %w", err)
-	}
-
+func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProvider) *signozAuditExporter {
 	return &signozAuditExporter{
 		insertLogsSQL:     fmt.Sprintf(insertLogsSQLTemplate, databaseName, distributedLogsTable),
 		insertResourceSQL: fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResource),
 		logger:            logger,
 		cfg:               cfg,
+		meterProvider:     meterProvider,
 		wg:                new(sync.WaitGroup),
 		closeChan:         make(chan struct{}),
-		durationHistogram: durationHistogram,
-		keysCache:         keysCache,
-		rfCache:           rfCache,
-	}, nil
+	}
 }
 
-// start opens the ClickHouse connection. Called by the collector lifecycle,
-// not during factory construction — so config validation doesn't make network calls.
+// start initializes all runtime resources: ClickHouse connection, TTL caches,
+// and metrics. Called by the collector lifecycle, not during factory construction.
 func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
+	// ClickHouse connection
 	options, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse options: %w", err)
@@ -140,8 +125,35 @@ func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
 	if err := db.Ping(context.Background()); err != nil {
 		return fmt.Errorf("failed to ping clickhouse: %w", err)
 	}
-
 	e.db = db
+
+	// TTL caches for deduplication
+	e.keysCache = ttlcache.New(
+		ttlcache.WithTTL[string, struct{}](240*time.Minute),
+		ttlcache.WithCapacity[string, struct{}](50000),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+	)
+	go e.keysCache.Start()
+
+	e.rfCache = ttlcache.New(
+		ttlcache.WithTTL[string, struct{}](distributedLogsResourceSeconds*time.Second),
+		ttlcache.WithDisableTouchOnHit[string, struct{}](),
+		ttlcache.WithCapacity[string, struct{}](100000),
+	)
+	go e.rfCache.Start()
+
+	// Metrics
+	meter := e.meterProvider.Meter(metadata.ScopeName)
+	e.durationHistogram, err = meter.Float64Histogram(
+		"exporter_db_write_latency",
+		metric.WithDescription("Time taken to write audit data to ClickHouse"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(250, 500, 750, 1000, 2000, 2500, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 25000, 30000),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create duration histogram: %w", err)
+	}
+
 	return nil
 }
 

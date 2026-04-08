@@ -2,10 +2,7 @@ package signozclickhouseauditexporter
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
@@ -42,25 +39,7 @@ func createLogsExporter(
 ) (exporter.Logs, error) {
 	c := cfg.(*Config)
 
-	keysCache := ttlcache.New(
-		ttlcache.WithTTL[string, struct{}](240*time.Minute),
-		ttlcache.WithCapacity[string, struct{}](50000),
-		ttlcache.WithDisableTouchOnHit[string, struct{}](),
-	)
-	go keysCache.Start()
-
-	rfCache := ttlcache.New(
-		ttlcache.WithTTL[string, struct{}](distributedLogsResourceSeconds*time.Second),
-		ttlcache.WithDisableTouchOnHit[string, struct{}](),
-		ttlcache.WithCapacity[string, struct{}](100000),
-	)
-	go rfCache.Start()
-
-	meter := set.MeterProvider.Meter(metadata.ScopeName)
-	exp, err := newExporter(set.Logger, c, keysCache, rfCache, meter)
-	if err != nil {
-		return nil, fmt.Errorf("cannot configure signoz audit exporter: %w", err)
-	}
+	exp := newExporter(set.Logger, c, set.MeterProvider)
 
 	return exporterhelper.NewLogs(
 		ctx,
