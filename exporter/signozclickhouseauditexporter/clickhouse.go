@@ -2,7 +2,6 @@ package signozclickhouseauditexporter
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -53,14 +52,14 @@ const (
 	) VALUES (?, ?, ?)`
 )
 
-func flushBatch(ctx context.Context, statement driver.Batch, tableName string, histogram metric.Float64Histogram, err chan<- error, wg *sync.WaitGroup) {
-	defer wg.Done()
+func flushBatch(ctx context.Context, statement driver.Batch, tableName string, histogram metric.Float64Histogram) error {
 	start := time.Now()
-	err <- statement.Send()
+	err := statement.Send()
 	histogram.Record(ctx, float64(time.Since(start).Milliseconds()),
 		metric.WithAttributes(
 			attribute.String("table", tableName),
 			attribute.String("exporter", pipeline.SignalLogs.String()),
 		),
 	)
+	return err
 }

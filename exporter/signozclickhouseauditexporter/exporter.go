@@ -2,8 +2,8 @@ package signozclickhouseauditexporter
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -253,25 +253,24 @@ func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	// Flush all batches in parallel
 	networkStart := time.Now()
 
-	var wg sync.WaitGroup
-	batchCount := 5
-	batcherr := make(chan error, batchCount)
+	errc := make(chan error, 5)
+	go func() { errc <- flushBatch(ctx, insertLogsStmt, distributedLogsTable, e.durationHistogram) }()
+	go func() { errc <- flushBatch(ctx, insertResourcesStmt, distributedLogsResource, e.durationHistogram) }()
+	go func() { errc <- flushBatch(ctx, attrKeysStmt, distributedLogsAttributeKeys, e.durationHistogram) }()
+	go func() { errc <- flushBatch(ctx, resourceKeysStmt, distributedLogsResourceKeys, e.durationHistogram) }()
+	go func() { errc <- flushBatch(ctx, tagStmt, distributedTagAttributes, e.durationHistogram) }()
 
-	wg.Add(batchCount)
-	go flushBatch(ctx, insertLogsStmt, distributedLogsTable, e.durationHistogram, batcherr, &wg)
-	go flushBatch(ctx, insertResourcesStmt, distributedLogsResource, e.durationHistogram, batcherr, &wg)
-	go flushBatch(ctx, attrKeysStmt, distributedLogsAttributeKeys, e.durationHistogram, batcherr, &wg)
-	go flushBatch(ctx, resourceKeysStmt, distributedLogsResourceKeys, e.durationHistogram, batcherr, &wg)
-	go flushBatch(ctx, tagStmt, distributedTagAttributes, e.durationHistogram, batcherr, &wg)
-	wg.Wait()
-	close(batcherr)
+	var errs []error
+	for range 5 {
+		if err := <-errc; err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	networkDuration := time.Since(networkStart)
 
-	for err := range batcherr {
-		if err != nil {
-			return fmt.Errorf("failed to send batch: %w", err)
-		}
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to send batches: %w", errors.Join(errs...))
 	}
 
 	e.logger.Debug("insert audit logs",
