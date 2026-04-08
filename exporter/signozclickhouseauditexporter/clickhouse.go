@@ -1,10 +1,14 @@
 package signozclickhouseauditexporter
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -49,18 +53,14 @@ const (
 	) VALUES (?, ?, ?)`
 )
 
-type batchFlushDuration struct {
-	Name     string
-	duration time.Duration
-}
-
-func flushBatch(statement driver.Batch, tableName string, durationCh chan<- batchFlushDuration, chErr chan<- error, wg *sync.WaitGroup) {
+func flushBatch(ctx context.Context, statement driver.Batch, tableName string, histogram metric.Float64Histogram, err chan<- error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	start := time.Now()
-	err := statement.Send()
-	chErr <- err
-	durationCh <- batchFlushDuration{
-		Name:     tableName,
-		duration: time.Since(start),
-	}
+	err <- statement.Send()
+	histogram.Record(ctx, float64(time.Since(start).Milliseconds()),
+		metric.WithAttributes(
+			attribute.String("table", tableName),
+			attribute.String("exporter", pipeline.SignalLogs.String()),
+		),
+	)
 }

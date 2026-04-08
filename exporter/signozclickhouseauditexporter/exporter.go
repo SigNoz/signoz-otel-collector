@@ -3,7 +3,6 @@ package signozclickhouseauditexporter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.opentelemetry.io/collector/pipeline"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -24,17 +21,12 @@ import (
 )
 
 type logsExporter struct {
+	logger            *zap.Logger
+	cfg               *Config
 	db                clickhouse.Conn
 	insertLogsSQL     string
 	insertResourceSQL string
-
-	logger        *zap.Logger
-	cfg           *Config
-	meterProvider metric.MeterProvider
-
-	wg        *sync.WaitGroup
-	closeChan chan struct{}
-
+	meterProvider     metric.MeterProvider
 	durationHistogram metric.Float64Histogram
 	keysCache         *ttlcache.Cache[string, struct{}]
 	rfCache           *ttlcache.Cache[string, struct{}]
@@ -42,18 +34,14 @@ type logsExporter struct {
 
 func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProvider) *logsExporter {
 	return &logsExporter{
-		insertLogsSQL:     fmt.Sprintf(insertLogsSQLTemplate, databaseName, distributedLogsTable),
-		insertResourceSQL: fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResource),
 		logger:            logger,
 		cfg:               cfg,
+		insertLogsSQL:     fmt.Sprintf(insertLogsSQLTemplate, databaseName, distributedLogsTable),
+		insertResourceSQL: fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResource),
 		meterProvider:     meterProvider,
-		wg:                new(sync.WaitGroup),
-		closeChan:         make(chan struct{}),
 	}
 }
 
-// start initializes all runtime resources: ClickHouse connection, TTL caches,
-// and metrics. Called by the collector lifecycle, not during factory construction.
 func (e *logsExporter) start(_ context.Context, _ component.Host) error {
 	options, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
@@ -99,47 +87,24 @@ func (e *logsExporter) start(_ context.Context, _ component.Host) error {
 }
 
 func (e *logsExporter) shutdown(_ context.Context) error {
-	close(e.closeChan)
-	e.wg.Wait()
-
 	if e.keysCache != nil {
 		e.keysCache.Stop()
 	}
+
 	if e.rfCache != nil {
 		e.rfCache.Stop()
 	}
+
 	if e.db != nil {
 		return e.db.Close()
 	}
+
 	return nil
 }
 
 func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
-	e.wg.Add(1)
-	defer e.wg.Done()
-
-	err := e.exportLogs(ctx, ld)
-	if err != nil {
-		if strings.Contains(err.Error(), "code: 252") {
-			e.logger.Warn("too many partitions for single INSERT block, dropping the batch")
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
-func (e *logsExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	start := time.Now()
-	const batchCount = 5
 
-	select {
-	case <-e.closeChan:
-		return fmt.Errorf("shutdown has been called")
-	default:
-	}
-
-	// Prepare batch statements
 	tagStmt, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributes), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareTagBatch: %w", err)
@@ -264,7 +229,7 @@ func (e *logsExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	// Prepare and append resource fingerprints
 	insertResourcesStmt, err := e.db.PrepareBatch(ctx, e.insertResourceSQL, driver.WithReleaseConnection())
 	if err != nil {
-		return fmt.Errorf("PrepareResourcesBatch: %w", err)
+		return fmt.Errorf("failed to prepare resources statement: %w", err)
 	}
 	defer func() {
 		if err := insertResourcesStmt.Close(); err != nil {
@@ -289,31 +254,21 @@ func (e *logsExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	networkStart := time.Now()
 
 	var wg sync.WaitGroup
-	chErr := make(chan error, batchCount)
-	chDuration := make(chan batchFlushDuration, batchCount)
+	batchCount := 5
+	batcherr := make(chan error, batchCount)
 
 	wg.Add(batchCount)
-	go flushBatch(insertLogsStmt, distributedLogsTable, chDuration, chErr, &wg)
-	go flushBatch(insertResourcesStmt, distributedLogsResource, chDuration, chErr, &wg)
-	go flushBatch(attrKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
-	go flushBatch(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
-	go flushBatch(tagStmt, distributedTagAttributes, chDuration, chErr, &wg)
+	go flushBatch(ctx, insertLogsStmt, distributedLogsTable, e.durationHistogram, batcherr, &wg)
+	go flushBatch(ctx, insertResourcesStmt, distributedLogsResource, e.durationHistogram, batcherr, &wg)
+	go flushBatch(ctx, attrKeysStmt, distributedLogsAttributeKeys, e.durationHistogram, batcherr, &wg)
+	go flushBatch(ctx, resourceKeysStmt, distributedLogsResourceKeys, e.durationHistogram, batcherr, &wg)
+	go flushBatch(ctx, tagStmt, distributedTagAttributes, e.durationHistogram, batcherr, &wg)
 	wg.Wait()
-	close(chErr)
+	close(batcherr)
 
 	networkDuration := time.Since(networkStart)
 
-	for range batchCount {
-		d := <-chDuration
-		e.durationHistogram.Record(ctx, float64(d.duration.Milliseconds()),
-			metric.WithAttributes(
-				attribute.String("table", d.Name),
-				attribute.String("exporter", pipeline.SignalLogs.String()),
-			),
-		)
-	}
-
-	for err := range chErr {
+	for err := range batcherr {
 		if err != nil {
 			return fmt.Errorf("failed to send batch: %w", err)
 		}
@@ -327,4 +282,40 @@ func (e *logsExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	)
 
 	return nil
+}
+
+func (e *logsExporter) appendTagAttributes(tagStmt driver.Batch, attrKeysStmt driver.Batch, resourceKeysStmt driver.Batch, tagType utils.TagType, attrs typedAttributes) {
+	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
+	now := time.Now()
+
+	for key, val := range attrs.StringData {
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeString, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeString, val, (*int64)(nil), (*float64)(nil))
+	}
+
+	for key, val := range attrs.NumberData {
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeNumber, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeNumber, "", (*int64)(nil), &val)
+	}
+
+	for key := range attrs.BoolData {
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeBool, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeBool, "", (*int64)(nil), (*float64)(nil))
+	}
+}
+
+func (e *logsExporter) appendAttributeKey(attrKeysStmt driver.Batch, resourceKeysStmt driver.Batch, key string, tagType utils.TagType, datatype utils.TagDataType, now time.Time) {
+	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
+	if item := e.keysCache.Get(cacheKey); item != nil {
+		return
+	}
+
+	switch tagType {
+	case utils.TagTypeResource:
+		_ = resourceKeysStmt.Append(key, string(datatype), now)
+	case utils.TagTypeAttribute:
+		_ = attrKeysStmt.Append(key, string(datatype), now)
+	}
+
+	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
 }
