@@ -1,0 +1,144 @@
+# Full valid config — llm + agent + tool groups matching the spec.
+signozaimappingprocessor:
+  groups:
+    - id: llm
+      exists_any:
+        attributes:
+          - "*model*"
+        resource:
+          - "service.name*"
+      attributes:
+        - target: gen_ai.request.model
+          context: resource
+          sources:
+            - gen_ai.llm.model
+            - llm.model
+            - resource.service.name
+        - target: gen_ai.request.tokens
+          sources:
+            - gen_ai.request_tokens
+            - llm.tokens
+        - target: gen_ai.request.input
+          action: move
+          sources:
+            - gen_ai.input
+            - llm.input
+
+    - id: agent
+      exists_any:
+        attributes:
+          - "agent.*"
+      attributes:
+        - target: gen_ai.agent.name
+          sources:
+            - agent.name
+            - llm.agent.name
+        - target: gen_ai.agent.id
+          sources:
+            - gen_ai.agent.id
+            - llm.agent.id
+
+    - id: tool
+      exists_any:
+        attributes:
+          - "agent.*"
+      attributes:
+        - target: gen_ai.tool.name
+          sources:
+            - ai.tool.name
+            - llm.tool.name
+
+# Only resource-based exists_any.
+signozaimappingprocessor/resource_only:
+  groups:
+    - id: res
+      exists_any:
+        resource:
+          - "service.*"
+      attributes:
+        - target: gen_ai.service
+          sources:
+            - resource.service.name
+
+# Defaults: no action, no context — must accept as valid.
+signozaimappingprocessor/defaults:
+  groups:
+    - id: defaults
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources:
+            - src
+
+# Invalid: exists_any has no patterns at all.
+signozaimappingprocessor/no_patterns:
+  groups:
+    - id: bad
+      exists_any: {}
+      attributes:
+        - target: dst
+          sources:
+            - src
+
+# Invalid: malformed glob pattern.
+signozaimappingprocessor/bad_glob:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "[unclosed"
+      attributes:
+        - target: dst
+          sources:
+            - src
+
+# Invalid: empty target.
+signozaimappingprocessor/empty_target:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: ""
+          sources:
+            - src
+
+# Invalid: no sources.
+signozaimappingprocessor/no_sources:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources: []
+
+# Invalid: unknown context value.
+signozaimappingprocessor/bad_context:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          context: span
+          sources:
+            - src
+
+# Invalid: unknown action value.
+signozaimappingprocessor/bad_action:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          action: delete
+          sources:
+            - src
