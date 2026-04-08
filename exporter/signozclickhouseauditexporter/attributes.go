@@ -44,7 +44,7 @@ func convertAttributes(attributes pcommon.Map, forceStringValues bool) typedAttr
 	return result
 }
 
-func (e *signozAuditExporter) appendTagAttributes(
+func (e *logsExporter) appendTagAttributes(
 	tagStmt driver.Batch,
 	attrKeysStmt driver.Batch,
 	resourceKeysStmt driver.Batch,
@@ -83,7 +83,7 @@ func (e *signozAuditExporter) appendTagAttributes(
 	}
 }
 
-func (e *signozAuditExporter) appendAttributeKey(
+func (e *logsExporter) appendAttributeKey(
 	attrKeysStmt driver.Batch,
 	resourceKeysStmt driver.Batch,
 	key string,

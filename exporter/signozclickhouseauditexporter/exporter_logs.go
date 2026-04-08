@@ -23,7 +23,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
-type signozAuditExporter struct {
+type logsExporter struct {
 	db                clickhouse.Conn
 	insertLogsSQL     string
 	insertResourceSQL string
@@ -40,8 +40,8 @@ type signozAuditExporter struct {
 	rfCache           *ttlcache.Cache[string, struct{}]
 }
 
-func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProvider) *signozAuditExporter {
-	return &signozAuditExporter{
+func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProvider) *logsExporter {
+	return &logsExporter{
 		insertLogsSQL:     fmt.Sprintf(insertLogsSQLTemplate, databaseName, distributedLogsTable),
 		insertResourceSQL: fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResource),
 		logger:            logger,
@@ -54,7 +54,7 @@ func newExporter(logger *zap.Logger, cfg *Config, meterProvider metric.MeterProv
 
 // start initializes all runtime resources: ClickHouse connection, TTL caches,
 // and metrics. Called by the collector lifecycle, not during factory construction.
-func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
+func (e *logsExporter) start(_ context.Context, _ component.Host) error {
 	options, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
 		return fmt.Errorf("failed to build clickhouse options: %w", err)
@@ -98,7 +98,7 @@ func (e *signozAuditExporter) start(_ context.Context, _ component.Host) error {
 	return nil
 }
 
-func (e *signozAuditExporter) shutdown(_ context.Context) error {
+func (e *logsExporter) shutdown(_ context.Context) error {
 	close(e.closeChan)
 	e.wg.Wait()
 
@@ -114,7 +114,7 @@ func (e *signozAuditExporter) shutdown(_ context.Context) error {
 	return nil
 }
 
-func (e *signozAuditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
+func (e *logsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
@@ -129,7 +129,7 @@ func (e *signozAuditExporter) pushLogsData(ctx context.Context, ld plog.Logs) er
 	return nil
 }
 
-func (e *signozAuditExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
+func (e *logsExporter) exportLogs(ctx context.Context, ld plog.Logs) error {
 	start := time.Now()
 	const batchCount = 5
 
