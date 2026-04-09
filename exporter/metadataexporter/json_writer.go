@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	distributedPathTypesTable  = constants.SignozMetadataDB + "." + constants.DistributedPathTypesTable
+	distributedFieldKeysTable  = constants.SignozMetadataDB + "." + constants.DistributedFieldKeysTable
 	distributedTagAttrsV2Table = "signoz_logs.distributed_tag_attributes_v2"
 
 	jsonArraySuffix  = "[]"
@@ -294,7 +294,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 
 // flushTypeSet writes all path-type records for the body source to distributed_json_path_types.
 func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) error {
-	sql := fmt.Sprintf("INSERT INTO %s (signal, context, path, type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedPathTypesTable)
+	sql := fmt.Sprintf("INSERT INTO %s (signal, context, name, type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedFieldKeysTable)
 	stmt, err := w.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("failed to prepare path types batch: %w", err)

@@ -34,7 +34,7 @@ func newAttributeMetadataWriter(e *metadataExporter) *attributeMetadataWriter {
 }
 
 func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
-	stmt, err := w.conn.PrepareBatch(ctx, insertStmtQuery)
+	stmt, err := w.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		w.logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil
