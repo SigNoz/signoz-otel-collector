@@ -274,14 +274,14 @@ ORDER BY name ASC`,
 				Table:    constants.LocalFieldKeysTable,
 				Columns: []Column{
 					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.FieldKeysTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
-						OrderBy:     fmt.Sprintf("(signal, context, %s, %s)", constants.FieldKeysTableNameColumn, constants.FieldKeysTableTypeColumn),
+						OrderBy:     fmt.Sprintf("(signal, field_context, %s, %s)", constants.FieldKeysTableNameColumn, constants.FieldKeysTableDataTypeColumn),
 						PartitionBy: "toDate(last_seen / 1000000000)",
 						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
@@ -296,15 +296,15 @@ ORDER BY name ASC`,
 				Table:    constants.DistributedFieldKeysTable,
 				Columns: []Column{
 					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.FieldKeysTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
 					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: Distributed{
 					Database:    SignozMetadataDB,
 					Table:       constants.LocalFieldKeysTable,
-					ShardingKey: fmt.Sprintf("cityHash64(signal, context, %s)", constants.FieldKeysTableNameColumn),
+					ShardingKey: fmt.Sprintf("cityHash64(signal, field_context, %s)", constants.FieldKeysTableNameColumn),
 				},
 			},
 			AlterTableModifySettings{

@@ -29,12 +29,12 @@ const (
 )
 
 var (
-	mapPCommonValueTypeToDataType = map[pcommon.ValueType]utils.TagDataType{
-		pcommon.ValueTypeStr:    utils.TagDataTypeString,
-		pcommon.ValueTypeBytes:  utils.TagDataTypeString,
-		pcommon.ValueTypeInt:    utils.TagDataTypeNumber,
-		pcommon.ValueTypeDouble: utils.TagDataTypeNumber,
-		pcommon.ValueTypeBool:   utils.TagDataTypeBool,
+	mapPCommonValueTypeToDataType = map[pcommon.ValueType]utils.FieldDataType{
+		pcommon.ValueTypeStr:    utils.FieldDataTypeString,
+		pcommon.ValueTypeBytes:  utils.FieldDataTypeString,
+		pcommon.ValueTypeInt:    utils.FieldDataTypeInt64,
+		pcommon.ValueTypeDouble: utils.FieldDataTypeFloat64,
+		pcommon.ValueTypeBool:   utils.FieldDataTypeBool,
 	}
 )
 
@@ -70,12 +70,12 @@ func (va *valueAccumulator) record(path string, val pcommon.Value, context utils
 }
 
 // recordForSlice only records primitive types inside slices
-func (va *valueAccumulator) recordForSlice(path string, val pcommon.Value, context utils.TagType, datatype utils.TagDataType, unixMilli int64) error {
+func (va *valueAccumulator) recordForSlice(path string, val pcommon.Value, context utils.TagType, datatype utils.FieldDataType, unixMilli int64) error {
 	return va.appendValue(path, val, context, datatype, unixMilli)
 }
 
 // Supports String, Bytes, Int, Double, and Bool values; any other type is a caller error.
-func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context utils.TagType, datatype utils.TagDataType, unixMilli int64) error {
+func (va *valueAccumulator) appendValue(path string, val pcommon.Value, context utils.TagType, datatype utils.FieldDataType, unixMilli int64) error {
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
 		str := val.AsString()
@@ -114,13 +114,13 @@ func (va *valueAccumulator) flush() error {
 	return va.stmt.Send()
 }
 
-// appendTypeSet appends all type records from ts to stmt using the given signal and context.
+// appendTypeSet appends all type records from ta to stmt using the given signal and context.
 // The caller is responsible for calling stmt.Send() after all type sets have been appended.
-func appendTypeSet(ts *typeSet, signal, context string, stmt driver.Batch, now int64) error {
+func appendTypeSet(ta *typesAccumulator, signal, context string, stmt driver.Batch, now int64) error {
 	var iterErr error
-	ts.types.Range(func(key, value any) bool {
+	ta.types.Range(func(key, value any) bool {
 		path := key.(string)
-		cs := value.(*utils.ConcurrentSet[string])
+		cs := value.(*typesConcurrentSet)
 		for _, typeStr := range cs.Keys() {
 			if err := stmt.Append(signal, context, path, typeStr, now); err != nil {
 				iterErr = err
@@ -248,7 +248,7 @@ func (w *jsonMetadataWriter) skipUVT(key string) bool {
 }
 
 func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
-	bodyTypes := &typeSet{}
+	bodyTypes := &typesAccumulator{}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())
 	if err != nil {
@@ -293,15 +293,15 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 }
 
 // flushTypeSet writes all path-type records for the body source to distributed_json_path_types.
-func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ts *typeSet) error {
-	sql := fmt.Sprintf("INSERT INTO %s (signal, context, name, type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedFieldKeysTable)
+func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ta *typesAccumulator) error {
+	sql := fmt.Sprintf("INSERT INTO %s (signal, field_context, name, field_data_type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedFieldKeysTable)
 	stmt, err := w.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("failed to prepare path types batch: %w", err)
 	}
 	defer stmt.Close()
 
-	if err := appendTypeSet(ts, pipeline.SignalLogs.String(), string(utils.TagTypeBodyField), stmt, time.Now().UnixNano()); err != nil {
+	if err := appendTypeSet(ta, pipeline.SignalLogs.String(), string(utils.TagTypeBodyField), stmt, time.Now().UnixNano()); err != nil {
 		return fmt.Errorf("failed to append to path types batch: %w", err)
 	}
 	return stmt.Send()
@@ -316,14 +316,14 @@ func (w *jsonMetadataWriter) walkNode(
 	level int,
 	tagType utils.TagType,
 	unixMilli int64,
-	ts *typeSet,
+	ta *typesAccumulator,
 	va *valueAccumulator,
 ) error {
 	// Skip children of the "message" type-hint field (fixed column).
 	if strings.HasPrefix(prefix, jsonMessageField+".") {
 		return nil
 	} else if prefix == jsonMessageField {
-		ts.record(prefix, maskString)
+		ta.record(prefix, maskString)
 		// We intentionally skip recording value suggestions for message field, due to high cardinality.
 		return nil
 	}
@@ -336,17 +336,17 @@ func (w *jsonMetadataWriter) walkNode(
 
 	switch val.Type() {
 	case pcommon.ValueTypeMap:
-		return w.walkMap(ctx, prefix, val, level+1, tagType, unixMilli, ts, va)
+		return w.walkMap(ctx, prefix, val, level+1, tagType, unixMilli, ta, va)
 	case pcommon.ValueTypeSlice:
-		return w.walkSlice(ctx, prefix, val, level, tagType, unixMilli, ts, va)
+		return w.walkSlice(ctx, prefix, val, level, tagType, unixMilli, ta, va)
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-		ts.record(prefix, maskString)
+		ta.record(prefix, maskString)
 	case pcommon.ValueTypeBool:
-		ts.record(prefix, maskBool)
+		ta.record(prefix, maskBool)
 	case pcommon.ValueTypeDouble:
-		ts.record(prefix, maskFloat)
+		ta.record(prefix, maskFloat)
 	case pcommon.ValueTypeInt:
-		ts.record(prefix, maskInt)
+		ta.record(prefix, maskInt)
 	default:
 		return fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
 	}
@@ -363,7 +363,7 @@ func (w *jsonMetadataWriter) walkMap(
 	level int,
 	tagType utils.TagType,
 	unixMilli int64,
-	ts *typeSet,
+	ta *typesAccumulator,
 	va *valueAccumulator,
 ) error {
 	m := val.Map()
@@ -380,7 +380,7 @@ func (w *jsonMetadataWriter) walkMap(
 			w.cardinalKeyCache.Add(key, struct{}{})
 		}
 		childPath := joinPath(prefix, key)
-		if err := w.walkNode(ctx, childPath, child, level+1, tagType, unixMilli, ts, va); err != nil {
+		if err := w.walkNode(ctx, childPath, child, level+1, tagType, unixMilli, ta, va); err != nil {
 			iterErr = err
 			return false
 		}
@@ -398,7 +398,7 @@ func (w *jsonMetadataWriter) walkSlice(
 	level int,
 	tagType utils.TagType,
 	unixMilli int64,
-	ts *typeSet,
+	ta *typesAccumulator,
 	va *valueAccumulator,
 ) error {
 	s := val.Slice()
@@ -413,7 +413,7 @@ func (w *jsonMetadataWriter) walkSlice(
 		case pcommon.ValueTypeMap:
 			// Do not increment depth for array element objects — array indexing
 			// should not consume depth budget.
-			if err := w.walkNode(ctx, prefix+jsonArraySuffix, el, level, tagType, unixMilli, ts, va); err != nil {
+			if err := w.walkNode(ctx, prefix+jsonArraySuffix, el, level, tagType, unixMilli, ta, va); err != nil {
 				return err
 			}
 			types = append(types, el.Type())
@@ -432,10 +432,10 @@ func (w *jsonMetadataWriter) walkSlice(
 		return nil
 	}
 	mask := inferArrayMask(types)
-	ts.record(prefix, mask)
+	ta.record(prefix, mask)
 
 	// recordForSlice will only account for primitive types inside slices
-	return va.recordForSlice(prefix, val, tagType, mapArrayTypesToTagDataType[maskToType(mask)], unixMilli)
+	return va.recordForSlice(prefix, val, tagType, maskToType(mask), unixMilli)
 }
 
 // joinPath builds a dotted JSON path from a parent prefix and a child key.

@@ -10,6 +10,6 @@ const (
 	LocalFieldKeysTable          = "field_keys"
 	DistributedFieldKeysTable    = "distributed_field_keys"
 	FieldKeysTableNameColumn     = "name"
-	FieldKeysTableTypeColumn     = "type"
+	FieldKeysTableDataTypeColumn = "field_data_type"
 	FieldKeysTableLastSeenColumn = "last_seen"
 )

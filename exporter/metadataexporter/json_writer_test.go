@@ -120,7 +120,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 		name     string
 		input    map[string]any
 		cfg      JSONConfig
-		expected map[string][]string
+		expected map[string][]utils.FieldDataType
 	}{
 		{
 			name: "message_skip_test_simple",
@@ -129,9 +129,9 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"test":    "value",
 			},
 			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
-			expected: map[string][]string{
-				"message": {typeString},
-				"test":    {typeString},
+			expected: map[string][]utils.FieldDataType{
+				"message": {utils.FieldDataTypeString},
+				"test":    {utils.FieldDataTypeString},
 			},
 		},
 		{
@@ -141,108 +141,108 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"test":          "value",
 			},
 			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
-			expected: map[string][]string{
-				"test": {typeString},
+			expected: map[string][]utils.FieldDataType{
+				"test": {utils.FieldDataTypeString},
 			},
 		},
 		{
 			name: "simple_datatype_test",
 			input: map[string]any{
-				"string": "hello",
+				"string": []any{"hello"},
 				"int":    123,
 				"float":  123.456,
-				"bool":   true,
+				"bool":   []any{true},
 			},
 			cfg: JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
-			expected: map[string][]string{
-				"string": {typeString},
-				"int":    {typeInt64},
-				"float":  {typeFloat64},
-				"bool":   {typeBool},
+			expected: map[string][]utils.FieldDataType{
+				"string": {utils.FieldDataTypeArrayString},
+				"int":    {utils.FieldDataTypeInt64},
+				"float":  {utils.FieldDataTypeFloat64},
+				"bool":   {utils.FieldDataTypeArrayBool},
 			},
 		},
 		{
 			name:  "full_test",
 			input: input,
 			cfg:   JSONConfig{MaxDepthTraverse: to.Ptr(100), MaxArrayElementsAllowed: to.Ptr(5), MaxKeysAtLevel: to.Ptr(1024)},
-			expected: map[string][]string{
-				"_p":                                              {typeString},
-				"array_objects":                                   {typeArrayJSON},
-				"array_objects[].a":                               {typeString},
-				"array_objects[].x.y":                             {typeBool},
-				"array_objects[].p.q":                             {typeInt64},
-				"array_objects[].nested":                          {typeArrayJSON},
-				"array_objects[].nested[].inside_a":               {typeBool, typeFloat64},
-				"array_objects[].nested[].inside_b":               {typeString},
-				"array_objects[].inbox":                           {typeArrayDynamic},
-				"array_objects_and_primitives":                    {typeArrayDynamic},
-				"array_objects_and_primitives[].x":                {typeString},
-				"array_objects_and_primitives[].nested":           {typeArrayDynamic},
-				"array_objects_and_primitives[].nested[].message": {typeString},
-				"array_objects_and_primitives[].nested[].number":  {typeFloat64},
-				"array_primitives_mixed":                          {typeArrayDynamic},
-				"array_primitives_same_type":                      {typeArrayInt64},
-				"sage.number":                                     {typeString},
-				"created_by":                                      {typeString},
-				"details.game.beta-tester":                        {typeBool},
-				"details.game.is_game":                            {typeString},
-				"details.game.marked_favourite":                   {typeBool},
-				"details.game.play_time_hours":                    {typeFloat64},
-				"details.game.metadata.installation_path":         {typeString},
-				"details.game.metadata.drm.hash_check_status":     {typeString},
-				"details.game.metadata.drm.malformed_hardware":    {typeBool},
-				"details.game.metadata.drm.running":               {typeBool},
-				"details.game.metadata.drm.version":               {typeString},
-				"details.game.metadata.version":                   {typeString},
-				"details.uninstall":                               {typeBool},
-				"docker":                                          {typeArrayString},
-				"kubernetes.container_image":                      {typeString},
-				"kubernetes.container_name":                       {typeString},
-				"kubernetes.docker_id":                            {typeString},
-				"kubernetes.host":                                 {typeString},
-				"kubernetes.namespace_name":                       {typeString},
-				"kubernetes.pod_id":                               {typeString},
-				"kubernetes.pod_name":                             {typeString},
-				"log":                                             {typeString},
-				"log_processed.level":                             {typeString},
-				"log_processed.message":                           {typeString},
-				"log_processed.target":                            {typeString},
-				"log_processed.timestamp":                         {typeString},
-				"message":                                         {typeString},
-				"stream":                                          {typeString},
-				"uninstall":                                       {typeBool},
+			expected: map[string][]utils.FieldDataType{
+				"_p":                                              {utils.FieldDataTypeString},
+				"array_objects":                                   {utils.FieldDataTypeArrayJSON},
+				"array_objects[].a":                               {utils.FieldDataTypeString},
+				"array_objects[].x.y":                             {utils.FieldDataTypeBool},
+				"array_objects[].p.q":                             {utils.FieldDataTypeInt64},
+				"array_objects[].nested":                          {utils.FieldDataTypeArrayJSON},
+				"array_objects[].nested[].inside_a":               {utils.FieldDataTypeBool, utils.FieldDataTypeFloat64},
+				"array_objects[].nested[].inside_b":               {utils.FieldDataTypeString},
+				"array_objects[].inbox":                           {utils.FieldDataTypeArrayDynamic},
+				"array_objects_and_primitives":                    {utils.FieldDataTypeArrayDynamic},
+				"array_objects_and_primitives[].x":                {utils.FieldDataTypeString},
+				"array_objects_and_primitives[].nested":           {utils.FieldDataTypeArrayDynamic},
+				"array_objects_and_primitives[].nested[].message": {utils.FieldDataTypeString},
+				"array_objects_and_primitives[].nested[].number":  {utils.FieldDataTypeFloat64},
+				"array_primitives_mixed":                          {utils.FieldDataTypeArrayDynamic},
+				"array_primitives_same_type":                      {utils.FieldDataTypeArrayInt64},
+				"sage.number":                                     {utils.FieldDataTypeString},
+				"created_by":                                      {utils.FieldDataTypeString},
+				"details.game.beta-tester":                        {utils.FieldDataTypeBool},
+				"details.game.is_game":                            {utils.FieldDataTypeString},
+				"details.game.marked_favourite":                   {utils.FieldDataTypeBool},
+				"details.game.play_time_hours":                    {utils.FieldDataTypeFloat64},
+				"details.game.metadata.installation_path":         {utils.FieldDataTypeString},
+				"details.game.metadata.drm.hash_check_status":     {utils.FieldDataTypeString},
+				"details.game.metadata.drm.malformed_hardware":    {utils.FieldDataTypeBool},
+				"details.game.metadata.drm.running":               {utils.FieldDataTypeBool},
+				"details.game.metadata.drm.version":               {utils.FieldDataTypeString},
+				"details.game.metadata.version":                   {utils.FieldDataTypeString},
+				"details.uninstall":                               {utils.FieldDataTypeBool},
+				"docker":                                          {utils.FieldDataTypeArrayString},
+				"kubernetes.container_image":                      {utils.FieldDataTypeString},
+				"kubernetes.container_name":                       {utils.FieldDataTypeString},
+				"kubernetes.docker_id":                            {utils.FieldDataTypeString},
+				"kubernetes.host":                                 {utils.FieldDataTypeString},
+				"kubernetes.namespace_name":                       {utils.FieldDataTypeString},
+				"kubernetes.pod_id":                               {utils.FieldDataTypeString},
+				"kubernetes.pod_name":                             {utils.FieldDataTypeString},
+				"log":                                             {utils.FieldDataTypeString},
+				"log_processed.level":                             {utils.FieldDataTypeString},
+				"log_processed.message":                           {utils.FieldDataTypeString},
+				"log_processed.target":                            {utils.FieldDataTypeString},
+				"log_processed.timestamp":                         {utils.FieldDataTypeString},
+				"message":                                         {utils.FieldDataTypeString},
+				"stream":                                          {utils.FieldDataTypeString},
+				"uninstall":                                       {utils.FieldDataTypeBool},
 			},
 		},
 		{
 			name:  "max_depth_traverse_test",
 			input: input,
 			cfg:   JSONConfig{MaxDepthTraverse: to.Ptr(2), MaxArrayElementsAllowed: to.Ptr(4), MaxKeysAtLevel: to.Ptr(1024)},
-			expected: map[string][]string{
-				"_p":                               {typeString},
-				"array_objects":                    {typeArrayJSON},
-				"array_objects[].a":                {typeString},
-				"array_objects[].x.y":              {typeBool},
-				"array_objects_and_primitives":     {typeArrayDynamic},
-				"array_objects_and_primitives[].x": {typeString},
-				"created_by":                       {typeString},
-				"details.uninstall":                {typeBool},
-				"docker":                           {typeArrayString},
-				"kubernetes.container_image":       {typeString},
-				"kubernetes.container_name":        {typeString},
-				"kubernetes.docker_id":             {typeString},
-				"kubernetes.host":                  {typeString},
-				"kubernetes.namespace_name":        {typeString},
-				"kubernetes.pod_id":                {typeString},
-				"kubernetes.pod_name":              {typeString},
-				"log":                              {typeString},
-				"log_processed.level":              {typeString},
-				"log_processed.message":            {typeString},
-				"log_processed.target":             {typeString},
-				"log_processed.timestamp":          {typeString},
-				"message":                          {typeString},
-				"sage.number":                      {typeString},
-				"stream":                           {typeString},
-				"uninstall":                        {typeBool},
+			expected: map[string][]utils.FieldDataType{
+				"_p":                               {utils.FieldDataTypeString},
+				"array_objects":                    {utils.FieldDataTypeArrayJSON},
+				"array_objects[].a":                {utils.FieldDataTypeString},
+				"array_objects[].x.y":              {utils.FieldDataTypeBool},
+				"array_objects_and_primitives":     {utils.FieldDataTypeArrayDynamic},
+				"array_objects_and_primitives[].x": {utils.FieldDataTypeString},
+				"created_by":                       {utils.FieldDataTypeString},
+				"details.uninstall":                {utils.FieldDataTypeBool},
+				"docker":                           {utils.FieldDataTypeArrayString},
+				"kubernetes.container_image":       {utils.FieldDataTypeString},
+				"kubernetes.container_name":        {utils.FieldDataTypeString},
+				"kubernetes.docker_id":             {utils.FieldDataTypeString},
+				"kubernetes.host":                  {utils.FieldDataTypeString},
+				"kubernetes.namespace_name":        {utils.FieldDataTypeString},
+				"kubernetes.pod_id":                {utils.FieldDataTypeString},
+				"kubernetes.pod_name":              {utils.FieldDataTypeString},
+				"log":                              {utils.FieldDataTypeString},
+				"log_processed.level":              {utils.FieldDataTypeString},
+				"log_processed.message":            {utils.FieldDataTypeString},
+				"log_processed.target":             {utils.FieldDataTypeString},
+				"log_processed.timestamp":          {utils.FieldDataTypeString},
+				"message":                          {utils.FieldDataTypeString},
+				"sage.number":                      {utils.FieldDataTypeString},
+				"stream":                           {utils.FieldDataTypeString},
+				"uninstall":                        {utils.FieldDataTypeBool},
 			},
 		},
 	}
@@ -255,16 +255,16 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 			body := pcommon.NewValueEmpty()
 			require.NoError(t, body.FromRaw(tc.input))
 
-			ts := &typeSet{}
+			ts := &typesAccumulator{}
 			err := w.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, ts, va)
 			require.NoError(t, err)
 
-			got := map[string][]string{}
+			got := map[string][]utils.FieldDataType{}
 			ts.types.Range(func(key, value any) bool {
 				path := key.(string)
-				cs := value.(*utils.ConcurrentSet[string])
+				cs := value.(*typesConcurrentSet)
 				types := cs.Keys()
-				sort.Strings(types)
+				sort.Slice(types, func(i, j int) bool { return types[i] < types[j] })
 				got[path] = types
 				return true
 			})
@@ -281,7 +281,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				if !ok {
 					t.Fatalf("missing path in got: %s", path)
 				}
-				sort.Strings(want)
+				sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 				assert.ElementsMatch(t, want, gotTypes, fmt.Sprintf("mismatch at path %s", path))
 			}
 		})

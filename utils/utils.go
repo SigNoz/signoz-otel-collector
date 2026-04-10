@@ -46,19 +46,22 @@ func (t TagType) String() string {
 	return string(t)
 }
 
-type TagDataType string
+type FieldDataType string
 
 const (
-	TagDataTypeString       TagDataType = "string"
-	TagDataTypeBool         TagDataType = "bool"
-	TagDataTypeNumber       TagDataType = "float64"
-	TagDataTypeStringArray  TagDataType = "[]string"
-	TagDataTypeNumberArray  TagDataType = "[]float64"
-	TagDataTypeBoolArray    TagDataType = "[]bool"
-	TagDataTypeDynamicArray TagDataType = "[]dynamic"
+	FieldDataTypeString       FieldDataType = "string"
+	FieldDataTypeFloat64      FieldDataType = "float64"
+	FieldDataTypeInt64        FieldDataType = "int64"
+	FieldDataTypeBool         FieldDataType = "bool"
+	FieldDataTypeArrayString  FieldDataType = "[]string"
+	FieldDataTypeArrayInt64   FieldDataType = "[]int64"
+	FieldDataTypeArrayFloat64 FieldDataType = "[]float64"
+	FieldDataTypeArrayBool    FieldDataType = "[]bool"
+	FieldDataTypeArrayJSON    FieldDataType = "[]json"
+	FieldDataTypeArrayDynamic FieldDataType = "[]dynamic"
 )
 
-func (t TagDataType) String() string {
+func (t FieldDataType) String() string {
 	return string(t)
 }
 
@@ -70,13 +73,13 @@ func MakeKeyForRFCache(bucketTs int64, fingerprint string) string {
 	return v.String()
 }
 
-func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagDataType) string {
+func MakeKeyForAttributeKeys(tagKey string, tagType TagType, dataType FieldDataType) string {
 	var key strings.Builder
 	key.WriteString(tagKey)
 	key.WriteString(":")
 	key.WriteString(string(tagType))
 	key.WriteString(":")
-	key.WriteString(string(tagDataType))
+	key.WriteString(string(dataType))
 	return key.String()
 }
 

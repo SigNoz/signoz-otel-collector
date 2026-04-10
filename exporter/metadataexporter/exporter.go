@@ -469,10 +469,10 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 			return false
 		}
 		cnt = e.tracesTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.TagDataTypeString.String() && e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues) {
+		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues) {
 			return true
 		}
-		if typ == utils.TagDataTypeNumber.String() {
+		if typ == utils.FieldDataTypeFloat64.String() {
 			return true
 		}
 
@@ -481,10 +481,10 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 			return false
 		}
 		cnt = e.metricsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.TagDataTypeString.String() && e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues) {
+		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues) {
 			return true
 		}
-		if typ == utils.TagDataTypeNumber.String() {
+		if typ == utils.FieldDataTypeFloat64.String() {
 			return true
 		}
 
@@ -493,10 +493,10 @@ func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, dataso
 			return false
 		}
 		cnt = e.logsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.TagDataTypeString.String() && e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues) {
+		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues) {
 			return true
 		}
-		if typ == utils.TagDataTypeNumber.String() {
+		if typ == utils.FieldDataTypeFloat64.String() {
 			return true
 		}
 	}
