@@ -13,6 +13,11 @@ var (
 )
 
 func IsCardinal(key string) bool {
+	// Very long keys are considered random by default
+	if len(key) > MaxKeyLength {
+		return true
+	}
+
 	// whole string cases
 	switch {
 	case containsDigits(key):

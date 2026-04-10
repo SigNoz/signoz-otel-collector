@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	distributedPathTypesTableName = constants.SignozMetadataDB + "." + constants.DistributedPathTypesTable
+	distributedPathTypesTableName = constants.SignozMetadataDB + "." + constants.DistributedFieldKeysTable
 	defaultKeyCacheSize           = 10_000
 	ArraySeparator                = "[]."
 	ArraySuffix                   = "[]"
