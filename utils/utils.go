@@ -45,15 +45,15 @@ func (t TagType) String() string {
 	return string(t)
 }
 
-type TagDataType string
+type FieldDataType string
 
 const (
-	TagDataTypeString TagDataType = "string"
-	TagDataTypeBool   TagDataType = "bool"
-	TagDataTypeNumber TagDataType = "float64"
+	FieldDataTypeString  FieldDataType = "string"
+	FieldDataTypeBool    FieldDataType = "bool"
+	FieldDataTypeFloat64 FieldDataType = "float64"
 )
 
-func (t TagDataType) String() string {
+func (t FieldDataType) String() string {
 	return string(t)
 }
 
@@ -65,13 +65,13 @@ func MakeKeyForRFCache(bucketTs int64, fingerprint string) string {
 	return v.String()
 }
 
-func MakeKeyForAttributeKeys(tagKey string, tagType TagType, tagDataType TagDataType) string {
+func MakeKeyForAttributeKeys(tagKey string, tagType TagType, dataType FieldDataType) string {
 	var key strings.Builder
 	key.WriteString(tagKey)
 	key.WriteString(":")
 	key.WriteString(string(tagType))
 	key.WriteString(":")
-	key.WriteString(string(tagDataType))
+	key.WriteString(string(dataType))
 	return key.String()
 }
 
