@@ -86,19 +86,10 @@ func (p *Processor) normalize(entry *entry.Entry) {
 				p.Logger().Error("Failed to cast message field to map", zap.Any("type", fmt.Sprintf("%T", val)))
 				break
 			}
-			// shift all keys to top level and remove "message" field
+			// delete "message" first, then shift all inner keys to top level
+			entry.Delete(message)
 			for key, value := range mapValue {
 				entry.Set(signozstanzaentry.NewBodyField(key), value)
-			}
-			// refetch the message field
-			refetchedVal, exists := entry.Get(message)
-			if exists {
-				switch value := refetchedVal.(type) {
-				case map[string]any:
-					if len(value) == 0 {
-						entry.Delete(message)
-					}
-				}
 			}
 		}
 	}
@@ -130,13 +121,8 @@ func (p *Processor) normalize(entry *entry.Entry) {
 	val, exists = entry.Get(message)
 	if exists {
 		switch reflect.TypeOf(val).Kind() {
-		case reflect.Slice:
-			marshaled, err := sonic.Marshal(val)
-			if err != nil {
-				p.Logger().Error("Failed to marshal message field", zap.Error(err))
-				break
-			}
-			entry.Set(message, string(marshaled))
+		case reflect.Map, reflect.Array, reflect.Slice:
+			// skip stringify, ClickHouse will handle it.
 		default:
 			entry.Set(message, fmt.Sprintf("%v", val))
 		}

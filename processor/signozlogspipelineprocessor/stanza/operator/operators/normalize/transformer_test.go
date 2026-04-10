@@ -82,9 +82,34 @@ func TestNormalize(t *testing.T) {
 			},
 		},
 		{
+			name: "message_as_map_flattens_to_top_level_and_message_is_removed",
+			input: map[string]any{
+				"message": map[string]any{"nested_key": "nested_val", "foo": "bar"},
+				"level":   "info",
+			},
+			expected: map[string]any{
+				"nested_key": "nested_val",
+				"foo":        "bar",
+				"level":      "info",
+			},
+		},
+		{
+			name: "message_as_map_flattens_to_top_level_and_message_is_again_map",
+			input: map[string]any{
+				"message": map[string]any{"nested_key": "nested_val", "foo": "bar", "message": map[string]any{"deep": "value"}},
+				"level":   "info",
+			},
+			expected: map[string]any{
+				"nested_key": "nested_val",
+				"foo":        "bar",
+				"level":      "info",
+				"message":    map[string]any{"deep": "value"},
+			},
+		},
+		{
 			name:     "message_as_slice_marshals_to_json_string",
 			input:    map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
-			expected: map[string]any{"message": `["a","b","c"]`, "level": "info"},
+			expected: map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 		},
 		{
 			name:     "message_as_bool_converted_to_string",
