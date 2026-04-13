@@ -7,23 +7,30 @@ import (
 
 var (
 	// The whitelist of allowed symbols only (no letters or numbers)
-	// Note: Backticks can never be allowed to exist in a key from User's source
-	JSONKeyAllowedSymbols   = []string{"_", ".", ":", "@", "-"}
+	JSONKeyAllowedSymbols   = []string{"_", ".", ":", "@", "-", "$", "#", "{", "}", "/"}
 	BacktickRequiredSymbols = []string{":", "@", "-"}
 )
 
 func IsCardinal(key string) bool {
+	length := len(key)
+
 	// Very long keys are considered random by default
-	if len(key) > MaxKeyLength {
+	if length > MaxKeyLength {
 		return true
 	}
 
-	// whole string cases
-	switch {
-	case containsDigits(key):
+	if hasNonAllowedSymbols(key) {
 		return true
-	case hasNonAllowedSymbols(key):
-		return true
+	}
+
+	// Simple lowercase keys with reasonable length are likely meaningful
+	if length <= ShortKeyLength && isAlphaLower(key) {
+		return false
+	}
+
+	// Keys with underscores/hyphens and mostly letters are likely meaningful
+	if length <= MediumKeyLength && strings.ContainsAny(key, "_-") && isMostlyLetters(key) {
+		return false
 	}
 
 	return processKeySegments(key)
@@ -35,22 +42,6 @@ func IsBacktickRequired(key string) bool {
 
 func CleanBackticks(key string) string {
 	return strings.ReplaceAll(key, "`", "")
-}
-
-// containsDigits checks if string contains digits
-func containsDigits(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-
-	// Check if any character is a digit
-	// TODO: check for better patterns which are okay to be considered as non cardinal across customer ecosystem
-	for _, char := range s {
-		if char >= '0' && char <= '9' {
-			return true
-		}
-	}
-	return false
 }
 
 func hasNonAllowedSymbols(s string) bool {
