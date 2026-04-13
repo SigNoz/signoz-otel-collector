@@ -91,6 +91,24 @@ func getMessage(e *entry.Entry, field signozstanzaentry.Field) (any, bool) {
 func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
 
+	if _, exists := getMessage(entry, message); !exists {
+		// add first found msg compatible field to body
+		for _, fieldName := range msgCompatibleFields {
+			field := signozstanzaentry.NewBodyField(fieldName)
+			val, ok := entry.Get(field)
+			if !ok {
+				continue
+			}
+			err := entry.Set(message, val)
+			if err != nil {
+				p.Logger().Error("Failed to set message field", zap.Error(err))
+			} else {
+				entry.Delete(field)
+			}
+			break
+		}
+	}
+
 	if val, exists := getMessage(entry, message); exists {
 		if reflect.TypeOf(val).Kind() == reflect.Map {
 			mapValue, ok := val.(map[string]any)
@@ -103,29 +121,6 @@ func (p *Processor) normalize(entry *entry.Entry) {
 					entry.Set(signozstanzaentry.NewBodyField(key), value)
 				}
 			}
-		}
-	}
-
-	if _, exists := getMessage(entry, message); !exists {
-		// add first found msg compatible field to body
-		for _, fieldName := range msgCompatibleFields {
-			field := signozstanzaentry.NewBodyField(fieldName)
-			val, ok := entry.Get(field)
-			if !ok {
-				continue
-			}
-			// Only map String values to "message" field
-			strValue, ok := val.(string)
-			if !ok {
-				continue
-			}
-			err := entry.Set(message, strValue)
-			if err != nil {
-				p.Logger().Error("Failed to set message field", zap.Error(err))
-			} else {
-				entry.Delete(field)
-			}
-			break
 		}
 	}
 
