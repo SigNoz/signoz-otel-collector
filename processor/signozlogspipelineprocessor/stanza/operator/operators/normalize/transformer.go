@@ -70,6 +70,20 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 	return output
 }
 
+// getMessage returns the "message" field value, treating nil as missing and
+// removing the nil entry so downstream steps see a clean state.
+func getMessage(e *entry.Entry, field signozstanzaentry.Field) (any, bool) {
+	val, exists := e.Get(field)
+	if !exists {
+		return nil, false
+	}
+	if val == nil {
+		e.Delete(field)
+		return nil, false
+	}
+	return val, true
+}
+
 // Step 1: if "message" missing from logs will try to extract it from msgCompatibleFields.
 // msgCompatibleFields are only allocated to "message" field if they're String else skipped.
 // Step 2: normalize casts "message" as String if Scalar.
@@ -77,25 +91,22 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
 
-	val, exists := entry.Get(message)
-	if exists {
-		switch reflect.TypeOf(val).Kind() {
-		case reflect.Map:
+	if val, exists := getMessage(entry, message); exists {
+		if reflect.TypeOf(val).Kind() == reflect.Map {
 			mapValue, ok := val.(map[string]any)
 			if !ok {
 				p.Logger().Error("Failed to cast message field to map", zap.Any("type", fmt.Sprintf("%T", val)))
-				break
-			}
-			// delete "message" first, then shift all inner keys to top level
-			entry.Delete(message)
-			for key, value := range mapValue {
-				entry.Set(signozstanzaentry.NewBodyField(key), value)
+			} else {
+				// delete "message" first, then shift all inner keys to top level
+				entry.Delete(message)
+				for key, value := range mapValue {
+					entry.Set(signozstanzaentry.NewBodyField(key), value)
+				}
 			}
 		}
 	}
 
-	_, exists = entry.Get(message)
-	if !exists {
+	if _, exists := getMessage(entry, message); !exists {
 		// add first found msg compatible field to body
 		for _, fieldName := range msgCompatibleFields {
 			field := signozstanzaentry.NewBodyField(fieldName)
@@ -118,8 +129,7 @@ func (p *Processor) normalize(entry *entry.Entry) {
 		}
 	}
 
-	val, exists = entry.Get(message)
-	if exists {
+	if val, exists := getMessage(entry, message); exists {
 		switch reflect.TypeOf(val).Kind() {
 		case reflect.Map, reflect.Array, reflect.Slice:
 			// skip stringify, ClickHouse will handle it.

@@ -107,7 +107,17 @@ func TestNormalize(t *testing.T) {
 			},
 		},
 		{
-			name:     "message_as_slice_marshals_to_json_string",
+			name:     "message_as_nil_handled_message_is_removed",
+			input:    map[string]any{"message": nil, "level": "info"},
+			expected: map[string]any{"level": "info"},
+		},
+		{
+			name:     "message_as_map_flattens_to_top_level_and_message_as_nil_handled",
+			input:    map[string]any{"message": map[string]any{"message": nil}, "msg": "compatible field", "level": "info"},
+			expected: map[string]any{"message": "compatible field", "level": "info"},
+		},
+		{
+			name:     "message_as_slice_skipped",
 			input:    map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 			expected: map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 		},
