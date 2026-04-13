@@ -171,6 +171,11 @@ type SpanV3 struct {
 	// It is using same key as resources_string to keep the billing calculation unchanged
 	BillableResourcesString map[string]string `json:"resources_string,omitempty"`
 
+	// Instrumentation scope
+	ScopeName       string            `json:"-"`
+	ScopeVersion    string            `json:"-"`
+	ScopeAttributes map[string]string `json:"-"`
+
 	// for events
 	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 	Events []string `json:"event,omitempty"`
