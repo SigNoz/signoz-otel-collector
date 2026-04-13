@@ -70,41 +70,35 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 	return output
 }
 
-// Step 1: if "message" missing from logs will try to extract it from msgCompatibleFields.
-// msgCompatibleFields are only allocated to "message" field if they're String else skipped.
-// Step 2: normalize casts "message" as String if Scalar.
-// Step 3: if it's a Map, all keys will be shifted to top level and top level "message" will be removed.
+// getMessage returns the "message" field value, treating nil as missing and
+// removing the nil entry so downstream steps see a clean state.
+func getMessage(e *entry.Entry, field signozstanzaentry.Field) (any, bool) {
+	val, exists := e.Get(field)
+	if !exists {
+		return nil, false
+	}
+	if val == nil {
+		e.Delete(field)
+		return nil, false
+	}
+	return val, true
+}
+
+// Step 1: if "message" is missing, promote the first present field from msgCompatibleFields
+//
+//	(any value type) into "message". The promoted value then goes through the same
+//	normalization as a natively present "message" would.
+//
+// Step 2: if "message" is a Map, all keys are shifted to the top level and the top-level
+//
+//	"message" entry is removed.
+//
+// Note: Stringification `message` is delegated to ClickHouse to do natively with Type Hinting and
+// MetadataExporter skips diving into messaage Slices, Maps and records strictly as String always
 func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
 
-	val, exists := entry.Get(message)
-	if exists {
-		switch reflect.TypeOf(val).Kind() {
-		case reflect.Map:
-			mapValue, ok := val.(map[string]any)
-			if !ok {
-				p.Logger().Error("Failed to cast message field to map", zap.Any("type", fmt.Sprintf("%T", val)))
-				break
-			}
-			// shift all keys to top level and remove "message" field
-			for key, value := range mapValue {
-				entry.Set(signozstanzaentry.NewBodyField(key), value)
-			}
-			// refetch the message field
-			refetchedVal, exists := entry.Get(message)
-			if exists {
-				switch value := refetchedVal.(type) {
-				case map[string]any:
-					if len(value) == 0 {
-						entry.Delete(message)
-					}
-				}
-			}
-		}
-	}
-
-	_, exists = entry.Get(message)
-	if !exists {
+	if _, exists := getMessage(entry, message); !exists {
 		// add first found msg compatible field to body
 		for _, fieldName := range msgCompatibleFields {
 			field := signozstanzaentry.NewBodyField(fieldName)
@@ -112,12 +106,7 @@ func (p *Processor) normalize(entry *entry.Entry) {
 			if !ok {
 				continue
 			}
-			// Only map String values to "message" field
-			strValue, ok := val.(string)
-			if !ok {
-				continue
-			}
-			err := entry.Set(message, strValue)
+			err := entry.Set(message, val)
 			if err != nil {
 				p.Logger().Error("Failed to set message field", zap.Error(err))
 			} else {
@@ -127,18 +116,18 @@ func (p *Processor) normalize(entry *entry.Entry) {
 		}
 	}
 
-	val, exists = entry.Get(message)
-	if exists {
-		switch reflect.TypeOf(val).Kind() {
-		case reflect.Slice:
-			marshaled, err := sonic.Marshal(val)
-			if err != nil {
-				p.Logger().Error("Failed to marshal message field", zap.Error(err))
-				break
+	if val, exists := getMessage(entry, message); exists {
+		if reflect.TypeOf(val).Kind() == reflect.Map {
+			mapValue, ok := val.(map[string]any)
+			if !ok {
+				p.Logger().Error("Failed to cast message field to map", zap.Any("type", fmt.Sprintf("%T", val)))
+			} else {
+				// delete "message" first, then shift all inner keys to top level
+				entry.Delete(message)
+				for key, value := range mapValue {
+					entry.Set(signozstanzaentry.NewBodyField(key), value)
+				}
 			}
-			entry.Set(message, string(marshaled))
-		default:
-			entry.Set(message, fmt.Sprintf("%v", val))
 		}
 	}
 }
