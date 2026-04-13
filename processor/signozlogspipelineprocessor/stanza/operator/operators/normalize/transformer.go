@@ -84,10 +84,18 @@ func getMessage(e *entry.Entry, field signozstanzaentry.Field) (any, bool) {
 	return val, true
 }
 
-// Step 1: if "message" missing from logs will try to extract it from msgCompatibleFields.
-// msgCompatibleFields are only allocated to "message" field if they're String else skipped.
-// Step 2: normalize casts "message" as String if Scalar.
-// Step 3: if it's a Map, all keys will be shifted to top level and top level "message" will be removed.
+// Step 1: if "message" is missing, promote the first present field from msgCompatibleFields
+//
+//	(any value type) into "message". The promoted value then goes through the same
+//	normalization as a natively present "message" would.
+//
+// Step 2: if "message" is a Map, all keys are shifted to the top level and the top-level
+//
+//	"message" entry is removed.
+//
+// Note: Stringification `message` is delegated to ClickHouse via Type Hinting and
+// MetadataExporter skips diving into messaage Slices, Maps and
+// records strictly as String always
 func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
 
