@@ -372,7 +372,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 	shouldSkipKeys := make(map[string]shouldSkipKey)
 	for _, key := range keys {
-		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.FieldDataType(key.TagDataType))
 		e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
 		shouldSkipKeys[mapKey] = key
 	}
@@ -877,7 +877,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	resourceKeysStmt driver.Batch,
 	key string,
 	tagType utils.TagType,
-	datatype utils.TagDataType,
+	datatype utils.FieldDataType,
 ) {
 	if keycheck.IsRandomKey(key) {
 		return
@@ -919,13 +919,13 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
 		}
 
-		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.TagDataTypeString)
+		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.FieldDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -934,7 +934,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			attrKey,
 			tagType,
-			utils.TagDataTypeString,
+			utils.FieldDataTypeString,
 			attrVal,
 			nil,
 		)
@@ -947,8 +947,8 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
-		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64)
+		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.FieldDataTypeFloat64)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -957,7 +957,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			numKey,
 			tagType,
-			utils.TagDataTypeNumber,
+			utils.FieldDataTypeFloat64,
 			nil,
 			numVal,
 		)
@@ -969,9 +969,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool)
 
-		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
+		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.FieldDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -981,7 +981,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			boolKey,
 			tagType,
-			utils.TagDataTypeBool,
+			utils.FieldDataTypeBool,
 			nil,
 			nil,
 		)
