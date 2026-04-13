@@ -123,13 +123,4 @@ func (p *Processor) normalize(entry *entry.Entry) {
 			}
 		}
 	}
-
-	if val, exists := getMessage(entry, message); exists {
-		switch reflect.TypeOf(val).Kind() {
-		case reflect.Map, reflect.Array, reflect.Slice:
-			// skip stringify, ClickHouse will handle it.
-		default:
-			entry.Set(message, fmt.Sprintf("%v", val))
-		}
-	}
 }
