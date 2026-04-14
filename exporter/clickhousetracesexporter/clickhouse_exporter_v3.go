@@ -239,7 +239,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, config storageConfig) (*SpanV3, error) {
+func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -302,6 +302,19 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	})
 
+	scopeAttributes := make(map[string]string)
+	scope.Attributes().Range(func(k string, v pcommon.Value) bool {
+		scopeAttributes[k] = v.AsString()
+		attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+			Key:         k,
+			TagType:     "scope",
+			DataType:    "string",
+			StringValue: v.AsString(),
+			IsColumn:    false,
+		})
+		return true
+	})
+
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
 	referencesBytes, _ := json.Marshal(references)
 
@@ -336,6 +349,10 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
+
+		ScopeName:       scope.Name(),
+		ScopeVersion:    scope.Version(),
+		ScopeAttributes: scopeAttributes,
 
 		ServiceName: ServiceName,
 
@@ -399,7 +416,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 			for j := 0; j < rs.ScopeSpans().Len(); j++ {
 				ils := rs.ScopeSpans().At(j)
-
+				scope := ils.Scope()
 				spans := ils.Spans()
 
 				for k := 0; k < spans.Len(); k++ {
@@ -434,7 +451,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
-					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), s.config)
+					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), scope, s.config)
 					if err != nil {
 						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}

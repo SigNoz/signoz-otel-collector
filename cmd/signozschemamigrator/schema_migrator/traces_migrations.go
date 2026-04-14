@@ -1056,4 +1056,108 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1009,
+		UpItems: []Operation{
+			// Add scope columns to local table
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "scope_name",
+					Type:  ColumnTypeString,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "scope_version",
+					Type:  ColumnTypeString,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "scope_attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
+					Codec: "ZSTD(1)",
+				},
+			},
+			// Add index on scope_name for local table
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "scope_name_idx",
+					Expression:  "scope_name",
+					Type:        "tokenbf_v1(10240, 3, 0)",
+					Granularity: 4,
+				},
+			},
+			// Add scope columns to distributed table
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "scope_name",
+					Type:  ColumnTypeString,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "scope_version",
+					Type:  ColumnTypeString,
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "scope_attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "scope_attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "scope_version"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "scope_name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "scope_attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "scope_version"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "scope_name"},
+			},
+		},
+	},
 }
