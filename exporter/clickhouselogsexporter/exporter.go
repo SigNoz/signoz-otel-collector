@@ -1028,6 +1028,9 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 	// default settings for allowing ClickHouse to handle duplicate paths in JSON type.
 	options.Settings["type_json_skip_duplicated_paths"] = 1
+	// default settings for disabling inferring datetimes and dates from JSON type.
+	options.Settings["input_format_try_infer_datetimes"] = 0
+	options.Settings["input_format_try_infer_dates"] = 0
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxIdleConnections := 1

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,12 @@ func TestLoadConfig(t *testing.T) {
 					},
 				},
 				Enabled: false,
+				JSON: JSONConfig{
+					Enabled:                 true,
+					MaxDepthTraverse:        to.Ptr(defaultJSONMaxDepthTraverse),
+					MaxArrayElementsAllowed: to.Ptr(defaultJSONMaxArrayElementsAllowed),
+					MaxKeysAtLevel:          to.Ptr(100),
+				},
 			},
 		},
 	}

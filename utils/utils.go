@@ -39,6 +39,7 @@ const (
 
 	TagTypeSpanField TagType = "spanfield"
 	TagTypeLogField  TagType = "logfield"
+	TagTypeBodyField TagType = "body"
 )
 
 func (t TagType) String() string {
@@ -48,9 +49,16 @@ func (t TagType) String() string {
 type FieldDataType string
 
 const (
-	FieldDataTypeString  FieldDataType = "string"
-	FieldDataTypeBool    FieldDataType = "bool"
-	FieldDataTypeFloat64 FieldDataType = "float64"
+	FieldDataTypeString       FieldDataType = "string"
+	FieldDataTypeFloat64      FieldDataType = "float64"
+	FieldDataTypeInt64        FieldDataType = "int64"
+	FieldDataTypeBool         FieldDataType = "bool"
+	FieldDataTypeArrayString  FieldDataType = "[]string"
+	FieldDataTypeArrayInt64   FieldDataType = "[]int64"
+	FieldDataTypeArrayFloat64 FieldDataType = "[]float64"
+	FieldDataTypeArrayBool    FieldDataType = "[]bool"
+	FieldDataTypeArrayJSON    FieldDataType = "[]json"
+	FieldDataTypeArrayDynamic FieldDataType = "[]dynamic"
 )
 
 func (t FieldDataType) String() string {
@@ -72,6 +80,14 @@ func MakeKeyForAttributeKeys(tagKey string, tagType TagType, dataType FieldDataT
 	key.WriteString(string(tagType))
 	key.WriteString(":")
 	key.WriteString(string(dataType))
+	return key.String()
+}
+
+func MakeKeyForSkipKeys(context TagType, tagKey string) string {
+	var key strings.Builder
+	key.WriteString(string(context))
+	key.WriteString(":")
+	key.WriteString(tagKey)
 	return key.String()
 }
 
