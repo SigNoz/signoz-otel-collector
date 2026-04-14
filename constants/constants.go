@@ -9,7 +9,7 @@ const (
 	SignozMetadataDB             = "signoz_metadata"
 	LocalFieldKeysTable          = "field_keys"
 	DistributedFieldKeysTable    = "distributed_field_keys"
-	FieldKeysTableNameColumn     = "name"
+	FieldKeysTableNameColumn     = "field_name"
 	FieldKeysTableDataTypeColumn = "field_data_type"
 	FieldKeysTableLastSeenColumn = "last_seen"
 )
