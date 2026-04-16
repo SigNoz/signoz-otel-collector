@@ -27,7 +27,7 @@ var (
 
 	// non-string type: no lower(...), any non-String type
 	jsonNumberSubColumnIndexExprRe = regexp.MustCompile(
-		`assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)\)$`,
+		`assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)$`,
 	)
 )
 

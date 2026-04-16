@@ -294,7 +294,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 
 // flushTypeSet writes all path-type records for the body source to distributed_json_path_types.
 func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ta *typesAccumulator) error {
-	sql := fmt.Sprintf("INSERT INTO %s (signal, field_context, name, field_data_type, last_seen) VALUES (?, ?, ?, ?, ?)", distributedFieldKeysTable)
+	sql := fmt.Sprintf("INSERT INTO %s (signal, field_context, %s, %s, last_seen) VALUES (?, ?, ?, ?, ?)", distributedFieldKeysTable, constants.FieldKeysTableNameColumn, constants.FieldKeysTableDataTypeColumn)
 	stmt, err := w.conn.PrepareBatch(ctx, sql, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("failed to prepare path types batch: %w", err)
