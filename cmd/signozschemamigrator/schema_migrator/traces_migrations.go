@@ -1059,70 +1059,36 @@ var TracesMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1009,
 		UpItems: []Operation{
-			// Add scope columns to local table
+			// Add scope column to local table
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
 				Column: Column{
-					Name:  "scope_name",
-					Type:  ColumnTypeString,
+					Name: "scope",
+					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPointer(uint(0)),
+						Columns: []Column{
+							{Name: "name", Type: ColumnTypeString},
+							{Name: "version", Type: ColumnTypeString},
+							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))}},
+						},
+					},
 					Codec: "ZSTD(1)",
 				},
 			},
-			AlterTableAddColumn{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column: Column{
-					Name:  "scope_version",
-					Type:  ColumnTypeString,
-					Codec: "ZSTD(1)",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column: Column{
-					Name:  "scope_attributes",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
-					Codec: "ZSTD(1)",
-				},
-			},
-			// Add index on scope_name for local table
-			AlterTableAddIndex{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Index: Index{
-					Name:        "scope_name_idx",
-					Expression:  "scope_name",
-					Type:        "tokenbf_v1(10240, 3, 0)",
-					Granularity: 4,
-				},
-			},
-			// Add scope columns to distributed table
+			// Add scope column to distributed table
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "distributed_signoz_index_v3",
 				Column: Column{
-					Name:  "scope_name",
-					Type:  ColumnTypeString,
-					Codec: "ZSTD(1)",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column: Column{
-					Name:  "scope_version",
-					Type:  ColumnTypeString,
-					Codec: "ZSTD(1)",
-				},
-			},
-			AlterTableAddColumn{
-				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column: Column{
-					Name:  "scope_attributes",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
+					Name: "scope",
+					Type: JSONColumnType{
+						Columns: []Column{
+							{Name: "name", Type: ColumnTypeString},
+							{Name: "version", Type: ColumnTypeString},
+							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))}},
+						},
+					},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -1130,33 +1096,67 @@ var TracesMigrations = []SchemaMigrationRecord{
 		DownItems: []Operation{
 			AlterTableDropColumn{
 				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column:   Column{Name: "scope_attributes"},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column:   Column{Name: "scope_version"},
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "scope"},
 			},
 			AlterTableDropColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
-				Column:   Column{Name: "scope_name"},
+				Column:   Column{Name: "scope"},
 			},
-			AlterTableDropColumn{
+		},
+	},
+	{
+		MigrationID: 1010,
+		UpItems: []Operation{
+			// Extend tagType enum to include 'scope' in local table
+			AlterTableModifyColumn{
 				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: "scope_attributes"},
+				Table:    "span_attributes_keys",
+				Column: Column{
+					Name: "tagType",
+					Type: EnumerationColumnType{
+						Values: []string{"'tag' = 1", "'resource' = 2", "'scope' = 3"},
+						Size:   8,
+					},
+				},
 			},
-			AlterTableDropColumn{
+			// Extend tagType enum to include 'scope' in distributed table
+			AlterTableModifyColumn{
 				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: "scope_version"},
+				Table:    "distributed_span_attributes_keys",
+				Column: Column{
+					Name: "tagType",
+					Type: EnumerationColumnType{
+						Values: []string{"'tag' = 1", "'resource' = 2", "'scope' = 3"},
+						Size:   8,
+					},
+				},
 			},
-			AlterTableDropColumn{
+		},
+		DownItems: []Operation{
+			// Revert tagType enum back to original (removes 'scope')
+			AlterTableModifyColumn{
 				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: "scope_name"},
+				Table:    "distributed_span_attributes_keys",
+				Column: Column{
+					Name: "tagType",
+					Type: EnumerationColumnType{
+						Values: []string{"'tag' = 1", "'resource' = 2"},
+						Size:   8,
+					},
+				},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_traces",
+				Table:    "span_attributes_keys",
+				Column: Column{
+					Name: "tagType",
+					Type: EnumerationColumnType{
+						Values: []string{"'tag' = 1", "'resource' = 2"},
+						Size:   8,
+					},
+				},
 			},
 		},
 	},

@@ -301,18 +301,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	})
 
-	scopeAttributes := make(map[string]string)
-	scope.Attributes().Range(func(k string, v pcommon.Value) bool {
-		scopeAttributes[k] = v.AsString()
-		attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
-			Key:         k,
-			TagType:     "scope",
-			DataType:    "string",
-			StringValue: v.AsString(),
-			IsColumn:    false,
-		})
-		return true
-	})
+	instrumentationScope := NewInstrumentationScope(scope)
+	attrMap.SpanAttributes = append(attrMap.SpanAttributes, instrumentationScope.GetSpanAttributes()...)
 
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
 	referencesBytes, _ := json.Marshal(references)
@@ -349,9 +339,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
 
-		ScopeName:       scope.Name(),
-		ScopeVersion:    scope.Version(),
-		ScopeAttributes: scopeAttributes,
+		Scope: instrumentationScope,
 
 		ServiceName: ServiceName,
 

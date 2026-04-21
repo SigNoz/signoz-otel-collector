@@ -28,6 +28,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
@@ -160,6 +161,15 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
 		}
 
+		if len(span.Scope.Attributes) > 100 {
+			w.logger.Warn("scope attributes exceeded the limit of 100 keys", zap.String("span_id", span.SpanId))
+		}
+
+		marshalledScope, err := json.Marshal(span.Scope)
+		if err != nil {
+			w.logger.Warn("error marshalling instrumentation scope", zap.String("span_id", span.SpanId))
+		}
+
 		err = statement.Append(
 			span.TsBucketStart,
 			span.FingerPrint,
@@ -181,9 +191,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesBool,
 			span.ResourcesString,
 			span.ResourcesString,
-			span.ScopeName,
-			span.ScopeVersion,
-			span.ScopeAttributes,
+			marshalledScope,
 			span.Events,
 			span.References,
 
@@ -287,7 +295,6 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
 	}
-	defer tagKeyStatement.Close()
 
 	tagStatementV2, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTableV2), driver.WithReleaseConnection())
 	if err != nil {

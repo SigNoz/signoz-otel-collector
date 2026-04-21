@@ -394,13 +394,11 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				DBOperation:        "test_operation",
 				ResponseStatusCode: "200",
 
-				IsRemote:        "unknown",
-				HasError:        false,
-				References:      `[{"refType":"CHILD_OF"}]`,
-				ServiceName:     "test_service",
-				ScopeName:       "",
-				ScopeVersion:    "",
-				ScopeAttributes: map[string]string{},
+				IsRemote:    "unknown",
+				HasError:    false,
+				References:  `[{"refType":"CHILD_OF"}]`,
+				ServiceName: "test_service",
+				Scope:       NewInstrumentationScope(ptrace.NewScopeSpans().Scope()),
 			},
 			wantErr: false,
 		},
@@ -453,12 +451,14 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				BillableResourcesString: map[string]string{
 					"service.name": "test_service",
 				},
-				ScopeName:    "io.opentelemetry.contrib.mongodb",
-				ScopeVersion: "1.2.3",
-				ScopeAttributes: map[string]string{
-					"custom.key":  "custom.value",
-					"another.key": "another.value",
-				},
+				Scope: NewInstrumentationScope(func() pcommon.InstrumentationScope {
+					ss := ptrace.NewScopeSpans()
+					ss.Scope().SetName("io.opentelemetry.contrib.mongodb")
+					ss.Scope().SetVersion("1.2.3")
+					ss.Scope().Attributes().PutStr("custom.key", "custom.value")
+					ss.Scope().Attributes().PutStr("another.key", "another.value")
+					return ss.Scope()
+				}()),
 				IsRemote:    "unknown",
 				HasError:    false,
 				References:  `[{"refType":"CHILD_OF"}]`,
@@ -545,13 +545,11 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				DBOperation:        "test_operation",
 				ResponseStatusCode: "200",
 
-				IsRemote:        "unknown",
-				HasError:        false,
-				References:      `[{"refType":"CHILD_OF"}]`,
-				ServiceName:     "test_service",
-				ScopeName:       "",
-				ScopeVersion:    "",
-				ScopeAttributes: map[string]string{},
+				IsRemote:    "unknown",
+				HasError:    false,
+				References:  `[{"refType":"CHILD_OF"}]`,
+				ServiceName: "test_service",
+				Scope:       NewInstrumentationScope(ptrace.NewScopeSpans().Scope()),
 			},
 			wantErr: false,
 		},
@@ -585,9 +583,9 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				got.IsRemote != tt.want.IsRemote ||
 				got.HasError != tt.want.HasError ||
 				got.References != tt.want.References ||
-				got.ScopeName != tt.want.ScopeName ||
-				got.ScopeVersion != tt.want.ScopeVersion ||
-				!reflect.DeepEqual(got.ScopeAttributes, tt.want.ScopeAttributes) {
+				got.Scope.Name != tt.want.Scope.Name ||
+				got.Scope.Version != tt.want.Scope.Version ||
+				!reflect.DeepEqual(got.Scope.Attributes, tt.want.Scope.Attributes) {
 				t.Errorf("newStructuredSpanV3() mismatch:\ngot = %+v\nwant = %+v", got, tt.want)
 			}
 
@@ -598,8 +596,8 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					gotScopeAttrs[sa.Key] = sa.StringValue
 				}
 			}
-			if !reflect.DeepEqual(gotScopeAttrs, tt.want.ScopeAttributes) {
-				t.Errorf("scope SpanAttributes mismatch:\ngot = %+v\nwant = %+v", gotScopeAttrs, tt.want.ScopeAttributes)
+			if !reflect.DeepEqual(gotScopeAttrs, tt.want.Scope.Attributes) {
+				t.Errorf("scope SpanAttributes mismatch:\ngot = %+v\nwant = %+v", gotScopeAttrs, tt.want.Scope.Attributes)
 			}
 		})
 	}
