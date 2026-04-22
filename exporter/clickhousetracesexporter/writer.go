@@ -161,10 +161,6 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
 		}
 
-		if len(span.Scope.Attributes) > 100 {
-			w.logger.Warn("scope attributes exceeded the limit of 100 keys", zap.String("span_id", span.SpanId))
-		}
-
 		marshalledScope, err := json.Marshal(span.Scope)
 		if err != nil {
 			w.logger.Warn("error marshalling instrumentation scope", zap.String("span_id", span.SpanId))

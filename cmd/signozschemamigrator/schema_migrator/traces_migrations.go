@@ -1070,7 +1070,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 						Columns: []Column{
 							{Name: "name", Type: ColumnTypeString},
 							{Name: "version", Type: ColumnTypeString},
-							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))}},
+							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(0))}},
 						},
 					},
 					Codec: "ZSTD(1)",
@@ -1083,10 +1083,11 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Column: Column{
 					Name: "scope",
 					Type: JSONColumnType{
+						MaxDynamicPaths: utils.ToPointer(uint(0)),
 						Columns: []Column{
 							{Name: "name", Type: ColumnTypeString},
 							{Name: "version", Type: ColumnTypeString},
-							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))}},
+							{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(0))}},
 						},
 					},
 					Codec: "ZSTD(1)",
