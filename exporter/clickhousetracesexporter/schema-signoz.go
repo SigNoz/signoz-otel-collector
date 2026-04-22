@@ -231,7 +231,22 @@ func NewInstrumentationScope(scope pcommon.InstrumentationScope) Instrumentation
 }
 
 func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
-	spanAttrs := make([]SpanAttribute, 0, len(s.Attributes))
+	scopeFields := map[string]string{"scope.name": s.Name, "scope.version": s.Version}
+	spanAttrs := make([]SpanAttribute, 0, len(s.Attributes)+len(scopeFields))
+
+	for k, v := range scopeFields {
+		if v == "" {
+			continue
+		}
+		spanAttrs = append(spanAttrs, SpanAttribute{
+			Key:         k,
+			TagType:     "scope",
+			DataType:    "string",
+			StringValue: v,
+			IsColumn:    false,
+		})
+	}
+
 	for k, v := range s.Attributes {
 		spanAttrs = append(spanAttrs, SpanAttribute{
 			Key:         k,

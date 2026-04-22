@@ -596,8 +596,18 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					gotScopeAttrs[sa.Key] = sa.StringValue
 				}
 			}
-			if !reflect.DeepEqual(gotScopeAttrs, tt.want.Scope.Attributes) {
-				t.Errorf("scope SpanAttributes mismatch:\ngot = %+v\nwant = %+v", gotScopeAttrs, tt.want.Scope.Attributes)
+			wantScopeAttrs := make(map[string]string)
+			if tt.want.Scope.Name != "" {
+				wantScopeAttrs["scope.name"] = tt.want.Scope.Name
+			}
+			if tt.want.Scope.Version != "" {
+				wantScopeAttrs["scope.version"] = tt.want.Scope.Version
+			}
+			for k, v := range tt.want.Scope.Attributes {
+				wantScopeAttrs[k] = v
+			}
+			if !reflect.DeepEqual(gotScopeAttrs, wantScopeAttrs) {
+				t.Errorf("scope SpanAttributes mismatch:\ngot = %+v\nwant = %+v", gotScopeAttrs, wantScopeAttrs)
 			}
 		})
 	}
