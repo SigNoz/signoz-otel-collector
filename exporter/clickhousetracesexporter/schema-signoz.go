@@ -212,15 +212,24 @@ type SpanAttribute struct {
 }
 
 type InstrumentationScope struct {
-	Name       string            `ch:"name" json:"name"`
-	Version    string            `ch:"version" json:"version"`
-	Attributes map[string]string `ch:"attributes" json:"attributes"`
+	Name       string         `ch:"name" json:"name"`
+	Version    string         `ch:"version" json:"version"`
+	Attributes map[string]any `ch:"attributes" json:"attributes"`
 }
 
 func NewInstrumentationScope(scope pcommon.InstrumentationScope) InstrumentationScope {
-	attrs := make(map[string]string)
+	attrs := make(map[string]any)
 	scope.Attributes().Range(func(k string, v pcommon.Value) bool {
-		attrs[k] = v.AsString()
+		switch v.Type() {
+		case pcommon.ValueTypeDouble:
+			attrs[k] = v.Double()
+		case pcommon.ValueTypeInt:
+			attrs[k] = float64(v.Int())
+		case pcommon.ValueTypeBool:
+			attrs[k] = v.Bool()
+		default:
+			attrs[k] = v.AsString()
+		}
 		return true
 	})
 	return InstrumentationScope{
@@ -248,13 +257,18 @@ func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
 	}
 
 	for k, v := range s.Attributes {
-		spanAttrs = append(spanAttrs, SpanAttribute{
-			Key:         k,
-			TagType:     "scope",
-			DataType:    "string",
-			StringValue: v,
-			IsColumn:    false,
-		})
+		sa := SpanAttribute{Key: k, TagType: "scope", IsColumn: false}
+		switch val := v.(type) {
+		case float64:
+			sa.DataType = "float64"
+			sa.NumberValue = val
+		case bool:
+			sa.DataType = "bool" // value doesn't need to be stored for suggestions
+		default:
+			sa.DataType = "string"
+			sa.StringValue = fmt.Sprintf("%v", val)
+		}
+		spanAttrs = append(spanAttrs, sa)
 	}
 	return spanAttrs
 }

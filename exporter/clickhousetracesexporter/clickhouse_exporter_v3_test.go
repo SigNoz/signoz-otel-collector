@@ -604,7 +604,9 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				wantScopeAttrs["scope.version"] = tt.want.Scope.Version
 			}
 			for k, v := range tt.want.Scope.Attributes {
-				wantScopeAttrs[k] = v
+				if s, ok := v.(string); ok {
+					wantScopeAttrs[k] = s
+				}
 			}
 			if !reflect.DeepEqual(gotScopeAttrs, wantScopeAttrs) {
 				t.Errorf("scope SpanAttributes mismatch:\ngot = %+v\nwant = %+v", gotScopeAttrs, wantScopeAttrs)
