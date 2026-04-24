@@ -59,9 +59,9 @@ func TestNormalize(t *testing.T) {
 			expected: map[string]any{"message": "from log", "msg": "from msg"},
 		},
 		{
-			name:     "message_missing_skips_non_string_msg_compatible_fields",
+			name:     "message_missing_promotes_non_string_compatible_field",
 			input:    map[string]any{"msg": 123, "log": 456},
-			expected: map[string]any{"msg": 123, "log": 456},
+			expected: map[string]any{"message": 456, "msg": 123},
 		},
 		{
 			name:     "message_missing_no_compatible_fields",
@@ -78,18 +78,48 @@ func TestNormalize(t *testing.T) {
 				"nested_key": "nested_val",
 				"foo":        "bar",
 				"level":      "info",
-				"message":    "36",
+				"message":    36,
 			},
 		},
 		{
-			name:     "message_as_slice_marshals_to_json_string",
-			input:    map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
-			expected: map[string]any{"message": `["a","b","c"]`, "level": "info"},
+			name: "message_as_map_flattens_to_top_level_and_message_is_removed",
+			input: map[string]any{
+				"message": map[string]any{"nested_key": "nested_val", "foo": "bar"},
+				"level":   "info",
+			},
+			expected: map[string]any{
+				"nested_key": "nested_val",
+				"foo":        "bar",
+				"level":      "info",
+			},
 		},
 		{
-			name:     "message_as_bool_converted_to_string",
-			input:    map[string]any{"message": true, "level": "info"},
-			expected: map[string]any{"message": "true", "level": "info"},
+			name: "message_as_map_flattens_to_top_level_and_message_is_again_map",
+			input: map[string]any{
+				"message": map[string]any{"nested_key": "nested_val", "foo": "bar", "message": map[string]any{"deep": "value"}},
+				"level":   "info",
+			},
+			expected: map[string]any{
+				"nested_key": "nested_val",
+				"foo":        "bar",
+				"level":      "info",
+				"message":    map[string]any{"deep": "value"},
+			},
+		},
+		{
+			name:     "message_as_nil_handled_message_is_removed",
+			input:    map[string]any{"message": nil, "level": "info"},
+			expected: map[string]any{"level": "info"},
+		},
+		{
+			name:     "message_missing_compatible_field_as_map_flattens_after_promotion",
+			input:    map[string]any{"msg": map[string]any{"nested_key": "nested_val", "foo": "bar"}, "level": "info"},
+			expected: map[string]any{"nested_key": "nested_val", "foo": "bar", "level": "info"},
+		},
+		{
+			name:     "message_as_slice_skipped",
+			input:    map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
+			expected: map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 		},
 	}
 

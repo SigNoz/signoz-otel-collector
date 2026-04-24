@@ -15,3 +15,6 @@ metadataexporter:
       max_string_length: 64
       max_string_distinct_values: 512
       fetch_interval: 10m
+  json:
+    max_keys_at_level: 100
+    enabled: true
