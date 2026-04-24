@@ -1,4 +1,4 @@
-package signozllmcostprocessor
+package signozllmpricingprocessor
 
 import (
 	"path/filepath"
@@ -47,20 +47,22 @@ func TestLoadConfig(t *testing.T) {
 		require.Len(t, cfg.DefaultPricing.Rules, 2)
 
 		gpt := cfg.DefaultPricing.Rules[0]
-		assert.Equal(t, "gpt-4o*", gpt.Pattern)
-		assert.Equal(t, CacheModeSubtract, gpt.CacheMode)
+		assert.Equal(t, "gpt-4o", gpt.Name)
+		assert.Equal(t, []string{"gpt-4o*"}, gpt.Pattern)
+		assert.Equal(t, CacheModeSubtract, gpt.Cache.Mode)
 		assert.Equal(t, 5.0, gpt.In)
 		assert.Equal(t, 15.0, gpt.Out)
-		assert.Equal(t, 2.5, gpt.CacheRead)
-		assert.Equal(t, 0.0, gpt.CacheWrite)
+		assert.Equal(t, 2.5, gpt.Cache.Read)
+		assert.Equal(t, 0.0, gpt.Cache.Write)
 
 		claude := cfg.DefaultPricing.Rules[1]
-		assert.Equal(t, "claude-*", claude.Pattern)
-		assert.Equal(t, CacheModeAdditive, claude.CacheMode)
+		assert.Equal(t, "claude", claude.Name)
+		assert.Equal(t, []string{"claude-*"}, claude.Pattern)
+		assert.Equal(t, CacheModeAdditive, claude.Cache.Mode)
 		assert.Equal(t, 3.0, claude.In)
 		assert.Equal(t, 15.0, claude.Out)
-		assert.Equal(t, 0.30, claude.CacheRead)
-		assert.Equal(t, 3.75, claude.CacheWrite)
+		assert.Equal(t, 0.30, claude.Cache.Read)
+		assert.Equal(t, 3.75, claude.Cache.Write)
 
 		assert.Equal(t, "_signoz.gen_ai.cost_input", cfg.OutputAttrs.In)
 		assert.Equal(t, "_signoz.gen_ai.cost_output", cfg.OutputAttrs.Out)
@@ -107,7 +109,7 @@ func TestValidateErrors(t *testing.T) {
 		{
 			name:        "bad_cache_mode",
 			id:          component.NewIDWithName(processorType, "bad_cache_mode"),
-			errContains: "cache_mode must be",
+			errContains: "cache.mode must be",
 		},
 		{
 			name:        "no_total_output",

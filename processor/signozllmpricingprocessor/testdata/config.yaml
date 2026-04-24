@@ -1,5 +1,5 @@
 # Full valid config — mirrors the spec.
-signozllmcost:
+signozllmpricing:
   attrs:
     model: "gen_ai.request.model"
     in: "gen_ai.usage.input_tokens"
@@ -9,18 +9,22 @@ signozllmcost:
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: "gpt-4o*"
-        cache_mode: subtract
+      - name: gpt-4o
+        pattern: ["gpt-4o*"]
+        cache:
+          mode: subtract
+          read: 2.5
+          write: 0.0
         in: 5.0
         out: 15.0
-        cache_read: 2.5
-        cache_write: 0.0
-      - pattern: "claude-*"
-        cache_mode: additive
+      - name: claude
+        pattern: ["claude-*"]
+        cache:
+          mode: additive
+          read: 0.30
+          write: 3.75
         in: 3.0
         out: 15.0
-        cache_read: 0.30
-        cache_write: 3.75
   output_attrs:
     in: "_signoz.gen_ai.cost_input"
     out: "_signoz.gen_ai.cost_output"
@@ -29,7 +33,7 @@ signozllmcost:
     total: "_signoz.gen_ai.total_cost"
 
 # Minimal valid — only total output attr required.
-signozllmcost/minimal:
+signozllmpricing/minimal:
   attrs:
     model: "gen_ai.request.model"
     in: "gen_ai.usage.input_tokens"
@@ -37,17 +41,18 @@ signozllmcost/minimal:
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: "*"
-        cache_mode: subtract
+      - pattern: ["*"]
+        cache:
+          mode: subtract
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: "_signoz.gen_ai.total_cost"
 
 # Invalid: missing attrs.model.
-signozllmcost/no_model_attr:
+signozllmpricing/no_model_attr:
   attrs:
     model: ""
     in: "gen_ai.usage.input_tokens"
@@ -55,75 +60,80 @@ signozllmcost/no_model_attr:
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: "*"
-        cache_mode: subtract
+      - pattern: ["*"]
+        cache:
+          mode: subtract
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: "_signoz.gen_ai.total_cost"
 
 # Invalid: unsupported unit.
-signozllmcost/bad_unit:
+signozllmpricing/bad_unit:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
     unit: per_request
     rules:
-      - pattern: "*"
-        cache_mode: subtract
+      - pattern: ["*"]
+        cache:
+          mode: subtract
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: "_signoz.gen_ai.total_cost"
 
-# Invalid: missing pattern.
-signozllmcost/no_pattern:
+# Invalid: missing pattern (empty list).
+signozllmpricing/no_pattern:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: ""
-        cache_mode: subtract
+      - pattern: []
+        cache:
+          mode: subtract
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: "_signoz.gen_ai.total_cost"
 
-# Invalid: unknown cache_mode.
-signozllmcost/bad_cache_mode:
+# Invalid: unknown cache.mode.
+signozllmpricing/bad_cache_mode:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: "*"
-        cache_mode: unknown
+      - pattern: ["*"]
+        cache:
+          mode: unknown
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: "_signoz.gen_ai.total_cost"
 
 # Invalid: missing output_attrs.total.
-signozllmcost/no_total_output:
+signozllmpricing/no_total_output:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
     unit: per_million_tokens
     rules:
-      - pattern: "*"
-        cache_mode: subtract
+      - pattern: ["*"]
+        cache:
+          mode: subtract
+          read: 0.0
+          write: 0.0
         in: 1.0
         out: 2.0
-        cache_read: 0.0
-        cache_write: 0.0
   output_attrs:
     total: ""

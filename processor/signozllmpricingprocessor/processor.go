@@ -1,4 +1,4 @@
-package signozllmcostprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozllmcostprocessor"
+package signozllmpricingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor"
 
 import (
 	"context"
@@ -19,6 +19,7 @@ type costs struct {
 
 // compiledRule is the hot-path form of PricingRule.
 type compiledRule struct {
+	name       string
 	pattern    string
 	additive   bool // true → CacheModeAdditive, false → CacheModeSubtract
 	in         float64
@@ -47,15 +48,21 @@ type llmCostProcessor struct {
 }
 
 func newProcessor(cfg *Config) *llmCostProcessor {
-	rules := make([]compiledRule, len(cfg.DefaultPricing.Rules))
-	for i, r := range cfg.DefaultPricing.Rules {
-		rules[i] = compiledRule{
-			pattern:    r.Pattern,
-			additive:   r.CacheMode == CacheModeAdditive,
-			in:         r.In,
-			out:        r.Out,
-			cacheRead:  r.CacheRead,
-			cacheWrite: r.CacheWrite,
+	// Expand each rule's pattern list into separate compiled rules. This keeps
+	// the match hot-path simple (one glob per entry) while preserving the
+	// first-match-wins semantics across patterns within the same rule.
+	rules := make([]compiledRule, 0, len(cfg.DefaultPricing.Rules))
+	for _, r := range cfg.DefaultPricing.Rules {
+		for _, p := range r.Pattern {
+			rules = append(rules, compiledRule{
+				name:       r.Name,
+				pattern:    p,
+				additive:   r.Cache.Mode == CacheModeAdditive,
+				in:         r.In,
+				out:        r.Out,
+				cacheRead:  r.Cache.Read,
+				cacheWrite: r.Cache.Write,
+			})
 		}
 	}
 

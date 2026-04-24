@@ -1,4 +1,4 @@
-type: signozllmcost
+type: signozllmpricing
 status:
   class: processor
   stability:

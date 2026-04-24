@@ -1,4 +1,4 @@
-package signozllmcostprocessor
+package signozllmpricingprocessor
 
 import (
 	"context"
@@ -22,19 +22,25 @@ var testCfg = &Config{
 		Unit: UnitPerMillionTokens,
 		Rules: []PricingRule{
 			{
-				Pattern:   "gpt-4o*",
-				CacheMode: CacheModeSubtract,
-				In:        5.0,
-				Out:       15.0,
-				CacheRead: 2.5,
+				Name:    "gpt-4o",
+				Pattern: []string{"gpt-4o*"},
+				Cache: PricingRuleCache{
+					Mode: CacheModeSubtract,
+					Read: 2.5,
+				},
+				In:  5.0,
+				Out: 15.0,
 			},
 			{
-				Pattern:    "claude-*",
-				CacheMode:  CacheModeAdditive,
-				In:         3.0,
-				Out:        15.0,
-				CacheRead:  0.30,
-				CacheWrite: 3.75,
+				Name:    "claude",
+				Pattern: []string{"claude-*"},
+				Cache: PricingRuleCache{
+					Mode:  CacheModeAdditive,
+					Read:  0.30,
+					Write: 3.75,
+				},
+				In:  3.0,
+				Out: 15.0,
 			},
 		},
 	},

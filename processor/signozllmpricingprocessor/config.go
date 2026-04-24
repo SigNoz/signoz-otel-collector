@@ -1,4 +1,4 @@
-package signozllmcostprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozllmcostprocessor"
+package signozllmpricingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor"
 
 import (
 	"fmt"
@@ -45,24 +45,41 @@ type PricingConfig struct {
 	Rules []PricingRule `mapstructure:"rules"`
 }
 
-// PricingRule associates a glob pattern with per-token prices and a cache mode.
+// PricingRule associates one or more glob patterns with per-token prices and a
+// cache mode. When multiple patterns are given, the rule matches if any one
+// of them glob-matches the model name.
 type PricingRule struct {
-	// Pattern is a glob matched against the model name attribute.
+	// Name is a human-friendly identifier for the rule (e.g. the canonical
+	// model name). Optional; used for logging and debugging only — it does
+	// not affect matching.
+	Name string `mapstructure:"name"`
+
+	// Pattern is a list of globs matched against the model name attribute.
 	// Standard glob syntax: * matches any sequence, ? matches one character.
-	Pattern string `mapstructure:"pattern"`
+	// At least one pattern is required.
+	Pattern []string `mapstructure:"pattern"`
 
-	// CacheMode controls how cache tokens are factored into the cost:
-	//   "subtract" — cache_read tokens are already counted inside input_tokens;
+	// Cache controls how cache tokens are factored into the cost.
+	Cache PricingRuleCache `mapstructure:"cache"`
+
+	// Per-million-token prices (USD) for input and output tokens.
+	In  float64 `mapstructure:"in"`
+	Out float64 `mapstructure:"out"`
+}
+
+// PricingRuleCache holds the cache-accounting mode and per-million-token
+// prices for cached tokens.
+type PricingRuleCache struct {
+	// Mode controls how cache tokens are factored into the cost:
+	//   "subtract" — cache read tokens are already counted inside input_tokens;
 	//                billed_input = input_tokens - cache_read.
-	//   "additive" — cache_read/write are separate from input_tokens;
+	//   "additive" — cache read/write are separate from input_tokens;
 	//                all four buckets are billed independently.
-	CacheMode string `mapstructure:"cache_mode"`
+	Mode string `mapstructure:"mode"`
 
-	// Per-million-token prices (USD).
-	In         float64 `mapstructure:"in"`
-	Out        float64 `mapstructure:"out"`
-	CacheRead  float64 `mapstructure:"cache_read"`
-	CacheWrite float64 `mapstructure:"cache_write"`
+	// Per-million-token prices (USD) for cached reads/writes.
+	Read  float64 `mapstructure:"read"`
+	Write float64 `mapstructure:"write"`
 }
 
 // OutputMapping declares where computed cost values are written.
@@ -89,18 +106,23 @@ func (c *Config) Validate() error {
 	}
 
 	for i, r := range c.DefaultPricing.Rules {
-		if r.Pattern == "" {
+		if len(r.Pattern) == 0 {
 			return fmt.Errorf("default_pricing.rules[%d]: pattern must not be empty", i)
 		}
-		if _, err := path.Match(r.Pattern, ""); err != nil {
-			return fmt.Errorf("default_pricing.rules[%d]: invalid glob pattern %q: %w", i, r.Pattern, err)
+		for j, p := range r.Pattern {
+			if p == "" {
+				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: pattern must not be empty", i, j)
+			}
+			if _, err := path.Match(p, ""); err != nil {
+				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: invalid glob pattern %q: %w", i, j, p, err)
+			}
 		}
-		if r.CacheMode != CacheModeSubtract && r.CacheMode != CacheModeAdditive {
-			return fmt.Errorf("default_pricing.rules[%d] (pattern=%q): cache_mode must be %q or %q, got %q",
-				i, r.Pattern, CacheModeSubtract, CacheModeAdditive, r.CacheMode)
+		if r.Cache.Mode != CacheModeSubtract && r.Cache.Mode != CacheModeAdditive {
+			return fmt.Errorf("default_pricing.rules[%d] (pattern=%v): cache.mode must be %q or %q, got %q",
+				i, r.Pattern, CacheModeSubtract, CacheModeAdditive, r.Cache.Mode)
 		}
-		if r.In < 0 || r.Out < 0 || r.CacheRead < 0 || r.CacheWrite < 0 {
-			return fmt.Errorf("default_pricing.rules[%d] (pattern=%q): prices must be non-negative", i, r.Pattern)
+		if r.In < 0 || r.Out < 0 || r.Cache.Read < 0 || r.Cache.Write < 0 {
+			return fmt.Errorf("default_pricing.rules[%d] (pattern=%v): prices must be non-negative", i, r.Pattern)
 		}
 	}
 
