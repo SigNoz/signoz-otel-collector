@@ -1,4 +1,4 @@
-package signozaimappingprocessor
+package signozspanmappingprocessor
 
 import (
 	"context"

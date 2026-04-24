@@ -1,5 +1,5 @@
 # Full valid config — llm + agent + tool groups matching the spec.
-signozaimappingprocessor:
+signozspanmappingprocessor:
   groups:
     - id: llm
       exists_any:
@@ -49,7 +49,7 @@ signozaimappingprocessor:
             - llm.tool.name
 
 # Only resource-based exists_any.
-signozaimappingprocessor/resource_only:
+signozspanmappingprocessor/resource_only:
   groups:
     - id: res
       exists_any:
@@ -61,7 +61,7 @@ signozaimappingprocessor/resource_only:
             - resource.service.name
 
 # Defaults: no action, no context — must accept as valid.
-signozaimappingprocessor/defaults:
+signozspanmappingprocessor/defaults:
   groups:
     - id: defaults
       exists_any:
@@ -73,7 +73,7 @@ signozaimappingprocessor/defaults:
             - src
 
 # Invalid: exists_any has no patterns at all.
-signozaimappingprocessor/no_patterns:
+signozspanmappingprocessor/no_patterns:
   groups:
     - id: bad
       exists_any: {}
@@ -83,7 +83,7 @@ signozaimappingprocessor/no_patterns:
             - src
 
 # Invalid: malformed glob pattern.
-signozaimappingprocessor/bad_glob:
+signozspanmappingprocessor/bad_glob:
   groups:
     - id: bad
       exists_any:
@@ -95,7 +95,7 @@ signozaimappingprocessor/bad_glob:
             - src
 
 # Invalid: empty target.
-signozaimappingprocessor/empty_target:
+signozspanmappingprocessor/empty_target:
   groups:
     - id: bad
       exists_any:
@@ -107,7 +107,7 @@ signozaimappingprocessor/empty_target:
             - src
 
 # Invalid: no sources.
-signozaimappingprocessor/no_sources:
+signozspanmappingprocessor/no_sources:
   groups:
     - id: bad
       exists_any:
@@ -118,7 +118,7 @@ signozaimappingprocessor/no_sources:
           sources: []
 
 # Invalid: unknown context value.
-signozaimappingprocessor/bad_context:
+signozspanmappingprocessor/bad_context:
   groups:
     - id: bad
       exists_any:
@@ -131,7 +131,7 @@ signozaimappingprocessor/bad_context:
             - src
 
 # Invalid: unknown action value.
-signozaimappingprocessor/bad_action:
+signozspanmappingprocessor/bad_action:
   groups:
     - id: bad
       exists_any:

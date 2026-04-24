@@ -1,4 +1,4 @@
-package signozaimappingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozaimappingprocessor"
+package signozspanmappingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozspanmappingprocessor"
 
 import (
 	"context"
