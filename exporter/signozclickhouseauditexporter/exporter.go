@@ -306,22 +306,22 @@ func (e *logsExporter) appendTagAttributes(tagStmt driver.Batch, attrKeysStmt dr
 	now := time.Now()
 
 	for key, val := range attrs.StringData {
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeString, now)
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeString, val, (*int64)(nil), (*float64)(nil))
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.FieldDataTypeString, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.FieldDataTypeString, val, (*int64)(nil), (*float64)(nil))
 	}
 
 	for key, val := range attrs.NumberData {
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeNumber, now)
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeNumber, "", (*int64)(nil), &val)
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.FieldDataTypeFloat64, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.FieldDataTypeFloat64, "", (*int64)(nil), &val)
 	}
 
 	for key := range attrs.BoolData {
-		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.TagDataTypeBool, now)
-		_ = tagStmt.Append(unixMilli, key, tagType, utils.TagDataTypeBool, "", (*int64)(nil), (*float64)(nil))
+		e.appendAttributeKey(attrKeysStmt, resourceKeysStmt, key, tagType, utils.FieldDataTypeBool, now)
+		_ = tagStmt.Append(unixMilli, key, tagType, utils.FieldDataTypeBool, "", (*int64)(nil), (*float64)(nil))
 	}
 }
 
-func (e *logsExporter) appendAttributeKey(attrKeysStmt driver.Batch, resourceKeysStmt driver.Batch, key string, tagType utils.TagType, datatype utils.TagDataType, now time.Time) {
+func (e *logsExporter) appendAttributeKey(attrKeysStmt driver.Batch, resourceKeysStmt driver.Batch, key string, tagType utils.TagType, datatype utils.FieldDataType, now time.Time) {
 	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
 	if item := e.keysCache.Get(cacheKey); item != nil {
 		return
