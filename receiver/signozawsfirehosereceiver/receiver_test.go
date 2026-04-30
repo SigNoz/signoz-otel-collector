@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 )
 
@@ -59,7 +60,7 @@ func TestStart(t *testing.T) {
 	}
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			cfg := &Config{}
+			cfg := createDefaultConfig().(*Config)
 			ctx := context.TODO()
 			r := testFirehoseReceiver(cfg, nil)
 			got := r.Start(ctx, testCase.host)
@@ -77,7 +78,10 @@ func TestStart(t *testing.T) {
 		})
 		cfg := &Config{
 			ServerConfig: confighttp.ServerConfig{
-				Endpoint: listener.Addr().String(),
+				NetAddr: confignet.AddrConfig{
+					Endpoint:  listener.Addr().String(),
+					Transport: "tcp",
+				},
 			},
 		}
 		ctx := context.TODO()

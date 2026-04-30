@@ -8,7 +8,7 @@ import (
 )
 
 type ValueTracker struct {
-	ttl             *ttlcache.Cache[string, *lru.Cache[string, struct{}]]
+	ttl             *ttlcache.Cache[string, *lru.Cache[any, struct{}]]
 	maxValuesPerKey int
 }
 
@@ -17,9 +17,9 @@ func NewValueTracker(
 	maxValuesPerKey int,
 	ttl time.Duration,
 ) *ValueTracker {
-	cache := ttlcache.New[string, *lru.Cache[string, struct{}]](
-		ttlcache.WithTTL[string, *lru.Cache[string, struct{}]](ttl),
-		ttlcache.WithCapacity[string, *lru.Cache[string, struct{}]](uint64(maxKeys)),
+	cache := ttlcache.New(
+		ttlcache.WithTTL[string, *lru.Cache[any, struct{}]](ttl),
+		ttlcache.WithCapacity[string, *lru.Cache[any, struct{}]](uint64(maxKeys)),
 	)
 
 	go cache.Start()
@@ -30,14 +30,14 @@ func NewValueTracker(
 	}
 }
 
-func (vt *ValueTracker) AddValue(key string, value string) {
+func (vt *ValueTracker) AddValue(key string, value any) {
 	// Get or create LRU cache for this key
-	var valueCache *lru.Cache[string, struct{}]
+	var valueCache *lru.Cache[any, struct{}]
 	if item := vt.ttl.Get(key); item != nil {
 		valueCache = item.Value()
 	} else {
 		// Create new LRU cache for this key
-		newCache, err := lru.New[string, struct{}](vt.maxValuesPerKey)
+		newCache, err := lru.New[any, struct{}](vt.maxValuesPerKey)
 		if err != nil {
 			return
 		}

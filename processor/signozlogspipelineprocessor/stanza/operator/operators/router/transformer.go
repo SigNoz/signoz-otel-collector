@@ -20,7 +20,8 @@ import (
 // Transformer is an operator that routes entries based on matching expressions
 type Transformer struct {
 	helper.BasicOperator
-	routes []*Route
+	routes              []*Route
+	allCompiledPatterns map[string]func(s string) bool
 }
 
 // Route is a route on a router operator
@@ -44,31 +45,29 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	routesHaveBodyFieldRef := slices.ContainsFunc(
 		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
 	)
-	env := signozstanzahelper.GetExprEnv(entry, routesHaveBodyFieldRef)
-	defer signozstanzahelper.PutExprEnv(env)
-
-	for _, route := range t.routes {
-		matches, err := vm.Run(route.Expression, env)
-		if err != nil {
-			t.Logger().Warn("Running expression returned an error", zap.Error(err))
-			continue
-		}
-
-		// we compile the expression with "AsBool", so this should be safe
-		if matches.(bool) {
-			if err := route.Attribute(entry); err != nil {
-				t.Logger().Error("Failed to label entry", zap.Error(err))
-				return err
+	return signozstanzahelper.RunWithExprEnv(entry, routesHaveBodyFieldRef, t.allCompiledPatterns, func(env map[string]any) error {
+		for _, route := range t.routes {
+			matches, err := vm.Run(route.Expression, env)
+			if err != nil {
+				t.Logger().Warn("Running expression returned an error", zap.Error(err))
+				continue
 			}
 
-			for _, output := range route.OutputOperators {
-				_ = output.Process(ctx, entry)
-			}
-			break
-		}
-	}
+			// we compile the expression with "AsBool", so this should be safe
+			if matches.(bool) {
+				if err := route.Attribute(entry); err != nil {
+					t.Logger().Error("Failed to label entry", zap.Error(err))
+					return err
+				}
 
-	return nil
+				for _, output := range route.OutputOperators {
+					_ = output.Process(ctx, entry)
+				}
+				break
+			}
+		}
+		return nil
+	})
 }
 
 func (t *Transformer) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {

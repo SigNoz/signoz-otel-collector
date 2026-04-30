@@ -238,19 +238,50 @@ ORDER BY name ASC`,
 		},
 	},
 	{
+		MigrationID: 1005,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "trace_id_idx", Expression: "trace_id", Type: "tokenbf_v1(10000, 5,0)", Granularity: 1},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "span_id_idx", Expression: "span_id", Type: "tokenbf_v1(5000, 5,0)", Granularity: 1},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "trace_id_idx"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "span_id_idx"},
+			},
+		},
+	},
+
+	// JSON migrations
+	{
 		MigrationID: 2001,
 		UpItems: []Operation{
 			CreateTableOperation{
 				Database: SignozMetadataDB,
-				Table:    constants.LocalPathTypesTable,
+				Table:    constants.LocalFieldKeysTable,
 				Columns: []Column{
-					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
-						OrderBy:     fmt.Sprintf("(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
+						OrderBy:     fmt.Sprintf("(signal, field_context, %s, %s)", constants.FieldKeysTableNameColumn, constants.FieldKeysTableDataTypeColumn),
 						PartitionBy: "toDate(last_seen / 1000000000)",
 						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
 						Settings: TableSettings{
@@ -262,16 +293,18 @@ ORDER BY name ASC`,
 			},
 			CreateTableOperation{
 				Database: SignozMetadataDB,
-				Table:    constants.DistributedPathTypesTable,
+				Table:    constants.DistributedFieldKeysTable,
 				Columns: []Column{
-					{Name: constants.PathTypesTablePathColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: constants.PathTypesTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
 				},
 				Engine: Distributed{
 					Database:    SignozMetadataDB,
-					Table:       constants.LocalPathTypesTable,
-					ShardingKey: fmt.Sprintf("cityHash64(%s, %s)", constants.PathTypesTablePathColumn, constants.PathTypesTableTypeColumn),
+					Table:       constants.LocalFieldKeysTable,
+					ShardingKey: fmt.Sprintf("cityHash64(signal, field_context, %s)", constants.FieldKeysTableNameColumn),
 				},
 			},
 			AlterTableModifySettings{
@@ -286,8 +319,14 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
@@ -300,8 +339,14 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
 						MaxDynamicPaths: utils.ToPointer[uint](0),
 					},
 					Codec: "ZSTD(1)",
@@ -319,7 +364,7 @@ ORDER BY name ASC`,
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 				},
 			},
 			AlterTableAddColumn{
@@ -331,15 +376,25 @@ ORDER BY name ASC`,
 					Codec: "ZSTD(1)",
 				},
 				After: &Column{
-					Name: constants.BodyJSONColumn,
+					Name: constants.BodyV2Column,
 				},
 			},
 			AlterTableAddIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
+					Name:        "body_v2_string_ngram_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_string_token_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
 					Type:        "tokenbf_v1(10000, 2, 0)",
 					Granularity: 1,
 				},
@@ -348,9 +403,19 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name:        JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
-					Expression:  JSONSubColumnIndexExpr(constants.BodyPromotedColumn, "message", "String"),
+					Name:        "body_v2_paths_ngram_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
 					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_paths_token_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
+					Type:        "tokenbf_v1(10000, 2, 0)",
 					Granularity: 1,
 				},
 			},
@@ -360,14 +425,28 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeNGramBF),
+					Name: "body_v2_string_ngram_idx",
 				},
 			},
 			AlterTableDropIndex{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Index: Index{
-					Name: JSONSubColumnIndexName(constants.BodyPromotedColumn, "message", "String", IndexTypeTokenBF),
+					Name: "body_v2_string_token_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_ngram_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_token_idx",
 				},
 			},
 			AlterTableDropColumn{
@@ -378,15 +457,15 @@ ORDER BY name ASC`,
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
-				Column:   Column{Name: constants.BodyJSONColumn},
+				Column:   Column{Name: constants.BodyV2Column},
 			},
 			DropTableOperation{
 				Database: SignozMetadataDB,
-				Table:    constants.LocalPathTypesTable,
+				Table:    constants.DistributedFieldKeysTable,
 			},
 			DropTableOperation{
 				Database: SignozMetadataDB,
-				Table:    constants.DistributedPathTypesTable,
+				Table:    constants.LocalFieldKeysTable,
 			},
 		},
 	},

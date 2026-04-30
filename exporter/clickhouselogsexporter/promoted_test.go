@@ -9,7 +9,7 @@ import (
 
 func TestInvalidBodyType(t *testing.T) {
 	body := pcommon.NewValueStr("test log")
-	promoted := buildPromotedAndPruneBody(body, map[string]struct{}{})
+	promoted := buildPromoted(body, map[string]struct{}{})
 	assert.Equal(t, pcommon.NewValueMap(), promoted)
 }
 
@@ -18,7 +18,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 		name             string
 		body             map[string]interface{}
 		promotedPaths    map[string]struct{}
-		expectedBody     map[string]interface{}
 		expectedPromoted map[string]interface{}
 	}{
 		{
@@ -30,10 +29,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			},
 			promotedPaths: map[string]struct{}{
 				"user.id": {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"level":   "info",
 			},
 			expectedPromoted: map[string]interface{}{
 				"user.id": "123",
@@ -52,12 +47,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"user.id":   {},
 				"user.name": {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"user": map[string]interface{}{
-					"email": "john@example.com",
-				},
 			},
 			expectedPromoted: map[string]interface{}{
 				"user.id":   "123",
@@ -82,14 +71,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"a.b.c": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"a": map[string]interface{}{
-					"b": map[string]interface{}{
-						"c": "nested_value",
-					},
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"a.b.c": "literal_value",
 			},
@@ -113,15 +94,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.name":         {},
 				"user.address.city": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"user": map[string]interface{}{
-					"email": "john@example.com",
-					"address": map[string]interface{}{
-						"street": "123 Main St",
-					},
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"user.id":           "123",
 				"user.name":         "john",
@@ -144,13 +116,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.id":           {},
 				"user.name":         {},
 				"user.address.city": {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"user": map[string]interface{}{
-					"email":          "john@example.com",
-					"address.street": "123 Main St",
-				},
 			},
 			expectedPromoted: map[string]interface{}{
 				"user.id":           "123",
@@ -182,14 +147,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"request.headers.authorization":            {},
 				"request.body.user.profile.settings.theme": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"request": map[string]interface{}{
-					"headers": map[string]interface{}{
-						"content-type": "application/json",
-					},
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"request.headers.authorization":            "Bearer token123",
 				"request.body.user.profile.settings.theme": "dark",
@@ -204,14 +161,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 					"id": "123",
 				},
 			},
-			promotedPaths: map[string]struct{}{},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"level":   "info",
-				"user": map[string]interface{}{
-					"id": "123",
-				},
-			},
+			promotedPaths:    map[string]struct{}{},
 			expectedPromoted: map[string]interface{}{},
 		},
 		{
@@ -223,10 +173,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"non.existent.path": {},
 				"another.missing":   {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"level":   "info",
 			},
 			expectedPromoted: map[string]interface{}{},
 		},
@@ -244,9 +190,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"a.b.c": {},
 				"a.b.d": {},
-			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
 			},
 			expectedPromoted: map[string]interface{}{
 				"a.b.c": "literal",
@@ -270,16 +213,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"a.b.c": {},
 				"a.b.d": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"a": map[string]interface{}{
-					"b": map[string]interface{}{
-						"d": map[string]interface{}{
-							"nested_key": "nested_value",
-						},
-					},
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"a.b.c": "literal",
 			},
@@ -299,14 +232,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"a.b.c": {},
 				"a.b.d": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"a": map[string]interface{}{
-					"b.d": map[string]interface{}{
-						"nested_key": "nested_value",
-					},
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"a.b.c": "literal",
 			},
@@ -325,12 +250,6 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"a.b.c": {},
 			},
-			expectedBody: map[string]interface{}{
-				"message": "test log",
-				"a.b.c": map[string]interface{}{
-					"nested_key": "nested_value",
-				},
-			},
 			expectedPromoted: map[string]interface{}{
 				"a.b.c": "literal",
 			},
@@ -344,14 +263,14 @@ func TestPromotedPathSeparation(t *testing.T) {
 			populateMapFromInterface(body.Map(), tc.body)
 
 			// Extract promoted paths
-			promoted := buildPromotedAndPruneBody(body, tc.promotedPaths)
+			promoted := buildPromoted(body, tc.promotedPaths)
 
 			// Convert results back to interface{} for comparison
 			actualBody := convertMapToInterface(body.Map())
 			actualPromoted := convertMapToInterface(promoted.Map())
 
 			// Assertions
-			assert.Equal(t, tc.expectedBody, actualBody, "Body should match expected after extraction")
+			assert.Equal(t, tc.body, actualBody, "Body should stay the same after extraction")
 			assert.Equal(t, tc.expectedPromoted, actualPromoted, "Promoted should match expected")
 		})
 	}

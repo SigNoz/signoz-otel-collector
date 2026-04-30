@@ -23,9 +23,9 @@ func TestInsertIntoTable(t *testing.T) {
 				Database: constants.SignozMetadataDB,
 				Table:    "distributed_column_evolution_metadata",
 				Columns:  []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
-				Values:   fmt.Sprintf("('logs', 'body_json_promoted', 'JSON', 'body', 'message', 0, %d)", timestamp),
+				Values:   fmt.Sprintf("('logs', 'body_promoted', 'JSON', 'body', 'message', 0, %d)", timestamp),
 			},
-			want: fmt.Sprintf("INSERT INTO %s.distributed_column_evolution_metadata (signal, column_name, column_type, field_context, field_name, version, release_time) VALUES ('logs', 'body_json_promoted', 'JSON', 'body', 'message', 0, %d)", constants.SignozMetadataDB, timestamp),
+			want: fmt.Sprintf("INSERT INTO %s.distributed_column_evolution_metadata (signal, column_name, column_type, field_context, field_name, version, release_time) VALUES ('logs', 'body_promoted', 'JSON', 'body', 'message', 0, %d)", constants.SignozMetadataDB, timestamp),
 		},
 	}
 

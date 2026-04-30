@@ -58,7 +58,9 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	exprStr := strings.TrimPrefix(strVal, "EXPR(")
 	exprStr = strings.TrimSuffix(exprStr, ")")
 
-	compiled, hasBodyFieldRef, err := signozstanzahelper.ExprCompile(exprStr)
+	// ADD expression string would not contain LIKE function; We only support official EXPR functions
+	// in add operator
+	compiled, hasBodyFieldRef, _, err := signozstanzahelper.ExprCompile(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression '%s': %w", c.IfExpr, err)
 	}

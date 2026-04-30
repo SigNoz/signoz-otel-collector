@@ -8,8 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 	"go.opentelemetry.io/collector/confmap/xconfmap"
@@ -33,7 +34,10 @@ func TestLoadConfig(t *testing.T) {
 			id: component.NewIDWithName(metadata.Type, "endpoint"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: "localhost:54321",
+					NetAddr: confignet.AddrConfig{
+						Endpoint:  "localhost:54321",
+						Transport: "tcp",
+					},
 				},
 			},
 		},
@@ -41,7 +45,10 @@ func TestLoadConfig(t *testing.T) {
 			id: component.NewIDWithName(metadata.Type, "withtls"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: ":54321",
+					NetAddr: confignet.AddrConfig{
+						Endpoint:  ":54321",
+						Transport: "tcp",
+					},
 					TLS: configoptional.Some(configtls.ServerConfig{
 						Config: configtls.Config{
 							CertFile: "/test.crt",
@@ -55,7 +62,10 @@ func TestLoadConfig(t *testing.T) {
 			id: component.NewIDWithName(metadata.Type, "heroku"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: ":54321",
+					NetAddr: confignet.AddrConfig{
+						Endpoint:  ":54321",
+						Transport: "tcp",
+					},
 				},
 				Source: "heroku",
 			},
@@ -64,7 +74,10 @@ func TestLoadConfig(t *testing.T) {
 			id: component.NewIDWithName(metadata.Type, "google"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: ":54321",
+					NetAddr: confignet.AddrConfig{
+						Endpoint:  ":54321",
+						Transport: "tcp",
+					},
 				},
 				Source: "google",
 			},
@@ -73,7 +86,10 @@ func TestLoadConfig(t *testing.T) {
 			id: component.NewIDWithName(metadata.Type, "json"),
 			expected: &Config{
 				ServerConfig: confighttp.ServerConfig{
-					Endpoint: ":54321",
+					NetAddr: confignet.AddrConfig{
+						Endpoint:  ":54321",
+						Transport: "tcp",
+					},
 				},
 				Source: "json",
 			},
@@ -98,7 +114,7 @@ func TestLoadConfig(t *testing.T) {
 func TestCreateInvalidHTTPEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.Endpoint = ""
+	cfg.NetAddr.Endpoint = ""
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, "must specify an endpoint for the httplogreceiver")
@@ -107,7 +123,7 @@ func TestCreateInvalidHTTPEndpoint(t *testing.T) {
 func TestCreateNoPortEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.Endpoint = "localhost:"
+	cfg.NetAddr.Endpoint = "localhost:"
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, `endpoint port is not a number: strconv.ParseInt: parsing "": invalid syntax`)
@@ -116,7 +132,7 @@ func TestCreateNoPortEndpoint(t *testing.T) {
 func TestCreateLargePortEndpoint(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig().(*Config)
-	cfg.Endpoint = "localhost:65536"
+	cfg.NetAddr.Endpoint = "localhost:65536"
 
 	err := cfg.Validate()
 	assert.EqualError(t, err, "port number must be between 1 and 65535")

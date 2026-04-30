@@ -122,8 +122,8 @@ const (
 		severity_text,
 		severity_number,
 		body,
-		body_json,
-		body_json_promoted,
+		body_v2,
+		body_promoted,
 		attributes_string,
 		attributes_number,
 		attributes_bool,
@@ -372,7 +372,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 	shouldSkipKeys := make(map[string]shouldSkipKey)
 	for _, key := range keys {
-		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.FieldDataType(key.TagDataType))
 		e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
 		shouldSkipKeys[mapKey] = key
 	}
@@ -430,7 +430,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	// Query Evolution Table for promoted paths
 	// Format: signal, col_name, col_type, field_context, field_name, release_time
-	// Example: logs, body_json_promoted, JSON, body, user.name, Jan 10
+	// Example: logs, body_promoted, JSON, body, user.name, Jan 10
 	query := fmt.Sprintf(
 		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' AND field_name != '__all__' SETTINGS max_threads = 1`,
 		distributedColumnEvolutionTable,
@@ -833,17 +833,13 @@ func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
-		// Work on a local mutable copy of the body to avoid mutating
-		// the shared pdata across goroutines.
-		mutableBody := pcommon.NewValueMap()
-		body.CopyTo(mutableBody)
-
 		// promoted paths extraction using cached set
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
 		// set values to promoted and bodyJSON
-		promoted = buildPromotedAndPruneBody(mutableBody, promotedSet)
-		bodyJSON = mutableBody
+		promoted = buildPromoted(body, promotedSet)
+		// switch the reference to bodyJSON
+		bodyJSON = body
 
 		if !e.bodyJSONOldBodyEnabled {
 			// set body to empty string
@@ -881,7 +877,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	resourceKeysStmt driver.Batch,
 	key string,
 	tagType utils.TagType,
-	datatype utils.TagDataType,
+	datatype utils.FieldDataType,
 ) {
 	if keycheck.IsRandomKey(key) {
 		return
@@ -923,13 +919,13 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
 		}
 
-		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.TagDataTypeString)
+		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.FieldDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -938,7 +934,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			attrKey,
 			tagType,
-			utils.TagDataTypeString,
+			utils.FieldDataTypeString,
 			attrVal,
 			nil,
 		)
@@ -951,8 +947,8 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
-		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64)
+		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.FieldDataTypeFloat64)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -961,7 +957,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			numKey,
 			tagType,
-			utils.TagDataTypeNumber,
+			utils.FieldDataTypeFloat64,
 			nil,
 			numVal,
 		)
@@ -973,9 +969,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool)
 
-		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
+		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.FieldDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -985,7 +981,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			boolKey,
 			tagType,
-			utils.TagDataTypeBool,
+			utils.FieldDataTypeBool,
 			nil,
 			nil,
 		)
@@ -1032,6 +1028,9 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 	// default settings for allowing ClickHouse to handle duplicate paths in JSON type.
 	options.Settings["type_json_skip_duplicated_paths"] = 1
+	// default settings for disabling inferring datetimes and dates from JSON type.
+	options.Settings["input_format_try_infer_datetimes"] = 0
+	options.Settings["input_format_try_infer_dates"] = 0
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxIdleConnections := 1

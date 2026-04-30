@@ -281,6 +281,41 @@ func Test_populateEventsV3(t *testing.T) {
 				},
 			},
 		},
+		// OTel semconv domain-specific exception event names should also be
+		// recognized. See: https://opentelemetry.io/docs/specs/semconv/http/http-exceptions/
+		{
+			name: "test_http_client_request_exception",
+			args: args{
+				events: func() ptrace.SpanEventSlice {
+					events := ptrace.NewSpanEventSlice()
+					event := events.AppendEmpty()
+					event.SetName("http.client.request.exception")
+					event.SetTimestamp(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)))
+					attrs := event.Attributes()
+					attrs.PutStr("exception.type", "TimeoutError")
+					attrs.PutStr("exception.message", "request timed out")
+					return events
+				}(),
+				span:                         &SpanV3{},
+				lowCardinalExceptionGrouping: false,
+			},
+			result: SpanV3{
+				ErrorEvents: []ErrorEvent{
+					{
+						Event: Event{
+							Name:         "http.client.request.exception",
+							TimeUnixNano: uint64(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)).AsTime().UnixNano()),
+							AttributeMap: map[string]string{
+								"exception.type":    "TimeoutError",
+								"exception.message": "request timed out",
+							},
+							IsError: true,
+						},
+						ErrorGroupID: "62de452df58795e9c308a703ccad5a3d",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
