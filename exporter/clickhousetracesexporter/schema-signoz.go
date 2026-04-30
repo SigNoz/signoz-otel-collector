@@ -237,6 +237,9 @@ func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
 
 	spanAttrs := make([]SpanAttribute, 0, len(s.Attributes)+len(scopeFields))
 	for k, v := range scopeFields {
+		if v == "" {
+			continue
+		}
 		spanAttrs = append(spanAttrs, SpanAttribute{
 			Key:         k,
 			TagType:     "scope",
