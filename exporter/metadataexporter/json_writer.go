@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -152,6 +153,8 @@ type jsonMetadataWriter struct {
 	// inherited fields from metadataexporter
 	valueTracker *ValueTracker
 	limits       LimitsConfig
+
+	logsProcessed metric.Int64Counter
 }
 
 func newJSONMetadataWriter(
@@ -164,6 +167,13 @@ func newJSONMetadataWriter(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cardinal key cache: %w", err)
 	}
+	logsProcessed, err := e.set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter").Int64Counter(
+		"signoz_metadata_exporter_json_logs_processed",
+		metric.WithDescription("Number of log records with a JSON (map) body processed by the JSON metadata writer"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create json writer metrics: %w", err)
+	}
 	w := &jsonMetadataWriter{
 		cfg:              cfg,
 		logger:           logger,
@@ -171,6 +181,7 @@ func newJSONMetadataWriter(
 		conn:             e.conn,
 		valueTracker:     e.logsTracker,
 		limits:           e.cfg.MaxDistinctValues.Logs,
+		logsProcessed:    logsProcessed,
 	}
 	empty := make(map[string]struct{})
 	w.skipKeys.Store(&empty)
@@ -248,6 +259,15 @@ func (w *jsonMetadataWriter) skipUVT(key string) bool {
 }
 
 func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
+	err := w.processLogs(ctx, ld)
+	if err != nil {
+		return err
+	}
+	w.logsProcessed.Add(ctx, int64(ld.LogRecordCount()))
+	return nil
+}
+
+func (w *jsonMetadataWriter) processLogs(ctx context.Context, ld plog.Logs) error {
 	bodyTypes := &typesAccumulator{}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())

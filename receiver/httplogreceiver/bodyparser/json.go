@@ -1,40 +1,44 @@
 package bodyparser
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
 
-	"github.com/goccy/go-json"
+	"github.com/bytedance/sonic"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
 type JSON struct {
+	sonic.Config
 }
 
 type JSONLog struct {
-	Timestamp      int64                  `json:"timestamp"`
-	TraceID        string                 `json:"trace_id"`
-	SpanID         string                 `json:"span_id"`
-	TraceFlags     int                    `json:"trace_flags"`
-	SeverityText   string                 `json:"severity_text"`
-	SeverityNumber int                    `json:"severity_number"`
-	Attributes     map[string]interface{} `json:"attributes"`
-	Resources      map[string]interface{} `json:"resources"`
-	Body           string                 `json:"body"`
+	Timestamp      int64          `json:"timestamp"`
+	TraceID        string         `json:"trace_id"`
+	SpanID         string         `json:"span_id"`
+	TraceFlags     int            `json:"trace_flags"`
+	SeverityText   string         `json:"severity_text"`
+	SeverityNumber int            `json:"severity_number"`
+	Attributes     map[string]any `json:"attributes"`
+	Resources      map[string]any `json:"resources"`
+	Body           any            `json:"body"`
 }
 
 func NewJsonBodyParser() *JSON {
-	return &JSON{}
+	return &JSON{
+		Config: sonic.Config{UseInt64: true},
+	}
 }
 
 func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
-
-	data := []map[string]interface{}{}
-	err := json.Unmarshal(body, &data)
+	data := []map[string]any{}
+	dec := l.Config.Froze().NewDecoder(bytes.NewReader(body))
+	err := dec.Decode(&data)
 	if err != nil {
 		return plog.NewLogs(), 0, fmt.Errorf("error unmarshalling data:%w", err)
 	}
@@ -46,11 +50,14 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 			switch key {
 			case "timestamp":
 				// nanosecond epoch
-				data, ok := val.(float64)
-				if !ok {
+				switch v := val.(type) {
+				case float64:
+					jsonLog.Timestamp = getEpochNano(int64(v))
+				case int64:
+					jsonLog.Timestamp = getEpochNano(v)
+				default:
 					return plog.NewLogs(), 0, fmt.Errorf("timestamp must be a uint64 nanoseconds since Unix epoch")
 				}
-				jsonLog.Timestamp = getEpochNano(int64(data))
 			case "trace_id":
 				data, ok := val.(string)
 				if !ok {
@@ -64,11 +71,14 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 				}
 				jsonLog.SpanID = data
 			case "trace_flags":
-				data, ok := val.(float64)
-				if !ok {
-					return plog.NewLogs(), 0, fmt.Errorf("trace_flags must be a number")
+				switch v := val.(type) {
+				case float64:
+					jsonLog.TraceFlags = int(v)
+				case int64:
+					jsonLog.TraceFlags = int(v)
+				default:
+					return plog.NewLogs(), 0, fmt.Errorf("%s must be a number", key)
 				}
-				jsonLog.TraceFlags = int(data)
 			case "severity_text":
 				data, ok := val.(string)
 				if !ok {
@@ -76,11 +86,14 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 				}
 				jsonLog.SeverityText = data
 			case "severity_number":
-				data, ok := val.(float64)
-				if !ok {
-					return plog.NewLogs(), 0, fmt.Errorf("severity_number must be a number")
+				switch v := val.(type) {
+				case float64:
+					jsonLog.SeverityNumber = int(v)
+				case int64:
+					jsonLog.SeverityNumber = int(v)
+				default:
+					return plog.NewLogs(), 0, fmt.Errorf("%s must be a number", key)
 				}
-				jsonLog.SeverityNumber = int(data)
 			case "attributes":
 				data, ok := val.(map[string]interface{})
 				if !ok {
@@ -94,11 +107,14 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 				}
 				jsonLog.Resources = data
 			case "message", "body":
-				data, ok := val.(string)
-				if !ok {
-					return plog.NewLogs(), 0, fmt.Errorf("%s must be a string", key)
+				switch v := val.(type) {
+				case string:
+					jsonLog.Body = v
+				case map[string]interface{}:
+					jsonLog.Body = v
+				default:
+					return plog.NewLogs(), 0, fmt.Errorf("%s must be a string or map", key)
 				}
-				jsonLog.Body = data
 			default:
 				// if there is any other key present convert it to an attribute
 				if jsonLog.Attributes == nil {
@@ -113,19 +129,17 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 	ld := plog.NewLogs()
 	for _, log := range jsonLogArray {
 		rl := ld.ResourceLogs().AppendEmpty()
-		rAttrLen := len(log.Resources)
-		rl.Resource().Attributes().EnsureCapacity(rAttrLen)
-		for k, v := range log.Resources {
-			l.AddAttribute(rl.Resource().Attributes(), k, v)
+		if err := rl.Resource().Attributes().FromRaw(log.Resources); err != nil {
+			return plog.NewLogs(), 0, fmt.Errorf("error setting resources: %w", err)
 		}
 		sl := rl.ScopeLogs().AppendEmpty()
 		rec := sl.LogRecords().AppendEmpty()
-		attrLen := len(log.Attributes)
-		rec.Attributes().EnsureCapacity(attrLen)
-		for k, v := range log.Attributes {
-			l.AddAttribute(rec.Attributes(), k, v)
+		if err := rec.Attributes().FromRaw(log.Attributes); err != nil {
+			return plog.NewLogs(), 0, fmt.Errorf("error setting attributes: %w", err)
 		}
-		rec.Body().SetStr(log.Body)
+		if err := rec.Body().FromRaw(log.Body); err != nil {
+			return plog.NewLogs(), 0, fmt.Errorf("error setting body: %w", err)
+		}
 		if log.TraceID != "" {
 			traceIdByte, err := hex.DecodeString(log.TraceID)
 			if err != nil {
@@ -151,26 +165,6 @@ func (l *JSON) Parse(body []byte) (plog.Logs, int, error) {
 		rec.SetFlags(plog.LogRecordFlags(log.TraceFlags))
 	}
 	return ld, len(data), nil
-}
-
-func (l *JSON) AddAttribute(attrs pcommon.Map, key string, value interface{}) {
-	switch value := value.(type) {
-	case string:
-		attrs.PutStr(key, value)
-	case int, int8, int16, int32, int64:
-		attrs.PutInt(key, value.(int64))
-	case uint, uint8, uint16, uint32, uint64:
-		attrs.PutInt(key, int64(value.(uint64)))
-	case float32, float64:
-		attrs.PutDouble(key, value.(float64))
-	case bool:
-		attrs.PutBool(key, value)
-	default:
-		// ignoring the error for now
-		bytes, _ := json.Marshal(value)
-		attrs.PutStr(key, string(bytes))
-	}
-
 }
 
 // getEpochNano returns epoch in  nanoseconds
