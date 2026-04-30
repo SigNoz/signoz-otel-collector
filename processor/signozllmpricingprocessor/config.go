@@ -17,8 +17,6 @@ type Config struct {
 	// Attrs maps logical token-field names to the actual span attribute keys.
 	Attrs AttrMapping `mapstructure:"attrs"`
 
-	// DefaultPricing holds the ordered pricing rules applied when no
-	// model-specific override exists.
 	DefaultPricing PricingConfig `mapstructure:"default_pricing"`
 
 	// OutputAttrs maps logical cost-field names to the span attribute keys
@@ -26,7 +24,6 @@ type Config struct {
 	OutputAttrs OutputMapping `mapstructure:"output_attrs"`
 }
 
-// AttrMapping declares which span attributes carry token counts.
 type AttrMapping struct {
 	Model      string `mapstructure:"model"`
 	In         string `mapstructure:"in"`
@@ -35,40 +32,19 @@ type AttrMapping struct {
 	CacheWrite string `mapstructure:"cache_write"`
 }
 
-// PricingConfig groups the unit declaration and the ordered rule list.
 type PricingConfig struct {
-	// Unit must be "per_million_tokens".
-	Unit string `mapstructure:"unit"`
-
-	// Rules is an ordered list of pricing rules. The first rule whose Pattern
-	// glob-matches the model name wins.
+	Unit  string        `mapstructure:"unit"`
 	Rules []PricingRule `mapstructure:"rules"`
 }
 
-// PricingRule associates one or more glob patterns with per-token prices and a
-// cache mode. When multiple patterns are given, the rule matches if any one
-// of them glob-matches the model name.
 type PricingRule struct {
-	// Name is a human-friendly identifier for the rule (e.g. the canonical
-	// model name). Optional; used for logging and debugging only — it does
-	// not affect matching.
-	Name string `mapstructure:"name"`
-
-	// Pattern is a list of globs matched against the model name attribute.
-	// Standard glob syntax: * matches any sequence, ? matches one character.
-	// At least one pattern is required.
-	Pattern []string `mapstructure:"pattern"`
-
-	// Cache controls how cache tokens are factored into the cost.
-	Cache PricingRuleCache `mapstructure:"cache"`
-
-	// Per-million-token prices (USD) for input and output tokens.
-	In  float64 `mapstructure:"in"`
-	Out float64 `mapstructure:"out"`
+	Name    string           `mapstructure:"name"`
+	Pattern []string         `mapstructure:"pattern"`
+	Cache   PricingRuleCache `mapstructure:"cache"`
+	In      float64          `mapstructure:"in"`
+	Out     float64          `mapstructure:"out"`
 }
 
-// PricingRuleCache holds the cache-accounting mode and per-million-token
-// prices for cached tokens.
 type PricingRuleCache struct {
 	// Mode controls how cache tokens are factored into the cost:
 	//   "subtract" — cache read tokens are already counted inside input_tokens;
@@ -82,7 +58,6 @@ type PricingRuleCache struct {
 	Write float64 `mapstructure:"write"`
 }
 
-// OutputMapping declares where computed cost values are written.
 type OutputMapping struct {
 	In         string `mapstructure:"in"`
 	Out        string `mapstructure:"out"`
@@ -91,7 +66,6 @@ type OutputMapping struct {
 	Total      string `mapstructure:"total"`
 }
 
-// Validate returns an error if the configuration is invalid.
 func (c *Config) Validate() error {
 	if c.Attrs.Model == "" {
 		return fmt.Errorf("attrs.model must not be empty")
