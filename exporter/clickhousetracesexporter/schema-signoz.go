@@ -16,7 +16,9 @@ package clickhousetracesexporter
 
 import (
 	"fmt"
+	"maps"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -171,6 +173,9 @@ type SpanV3 struct {
 	// It is using same key as resources_string to keep the billing calculation unchanged
 	BillableResourcesString map[string]string `json:"resources_string,omitempty"`
 
+	// Instrumentation scope
+	Scope InstrumentationScope `json:"-"`
+
 	// for events
 	// TODO: Read from github.com/SigNoz/signoz-otel-collector/pkg/schema/traces
 	Events []string `json:"event,omitempty"`
@@ -205,6 +210,45 @@ type SpanAttribute struct {
 	StringValue string
 	NumberValue float64
 	IsColumn    bool
+}
+
+type InstrumentationScope struct {
+	Name       string            `ch:"name" json:"name"`
+	Version    string            `ch:"version" json:"version"`
+	Attributes map[string]string `ch:"attributes" json:"attributes"`
+}
+
+func NewInstrumentationScope(scope pcommon.InstrumentationScope) InstrumentationScope {
+	attrs := make(map[string]string)
+	scope.Attributes().Range(func(k string, v pcommon.Value) bool {
+		attrs[k] = v.AsString()
+		return true
+	})
+	return InstrumentationScope{
+		Name:       scope.Name(),
+		Version:    scope.Version(),
+		Attributes: attrs,
+	}
+}
+
+func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
+	scopeFields := map[string]string{"scope.name": s.Name, "scope.version": s.Version}
+	maps.Copy(scopeFields, s.Attributes)
+
+	spanAttrs := make([]SpanAttribute, 0, len(s.Attributes)+len(scopeFields))
+	for k, v := range scopeFields {
+		if v == "" {
+			continue
+		}
+		spanAttrs = append(spanAttrs, SpanAttribute{
+			Key:         k,
+			TagType:     "scope",
+			DataType:    "string",
+			StringValue: v,
+			IsColumn:    false,
+		})
+	}
+	return spanAttrs
 }
 
 func (s *Span) MarshalLogObject(enc zapcore.ObjectEncoder) error {

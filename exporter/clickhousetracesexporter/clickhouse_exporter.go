@@ -58,6 +58,7 @@ const (
 		attributes_bool,
 		resources_string,
 		resource,
+		scope,
 		events,
 		links,
 		response_status_code,
@@ -71,6 +72,8 @@ const (
 		has_error,
 		is_remote
 		) VALUES (
+			?,
+			?,
 			?,
 			?,
 			?,
