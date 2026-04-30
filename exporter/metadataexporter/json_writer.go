@@ -259,15 +259,6 @@ func (w *jsonMetadataWriter) skipUVT(key string) bool {
 }
 
 func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
-	err := w.processLogs(ctx, ld)
-	if err != nil {
-		return err
-	}
-	w.logsProcessed.Add(ctx, int64(ld.LogRecordCount()))
-	return nil
-}
-
-func (w *jsonMetadataWriter) processLogs(ctx context.Context, ld plog.Logs) error {
 	bodyTypes := &typesAccumulator{}
 
 	vaStmt, err := w.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", distributedTagAttrsV2Table), driver.WithReleaseConnection())
@@ -301,6 +292,8 @@ func (w *jsonMetadataWriter) processLogs(ctx context.Context, ld plog.Logs) erro
 				}
 				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBodyField, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
 					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBodyField)), zap.Error(err))
+				} else {
+					w.logsProcessed.Add(ctx, 1)
 				}
 			}
 		}
