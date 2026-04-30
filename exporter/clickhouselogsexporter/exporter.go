@@ -295,6 +295,7 @@ type clickhouseLogsExporter struct {
 	closeChan chan struct{}
 
 	durationHistogram metric.Float64Histogram
+	jsonLogsProcessed metric.Int64Counter
 
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
@@ -826,6 +827,7 @@ producerIteration:
 		_ = stats.RecordWithTags(ctx, []tag.Mutator{tag.Upsert(usage.TagTenantKey, k), tag.Upsert(usage.TagExporterIdKey, e.id.String())}, ExporterSigNozSentLogRecords.M(int64(v.Count)), ExporterSigNozSentLogRecordsBytes.M(int64(v.Size)))
 	}
 
+	e.jsonLogsProcessed.Add(ctx, int64(ld.LogRecordCount()))
 	return nil
 }
 

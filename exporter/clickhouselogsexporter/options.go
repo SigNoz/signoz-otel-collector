@@ -55,6 +55,15 @@ func WithMeter(meter metric.Meter) LogExporterOption {
 			panic(fmt.Errorf("error creating duration histogram: %w", err))
 		}
 		e.durationHistogram = durationHistogram
+
+		jsonLogsProcessed, err := meter.Int64Counter(
+			"signoz_clickhouse_logs_exporter_json_logs_processed",
+			metric.WithDescription("Number of log records with a JSON (map) body processed when body_json is enabled"),
+		)
+		if err != nil {
+			panic(fmt.Errorf("error creating json logs processed counter: %w", err))
+		}
+		e.jsonLogsProcessed = jsonLogsProcessed
 	}
 }
 
