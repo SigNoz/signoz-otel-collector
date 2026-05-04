@@ -324,6 +324,7 @@ func TestProcessBody(t *testing.T) {
 		bodyJSONOldBodyEnabled bool
 		promotedPaths          map[string]struct{}
 		body                   func() pcommon.Value
+		expectedError          bool
 		expectedBody           string
 		expectedBodyJSON       string
 		expectedPromoted       string
@@ -364,9 +365,8 @@ func TestProcessBody(t *testing.T) {
 				v := pcommon.NewValueStr("test log message")
 				return v
 			},
-			expectedBody:     "test log message",
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
+			expectedBody:  "test log message",
+			expectedError: true,
 		},
 		{
 			name:                   "bodyJSONEnabled_true_map_body_with_promoted_paths",
@@ -488,6 +488,10 @@ func TestProcessBody(t *testing.T) {
 
 			// Process body
 			bodyStr, bodyJSONStr, promotedStr, err := exporter.processBody(body)
+			if tc.expectedError {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 
 			err = exporter.Shutdown(context.Background())
