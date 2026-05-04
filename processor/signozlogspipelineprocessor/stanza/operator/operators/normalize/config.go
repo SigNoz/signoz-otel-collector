@@ -4,6 +4,7 @@ package json
 
 import (
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/otel/metric"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
@@ -41,8 +42,17 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
+	logsProcessed, err := set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operators/normalize").Int64Counter(
+		"signoz_normalize_operator_logs_processed",
+		metric.WithDescription("Number of log entries processed by the normalize operator"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Processor{
 		TransformerOperator: transformerOperator,
 		Config:              sonic.Config{UseInt64: true},
+		logsProcessed:       logsProcessed,
 	}, nil
 }
