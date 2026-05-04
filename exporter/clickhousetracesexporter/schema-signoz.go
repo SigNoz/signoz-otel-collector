@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap/zapcore"
 )
@@ -243,7 +244,7 @@ func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
 		spanAttrs = append(spanAttrs, SpanAttribute{
 			Key:         k,
 			TagType:     "scope",
-			DataType:    "string",
+			DataType:    utils.FieldDataTypeString.String(),
 			StringValue: v,
 			IsColumn:    false,
 		})
