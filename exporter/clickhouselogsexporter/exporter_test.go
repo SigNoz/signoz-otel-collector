@@ -487,7 +487,8 @@ func TestProcessBody(t *testing.T) {
 			body := tc.body()
 
 			// Process body
-			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(body)
+			bodyStr, bodyJSONStr, promotedStr, err := exporter.processBody(body)
+			require.NoError(t, err)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)

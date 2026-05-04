@@ -288,6 +288,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 
 				val := lr.Body()
 				if val.Type() != pcommon.ValueTypeMap {
+					w.logger.Error("body expected to be map", zap.String("body.type", val.Type().String()))
 					continue
 				}
 				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBodyField, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
