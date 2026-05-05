@@ -11,6 +11,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/bytedance/sonic"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -23,11 +24,17 @@ var msgCompatibleFields = []string{"log", "msg"}
 type Processor struct {
 	signozstanzahelper.TransformerOperator
 	sonic.Config
+	logsProcessed metric.Int64Counter
 }
 
 // Process will parse an entry for JSON.
 func (p *Processor) Process(ctx context.Context, entry *entry.Entry) error {
-	return p.TransformerOperator.ProcessWith(ctx, entry, p.transform)
+	err := p.TransformerOperator.ProcessWith(ctx, entry, p.transform)
+	if err != nil {
+		return err
+	}
+	p.logsProcessed.Add(ctx, 1)
+	return nil
 }
 
 func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {
