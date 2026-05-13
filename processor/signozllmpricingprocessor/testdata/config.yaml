@@ -7,7 +7,6 @@ signozllmpricing:
     cache_read: "gen_ai.usage.input_token_details.cached"
     cache_write: "gen_ai.usage.input_token_details.cache_creation"
   default_pricing:
-    unit: per_million_tokens
     rules:
       - name: gpt-4o
         pattern: ["gpt-4o*"]
@@ -39,7 +38,6 @@ signozllmpricing/minimal:
     in: "gen_ai.usage.input_tokens"
     out: "gen_ai.usage.output_tokens"
   default_pricing:
-    unit: per_million_tokens
     rules:
       - pattern: ["*"]
         cache:
@@ -58,24 +56,6 @@ signozllmpricing/no_model_attr:
     in: "gen_ai.usage.input_tokens"
     out: "gen_ai.usage.output_tokens"
   default_pricing:
-    unit: per_million_tokens
-    rules:
-      - pattern: ["*"]
-        cache:
-          mode: subtract
-          read: 0.0
-          write: 0.0
-        in: 1.0
-        out: 2.0
-  output_attrs:
-    total: "_signoz.gen_ai.total_cost"
-
-# Invalid: unsupported unit.
-signozllmpricing/bad_unit:
-  attrs:
-    model: "gen_ai.request.model"
-  default_pricing:
-    unit: per_request
     rules:
       - pattern: ["*"]
         cache:
@@ -92,7 +72,6 @@ signozllmpricing/no_pattern:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
-    unit: per_million_tokens
     rules:
       - pattern: []
         cache:
@@ -109,7 +88,6 @@ signozllmpricing/bad_cache_mode:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
-    unit: per_million_tokens
     rules:
       - pattern: ["*"]
         cache:
@@ -126,7 +104,6 @@ signozllmpricing/no_total_output:
   attrs:
     model: "gen_ai.request.model"
   default_pricing:
-    unit: per_million_tokens
     rules:
       - pattern: ["*"]
         cache:
