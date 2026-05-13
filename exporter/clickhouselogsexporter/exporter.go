@@ -713,7 +713,10 @@ producerIteration:
 					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
-					body, bodyJSON, promoted := e.processBody(record.Body())
+					body, bodyJSON, promoted, err := e.processBody(record.Body())
+					if err != nil {
+						return err
+					}
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
 						resourceFP:       fp,
@@ -829,25 +832,29 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string, error) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
-	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
-		// promoted paths extraction using cached set
-		promotedSet := e.promotedPaths.Load().(map[string]struct{})
+	if e.bodyJSONEnabled {
+		if body.Type() == pcommon.ValueTypeMap {
+			// promoted paths extraction using cached set
+			promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
-		// set values to promoted and bodyJSON
-		promoted = buildPromoted(body, promotedSet)
-		// switch the reference to bodyJSON
-		bodyJSON = body
+			// set values to promoted and bodyJSON
+			promoted = buildPromoted(body, promotedSet)
+			// switch the reference to bodyJSON
+			bodyJSON = body
 
-		if !e.bodyJSONOldBodyEnabled {
-			// set body to empty string
-			body = pcommon.NewValueEmpty()
+			if !e.bodyJSONOldBodyEnabled {
+				// set body to empty string
+				body = pcommon.NewValueEmpty()
+			}
+		} else {
+			return "", "", "", fmt.Errorf("body expected to be map, found %s", body.Type().String())
 		}
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted), nil
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
