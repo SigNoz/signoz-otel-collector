@@ -19,7 +19,6 @@ var testCfg = &Config{
 		CacheWrite: "gen_ai.usage.cache_write_tokens",
 	},
 	DefaultPricing: PricingConfig{
-		Unit: UnitPerMillionTokens,
 		Rules: []PricingRule{
 			{
 				Name:    "gpt-4o",

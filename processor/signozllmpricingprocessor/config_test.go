@@ -43,7 +43,6 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, "gen_ai.usage.input_token_details.cached", cfg.Attrs.CacheRead)
 		assert.Equal(t, "gen_ai.usage.input_token_details.cache_creation", cfg.Attrs.CacheWrite)
 
-		assert.Equal(t, UnitPerMillionTokens, cfg.DefaultPricing.Unit)
 		require.Len(t, cfg.DefaultPricing.Rules, 2)
 
 		gpt := cfg.DefaultPricing.Rules[0]
@@ -95,11 +94,6 @@ func TestValidateErrors(t *testing.T) {
 			name:        "no_model_attr",
 			id:          component.NewIDWithName(processorType, "no_model_attr"),
 			errContains: "attrs.model must not be empty",
-		},
-		{
-			name:        "bad_unit",
-			id:          component.NewIDWithName(processorType, "bad_unit"),
-			errContains: "is not supported",
 		},
 		{
 			name:        "no_pattern",

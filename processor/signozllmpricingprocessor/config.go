@@ -5,11 +5,11 @@ import (
 	"path"
 )
 
-const (
-	CacheModeSubtract = "subtract" // cache_read is already counted inside input_tokens (e.g. OpenAI)
-	CacheModeAdditive = "additive" // cache_read is separate from input_tokens (e.g. Anthropic)
+type CacheMode string
 
-	UnitPerMillionTokens = "per_million_tokens"
+const (
+	CacheModeSubtract CacheMode = "subtract" // cache_read is already counted inside input_tokens (e.g. OpenAI)
+	CacheModeAdditive CacheMode = "additive" // cache_read is separate from input_tokens (e.g. Anthropic)
 )
 
 // Config is the top-level processor configuration.
@@ -33,7 +33,6 @@ type AttrMapping struct {
 }
 
 type PricingConfig struct {
-	Unit  string        `mapstructure:"unit"`
 	Rules []PricingRule `mapstructure:"rules"`
 }
 
@@ -51,7 +50,7 @@ type PricingRuleCache struct {
 	//                billed_input = input_tokens - cache_read.
 	//   "additive" — cache read/write are separate from input_tokens;
 	//                all four buckets are billed independently.
-	Mode string `mapstructure:"mode"`
+	Mode CacheMode `mapstructure:"mode"`
 
 	// Per-million-token prices (USD) for cached reads/writes.
 	Read  float64 `mapstructure:"read"`
@@ -66,17 +65,16 @@ type OutputMapping struct {
 	Total      string `mapstructure:"total"`
 }
 
+func (c *CacheMode) String() string {
+	if c == nil {
+		return ""
+	}
+	return string(*c)
+}
+
 func (c *Config) Validate() error {
 	if c.Attrs.Model == "" {
 		return fmt.Errorf("attrs.model must not be empty")
-	}
-
-	unit := c.DefaultPricing.Unit
-	if unit == "" {
-		unit = UnitPerMillionTokens
-	}
-	if unit != UnitPerMillionTokens {
-		return fmt.Errorf("default_pricing.unit %q is not supported, must be %q", unit, UnitPerMillionTokens)
 	}
 
 	for i, r := range c.DefaultPricing.Rules {
