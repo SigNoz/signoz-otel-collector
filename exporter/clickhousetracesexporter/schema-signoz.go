@@ -233,7 +233,7 @@ func NewInstrumentationScope(scope pcommon.InstrumentationScope) Instrumentation
 }
 
 func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {
-	scopeFields := map[string]string{"scope.name": s.Name, "scope.version": s.Version}
+	scopeFields := map[string]string{"name": s.Name, "version": s.Version}
 	maps.Copy(scopeFields, s.Attributes)
 
 	spanAttrs := make([]SpanAttribute, 0, len(s.Attributes)+len(scopeFields))
