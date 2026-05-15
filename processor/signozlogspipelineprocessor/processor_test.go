@@ -416,6 +416,7 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	err = proc.Start(context.Background(), nil)
 	require.NoError(err)
+	defer func() { _ = proc.Shutdown(context.Background()) }()
 
 	var wg sync.WaitGroup
 
@@ -436,11 +437,28 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	wg.Wait()
 
-	output := testSink.AllLogs()
-	for _, l := range output {
-		require.NoError(plogtest.CompareLogs(l, makePlog("test log", map[string]any{
-			"test": "testValue",
-		})))
+	// ConsumeLogs is async and BatchingLogEmitter merges entries into
+	// fewer output plog.Logs, so assert on the total log record count
+	// (which is preserved) rather than the number of batches.
+	require.Eventually(func() bool {
+		return testSink.LogRecordCount() >= 100
+	}, 5*time.Second, 10*time.Millisecond, "timed out waiting for 100 log records")
+	require.Equal(100, testSink.LogRecordCount())
+
+	for _, l := range testSink.AllLogs() {
+		for rlIdx := 0; rlIdx < l.ResourceLogs().Len(); rlIdx++ {
+			rl := l.ResourceLogs().At(rlIdx)
+			for slIdx := 0; slIdx < rl.ScopeLogs().Len(); slIdx++ {
+				sl := rl.ScopeLogs().At(slIdx)
+				for lrIdx := 0; lrIdx < sl.LogRecords().Len(); lrIdx++ {
+					lr := sl.LogRecords().At(lrIdx)
+					require.Equal("test log", lr.Body().Str())
+					v, ok := lr.Attributes().Get("test")
+					require.True(ok)
+					require.Equal("testValue", v.Str())
+				}
+			}
+		}
 	}
 }
 
@@ -473,11 +491,12 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
 		makePlog(`{"request": {"id": "test"}}`, map[string]any{"test": "test-value"}),
 	})
-	testCases = append(testCases, testCase{
-		"router/body_not_json", testConfWithRouter,
-		makePlog(`test`, map[string]any{}),
-		makePlog(`test`, map[string]any{}),
-	})
+	// router/body_not_json is asserted separately below — under the async
+	// pipeline architecture, the router operator drops entries that no route
+	// matches (no implicit fall-through). This matches contrib's
+	// logstransformprocessor behavior and is a deliberate change from the
+	// previous sync implementation, which returned all entries regardless of
+	// whether the pipeline forwarded them.
 
 	// Add op should be able to specify expressions referring to body JSON field
 	testAddOpConf := `
@@ -688,6 +707,32 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 			)
 		})
 	}
+
+	t.Run("router/body_not_json", func(t *testing.T) {
+		// Router drops the entry because no route matches a non-JSON body.
+		// Assert the sink stays empty for a short observation window.
+		require := require.New(t)
+
+		factory := NewFactory()
+		config := parseProcessorConfig(t, testConfWithRouter)
+		testSink := new(consumertest.LogsSink)
+		proc, err := factory.CreateLogs(
+			context.Background(),
+			processortest.NewNopSettings(metadata.Type),
+			config, testSink,
+		)
+		require.NoError(err)
+		require.NoError(proc.Start(context.Background(), nil))
+		defer func() { _ = proc.Shutdown(context.Background()) }()
+
+		require.NoError(proc.ConsumeLogs(context.Background(), makePlog(`test`, map[string]any{})))
+
+		// 200 ms is comfortably more than the BatchingLogEmitter flush interval
+		// in tests; if anything were going to be emitted, it would be by now.
+		require.Never(func() bool {
+			return len(testSink.AllLogs()) > 0
+		}, 200*time.Millisecond, 10*time.Millisecond, "router unexpectedly forwarded an entry with no matching route")
+	})
 }
 
 func validateProcessorBehavior(
@@ -711,11 +756,18 @@ func validateProcessorBehavior(
 
 	err = proc.Start(context.Background(), nil)
 	require.NoError(err)
+	defer func() { _ = proc.Shutdown(context.Background()) }()
 
 	for _, inputPlog := range inputLogs {
 		err = proc.ConsumeLogs(context.Background(), inputPlog)
 		require.NoError(err)
 	}
+
+	// ConsumeLogs is async (entries are enqueued to FromPdataConverter);
+	// wait for the sink to observe the expected number of plog.Logs batches.
+	require.Eventually(func() bool {
+		return len(testSink.AllLogs()) >= len(expectedOutput)
+	}, 5*time.Second, 10*time.Millisecond, "timed out waiting for sink to receive %d plog batches", len(expectedOutput))
 
 	output := testSink.AllLogs()
 	require.Len(output, len(expectedOutput))
