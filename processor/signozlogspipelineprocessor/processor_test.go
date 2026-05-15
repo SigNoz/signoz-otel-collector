@@ -491,12 +491,11 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 		makePlog(`{"request": {"id": "test"}}`, map[string]any{}),
 		makePlog(`{"request": {"id": "test"}}`, map[string]any{"test": "test-value"}),
 	})
-	// router/body_not_json is asserted separately below — under the async
-	// pipeline architecture, the router operator drops entries that no route
-	// matches (no implicit fall-through). This matches contrib's
-	// logstransformprocessor behavior and is a deliberate change from the
-	// previous sync implementation, which returned all entries regardless of
-	// whether the pipeline forwarded them.
+	testCases = append(testCases, testCase{
+		"router/body_not_json", testConfWithRouter,
+		makePlog(`test`, map[string]any{}),
+		makePlog(`test`, map[string]any{}),
+	})
 
 	// Add op should be able to specify expressions referring to body JSON field
 	testAddOpConf := `
@@ -707,32 +706,6 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
 			)
 		})
 	}
-
-	t.Run("router/body_not_json", func(t *testing.T) {
-		// Router drops the entry because no route matches a non-JSON body.
-		// Assert the sink stays empty for a short observation window.
-		require := require.New(t)
-
-		factory := NewFactory()
-		config := parseProcessorConfig(t, testConfWithRouter)
-		testSink := new(consumertest.LogsSink)
-		proc, err := factory.CreateLogs(
-			context.Background(),
-			processortest.NewNopSettings(metadata.Type),
-			config, testSink,
-		)
-		require.NoError(err)
-		require.NoError(proc.Start(context.Background(), nil))
-		defer func() { _ = proc.Shutdown(context.Background()) }()
-
-		require.NoError(proc.ConsumeLogs(context.Background(), makePlog(`test`, map[string]any{})))
-
-		// 200 ms is comfortably more than the BatchingLogEmitter flush interval
-		// in tests; if anything were going to be emitted, it would be by now.
-		require.Never(func() bool {
-			return len(testSink.AllLogs()) > 0
-		}, 200*time.Millisecond, 10*time.Millisecond, "router unexpectedly forwarded an entry with no matching route")
-	})
 }
 
 func validateProcessorBehavior(
