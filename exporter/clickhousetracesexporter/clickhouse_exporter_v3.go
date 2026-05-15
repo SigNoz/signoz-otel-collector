@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -444,12 +444,6 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
-
-					serializedStructuredSpan, err := json.Marshal(structuredSpan)
-					if err != nil {
-						return fmt.Errorf("failed to marshal structured span: %w", err)
-					}
-					size += len(serializedStructuredSpan)
 					count += 1
 				}
 			}
