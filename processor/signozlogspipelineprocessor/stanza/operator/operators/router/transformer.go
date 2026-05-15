@@ -22,6 +22,20 @@ type Transformer struct {
 	helper.BasicOperator
 	routes              []*Route
 	allCompiledPatterns map[string]func(s string) bool
+
+	// fallthroughOutput receives entries that no route matched. When nil, those
+	// entries are dropped — matching contrib's logstransformprocessor behavior.
+	// The SigNoz processor sets this to the pipeline's BatchingLogEmitter so
+	// unmatched entries flow through to the next consumer unchanged, preserving
+	// the behavior of the pre-async sync implementation (where unmatched
+	// entries remained in the input slice and were returned as-is).
+	fallthroughOutput operator.Operator
+}
+
+// SetFallthroughOutput wires the operator that receives entries no route
+// matched. Pass nil to drop unmatched entries.
+func (t *Transformer) SetFallthroughOutput(op operator.Operator) {
+	t.fallthroughOutput = op
 }
 
 // Route is a route on a router operator
@@ -40,7 +54,9 @@ func (t *Transformer) CanProcess() bool {
 	return true
 }
 
-// Process will route incoming entries based on matching expressions
+// Process will route incoming entries based on matching expressions.
+// If no route matches and a fallthroughOutput is configured, the entry is
+// forwarded to it unchanged.
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	routesHaveBodyFieldRef := slices.ContainsFunc(
 		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
@@ -63,8 +79,14 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 				for _, output := range route.OutputOperators {
 					_ = output.Process(ctx, entry)
 				}
-				break
+				return nil
 			}
+		}
+
+		// No route matched. Preserve the unmatched entry by forwarding it to
+		// the fallthrough output if one is configured.
+		if t.fallthroughOutput != nil {
+			_ = t.fallthroughOutput.Process(ctx, entry)
 		}
 		return nil
 	})
