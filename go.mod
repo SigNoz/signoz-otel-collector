@@ -3,12 +3,13 @@ module github.com/SigNoz/signoz-otel-collector
 go 1.25.0
 
 require (
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0
 	github.com/ClickHouse/ch-go v0.66.0
 	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/IBM/sarama v1.46.3
 	github.com/Shopify/sarama v1.38.1
-	github.com/apache/thrift v0.22.0
+	github.com/apache/thrift v0.23.0
 	github.com/aws/aws-sdk-go v1.55.8
 	github.com/bytedance/sonic v1.14.1
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -313,7 +314,6 @@ require (
 	github.com/Azure/azure-amqp-common-go/v4 v4.2.0 // indirect
 	github.com/Azure/azure-event-hubs-go/v3 v3.6.2 // indirect
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs/v2 v2.0.1 // indirect
