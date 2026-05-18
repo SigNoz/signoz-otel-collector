@@ -176,6 +176,18 @@ func (cmd *syncCheck) Check(ctx context.Context) error {
 		}
 	}
 
+	auditLastSyncMigrationID, err := cmd.getLastSyncMigration(schemamigrator.AuditMigrations)
+	if err == nil {
+		ok, err := cmd.migrationManager.CheckMigrationStatus(ctx, schemamigrator.SignozAuditDB, auditLastSyncMigrationID, schemamigrator.FinishedStatus)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			return fmt.Errorf("migration with ID %d for database '%s' has not been completed", auditLastSyncMigrationID, schemamigrator.SignozAuditDB)
+		}
+	}
+
 	return nil
 }
 
