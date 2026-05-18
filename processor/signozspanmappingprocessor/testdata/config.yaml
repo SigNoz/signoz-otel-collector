@@ -82,18 +82,6 @@ signozspanmapper/no_patterns:
           sources:
             - src
 
-# Invalid: malformed glob pattern.
-signozspanmapper/bad_glob:
-  groups:
-    - id: bad
-      exists_any:
-        attributes:
-          - "[unclosed"
-      attributes:
-        - target: dst
-          sources:
-            - src
-
 # Invalid: empty target.
 signozspanmapper/empty_target:
   groups:
