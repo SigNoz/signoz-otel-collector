@@ -280,7 +280,6 @@ func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Conte
 	return nil
 }
 
-//nolint:unused
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
 	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
@@ -350,7 +349,7 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 
 func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 	m.logger.Info("Running squashed migrations")
-	if err := m.runCustomRetentionMigrationsForLogs(ctx); err != nil {
+	if err := m.runSquashedMigrationsForLogs(ctx); err != nil {
 		return errors.Join(ErrFailedToRunSquashedMigrations, err)
 	}
 	if err := m.runSquashedMigrationsForMetrics(ctx); err != nil {
