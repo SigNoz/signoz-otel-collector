@@ -372,7 +372,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 	shouldSkipKeys := make(map[string]shouldSkipKey)
 	for _, key := range keys {
-		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.TagDataType(key.TagDataType))
+		mapKey := utils.MakeKeyForAttributeKeys(key.TagKey, utils.TagType(key.TagType), utils.FieldDataType(key.TagDataType))
 		e.logger.Debug("adding to should skip keys", zap.String("key", mapKey), zap.Any("string_count", key.StringCount), zap.Any("number_count", key.NumberCount))
 		shouldSkipKeys[mapKey] = key
 	}
@@ -713,7 +713,10 @@ producerIteration:
 					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
-					body, bodyJSON, promoted := e.processBody(record.Body())
+					body, bodyJSON, promoted, err := e.processBody(record.Body())
+					if err != nil {
+						return err
+					}
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
 						resourceFP:       fp,
@@ -829,25 +832,29 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string, error) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
-	if e.bodyJSONEnabled && body.Type() == pcommon.ValueTypeMap {
-		// promoted paths extraction using cached set
-		promotedSet := e.promotedPaths.Load().(map[string]struct{})
+	if e.bodyJSONEnabled {
+		if body.Type() == pcommon.ValueTypeMap {
+			// promoted paths extraction using cached set
+			promotedSet := e.promotedPaths.Load().(map[string]struct{})
 
-		// set values to promoted and bodyJSON
-		promoted = buildPromoted(body, promotedSet)
-		// switch the reference to bodyJSON
-		bodyJSON = body
+			// set values to promoted and bodyJSON
+			promoted = buildPromoted(body, promotedSet)
+			// switch the reference to bodyJSON
+			bodyJSON = body
 
-		if !e.bodyJSONOldBodyEnabled {
-			// set body to empty string
-			body = pcommon.NewValueEmpty()
+			if !e.bodyJSONOldBodyEnabled {
+				// set body to empty string
+				body = pcommon.NewValueEmpty()
+			}
+		} else {
+			return "", "", "", fmt.Errorf("body expected to be map, found %s", body.Type().String())
 		}
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted), nil
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
@@ -877,7 +884,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	resourceKeysStmt driver.Batch,
 	key string,
 	tagType utils.TagType,
-	datatype utils.TagDataType,
+	datatype utils.FieldDataType,
 ) {
 	if keycheck.IsRandomKey(key) {
 		return
@@ -919,13 +926,13 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.TagDataTypeString)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
 		}
 
-		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.TagDataTypeString)
+		key := utils.MakeKeyForAttributeKeys(attrKey, tagType, utils.FieldDataTypeString)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -934,7 +941,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			attrKey,
 			tagType,
-			utils.TagDataTypeString,
+			utils.FieldDataTypeString,
 			attrVal,
 			nil,
 		)
@@ -947,8 +954,8 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.TagDataTypeNumber)
-		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.TagDataTypeNumber)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64)
+		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.FieldDataTypeFloat64)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -957,7 +964,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			numKey,
 			tagType,
-			utils.TagDataTypeNumber,
+			utils.FieldDataTypeFloat64,
 			nil,
 			numVal,
 		)
@@ -969,9 +976,9 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.TagDataTypeBool)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool)
 
-		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.TagDataTypeBool)
+		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.FieldDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
 			continue
@@ -981,7 +988,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 			unixMilli,
 			boolKey,
 			tagType,
-			utils.TagDataTypeBool,
+			utils.FieldDataTypeBool,
 			nil,
 			nil,
 		)
@@ -1028,6 +1035,9 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 	// default settings for allowing ClickHouse to handle duplicate paths in JSON type.
 	options.Settings["type_json_skip_duplicated_paths"] = 1
+	// default settings for disabling inferring datetimes and dates from JSON type.
+	options.Settings["input_format_try_infer_datetimes"] = 0
+	options.Settings["input_format_try_infer_dates"] = 0
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	maxIdleConnections := 1

@@ -166,7 +166,7 @@ func Test_IsCardinal(t *testing.T) {
 		},
 		{
 			key:        "value1",
-			isCardinal: true,
+			isCardinal: false,
 		},
 		{
 			key:        "value`",

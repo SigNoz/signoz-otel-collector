@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
 )
 
@@ -79,6 +80,12 @@ func createDefaultConfig() component.Config {
 			Debug: false,
 		},
 		Enabled: false,
+		JSON: JSONConfig{
+			Enabled:                 false,
+			MaxDepthTraverse:        to.Ptr(defaultJSONMaxDepthTraverse),
+			MaxArrayElementsAllowed: to.Ptr(defaultJSONMaxArrayElementsAllowed),
+			MaxKeysAtLevel:          to.Ptr(defaultJSONMaxKeysAtLevel),
+		},
 	}
 }
 
@@ -91,7 +98,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +120,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +142,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(oCfg, set)
+	exp, err := newMetadataExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
