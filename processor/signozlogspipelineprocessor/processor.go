@@ -5,8 +5,6 @@ package signozlogspipelineprocessor
 import (
 	"context"
 	"encoding/binary"
-	"math"
-	"runtime"
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
@@ -16,7 +14,6 @@ import (
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
@@ -33,16 +30,10 @@ func newLogsPipelineProcessor(
 		return nil, err
 	}
 
-	concurrency := int(math.Max(1, float64(runtime.GOMAXPROCS(0))))
-
-	telemetrySettings.Logger.Info("logspipeline concurrency set to ", zap.Int("num", concurrency))
-
 	return &logsPipelineProcessor{
 		telemetrySettings: telemetrySettings,
-
-		limiter:         make(chan struct{}, concurrency),
-		processorConfig: processorConfig,
-		stanzaPipeline:  stanzaPipeline,
+		processorConfig:   processorConfig,
+		stanzaPipeline:    stanzaPipeline,
 	}, nil
 }
 
@@ -52,7 +43,6 @@ type logsPipelineProcessor struct {
 	processorConfig *Config
 	stanzaPipeline  *pipeline.DirectedPipeline
 	firstOp         operator.Operator
-	limiter         chan struct{}
 	shutdownFns     []component.ShutdownFunc
 }
 
@@ -93,33 +83,15 @@ func (p *logsPipelineProcessor) Shutdown(ctx context.Context) error {
 }
 
 func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
-	p.telemetrySettings.Logger.Debug(
-		"logsPipelineProcessor received logs",
-		zap.Any("logs", ld),
-	)
+	p.telemetrySettings.Logger.Debug("logsPipelineProcessor received logs", zap.Any("logs", ld))
 
 	entries := plogToEntries(ld)
 
-	process := func(ctx context.Context, entry *entry.Entry) {
-		if err := p.firstOp.Process(ctx, entry); err != nil {
+	for _, e := range entries {
+		if err := p.firstOp.Process(ctx, e); err != nil {
 			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
 		}
 	}
-
-	group, groupCtx := errgroup.WithContext(ctx)
-	for _, entry := range entries {
-		p.limiter <- struct{}{}
-		group.Go(func() error {
-			defer func() {
-				<-p.limiter
-			}()
-			process(groupCtx, entry)
-			return nil // not returning error to avoid cancelling groupCtx
-		})
-	}
-
-	// wait for the group execution
-	_ = group.Wait()
 
 	// All stanza ops supported by logs pipelines work synchronously and
 	// they modify the *entry.Entry passed to them in-place.
@@ -131,21 +103,22 @@ func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (
 
 // Helpers below have been brought in as is from stanza adapter for logstransform
 func plogToEntries(src plog.Logs) []*entry.Entry {
-	result := []*entry.Entry{}
+	result := make([]*entry.Entry, 0, src.LogRecordCount())
 	for rlIdx := 0; rlIdx < src.ResourceLogs().Len(); rlIdx++ {
 		resourceLogs := src.ResourceLogs().At(rlIdx)
 
 		for slIdx := 0; slIdx < resourceLogs.ScopeLogs().Len(); slIdx++ {
 			scopeLogs := resourceLogs.ScopeLogs().At(slIdx)
+			scopeName := scopeLogs.Scope().Name()
 
 			for lrIdx := 0; lrIdx < scopeLogs.LogRecords().Len(); lrIdx++ {
 				record := scopeLogs.LogRecords().At(lrIdx)
-				entry := entry.Entry{}
-				entry.ScopeName = scopeLogs.Scope().Name()
-				// each entry has separate reference for Resource Tags since these're used in processor, Resource tags can be transformed based on user's pipelines
-				entry.Resource = resourceLogs.Resource().Attributes().AsRaw()
-				convertFrom(record, &entry)
-				result = append(result, &entry)
+				e := entry.Entry{ScopeName: scopeName}
+				// each entry has a separate Resource map: operators like `remove`
+				// can delete keys on Resource per record, so the map must not be shared.
+				e.Resource = resourceLogs.Resource().Attributes().AsRaw()
+				convertFrom(record, &e)
+				result = append(result, &e)
 			}
 		}
 	}
