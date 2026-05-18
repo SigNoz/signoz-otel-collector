@@ -41,7 +41,7 @@ func TestGlobMatchInSpanAttrs(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "llm",
-				ExistsAny: ExistsAny{Attributes: []string{"*model*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"model"}},
 				Attributes: []AttributeRule{
 					{Target: "gen_ai.request.model", Sources: []string{"llm.model"}},
 				},
@@ -67,7 +67,7 @@ func TestGlobMatchInResourceAttrs(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "llm",
-				ExistsAny: ExistsAny{Resource: []string{"service.name*"}},
+				ExistsAny: ExistsAny{Resource: []string{"service.name"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.model",
@@ -93,7 +93,7 @@ func TestNoMatchSkipsGroup(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "llm",
-				ExistsAny: ExistsAny{Attributes: []string{"*model*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"model"}},
 				Attributes: []AttributeRule{
 					{Target: "gen_ai.request.model", Sources: []string{"llm.model"}},
 				},
@@ -116,7 +116,7 @@ func TestSourceFirstMatchWins(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "tokens",
-				ExistsAny: ExistsAny{Attributes: []string{"llm.*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.tokens",
@@ -149,7 +149,7 @@ func TestSourceFallsBackToSecond(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "tokens",
-				ExistsAny: ExistsAny{Attributes: []string{"llm.*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.tokens",
@@ -176,7 +176,7 @@ func TestActionMove(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "input",
-				ExistsAny: ExistsAny{Attributes: []string{"gen_ai.*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"gen_ai"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.input",
@@ -207,7 +207,7 @@ func TestActionCopy(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "input",
-				ExistsAny: ExistsAny{Attributes: []string{"gen_ai.*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"gen_ai"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.input",
@@ -234,7 +234,7 @@ func TestContextResource(t *testing.T) {
 		Groups: []Group{
 			{
 				ID:        "llm",
-				ExistsAny: ExistsAny{Attributes: []string{"llm.*"}},
+				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.model",
@@ -267,8 +267,8 @@ func TestLLMGroupScenario(t *testing.T) {
 			{
 				ID: "llm",
 				ExistsAny: ExistsAny{
-					Attributes: []string{"*model*"},
-					Resource:   []string{"service.name*"},
+					Attributes: []string{"mode"},
+					Resource:   []string{"service.name"},
 				},
 				Attributes: []AttributeRule{
 					{

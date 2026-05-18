@@ -1,12 +1,12 @@
 # Full valid config — llm + agent + tool groups matching the spec.
-signozspanmappingprocessor:
+signozspanmapper:
   groups:
     - id: llm
       exists_any:
         attributes:
-          - "*model*"
+          - "model"
         resource:
-          - "service.name*"
+          - "service.name"
       attributes:
         - target: gen_ai.request.model
           context: resource
@@ -27,7 +27,7 @@ signozspanmappingprocessor:
     - id: agent
       exists_any:
         attributes:
-          - "agent.*"
+          - "agent."
       attributes:
         - target: gen_ai.agent.name
           sources:
@@ -41,7 +41,7 @@ signozspanmappingprocessor:
     - id: tool
       exists_any:
         attributes:
-          - "agent.*"
+          - "agent."
       attributes:
         - target: gen_ai.tool.name
           sources:
@@ -49,19 +49,19 @@ signozspanmappingprocessor:
             - llm.tool.name
 
 # Only resource-based exists_any.
-signozspanmappingprocessor/resource_only:
+signozspanmapper/resource_only:
   groups:
     - id: res
       exists_any:
         resource:
-          - "service.*"
+          - "service"
       attributes:
         - target: gen_ai.service
           sources:
             - resource.service.name
 
 # Defaults: no action, no context — must accept as valid.
-signozspanmappingprocessor/defaults:
+signozspanmapper/defaults:
   groups:
     - id: defaults
       exists_any:
@@ -73,7 +73,7 @@ signozspanmappingprocessor/defaults:
             - src
 
 # Invalid: exists_any has no patterns at all.
-signozspanmappingprocessor/no_patterns:
+signozspanmapper/no_patterns:
   groups:
     - id: bad
       exists_any: {}
@@ -83,7 +83,7 @@ signozspanmappingprocessor/no_patterns:
             - src
 
 # Invalid: malformed glob pattern.
-signozspanmappingprocessor/bad_glob:
+signozspanmapper/bad_glob:
   groups:
     - id: bad
       exists_any:
@@ -95,7 +95,7 @@ signozspanmappingprocessor/bad_glob:
             - src
 
 # Invalid: empty target.
-signozspanmappingprocessor/empty_target:
+signozspanmapper/empty_target:
   groups:
     - id: bad
       exists_any:
@@ -107,7 +107,7 @@ signozspanmappingprocessor/empty_target:
             - src
 
 # Invalid: no sources.
-signozspanmappingprocessor/no_sources:
+signozspanmapper/no_sources:
   groups:
     - id: bad
       exists_any:
@@ -118,7 +118,7 @@ signozspanmappingprocessor/no_sources:
           sources: []
 
 # Invalid: unknown context value.
-signozspanmappingprocessor/bad_context:
+signozspanmapper/bad_context:
   groups:
     - id: bad
       exists_any:
@@ -131,7 +131,7 @@ signozspanmappingprocessor/bad_context:
             - src
 
 # Invalid: unknown action value.
-signozspanmappingprocessor/bad_action:
+signozspanmapper/bad_action:
   groups:
     - id: bad
       exists_any:

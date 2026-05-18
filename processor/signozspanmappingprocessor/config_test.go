@@ -41,8 +41,8 @@ func TestLoadConfig(t *testing.T) {
 
 		llm := cfg.Groups[0]
 		assert.Equal(t, "llm", llm.ID)
-		assert.Equal(t, []string{"*model*"}, llm.ExistsAny.Attributes)
-		assert.Equal(t, []string{"service.name*"}, llm.ExistsAny.Resource)
+		assert.Equal(t, []string{"model"}, llm.ExistsAny.Attributes)
+		assert.Equal(t, []string{"service.name"}, llm.ExistsAny.Resource)
 		require.Len(t, llm.Attributes, 3)
 
 		modelRule := llm.Attributes[0]
@@ -57,7 +57,7 @@ func TestLoadConfig(t *testing.T) {
 
 		agent := cfg.Groups[1]
 		assert.Equal(t, "agent", agent.ID)
-		assert.Equal(t, []string{"agent.*"}, agent.ExistsAny.Attributes)
+		assert.Equal(t, []string{"agent."}, agent.ExistsAny.Attributes)
 		assert.Empty(t, agent.ExistsAny.Resource)
 
 		tool := cfg.Groups[2]
@@ -72,7 +72,7 @@ func TestLoadConfig(t *testing.T) {
 		require.Len(t, cfg.Groups, 1)
 		g := cfg.Groups[0]
 		assert.Empty(t, g.ExistsAny.Attributes)
-		assert.Equal(t, []string{"service.*"}, g.ExistsAny.Resource)
+		assert.Equal(t, []string{"service"}, g.ExistsAny.Resource)
 	})
 
 	t.Run("defaults", func(t *testing.T) {
@@ -98,11 +98,6 @@ func TestValidateErrors(t *testing.T) {
 			name:        "no_patterns",
 			id:          component.NewIDWithName(processorType, "no_patterns"),
 			errContains: "exists_any must have at least one",
-		},
-		{
-			name:        "bad_glob",
-			id:          component.NewIDWithName(processorType, "bad_glob"),
-			errContains: "invalid glob pattern",
 		},
 		{
 			name:        "empty_target",

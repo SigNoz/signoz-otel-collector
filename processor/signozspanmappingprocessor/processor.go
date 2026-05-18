@@ -2,20 +2,17 @@ package signozspanmappingprocessor // import "github.com/SigNoz/signoz-otel-coll
 
 import (
 	"context"
-	"path"
+	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-// parsedKey is a pre-parsed attribute source key. All string parsing happens
-// once at construction time so the hot path does zero string operations.
 type parsedKey struct {
 	bare       string // key without any prefix
 	isResource bool   // true → read from resource attributes
 }
 
-// parsedRule is the hot-path-ready form of AttributeRule.
 type parsedRule struct {
 	target          string
 	writeToResource bool // context == ContextResource
@@ -23,11 +20,11 @@ type parsedRule struct {
 	move            bool // action == ActionMove
 }
 
-// parsedGroup is the hot-path-ready form of Group.
 type parsedGroup struct {
-	// Glob patterns split by where they are matched.
-	attrPatterns []string // matched against span/log attribute keys
-	resPatterns  []string // matched against resource attribute keys
+	// Substrings split by where they are matched. A group's condition is met
+	// when any attribute or resource key contains one of these substrings.
+	attrPatterns []string // substrings matched against span/log attribute keys
+	resPatterns  []string // substrings matched against resource attribute keys
 	rules        []parsedRule
 }
 
@@ -95,15 +92,15 @@ func (p *aiProcessor) applyGroups(attrs, resourceAttrs pcommon.Map) {
 }
 
 // conditionMet returns true when at least one attribute key in attrs or
-// resourceAttrs matches any of the glob patterns in the group. It iterates the
-// attribute maps only when there are patterns to check, and short-circuits as
-// soon as a match is found.
+// resourceAttrs contains any of the substrings configured in the group. It
+// iterates the attribute maps only when there are substrings to check, and
+// short-circuits as soon as a match is found.
 func conditionMet(g *parsedGroup, attrs, resourceAttrs pcommon.Map) bool {
 	if len(g.attrPatterns) > 0 {
 		found := false
 		attrs.Range(func(k string, _ pcommon.Value) bool {
 			for _, pat := range g.attrPatterns {
-				if ok, _ := path.Match(pat, k); ok {
+				if ok := strings.Contains(k, pat); ok {
 					found = true
 					return false // stop iteration
 				}
@@ -119,7 +116,7 @@ func conditionMet(g *parsedGroup, attrs, resourceAttrs pcommon.Map) bool {
 		found := false
 		resourceAttrs.Range(func(k string, _ pcommon.Value) bool {
 			for _, pat := range g.resPatterns {
-				if ok, _ := path.Match(pat, k); ok {
+				if ok := strings.Contains(k, pat); ok {
 					found = true
 					return false // stop iteration
 				}
