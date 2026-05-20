@@ -54,8 +54,12 @@ type AttributeRule struct {
 	// Target is the attribute key to write.
 	Target  string   `mapstructure:"target"`
 	Context Context  `mapstructure:"context"`
-	Sources []string `mapstructure:"sources"`
-	Action  Action   `mapstructure:"action"`
+	Sources []Source `mapstructure:"sources"`
+}
+
+type Source struct {
+	Key    string `mapstructure:"key"`
+	Action Action `mapstructure:"action"`
 }
 
 // Validate returns an error if the configuration is invalid.
@@ -90,13 +94,16 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("group[%d] (id=%q) attribute[%d] (target=%q): unknown context %q, must be %q or %q",
 					i, g.ID, j, rule.Target, ctx, ContextAttribute, ContextResource)
 			}
-			action := rule.Action
-			if action == "" {
-				action = ActionCopy
-			}
-			if action != ActionCopy && action != ActionMove {
-				return fmt.Errorf("group[%d] (id=%q) attribute[%d] (target=%q): unknown action %q, must be %q or %q",
-					i, g.ID, j, rule.Target, action, ActionCopy, ActionMove)
+
+			for k, src := range rule.Sources {
+				if strings.TrimSpace(src.Key) == "" {
+					return fmt.Errorf("group[%d] (id=%q) attribute[%d] (target=%q) source[%d]: key must not be empty",
+						i, g.ID, j, rule.Target, k)
+				}
+				if src.Action != "" && src.Action != ActionCopy && src.Action != ActionMove {
+					return fmt.Errorf("group[%d] (id=%q) attribute[%d] (target=%q) source[%d] (key=%q): unknown action %q, must be %q or %q",
+						i, g.ID, j, rule.Target, k, src.Key, src.Action, ActionCopy, ActionMove)
+				}
 			}
 		}
 	}

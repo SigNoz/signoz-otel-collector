@@ -43,7 +43,7 @@ func TestGlobMatchInSpanAttrs(t *testing.T) {
 				ID:        "llm",
 				ExistsAny: ExistsAny{Attributes: []string{"model"}},
 				Attributes: []AttributeRule{
-					{Target: "gen_ai.request.model", Sources: []string{"llm.model"}},
+					{Target: "gen_ai.request.model", Sources: []Source{{Key: "llm.model"}}},
 				},
 			},
 		},
@@ -71,7 +71,7 @@ func TestGlobMatchInResourceAttrs(t *testing.T) {
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.model",
-						Sources: []string{"resource.service.name"},
+						Sources: []Source{{Key: "resource.service.name"}},
 					},
 				},
 			},
@@ -95,7 +95,7 @@ func TestNoMatchSkipsGroup(t *testing.T) {
 				ID:        "llm",
 				ExistsAny: ExistsAny{Attributes: []string{"model"}},
 				Attributes: []AttributeRule{
-					{Target: "gen_ai.request.model", Sources: []string{"llm.model"}},
+					{Target: "gen_ai.request.model", Sources: []Source{{Key: "llm.model"}}},
 				},
 			},
 		},
@@ -119,8 +119,11 @@ func TestSourceFirstMatchWins(t *testing.T) {
 				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
 				Attributes: []AttributeRule{
 					{
-						Target:  "gen_ai.request.tokens",
-						Sources: []string{"gen_ai.request_tokens", "llm.tokens"},
+						Target: "gen_ai.request.tokens",
+						Sources: []Source{
+							{Key: "gen_ai.request_tokens"},
+							{Key: "llm.tokens"},
+						},
 					},
 				},
 			},
@@ -152,8 +155,11 @@ func TestSourceFallsBackToSecond(t *testing.T) {
 				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
 				Attributes: []AttributeRule{
 					{
-						Target:  "gen_ai.request.tokens",
-						Sources: []string{"gen_ai.request_tokens", "llm.tokens"},
+						Target: "gen_ai.request.tokens",
+						Sources: []Source{
+							{Key: "gen_ai.request_tokens"},
+							{Key: "llm.tokens"},
+						},
 					},
 				},
 			},
@@ -180,8 +186,7 @@ func TestActionMove(t *testing.T) {
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.input",
-						Sources: []string{"gen_ai.input"},
-						Action:  ActionMove,
+						Sources: []Source{{Key: "gen_ai.input", Action: ActionMove}},
 					},
 				},
 			},
@@ -211,8 +216,7 @@ func TestActionCopy(t *testing.T) {
 				Attributes: []AttributeRule{
 					{
 						Target:  "gen_ai.request.input",
-						Sources: []string{"gen_ai.input"},
-						Action:  ActionCopy,
+						Sources: []Source{{Key: "gen_ai.input", Action: ActionCopy}},
 					},
 				},
 			},
@@ -229,6 +233,54 @@ func TestActionCopy(t *testing.T) {
 	assert.True(t, srcPresent, "source key must be kept when action=copy")
 }
 
+// TestPerSourceAction asserts that move and copy on sibling sources of the
+// same rule are each honored independently — the central guarantee of the
+// per-source action design.
+func TestPerSourceAction(t *testing.T) {
+	cfg := &Config{
+		Groups: []Group{
+			{
+				ID:        "mixed",
+				ExistsAny: ExistsAny{Attributes: []string{"input"}},
+				Attributes: []AttributeRule{
+					{
+						Target: "gen_ai.request.input",
+						Sources: []Source{
+							{Key: "gen_ai.input", Action: ActionMove},
+							{Key: "llm.input", Action: ActionCopy},
+						},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, cfg.Validate())
+
+	// First source matches → must be moved (deleted).
+	td := buildTrace(map[string]string{"gen_ai.input": "first", "llm.input": "second"}, nil)
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	val, ok := spanAttrs(td).Get("gen_ai.request.input")
+	require.True(t, ok)
+	assert.Equal(t, "first", val.Str())
+	_, gone := spanAttrs(td).Get("gen_ai.input")
+	assert.False(t, gone, "gen_ai.input must be removed when its action=move and it was the matching source")
+	_, kept := spanAttrs(td).Get("llm.input")
+	assert.True(t, kept, "llm.input must be untouched — it was never the matching source")
+
+	// Only the second source is present → must be copied (kept).
+	td = buildTrace(map[string]string{"llm.input": "only"}, nil)
+	_, err = newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	val, ok = spanAttrs(td).Get("gen_ai.request.input")
+	require.True(t, ok)
+	assert.Equal(t, "only", val.Str())
+	_, kept = spanAttrs(td).Get("llm.input")
+	assert.True(t, kept, "llm.input must be kept when its action=copy")
+}
+
 func TestContextResource(t *testing.T) {
 	cfg := &Config{
 		Groups: []Group{
@@ -239,7 +291,7 @@ func TestContextResource(t *testing.T) {
 					{
 						Target:  "gen_ai.request.model",
 						Context: ContextResource,
-						Sources: []string{"llm.model"},
+						Sources: []Source{{Key: "llm.model"}},
 					},
 				},
 			},
@@ -274,16 +326,25 @@ func TestLLMGroupScenario(t *testing.T) {
 					{
 						Target:  "gen_ai.request.model",
 						Context: ContextResource,
-						Sources: []string{"gen_ai.llm.model", "llm.model", "resource.service.name"},
+						Sources: []Source{
+							{Key: "gen_ai.llm.model"},
+							{Key: "llm.model"},
+							{Key: "resource.service.name"},
+						},
 					},
 					{
-						Target:  "gen_ai.request.tokens",
-						Sources: []string{"gen_ai.request_tokens", "llm.tokens"},
+						Target: "gen_ai.request.tokens",
+						Sources: []Source{
+							{Key: "gen_ai.request_tokens"},
+							{Key: "llm.tokens"},
+						},
 					},
 					{
-						Target:  "gen_ai.request.input",
-						Action:  ActionMove,
-						Sources: []string{"gen_ai.input", "llm.input"},
+						Target: "gen_ai.request.input",
+						Sources: []Source{
+							{Key: "gen_ai.input", Action: ActionMove},
+							{Key: "llm.input", Action: ActionMove},
+						},
 					},
 				},
 			},

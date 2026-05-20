@@ -48,12 +48,26 @@ func TestLoadConfig(t *testing.T) {
 		modelRule := llm.Attributes[0]
 		assert.Equal(t, "gen_ai.request.model", modelRule.Target)
 		assert.Equal(t, ContextResource, modelRule.Context)
-		assert.Equal(t, []string{"gen_ai.llm.model", "llm.model", "resource.service.name"}, modelRule.Sources)
-		assert.Empty(t, modelRule.Action) // default
+		assert.Equal(t,
+			[]Source{
+				{Key: "gen_ai.llm.model"},
+				{Key: "llm.model"},
+				{Key: "resource.service.name"},
+			},
+			modelRule.Sources,
+		)
 
 		inputRule := llm.Attributes[2]
 		assert.Equal(t, "gen_ai.request.input", inputRule.Target)
-		assert.Equal(t, ActionMove, inputRule.Action)
+		// Both sources carry an explicit move action now that rule-level
+		// action no longer exists.
+		assert.Equal(t,
+			[]Source{
+				{Key: "gen_ai.input", Action: ActionMove},
+				{Key: "llm.input", Action: ActionMove},
+			},
+			inputRule.Sources,
+		)
 
 		agent := cfg.Groups[1]
 		assert.Equal(t, "agent", agent.ID)
@@ -81,8 +95,24 @@ func TestLoadConfig(t *testing.T) {
 		require.NoError(t, cfg.Validate())
 
 		rule := cfg.Groups[0].Attributes[0]
-		assert.Empty(t, rule.Action)  // defaults to copy at runtime
 		assert.Empty(t, rule.Context) // defaults to attributes at runtime
+		require.Len(t, rule.Sources, 1)
+		assert.Empty(t, rule.Sources[0].Action) // defaults to copy at runtime
+	})
+
+	t.Run("per_source_action", func(t *testing.T) {
+		cfg, err := loadConfig(t, component.NewIDWithName(processorType, "per_source_action"))
+		require.NoError(t, err)
+		require.NoError(t, cfg.Validate())
+
+		rule := cfg.Groups[0].Attributes[0]
+		assert.Equal(t,
+			[]Source{
+				{Key: "gen_ai.input", Action: ActionMove},
+				{Key: "llm.input", Action: ActionCopy},
+			},
+			rule.Sources,
+		)
 	})
 }
 
@@ -115,9 +145,14 @@ func TestValidateErrors(t *testing.T) {
 			errContains: "unknown context",
 		},
 		{
-			name:        "bad_action",
-			id:          component.NewIDWithName(processorType, "bad_action"),
+			name:        "bad_source_action",
+			id:          component.NewIDWithName(processorType, "bad_source_action"),
 			errContains: "unknown action",
+		},
+		{
+			name:        "empty_source_key",
+			id:          component.NewIDWithName(processorType, "empty_source_key"),
+			errContains: "key must not be empty",
 		},
 	}
 
@@ -142,14 +177,14 @@ func TestValidateErrorMessages(t *testing.T) {
 				ID:        "first",
 				ExistsAny: ExistsAny{Attributes: []string{"*"}},
 				Attributes: []AttributeRule{
-					{Target: "ok", Sources: []string{"s"}},
+					{Target: "ok", Sources: []Source{{Key: "s"}}},
 				},
 			},
 			{
 				ID:        "second",
 				ExistsAny: ExistsAny{Attributes: []string{"*"}},
 				Attributes: []AttributeRule{
-					{Target: "", Sources: []string{"s"}}, // bad
+					{Target: "", Sources: []Source{{Key: "s"}}}, // bad
 				},
 			},
 		},

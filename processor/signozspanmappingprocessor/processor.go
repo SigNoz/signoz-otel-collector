@@ -11,13 +11,13 @@ import (
 type parsedKey struct {
 	bare       string // key without any prefix
 	isResource bool   // true → read from resource attributes
+	move       bool   // true → delete the source after copying to the target
 }
 
 type parsedRule struct {
 	target          string
 	writeToResource bool // context == ContextResource
 	sources         []parsedKey
-	move            bool // action == ActionMove
 }
 
 type parsedGroup struct {
@@ -33,7 +33,8 @@ type spanMapperProcessor struct {
 }
 
 // newProcessor pre-parses the configuration so that the hot path (per span/log)
-// performs no string allocation or parsing.
+// performs no string allocation or parsing. The per-source action is resolved
+// to a single bool (`move`) — an empty action means ActionCopy.
 func newProcessor(cfg *Config) *spanMapperProcessor {
 	groups := make([]parsedGroup, len(cfg.Groups))
 	for i, g := range cfg.Groups {
@@ -47,11 +48,14 @@ func newProcessor(cfg *Config) *spanMapperProcessor {
 				target:          rule.Target,
 				writeToResource: rule.Context == ContextResource,
 				sources:         make([]parsedKey, len(rule.Sources)),
-				move:            rule.Action == ActionMove,
 			}
 			for k, src := range rule.Sources {
-				bare, isRes := isResourceKey(src)
-				pr.sources[k] = parsedKey{bare: bare, isResource: isRes}
+				bare, isRes := isResourceKey(src.Key)
+				pr.sources[k] = parsedKey{
+					bare:       bare,
+					isResource: isRes,
+					move:       src.Action == ActionMove,
+				}
 			}
 			pg.rules[j] = pr
 		}
@@ -132,9 +136,9 @@ func conditionMet(g *parsedGroup, attrs, resourceAttrs pcommon.Map) bool {
 }
 
 // applyRule finds the first existing source and writes its value to the target.
-// If move is true the source key is deleted after copying.
-// The target is written to resource attributes when writeToResource is true,
-// otherwise to span/log attributes.
+// The source-level move flag controls whether the source key is deleted after
+// the copy. The target is written to resource attributes when writeToResource
+// is true, otherwise to span/log attributes.
 func applyRule(rule *parsedRule, attrs, resourceAttrs pcommon.Map) {
 	for i := range rule.sources {
 		src := &rule.sources[i]
@@ -161,7 +165,7 @@ func applyRule(rule *parsedRule, attrs, resourceAttrs pcommon.Map) {
 		}
 		val.CopyTo(dest)
 
-		if rule.move {
+		if src.move {
 			if src.isResource {
 				resourceAttrs.Remove(src.bare)
 			} else {
