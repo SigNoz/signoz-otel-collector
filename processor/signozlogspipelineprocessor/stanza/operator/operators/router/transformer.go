@@ -24,7 +24,7 @@ type Transformer struct {
 	routes              []*Route
 	allCompiledPatterns map[string]func(s string) bool
 
-	// fallthroughOutput receives entries that no route matched. When nil, those
+	// defaultOutput receives entries that no route matched. When nil, those
 	// entries are dropped — matching contrib's logstransformprocessor behavior.
 	// The SigNoz processor sets this to the pipeline's BatchingLogEmitter so
 	// unmatched entries flow through to the next consumer unchanged, preserving
