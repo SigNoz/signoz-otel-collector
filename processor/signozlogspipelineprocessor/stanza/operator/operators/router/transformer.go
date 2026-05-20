@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -29,13 +30,13 @@ type Transformer struct {
 	// unmatched entries flow through to the next consumer unchanged, preserving
 	// the behavior of the pre-async sync implementation (where unmatched
 	// entries remained in the input slice and were returned as-is).
-	fallthroughOutput operator.Operator
+	defaultOutput operator.Operator
 }
 
-// SetFallthroughOutput wires the operator that receives entries no route
+// SetDefaultOutput wires the operator that receives entries no route
 // matched. Pass nil to drop unmatched entries.
-func (t *Transformer) SetFallthroughOutput(op operator.Operator) {
-	t.fallthroughOutput = op
+func (t *Transformer) SetDefaultOutput(op operator.Operator) {
+	t.defaultOutput = op
 }
 
 // Route is a route on a router operator
@@ -58,6 +59,10 @@ func (t *Transformer) CanProcess() bool {
 // If no route matches and a fallthroughOutput is configured, the entry is
 // forwarded to it unchanged.
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
+	if t.defaultOutput == nil {
+		return errors.New("router requires a default output to be configured")
+	}
+
 	routesHaveBodyFieldRef := slices.ContainsFunc(
 		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
 	)
@@ -84,11 +89,8 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 		}
 
 		// No route matched. Preserve the unmatched entry by forwarding it to
-		// the fallthrough output if one is configured.
-		if t.fallthroughOutput != nil {
-			_ = t.fallthroughOutput.Process(ctx, entry)
-		}
-		return nil
+		// the default output if one is configured.
+		return t.defaultOutput.Process(ctx, entry)
 	})
 }
 

@@ -129,10 +129,8 @@ func (p *logsPipelineProcessor) startPipeline() error {
 	// directly (skipping any downstream operators, which is what the old
 	// sync implementation effectively did because it returned the full input
 	// entry slice regardless of pipeline forwarding).
-	for _, op := range ops {
-		if r, ok := op.(*router.Transformer); ok {
-			r.SetFallthroughOutput(p.emitter)
-		}
+	if r, ok := p.firstOperator.(*router.Transformer); ok {
+		r.SetDefaultOutput(p.emitter)
 	}
 
 	return nil
