@@ -1161,4 +1161,71 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1011,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(0))},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(0))},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "attributes_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "attributes_vals_ngrambf",
+					Expression:  JSONValuesIndexExpr("attributes"),
+					Type:        "ngrambf_v1(4, 5000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "attributes_vals_ngrambf"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "attributes_paths_tokenbf"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attributes"},
+			},
+		},
+	},
 }

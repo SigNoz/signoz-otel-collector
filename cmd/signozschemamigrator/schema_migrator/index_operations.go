@@ -383,3 +383,7 @@ func JSONPathsIndexExpr(column string) string {
 func JSONFullTextIndexExpr(column string) string {
 	return fmt.Sprintf("lower(toString(%s))", column)
 }
+
+func JSONValuesIndexExpr(column string) string {
+	return fmt.Sprintf("JSONAllValues(%s)", column)
+}
