@@ -28,8 +28,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 
-	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/operators/router"
-
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
 )
 
@@ -122,16 +120,6 @@ func (p *logsPipelineProcessor) startPipeline() error {
 		return errors.New("processor requires at least one operator to be configured")
 	}
 	p.firstOperator = ops[0]
-
-	// Preserve the pre-async behavior where entries that no router route
-	// matched still flowed through to the next consumer. Wire every router's
-	// fallthrough output to the emitter so unmatched entries are forwarded
-	// directly (skipping any downstream operators, which is what the old
-	// sync implementation effectively did because it returned the full input
-	// entry slice regardless of pipeline forwarding).
-	if r, ok := p.firstOperator.(*router.Transformer); ok {
-		r.SetDefaultOutput(p.emitter)
-	}
 
 	return nil
 }
