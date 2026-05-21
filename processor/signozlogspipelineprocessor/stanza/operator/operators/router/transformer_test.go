@@ -177,14 +177,19 @@ func TestTransformer(t *testing.T) {
 		},
 	}
 
+	set := componenttest.NewNopTelemetrySettings()
+	defaultOutput := helper.NewBatchingLogEmitter(set, func(ctx context.Context, e []*entry.Entry) {
+		// noop
+	})
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := basicConfig()
 			cfg.Routes = tc.routes
 			cfg.Default = tc.defaultOutput
 
-			set := componenttest.NewNopTelemetrySettings()
 			op, err := cfg.Build(set)
+			op.(*Transformer).SetDefaultOutput(defaultOutput)
 			require.NoError(t, err)
 
 			results := map[string]int{}
