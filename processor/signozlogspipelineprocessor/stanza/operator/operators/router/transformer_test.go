@@ -177,14 +177,13 @@ func TestTransformer(t *testing.T) {
 		},
 	}
 
-	set := componenttest.NewNopTelemetrySettings()
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := basicConfig()
 			cfg.Routes = tc.routes
 			cfg.Default = tc.defaultOutput
 
+			set := componenttest.NewNopTelemetrySettings()
 			op, err := cfg.Build(set)
 			require.NoError(t, err)
 

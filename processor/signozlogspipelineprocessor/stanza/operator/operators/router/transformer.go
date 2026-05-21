@@ -24,12 +24,6 @@ type Transformer struct {
 	allCompiledPatterns map[string]func(s string) bool
 }
 
-// SetDefaultOutput wires the operator that receives entries no route
-// matched. Pass nil to drop unmatched entries.
-// func (t *Transformer) SetDefaultOutput(op operator.Operator) {
-// 	t.defaultOutput = op
-// }
-
 // Route is a route on a router operator
 type Route struct {
 	helper.Attributer
@@ -46,9 +40,7 @@ func (t *Transformer) CanProcess() bool {
 	return true
 }
 
-// Process will route incoming entries based on matching expressions.
-// If no route matches and a fallthroughOutput is configured, the entry is
-// forwarded to it unchanged.
+// Process will route incoming entries based on matching expressions
 func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 	routesHaveBodyFieldRef := slices.ContainsFunc(
 		t.routes, func(r *Route) bool { return r.exprHasBodyFieldRef },
@@ -71,7 +63,7 @@ func (t *Transformer) Process(ctx context.Context, entry *entry.Entry) error {
 				for _, output := range route.OutputOperators {
 					_ = output.Process(ctx, entry)
 				}
-				return nil
+				break
 			}
 		}
 		return nil
