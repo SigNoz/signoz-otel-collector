@@ -12,9 +12,16 @@ operators:
     parse_from: attributes.log_tags
     parse_to: attributes
     regex: kube_namespace:(?P<k8s_namespace_name>[^,]+)
+    output: remove-log-tags
   - id: remove-log-tags
     type: remove
     if: attributes?.k8s_namespace_name != nil
     field: attributes.log_tags
+    output: add-worked
+  - id: add-worked
+    type: add
+    field: attributes.worked
+    value: "true"
+    output: noop
   - id: noop
     type: noop

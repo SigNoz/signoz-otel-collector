@@ -73,18 +73,18 @@ func TestPipelineWithRouterAndRegex(t *testing.T) {
 			name:       "entry_not_matching_pipeline_filter",
 			inputAttrs: map[string]any{"service": "my-service"},
 			wantAttrs:  map[string]string{"service": "my-service"},
-			wantAbsent: []string{"k8s_namespace_name"},
+			wantAbsent: []string{"worked"},
 		},
 		{
 			name:       "entry_matching_filter_but_not_regex_step",
-			inputAttrs: map[string]any{"log_tags": "env:prod,service:web"},
-			wantAttrs:  map[string]string{"log_tags": "env:prod,service:web"},
+			inputAttrs: map[string]any{"log_tags": "not_matching_regex"},
+			wantAttrs:  map[string]string{"log_tags": "not_matching_regex", "worked": "true"},
 			wantAbsent: []string{"k8s_namespace_name"},
 		},
 		{
 			name:       "entry_matching_filter_and_all_steps",
 			inputAttrs: map[string]any{"log_tags": "env:prod,kube_namespace:my-namespace,service:web"},
-			wantAttrs:  map[string]string{"k8s_namespace_name": "my-namespace"},
+			wantAttrs:  map[string]string{"k8s_namespace_name": "my-namespace", "worked": "true"},
 			wantAbsent: []string{"log_tags"},
 		},
 	}
