@@ -12,10 +12,8 @@ import (
 
 // buildTrace returns a trace with a single span. The caller receives pointers
 // to the span attributes and resource attributes for setup.
-func buildTrace(
-	spanAttrs map[string]string,
-	resAttrs map[string]string,
-) ptrace.Traces {
+func buildTrace(t *testing.T, spanAttrs map[string]string, resAttrs map[string]string) ptrace.Traces {
+	t.Helper()
 	td := ptrace.NewTraces()
 	rs := td.ResourceSpans().AppendEmpty()
 	for k, v := range resAttrs {
@@ -28,11 +26,13 @@ func buildTrace(
 	return td
 }
 
-func spanAttrs(td ptrace.Traces) pcommon.Map {
+func spanAttrs(t *testing.T, td ptrace.Traces) pcommon.Map {
+	t.Helper()
 	return td.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Attributes()
 }
 
-func resAttrs(td ptrace.Traces) pcommon.Map {
+func resAttrs(t *testing.T, td ptrace.Traces) pcommon.Map {
+	t.Helper()
 	return td.ResourceSpans().At(0).Resource().Attributes()
 }
 
@@ -51,13 +51,14 @@ func TestGlobMatchInSpanAttrs(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	td := buildTrace(
+		t,
 		map[string]string{"llm.model": "gpt-4", "gen_ai.llm.model": "gpt-40"},
 		nil,
 	)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.model")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.model")
 	require.True(t, ok)
 	assert.Equal(t, "gpt-4", val.Str())
 }
@@ -79,11 +80,11 @@ func TestGlobMatchInResourceAttrs(t *testing.T) {
 	}
 	require.NoError(t, cfg.Validate())
 
-	td := buildTrace(nil, map[string]string{"service.name": "my-llm-service"})
+	td := buildTrace(t, nil, map[string]string{"service.name": "my-llm-service"})
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.model")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.model")
 	require.True(t, ok)
 	assert.Equal(t, "my-llm-service", val.Str())
 }
@@ -103,11 +104,11 @@ func TestNoMatchSkipsGroup(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	// span has no attribute containing "model"
-	td := buildTrace(map[string]string{"some.other.key": "value"}, nil)
+	td := buildTrace(t, map[string]string{"some.other.key": "value"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	_, ok := spanAttrs(td).Get("gen_ai.request.model")
+	_, ok := spanAttrs(t, td).Get("gen_ai.request.model")
 	assert.False(t, ok, "target must not be set when condition is not met")
 }
 
@@ -133,6 +134,7 @@ func TestSourceFirstMatchWins(t *testing.T) {
 
 	// Both keys present — gen_ai.request_tokens wins.
 	td := buildTrace(
+		t,
 		map[string]string{
 			"gen_ai.request_tokens": "100",
 			"llm.tokens":            "200",
@@ -142,7 +144,7 @@ func TestSourceFirstMatchWins(t *testing.T) {
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.tokens")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.tokens")
 	require.True(t, ok)
 	assert.Equal(t, "100", val.Str())
 }
@@ -168,11 +170,11 @@ func TestSourceFallsBackToSecond(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	// Only llm.tokens present.
-	td := buildTrace(map[string]string{"llm.tokens": "200"}, nil)
+	td := buildTrace(t, map[string]string{"llm.tokens": "200"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.tokens")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.tokens")
 	require.True(t, ok)
 	assert.Equal(t, "200", val.Str())
 }
@@ -194,16 +196,16 @@ func TestActionMove(t *testing.T) {
 	}
 	require.NoError(t, cfg.Validate())
 
-	td := buildTrace(map[string]string{"gen_ai.input": "hello"}, nil)
+	td := buildTrace(t, map[string]string{"gen_ai.input": "hello"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.input")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.input")
 	require.True(t, ok)
 	assert.Equal(t, "hello", val.Str())
 
 	// Source must have been deleted.
-	_, srcPresent := spanAttrs(td).Get("gen_ai.input")
+	_, srcPresent := spanAttrs(t, td).Get("gen_ai.input")
 	assert.False(t, srcPresent, "source key must be deleted when action=move")
 }
 
@@ -224,12 +226,12 @@ func TestActionCopy(t *testing.T) {
 	}
 	require.NoError(t, cfg.Validate())
 
-	td := buildTrace(map[string]string{"gen_ai.input": "hello"}, nil)
+	td := buildTrace(t, map[string]string{"gen_ai.input": "hello"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	// Source must still be present.
-	_, srcPresent := spanAttrs(td).Get("gen_ai.input")
+	_, srcPresent := spanAttrs(t, td).Get("gen_ai.input")
 	assert.True(t, srcPresent, "source key must be kept when action=copy")
 }
 
@@ -257,27 +259,27 @@ func TestPerSourceAction(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	// First source matches → must be moved (deleted).
-	td := buildTrace(map[string]string{"gen_ai.input": "first", "llm.input": "second"}, nil)
+	td := buildTrace(t, map[string]string{"gen_ai.input": "first", "llm.input": "second"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok := spanAttrs(td).Get("gen_ai.request.input")
+	val, ok := spanAttrs(t, td).Get("gen_ai.request.input")
 	require.True(t, ok)
 	assert.Equal(t, "first", val.Str())
-	_, gone := spanAttrs(td).Get("gen_ai.input")
+	_, gone := spanAttrs(t, td).Get("gen_ai.input")
 	assert.False(t, gone, "gen_ai.input must be removed when its action=move and it was the matching source")
-	_, kept := spanAttrs(td).Get("llm.input")
+	_, kept := spanAttrs(t, td).Get("llm.input")
 	assert.True(t, kept, "llm.input must be untouched — it was never the matching source")
 
 	// Only the second source is present → must be copied (kept).
-	td = buildTrace(map[string]string{"llm.input": "only"}, nil)
+	td = buildTrace(t, map[string]string{"llm.input": "only"}, nil)
 	_, err = newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	val, ok = spanAttrs(td).Get("gen_ai.request.input")
+	val, ok = spanAttrs(t, td).Get("gen_ai.request.input")
 	require.True(t, ok)
 	assert.Equal(t, "only", val.Str())
-	_, kept = spanAttrs(td).Get("llm.input")
+	_, kept = spanAttrs(t, td).Get("llm.input")
 	assert.True(t, kept, "llm.input must be kept when its action=copy")
 }
 
@@ -299,17 +301,17 @@ func TestContextResource(t *testing.T) {
 	}
 	require.NoError(t, cfg.Validate())
 
-	td := buildTrace(map[string]string{"llm.model": "gpt-4o"}, nil)
+	td := buildTrace(t, map[string]string{"llm.model": "gpt-4o"}, nil)
 	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	// Must appear in resource attributes.
-	val, ok := resAttrs(td).Get("gen_ai.request.model")
+	val, ok := resAttrs(t, td).Get("gen_ai.request.model")
 	require.True(t, ok, "target must be in resource attrs when context=resource")
 	assert.Equal(t, "gpt-4o", val.Str())
 
 	// Must NOT appear in span attributes.
-	_, inSpan := spanAttrs(td).Get("gen_ai.request.model")
+	_, inSpan := spanAttrs(t, td).Get("gen_ai.request.model")
 	assert.False(t, inSpan)
 }
 
@@ -353,6 +355,7 @@ func TestLLMGroupScenario(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	td := buildTrace(
+		t,
 		map[string]string{
 			"llm.model":    "gpt-4",
 			"llm.tokens":   "512",
@@ -365,19 +368,19 @@ func TestLLMGroupScenario(t *testing.T) {
 	require.NoError(t, err)
 
 	// gen_ai.request.model written to resource (context=resource), source=llm.model wins
-	modelVal, ok := resAttrs(td).Get("gen_ai.request.model")
+	modelVal, ok := resAttrs(t, td).Get("gen_ai.request.model")
 	require.True(t, ok)
 	assert.Equal(t, "gpt-4", modelVal.Str())
 
 	// gen_ai.request.tokens from llm.tokens (fallback, gen_ai.request_tokens absent)
-	tokVal, ok := spanAttrs(td).Get("gen_ai.request.tokens")
+	tokVal, ok := spanAttrs(t, td).Get("gen_ai.request.tokens")
 	require.True(t, ok)
 	assert.Equal(t, "512", tokVal.Str())
 
 	// gen_ai.request.input moved from gen_ai.input
-	inputVal, ok := spanAttrs(td).Get("gen_ai.request.input")
+	inputVal, ok := spanAttrs(t, td).Get("gen_ai.request.input")
 	require.True(t, ok)
 	assert.Equal(t, "tell me a story", inputVal.Str())
-	_, srcPresent := spanAttrs(td).Get("gen_ai.input")
+	_, srcPresent := spanAttrs(t, td).Get("gen_ai.input")
 	assert.False(t, srcPresent)
 }
