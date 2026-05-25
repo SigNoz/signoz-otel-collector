@@ -155,6 +155,7 @@ type jsonMetadataWriter struct {
 	limits       LimitsConfig
 
 	logsProcessed metric.Int64Counter
+	keysIngested  metric.Int64Counter
 }
 
 func newJSONMetadataWriter(
@@ -167,9 +168,17 @@ func newJSONMetadataWriter(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cardinal key cache: %w", err)
 	}
-	logsProcessed, err := e.set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter").Int64Counter(
+	meter := e.set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter")
+	logsProcessed, err := meter.Int64Counter(
 		"signoz_metadata_exporter_json_logs_processed",
 		metric.WithDescription("Number of log records with a JSON (map) body processed by the JSON metadata writer"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create json writer metrics: %w", err)
+	}
+	keysIngested, err := meter.Int64Counter(
+		"signoz_metadata_exporter_json_keys_ingested",
+		metric.WithDescription("Number of distinct JSON keys ingested per batch by the JSON metadata writer"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create json writer metrics: %w", err)
@@ -182,6 +191,7 @@ func newJSONMetadataWriter(
 		valueTracker:     e.logsTracker,
 		limits:           e.cfg.MaxDistinctValues.Logs,
 		logsProcessed:    logsProcessed,
+		keysIngested:     keysIngested,
 	}
 	empty := make(map[string]struct{})
 	w.skipKeys.Store(&empty)
@@ -299,6 +309,8 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 			}
 		}
 	}
+
+	w.keysIngested.Add(ctx, bodyTypes.Len())
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error { return w.flushTypeSet(gCtx, bodyTypes) })
