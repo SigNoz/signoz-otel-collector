@@ -481,10 +481,14 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
       routes:
         - expr: body.request.id == "test"
           output: test-add
+      default: noop
     - type: add
       id: test-add
       field: attributes.test
       value: test-value
+      output: noop
+    - type: noop
+      id: noop
   `
 	testCases = append(testCases, testCase{
 		"router/happy_case", testConfWithRouter,
