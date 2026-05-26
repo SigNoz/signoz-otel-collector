@@ -1,5 +1,7 @@
-// Brought in as is from logstransform processor in opentelemetry-collector-contrib
-// with identifiers changed for the new processor
+// Async processor: ConsumeLogs returns immediately after enqueuing to
+// FromPdataConverter. The factory therefore bypasses processorhelper.NewLogs
+// (which only supports sync ProcessLogs callbacks) and returns the processor
+// directly as a processor.Logs implementation.
 package signozlogspipelineprocessor
 
 import (
@@ -12,7 +14,6 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
-	"go.opentelemetry.io/collector/processor/processorhelper"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
@@ -33,10 +34,8 @@ func createDefaultConfig() component.Config {
 	}
 }
 
-var processorCapabilities = consumer.Capabilities{MutatesData: true}
-
 func createLogsProcessor(
-	ctx context.Context,
+	_ context.Context,
 	set processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Logs,
@@ -49,19 +48,10 @@ func createLogsProcessor(
 		return nil, errors.New("no operators were configured for signozlogspipeline processor")
 	}
 
-	proc, err := newLogsPipelineProcessor(pCfg, set.TelemetrySettings)
+	proc, err := newLogsPipelineProcessor(pCfg, set.TelemetrySettings, nextConsumer)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't build \"signozlogspipeline\" processor %w", err)
 	}
 
-	return processorhelper.NewLogs(
-		ctx,
-		set,
-		cfg,
-		nextConsumer,
-		proc.ProcessLogs,
-		processorhelper.WithStart(proc.Start),
-		processorhelper.WithShutdown(proc.Shutdown),
-		processorhelper.WithCapabilities(processorCapabilities),
-	)
+	return proc, nil
 }
