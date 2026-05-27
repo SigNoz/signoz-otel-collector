@@ -176,7 +176,6 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 	defer statement.Close()
 
 	for _, sample := range batch.samples {
-		roundedUnixMilli := sample.unixMilli / 3600000 * 3600000
 		err = statement.Append(
 			sample.temporality.String(),
 			sample.metricName,
@@ -186,7 +185,7 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 			sample.isMonotonic,
 			sample.labels,
 			sample.fingerprint,
-			roundedUnixMilli,
+			sample.unixMilli,
 			sample.value,
 		)
 		if err != nil {
