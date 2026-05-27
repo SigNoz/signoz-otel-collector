@@ -67,11 +67,8 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 
 	meter := NewMetrics(zap.NewNop())
 
-	// 6 data points * 20 buckets = 120
-	// 120 negative + 120 positive = 240
-	// 6 data points * 4 (sum,count,min,max) metrics = 24
-	// total -> 240 + 24 = 264
-	assert.Equal(t, 264, meter.Count(md))
+	// exponential histograms are intentionally not counted
+	assert.Equal(t, 0, meter.Count(md))
 }
 
 func TestMetrics_CountSummaryMetrics(t *testing.T) {
