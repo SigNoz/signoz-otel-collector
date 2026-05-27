@@ -68,6 +68,32 @@ func TestPromotedPathSeparation(t *testing.T) {
 			},
 			expectedPromoted: map[string]interface{}{},
 		},
+		{
+			name: "array_leaf_found_promoted",
+			body: map[string]interface{}{
+				"message": "test log",
+				"user": map[string]interface{}{
+					"orders": []any{
+						map[string]any{
+							"id":         "1",
+							"created_at": "some date",
+						},
+					},
+					"id": "123",
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"user.orders": {},
+			},
+			expectedPromoted: map[string]interface{}{
+				"user.orders": []any{
+					map[string]any{
+						"id":         "1",
+						"created_at": "some date",
+					},
+				},
+			},
+		},
 		// This is likely not happen, but is covered for completeness
 		// ClickHouse will fail ingestion if there are multiple occurrences of the same path
 		// type_json_skip_duplicated_paths can be enabled during parsing JSON object into JSON type duplicated paths will be ignored and only the first one will be inserted instead of an exception
@@ -275,60 +301,19 @@ func TestPromotedPathSeparation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create pcommon.Value from test body
 			body := pcommon.NewValueMap()
-			populateMapFromInterface(body.Map(), tc.body)
+			err := body.Map().FromRaw(tc.body)
+			assert.NoError(t, err, "failed to convert map to pcommon.Map")
 
 			// Extract promoted paths
 			promoted := buildPromoted(body, tc.promotedPaths)
 
 			// Convert results back to interface{} for comparison
-			actualBody := convertMapToInterface(body.Map())
-			actualPromoted := convertMapToInterface(promoted.Map())
+			actualBody := body.Map().AsRaw()
+			actualPromoted := promoted.Map().AsRaw()
 
 			// Assertions
 			assert.Equal(t, tc.body, actualBody, "Body should stay the same after extraction")
 			assert.Equal(t, tc.expectedPromoted, actualPromoted, "Promoted should match expected")
 		})
 	}
-}
-
-// Helper function to populate pcommon.Map from interface{}
-func populateMapFromInterface(m pcommon.Map, data map[string]interface{}) {
-	for k, v := range data {
-		switch val := v.(type) {
-		case string:
-			m.PutStr(k, val)
-		case int:
-			m.PutInt(k, int64(val))
-		case float64:
-			m.PutDouble(k, val)
-		case bool:
-			m.PutBool(k, val)
-		case map[string]interface{}:
-			nested := m.PutEmptyMap(k)
-			populateMapFromInterface(nested, val)
-		}
-	}
-}
-
-// Helper function to convert pcommon.Map to interface{}
-func convertMapToInterface(m pcommon.Map) map[string]interface{} {
-	result := make(map[string]interface{})
-	m.Range(func(k string, v pcommon.Value) bool {
-		switch v.Type() {
-		case pcommon.ValueTypeStr:
-			result[k] = v.Str()
-		case pcommon.ValueTypeInt:
-			result[k] = v.Int()
-		case pcommon.ValueTypeDouble:
-			result[k] = v.Double()
-		case pcommon.ValueTypeBool:
-			result[k] = v.Bool()
-		case pcommon.ValueTypeMap:
-			result[k] = convertMapToInterface(v.Map())
-		default:
-			result[k] = v.AsString()
-		}
-		return true
-	})
-	return result
 }
