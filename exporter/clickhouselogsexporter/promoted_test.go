@@ -53,6 +53,21 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"user.name": "john",
 			},
 		},
+		{
+			name: "parent_is_promoted_but_is_not_leaf_in_data_input",
+			body: map[string]interface{}{
+				"message": "test log",
+				"user": map[string]interface{}{
+					"id":    "123",
+					"name":  "john",
+					"email": "john@example.com",
+				},
+			},
+			promotedPaths: map[string]struct{}{
+				"user": {},
+			},
+			expectedPromoted: map[string]interface{}{},
+		},
 		// This is likely not happen, but is covered for completeness
 		// ClickHouse will fail ingestion if there are multiple occurrences of the same path
 		// type_json_skip_duplicated_paths can be enabled during parsing JSON object into JSON type duplicated paths will be ignored and only the first one will be inserted instead of an exception
