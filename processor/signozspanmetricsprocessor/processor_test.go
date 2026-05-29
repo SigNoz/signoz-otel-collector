@@ -808,6 +808,42 @@ func TestBuildKeySameServiceOperationCharSequence(t *testing.T) {
 	assert.Equal(t, metricKey("a\u0000bc\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET"), k1)
 }
 
+// TestBuildDimensionKVsTagsCollectorID verifies that buildDimensionKVs emits
+// signoz.collector.id (and its resource_ variant) as a label sourced from the
+// collector instance ID only when it is configured as a dimension.
+func TestBuildDimensionKVsTagsCollectorID(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+	p := newProcessorImp(mexp, tcon, nil, cumulative, logger, nil)
+	p.instanceID = testID
+
+	for _, tc := range []struct {
+		name         string
+		optionalDims []dimension
+		wantTagged   bool
+	}{
+		{name: "configured as dimension", optionalDims: []dimension{{name: signozID}}, wantTagged: true},
+		{name: "not configured", optionalDims: nil, wantTagged: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dims := p.buildDimensionKVs("svc", ptrace.NewSpan(), tc.optionalDims, pcommon.NewMap())
+
+			v, ok := dims.Get(signozID)
+			rv, rok := dims.Get(resourcePrefix + signozID)
+			if tc.wantTagged {
+				require.True(t, ok, "%s must be present as a label", signozID)
+				assert.Equal(t, testID, v.Str())
+				require.True(t, rok, "%s%s must be present as a label", resourcePrefix, signozID)
+				assert.Equal(t, testID, rv.Str())
+			} else {
+				assert.False(t, ok, "%s must not be present as a label", signozID)
+				assert.False(t, rok, "%s%s must not be present as a label", resourcePrefix, signozID)
+			}
+		})
+	}
+}
+
 func TestBuildKeyWithDimensions(t *testing.T) {
 	// Prepare
 	mexp := &mocks.MetricsExporter{}

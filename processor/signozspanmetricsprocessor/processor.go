@@ -1037,11 +1037,6 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
-		// Stamp signoz.collector.id on a copy used only for metrics, so the
-		// forwarded spans stay unmodified.
-		metricResourceAttr := pcommon.NewMap()
-		resourceAttr.CopyTo(metricResourceAttr)
-		metricResourceAttr.PutStr(signozID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()
 		for j := 0; j < ilsSlice.Len(); j++ {
@@ -1049,7 +1044,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 			spans := ils.Spans()
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-				p.aggregateMetricsForSpan(serviceName, span, metricResourceAttr)
+				p.aggregateMetricsForSpan(serviceName, span, resourceAttr)
 			}
 		}
 	}
@@ -1193,6 +1188,16 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 	dims.PutStr(spanKindKey, SpanKindStr(span.Kind()))
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
 	for _, d := range optionalDims {
+		// signoz.collector.id is the collector instance ID, not a span or
+		// resource attribute. Resolve it directly so it is never read from
+		// (or written to) the spans.
+		if d.name == signozID {
+			dims.PutStr(signozID, p.instanceID)
+			// Emit the resource_-prefixed label too, to keep the metric label
+			// set identical to when it was sourced as a resource attribute.
+			dims.PutStr(resourcePrefix+signozID, p.instanceID)
+			continue
+		}
 		v, ok, foundInResource := getDimensionValueWithResource(d, span.Attributes(), resourceAttrs)
 		if ok {
 			v.CopyTo(dims.PutEmpty(d.name))
@@ -1221,6 +1226,16 @@ func (p *processorImp) buildCustomDimensionKVs(serviceName string, span ptrace.S
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
 
 	for _, d := range optionalDims {
+		// signoz.collector.id is the collector instance ID, not a span or
+		// resource attribute. Resolve it directly so it is never read from
+		// (or written to) the spans.
+		if d.name == signozID {
+			dims.PutStr(signozID, p.instanceID)
+			// Emit the resource_-prefixed label too, to keep the metric label
+			// set identical to when it was sourced as a resource attribute.
+			dims.PutStr(resourcePrefix+signozID, p.instanceID)
+			continue
+		}
 		v, ok, foundInResource := getDimensionValueWithResource(d, span.Attributes(), resourceAttrs)
 		if ok {
 			v.CopyTo(dims.PutEmpty(d.name))
