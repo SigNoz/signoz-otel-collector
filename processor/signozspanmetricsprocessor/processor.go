@@ -1187,15 +1187,11 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 	dims.PutStr(operationKey, spanName)
 	dims.PutStr(spanKindKey, SpanKindStr(span.Kind()))
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
+	dims.PutStr(signozID, p.instanceID)
+	dims.PutStr(resourcePrefix+signozID, p.instanceID)
 	for _, d := range optionalDims {
-		// signoz.collector.id is the collector instance ID, not a span or
-		// resource attribute. Resolve it directly so it is never read from
-		// (or written to) the spans.
+		// Already tagged above from the collector instance ID.
 		if d.name == signozID {
-			dims.PutStr(signozID, p.instanceID)
-			// Emit the resource_-prefixed label too, to keep the metric label
-			// set identical to when it was sourced as a resource attribute.
-			dims.PutStr(resourcePrefix+signozID, p.instanceID)
 			continue
 		}
 		v, ok, foundInResource := getDimensionValueWithResource(d, span.Attributes(), resourceAttrs)
@@ -1225,15 +1221,14 @@ func (p *processorImp) buildCustomDimensionKVs(serviceName string, span ptrace.S
 	}
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
 
+	// signoz.collector.id is the collector instance ID. It is always tagged on
+	// the metrics, independent of the configured dimensions, and is never read
+	// from (or written to) the spans.
+	dims.PutStr(signozID, p.instanceID)
+	dims.PutStr(resourcePrefix+signozID, p.instanceID)
 	for _, d := range optionalDims {
-		// signoz.collector.id is the collector instance ID, not a span or
-		// resource attribute. Resolve it directly so it is never read from
-		// (or written to) the spans.
+		// Already tagged above from the collector instance ID.
 		if d.name == signozID {
-			dims.PutStr(signozID, p.instanceID)
-			// Emit the resource_-prefixed label too, to keep the metric label
-			// set identical to when it was sourced as a resource attribute.
-			dims.PutStr(resourcePrefix+signozID, p.instanceID)
 			continue
 		}
 		v, ok, foundInResource := getDimensionValueWithResource(d, span.Attributes(), resourceAttrs)
