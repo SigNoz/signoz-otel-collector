@@ -1220,10 +1220,6 @@ func (p *processorImp) buildCustomDimensionKVs(serviceName string, span ptrace.S
 		v.CopyTo(dims.PutEmpty(k))
 	}
 	dims.PutStr(statusCodeKey, StatusCodeStr(span.Status().Code()))
-
-	// signoz.collector.id is the collector instance ID. It is always tagged on
-	// the metrics, independent of the configured dimensions, and is never read
-	// from (or written to) the spans.
 	dims.PutStr(signozID, p.instanceID)
 	dims.PutStr(resourcePrefix+signozID, p.instanceID)
 	for _, d := range optionalDims {
