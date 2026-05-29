@@ -202,8 +202,6 @@ func (p *logsPipelineProcessor) converterLoop(ctx context.Context, wg *sync.Wait
 func (p *logsPipelineProcessor) consumeStanzaLogEntries(ctx context.Context, entries []*entry.Entry) {
 	pLogs := convertEntriesToPlogs(entries)
 	p.telemetryBuilder.ProcessorOutgoingItems.Add(ctx, int64(pLogs.LogRecordCount()), p.otelAttrs)
-	// TODO: Address internal duration later
-	// p.telemetryBuilder.ProcessorInternalDuration.Record(ctx, time.Since(start).Seconds(), p.otelAttrs)
 	if err := p.consumer.ConsumeLogs(ctx, pLogs); err != nil {
 		p.telemetrySettings.Logger.Error("processor encountered an issue with next consumer", zap.Error(err))
 	}
