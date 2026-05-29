@@ -1037,7 +1037,11 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 		if !ok {
 			continue
 		}
-		resourceAttr.PutStr(signozID, p.instanceID)
+		// Stamp signoz.collector.id on a copy used only for metrics, so the
+		// forwarded spans stay unmodified.
+		metricResourceAttr := pcommon.NewMap()
+		resourceAttr.CopyTo(metricResourceAttr)
+		metricResourceAttr.PutStr(signozID, p.instanceID)
 		serviceName := serviceAttr.Str()
 		ilsSlice := rspans.ScopeSpans()
 		for j := 0; j < ilsSlice.Len(); j++ {
@@ -1045,7 +1049,7 @@ func (p *processorImp) aggregateMetrics(traces ptrace.Traces) {
 			spans := ils.Spans()
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-				p.aggregateMetricsForSpan(serviceName, span, resourceAttr)
+				p.aggregateMetricsForSpan(serviceName, span, metricResourceAttr)
 			}
 		}
 	}

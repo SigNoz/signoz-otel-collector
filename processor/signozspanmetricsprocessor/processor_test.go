@@ -327,6 +327,22 @@ func TestProcessorConsumeTraces(t *testing.T) {
 	}
 }
 
+func TestAggregateMetricsDoesNotMutateSpans(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+	p := newProcessorImp(mexp, tcon, nil, cumulative, logger, nil)
+
+	traces := buildSampleTrace()
+	p.aggregateMetrics(traces)
+
+	rss := traces.ResourceSpans()
+	for i := 0; i < rss.Len(); i++ {
+		_, found := rss.At(i).Resource().Attributes().Get(signozID)
+		assert.False(t, found, "%s must not be set on spans", signozID)
+	}
+}
+
 func TestMetricKeyCache(t *testing.T) {
 	mexp := &mocks.MetricsExporter{}
 	tcon := &mocks.TracesConsumer{}
