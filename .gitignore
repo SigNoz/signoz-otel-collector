@@ -19,6 +19,7 @@ vendor/
 .idea
 ./config/default-config.yaml
 .config
+.local
 
 # build folder
 .build

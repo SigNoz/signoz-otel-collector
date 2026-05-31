@@ -275,3 +275,44 @@ var V2MigrationTablesMeter = []SchemaMigrationRecord{
 		},
 	},
 }
+
+var V2MigrationTablesMetricsV2 = []SchemaMigrationRecord{
+	{
+		MigrationID: 10,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_metrics_v2",
+				Table:    "schema_migrations_v2",
+				Columns: []Column{
+					{Name: "migration_id", Type: ColumnTypeUInt64},
+					{Name: "status", Type: ColumnTypeString},
+					{Name: "error", Type: ColumnTypeString},
+					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
+					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree{
+						OrderBy:    "migration_id",
+						PrimaryKey: "migration_id",
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metrics_v2",
+				Table:    "distributed_schema_migrations_v2",
+				Columns: []Column{
+					{Name: "migration_id", Type: ColumnTypeUInt64},
+					{Name: "status", Type: ColumnTypeString},
+					{Name: "error", Type: ColumnTypeString},
+					{Name: "created_at", Type: DateTime64ColumnType{Precision: 9}},
+					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
+				},
+				Engine: Distributed{
+					Database:    "signoz_meter",
+					Table:       "schema_migrations_v2",
+					ShardingKey: "rand()",
+				},
+			},
+		},
+	},
+}

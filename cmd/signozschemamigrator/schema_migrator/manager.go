@@ -31,11 +31,12 @@ var (
 	legacyMigrationsTable = "schema_migrations"
 	SignozLogsDB          = "signoz_logs"
 	SignozMetricsDB       = "signoz_metrics"
+	SignozMetricsV2DB     = "signoz_metrics_v2"
 	SignozTracesDB        = "signoz_traces"
 	SignozMetadataDB      = "signoz_metadata"
 	SignozAnalyticsDB     = "signoz_analytics"
 	SignozMeterDB         = "signoz_meter"
-	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
+	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozMetricsV2DB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
 
 	InProgressStatus = "in-progress"
 	FinishedStatus   = "finished"
@@ -208,6 +209,14 @@ func (m *MigrationManager) Bootstrap() error {
 	for _, migration := range V2MigrationTablesMeter {
 		for _, item := range migration.UpItems {
 			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozMeterDB, true); err != nil {
+				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
+			}
+		}
+	}
+
+	for _, migration := range V2MigrationTablesMetricsV2 {
+		for _, item := range migration.UpItems {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozMetricsV2DB, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -812,6 +821,15 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
+	for _, migration := range MetricsV5Migrations {
+		if !m.shouldRunMigration(SignozMetricsV2DB, migration.MigrationID, upVersions) {
+			continue
+		}
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozMetricsV2DB); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -857,6 +875,15 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozAnalyticsDB); err != nil {
+			return err
+		}
+	}
+
+	for _, migration := range MetricsV5Migrations {
+		if !m.shouldRunMigration(SignozMetricsV2DB, migration.MigrationID, downVersions) {
+			continue
+		}
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozMetricsV2DB); err != nil {
 			return err
 		}
 	}

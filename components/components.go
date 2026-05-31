@@ -8,6 +8,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetricsv2"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
@@ -355,6 +356,7 @@ func Components() (otelcol.Factories, error) {
 		cassandraexporter.NewFactory(),
 		clickhouselogsexporter.NewFactory(),
 		signozclickhousemetrics.NewFactory(),
+		signozclickhousemetricsv2.NewFactory(),
 		clickhousetracesexporter.NewFactory(),
 		debugexporter.NewFactory(),
 		fileexporter.NewFactory(),

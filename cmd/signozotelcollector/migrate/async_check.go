@@ -179,6 +179,19 @@ func (cmd *asyncCheck) Check(ctx context.Context) error {
 		return err
 	}
 
+	metricsV2LastMigrationID, err := cmd.getLastAsyncMigration(schemamigrator.MetricsV5Migrations)
+	if err == nil {
+		ok, err := cmd.migrationManager.CheckMigrationStatus(ctx, schemamigrator.SignozMetricsV2DB, metricsV2LastMigrationID, schemamigrator.FinishedStatus)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			return fmt.Errorf("migration with ID %d for database '%s' has not been completed", metricsV2LastMigrationID, schemamigrator.SignozMetricsV2DB)
+		}
+		return err
+	}
+
 	return nil
 }
 

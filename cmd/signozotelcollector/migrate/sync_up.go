@@ -145,6 +145,11 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 		return err
 	}
 
+	err = cmd.run(ctx, schemamigrator.MetricsV5Migrations, schemamigrator.SignozMetricsV2DB)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
