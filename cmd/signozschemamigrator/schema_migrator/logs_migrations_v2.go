@@ -469,5 +469,19 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2002
+	{
+		MigrationID: 2002,
+		UpItems: []Operation{
+			InsertIntoTable{
+				Database:    SignozMetadataDB,
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
+				Values:      "('logs', 'body_v2', 'JSON()', 'body', '__all__', 0, 0)",
+			},
+		},
+		DownItems: []Operation{},
+	},
+	// Next migration id will be 2003
 }
