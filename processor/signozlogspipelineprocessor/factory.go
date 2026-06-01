@@ -48,7 +48,7 @@ func createLogsProcessor(
 		return nil, errors.New("no operators were configured for signozlogspipeline processor")
 	}
 
-	proc, err := newLogsPipelineProcessor(pCfg, set.TelemetrySettings, nextConsumer)
+	proc, err := newLogsPipelineProcessor(pCfg, set, nextConsumer)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't build \"signozlogspipeline\" processor %w", err)
 	}

@@ -72,6 +72,51 @@ func Test_prepareBatchSumWithNan(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func Test_prepareBatchGaugeWithNoRecordedValue(t *testing.T) {
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 1)
+	exp, err := NewClickHouseExporter(zap.NewNop(), &Config{DSN: "tcp://localhost:9000?database=default"})
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
+	assert.NotNil(t, batch)
+	expectedSamples := []sample{
+		{
+			temporality: pmetric.AggregationTemporalityUnspecified,
+			metricName:  "system.memory.usage0",
+			unixMilli:   1727286182000,
+			value:       0,
+			description: "memory usage of the host",
+			unit:        "bytes",
+			typ:         pmetric.MetricTypeGauge,
+			isMonotonic: false,
+			labels:      "{\"__name__\":\"system.memory.usage0\",\"__scope.name__\":\"go.signoz.io/app/reader\",\"__scope.schema_url__\":\"scope.schema_url\",\"__scope.version__\":\"1.0.0\",\"__temporality__\":\"Unspecified\",\"gauge.attr_0\":\"1\",\"resource.attr_0\":\"value0\",\"scope.attr_0\":\"value0\"}",
+		},
+	}
+	assert.Equal(t, len(expectedSamples), len(batch.samples))
+
+	for idx, sample := range expectedSamples {
+		curSample := batch.samples[idx]
+		assert.Equal(t, sample.temporality, curSample.temporality)
+		assert.Equal(t, sample.metricName, curSample.metricName)
+		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
+		assert.Equal(t, sample.value, curSample.value)
+		assert.Equal(t, sample.typ, curSample.typ)
+		assert.Equal(t, sample.isMonotonic, curSample.isMonotonic)
+		assert.Equal(t, sample.labels, curSample.labels)
+	}
+	err = exp.Shutdown(context.Background())
+	assert.NoError(t, err)
+}
+
+func Test_prepareBatchGaugeWithNan(t *testing.T) {
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 1, 0)
+	exp, err := NewClickHouseExporter(zap.NewNop(), &Config{DSN: "tcp://localhost:9000?database=default"})
+	require.NoError(t, err)
+	batch := exp.prepareBatch(context.Background(), metrics)
+	assert.Equal(t, 0, len(batch.samples))
+	err = exp.Shutdown(context.Background())
+	assert.NoError(t, err)
+}
+
 func Test_shutdown(t *testing.T) {
 	conn, err := cmock.NewClickHouseNative(nil)
 	if err != nil {

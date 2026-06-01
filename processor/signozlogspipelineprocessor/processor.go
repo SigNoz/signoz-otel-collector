@@ -26,9 +26,13 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/processor"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
 
 type logsPipelineProcessor struct {
@@ -36,6 +40,9 @@ type logsPipelineProcessor struct {
 	processorConfig   *Config
 
 	consumer consumer.Logs
+
+	telemetryBuilder *metadata.TelemetryBuilder
+	otelAttrs        metric.MeasurementOption
 
 	pipe          *pipeline.DirectedPipeline
 	firstOperator operator.Operator
@@ -46,21 +53,30 @@ type logsPipelineProcessor struct {
 
 func newLogsPipelineProcessor(
 	processorConfig *Config,
-	telemetrySettings component.TelemetrySettings,
+	set processor.Settings,
 	nextConsumer consumer.Logs,
 ) (*logsPipelineProcessor, error) {
+	tb, err := metadata.NewTelemetryBuilder(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
 	p := &logsPipelineProcessor{
-		telemetrySettings: telemetrySettings,
+		telemetrySettings: set.TelemetrySettings,
 		processorConfig:   processorConfig,
 		consumer:          nextConsumer,
+		telemetryBuilder:  tb,
+		otelAttrs: metric.WithAttributeSet(attribute.NewSet(
+			attribute.String("processor", set.ID.String()),
+			attribute.String("otel.signal", "logs"),
+		)),
 	}
 
-	p.emitter = helper.NewBatchingLogEmitter(telemetrySettings, p.consumeStanzaLogEntries)
+	p.emitter = helper.NewBatchingLogEmitter(set.TelemetrySettings, p.consumeStanzaLogEntries)
 
 	pipe, err := pipeline.Config{
 		Operators:     processorConfig.OperatorConfigs(),
 		DefaultOutput: p.emitter,
-	}.Build(telemetrySettings)
+	}.Build(set.TelemetrySettings)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +158,8 @@ func (p *logsPipelineProcessor) startFromConverter() {
 	})
 }
 
-func (p *logsPipelineProcessor) ConsumeLogs(_ context.Context, ld plog.Logs) error {
+func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
+	p.telemetryBuilder.ProcessorIncomingItems.Add(ctx, int64(ld.LogRecordCount()), p.otelAttrs)
 	return p.fromConverter.Batch(ld)
 }
 
@@ -184,6 +201,7 @@ func (p *logsPipelineProcessor) converterLoop(ctx context.Context, wg *sync.Wait
 // emitted to the next consumer.
 func (p *logsPipelineProcessor) consumeStanzaLogEntries(ctx context.Context, entries []*entry.Entry) {
 	pLogs := convertEntriesToPlogs(entries)
+	p.telemetryBuilder.ProcessorOutgoingItems.Add(ctx, int64(pLogs.LogRecordCount()), p.otelAttrs)
 	if err := p.consumer.ConsumeLogs(ctx, pLogs); err != nil {
 		p.telemetrySettings.Logger.Error("processor encountered an issue with next consumer", zap.Error(err))
 	}
