@@ -99,27 +99,11 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 				}
 				count += subCount
 			case pmetric.MetricTypeExponentialHistogram:
-				// we haven't enabled this metric type on Cloud since we don't know how to bill this
-				// If we use the following logic, it will explode the samples count
-				// However, for the sake of completeness, following the same logic as ExplicitBucketHistogram
-				// TODO(srikanthccv): Update this when we support this metric type on Cloud
-				subCount := 0
-				for i := 0; i < metric.ExponentialHistogram().DataPoints().Len(); i++ {
-					// each bucket of positive and negative is treated as separate sample
-					subCount += metric.ExponentialHistogram().DataPoints().At(i).Negative().BucketCounts().Len() +
-						metric.ExponentialHistogram().DataPoints().At(i).Positive().BucketCounts().Len()
-					subCount += 1 // count metric
-					if metric.ExponentialHistogram().DataPoints().At(i).HasSum() {
-						subCount += 1
-					}
-					if metric.ExponentialHistogram().DataPoints().At(i).HasMin() {
-						subCount += 1
-					}
-					if metric.ExponentialHistogram().DataPoints().At(i).HasMax() {
-						subCount += 1
-					}
-				}
-				count += subCount
+				// Intentionally not counted. Exp histograms aren't billable on Cloud yet,
+				// and counting each bucket as a sample would explode the count.
+				// Kept consistent with the signozclickhousemetrics exporter's writeExpHist,
+				// which also does not count these toward usage.
+				// TODO(srikanthccv): revisit when exp histograms are supported on Cloud.
 			}
 		}
 	}

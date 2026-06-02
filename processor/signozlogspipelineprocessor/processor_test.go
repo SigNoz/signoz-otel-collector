@@ -416,6 +416,7 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	err = proc.Start(context.Background(), nil)
 	require.NoError(err)
+	defer func() { _ = proc.Shutdown(context.Background()) }()
 
 	var wg sync.WaitGroup
 
@@ -436,11 +437,28 @@ func TestConcurrentConsumeLogs(t *testing.T) {
 
 	wg.Wait()
 
-	output := testSink.AllLogs()
-	for _, l := range output {
-		require.NoError(plogtest.CompareLogs(l, makePlog("test log", map[string]any{
-			"test": "testValue",
-		})))
+	// ConsumeLogs is async and BatchingLogEmitter merges entries into
+	// fewer output plog.Logs, so assert on the total log record count
+	// (which is preserved) rather than the number of batches.
+	require.Eventually(func() bool {
+		return testSink.LogRecordCount() >= 100
+	}, 5*time.Second, 10*time.Millisecond, "timed out waiting for 100 log records")
+	require.Equal(100, testSink.LogRecordCount())
+
+	for _, l := range testSink.AllLogs() {
+		for rlIdx := 0; rlIdx < l.ResourceLogs().Len(); rlIdx++ {
+			rl := l.ResourceLogs().At(rlIdx)
+			for slIdx := 0; slIdx < rl.ScopeLogs().Len(); slIdx++ {
+				sl := rl.ScopeLogs().At(slIdx)
+				for lrIdx := 0; lrIdx < sl.LogRecords().Len(); lrIdx++ {
+					lr := sl.LogRecords().At(lrIdx)
+					require.Equal("test log", lr.Body().Str())
+					v, ok := lr.Attributes().Get("test")
+					require.True(ok)
+					require.Equal("testValue", v.Str())
+				}
+			}
+		}
 	}
 }
 
@@ -463,10 +481,14 @@ func TestBodyFieldReferencesWhenBodyIsJson(t *testing.T) {
       routes:
         - expr: body.request.id == "test"
           output: test-add
+      default: noop
     - type: add
       id: test-add
       field: attributes.test
       value: test-value
+      output: noop
+    - type: noop
+      id: noop
   `
 	testCases = append(testCases, testCase{
 		"router/happy_case", testConfWithRouter,
@@ -711,11 +733,18 @@ func validateProcessorBehavior(
 
 	err = proc.Start(context.Background(), nil)
 	require.NoError(err)
+	defer func() { _ = proc.Shutdown(context.Background()) }()
 
 	for _, inputPlog := range inputLogs {
 		err = proc.ConsumeLogs(context.Background(), inputPlog)
 		require.NoError(err)
 	}
+
+	// ConsumeLogs is async (entries are enqueued to FromPdataConverter);
+	// wait for the sink to observe the expected number of plog.Logs batches.
+	require.Eventually(func() bool {
+		return len(testSink.AllLogs()) >= len(expectedOutput)
+	}, 5*time.Second, 10*time.Millisecond, "timed out waiting for sink to receive %d plog batches", len(expectedOutput))
 
 	output := testSink.AllLogs()
 	require.Len(output, len(expectedOutput))

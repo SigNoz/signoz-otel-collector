@@ -1,79 +1,119 @@
-// A sync implementation of stanza based otel collector processor.Logs
-// logstransform processor in opentelemetry-collector-contrib is async
+// An async stanza-based implementation of the OTel collector processor.Logs.
+// Architecture mirrors opentelemetry-collector-contrib's logstransformprocessor:
+// a FromPdataConverter worker pool converts incoming plog.Logs into stanza
+// entries; a single converterLoop goroutine drains the converter and feeds the
+// stanza pipeline serially; a BatchingLogEmitter at the pipeline's tail
+// forwards processed entries to the next consumer.
+//
+// Trade-off: ConsumeLogs returns immediately after enqueuing the batch.
+// Backpressure to the OTel batchprocessor and error propagation from the next
+// consumer are NOT preserved.
 package signozlogspipelineprocessor
 
 import (
 	"context"
-	"encoding/binary"
-	"time"
+	"errors"
+	"math"
+	"runtime"
+	"sync"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/adapter"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator/helper"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/pipeline"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/extension/xextension/storage"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/processor"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok" // ensure grok parser gets registered.
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/internal/metadata"
 )
-
-func newLogsPipelineProcessor(
-	processorConfig *Config,
-	telemetrySettings component.TelemetrySettings,
-) (*logsPipelineProcessor, error) {
-
-	stanzaPipeline, err := pipeline.Config{
-		Operators: processorConfig.OperatorConfigs(),
-	}.Build(telemetrySettings)
-	if err != nil {
-		return nil, err
-	}
-
-	return &logsPipelineProcessor{
-		telemetrySettings: telemetrySettings,
-		processorConfig:   processorConfig,
-		stanzaPipeline:    stanzaPipeline,
-	}, nil
-}
 
 type logsPipelineProcessor struct {
 	telemetrySettings component.TelemetrySettings
+	processorConfig   *Config
 
-	processorConfig *Config
-	stanzaPipeline  *pipeline.DirectedPipeline
-	firstOp         operator.Operator
-	shutdownFns     []component.ShutdownFunc
+	consumer consumer.Logs
+
+	telemetryBuilder *metadata.TelemetryBuilder
+	otelAttrs        metric.MeasurementOption
+
+	pipe          *pipeline.DirectedPipeline
+	firstOperator operator.Operator
+	emitter       *helper.BatchingLogEmitter
+	fromConverter *adapter.FromPdataConverter
+	shutdownFns   []component.ShutdownFunc
 }
 
-// Collector starting up
+func newLogsPipelineProcessor(
+	processorConfig *Config,
+	set processor.Settings,
+	nextConsumer consumer.Logs,
+) (*logsPipelineProcessor, error) {
+	tb, err := metadata.NewTelemetryBuilder(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	p := &logsPipelineProcessor{
+		telemetrySettings: set.TelemetrySettings,
+		processorConfig:   processorConfig,
+		consumer:          nextConsumer,
+		telemetryBuilder:  tb,
+		otelAttrs: metric.WithAttributeSet(attribute.NewSet(
+			attribute.String("processor", set.ID.String()),
+			attribute.String("otel.signal", "logs"),
+		)),
+	}
+
+	p.emitter = helper.NewBatchingLogEmitter(set.TelemetrySettings, p.consumeStanzaLogEntries)
+
+	pipe, err := pipeline.Config{
+		Operators:     processorConfig.OperatorConfigs(),
+		DefaultOutput: p.emitter,
+	}.Build(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	p.pipe = pipe
+
+	return p, nil
+}
+
+func (*logsPipelineProcessor) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: true}
+}
+
 func (p *logsPipelineProcessor) Start(ctx context.Context, _ component.Host) error {
 	p.telemetrySettings.Logger.Info("Starting logsPipelineProcessor")
 
-	err := p.stanzaPipeline.Start(storage.NewNopClient())
-	if err != nil {
+	wkrCount := int(math.Max(1, float64(runtime.NumCPU())))
+	p.fromConverter = adapter.NewFromPdataConverter(p.telemetrySettings, wkrCount)
+
+	// Start in reverse order of the data flow (pipeline → converterLoop → fromConverter)
+	// so that the pipeline is ready before entries start arriving.
+	if err := p.startPipeline(); err != nil {
 		return err
 	}
-
-	p.shutdownFns = append(p.shutdownFns, func(_ context.Context) error {
-		return p.stanzaPipeline.Stop()
-	})
-
-	// .Operators() returns topologically sorted operators for the stanza operator graph
-	// logs will be fed into p.firstOp for processing
-	p.firstOp = p.stanzaPipeline.Operators()[0]
+	p.startConverterLoop(ctx)
+	p.startFromConverter()
 
 	return nil
 }
 
-// Collector shutting down
 func (p *logsPipelineProcessor) Shutdown(ctx context.Context) error {
 	p.telemetrySettings.Logger.Info("Stopping logsPipelineProcessor")
 
-	// Call shutdown functions in reverse order, so that shutdown happens in LIFO order of starting
+	// Call shutdown functions in reverse order of registration: fromConverter
+	// stops first (no new entries), then converterLoop drains, then the
+	// pipeline stops.
 	for i := len(p.shutdownFns) - 1; i >= 0; i-- {
 		fn := p.shutdownFns[i]
-
 		if err := fn(ctx); err != nil {
 			return err
 		}
@@ -82,107 +122,87 @@ func (p *logsPipelineProcessor) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (p *logsPipelineProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
-	p.telemetrySettings.Logger.Debug("logsPipelineProcessor received logs", zap.Any("logs", ld))
-
-	entries := plogToEntries(ld)
-
-	for _, e := range entries {
-		if err := p.firstOp.Process(ctx, e); err != nil {
-			p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
-		}
+func (p *logsPipelineProcessor) startPipeline() error {
+	// This processor does not use stanza's persistent storage.
+	if err := p.pipe.Start(storage.NewNopClient()); err != nil {
+		return err
 	}
+	p.shutdownFns = append(p.shutdownFns, func(_ context.Context) error {
+		return p.pipe.Stop()
+	})
 
-	// All stanza ops supported by logs pipelines work synchronously and
-	// they modify the *entry.Entry passed to them in-place.
-	//
-	// So by this point, `entries` contains processed logs
-	plog := convertEntriesToPlogs(entries)
-	return plog, nil
+	ops := p.pipe.Operators()
+	if len(ops) == 0 {
+		return errors.New("processor requires at least one operator to be configured")
+	}
+	p.firstOperator = ops[0]
+
+	return nil
 }
 
-// Helpers below have been brought in as is from stanza adapter for logstransform
-func plogToEntries(src plog.Logs) []*entry.Entry {
-	result := make([]*entry.Entry, 0, src.LogRecordCount())
-	for rlIdx := 0; rlIdx < src.ResourceLogs().Len(); rlIdx++ {
-		resourceLogs := src.ResourceLogs().At(rlIdx)
+func (p *logsPipelineProcessor) startConverterLoop(ctx context.Context) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go p.converterLoop(ctx, wg)
+	p.shutdownFns = append(p.shutdownFns, func(_ context.Context) error {
+		wg.Wait()
+		return nil
+	})
+}
 
-		for slIdx := 0; slIdx < resourceLogs.ScopeLogs().Len(); slIdx++ {
-			scopeLogs := resourceLogs.ScopeLogs().At(slIdx)
-			scopeName := scopeLogs.Scope().Name()
+func (p *logsPipelineProcessor) startFromConverter() {
+	p.fromConverter.Start()
+	p.shutdownFns = append(p.shutdownFns, func(_ context.Context) error {
+		p.fromConverter.Stop()
+		return nil
+	})
+}
 
-			for lrIdx := 0; lrIdx < scopeLogs.LogRecords().Len(); lrIdx++ {
-				record := scopeLogs.LogRecords().At(lrIdx)
-				e := entry.Entry{ScopeName: scopeName}
-				// each entry has a separate Resource map: operators like `remove`
-				// can delete keys on Resource per record, so the map must not be shared.
-				e.Resource = resourceLogs.Resource().Attributes().AsRaw()
-				convertFrom(record, &e)
-				result = append(result, &e)
+func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
+	p.telemetryBuilder.ProcessorIncomingItems.Add(ctx, int64(ld.LogRecordCount()), p.otelAttrs)
+	return p.fromConverter.Batch(ld)
+}
+
+// converterLoop reads stanza entries produced by fromConverter and feeds them
+// serially into the first operator of the stanza pipeline.
+func (p *logsPipelineProcessor) converterLoop(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.telemetrySettings.Logger.Debug("converter loop stopped")
+			return
+
+		case entries, ok := <-p.fromConverter.OutChannel():
+			if !ok {
+				p.telemetrySettings.Logger.Debug("fromConverter channel got closed")
+				return
+			}
+
+			for _, e := range entries {
+				if err := p.firstOperator.Process(ctx, e); err != nil {
+					p.telemetrySettings.Logger.Error("processor encountered an issue with the pipeline", zap.Error(err))
+					break
+				}
 			}
 		}
 	}
-
-	return result
 }
 
-func convertFrom(src plog.LogRecord, ent *entry.Entry) {
-	// if src.Timestamp == 0, then leave ent.Timestamp as nil
-	if src.Timestamp() != 0 {
-		ent.Timestamp = src.Timestamp().AsTime()
+// consumeStanzaLogEntries is the BatchingLogEmitter callback: a batch of
+// processed entries arrives here, gets converted back to plog, and is
+// forwarded to the next consumer. Errors are logged but not propagated.
+//
+// We deliberately use the local convertEntriesToPlogs (utils.go) instead of
+// adapter.ConvertEntries because the local version filters out attributes
+// prefixed with signozstanzaentry.InternalTempAttributePrefix, which the
+// SigNoz operator suite uses for scratch state. Those keys must not be
+// emitted to the next consumer.
+func (p *logsPipelineProcessor) consumeStanzaLogEntries(ctx context.Context, entries []*entry.Entry) {
+	pLogs := convertEntriesToPlogs(entries)
+	p.telemetryBuilder.ProcessorOutgoingItems.Add(ctx, int64(pLogs.LogRecordCount()), p.otelAttrs)
+	if err := p.consumer.ConsumeLogs(ctx, pLogs); err != nil {
+		p.telemetrySettings.Logger.Error("processor encountered an issue with next consumer", zap.Error(err))
 	}
-
-	if src.ObservedTimestamp() == 0 {
-		ent.ObservedTimestamp = time.Now()
-	} else {
-		ent.ObservedTimestamp = src.ObservedTimestamp().AsTime()
-	}
-
-	ent.Severity = fromPdataSevMap[src.SeverityNumber()]
-	ent.SeverityText = src.SeverityText()
-
-	ent.Attributes = src.Attributes().AsRaw()
-	ent.Body = src.Body().AsRaw()
-
-	if !src.TraceID().IsEmpty() {
-		buffer := src.TraceID()
-		ent.TraceID = buffer[:]
-	}
-	if !src.SpanID().IsEmpty() {
-		buffer := src.SpanID()
-		ent.SpanID = buffer[:]
-	}
-	if src.Flags() != 0 {
-		a := make([]byte, 4)
-		binary.LittleEndian.PutUint32(a, uint32(src.Flags()))
-		ent.TraceFlags = []byte{a[0]}
-	}
-}
-
-var fromPdataSevMap = map[plog.SeverityNumber]entry.Severity{
-	plog.SeverityNumberUnspecified: entry.Default,
-	plog.SeverityNumberTrace:       entry.Trace,
-	plog.SeverityNumberTrace2:      entry.Trace2,
-	plog.SeverityNumberTrace3:      entry.Trace3,
-	plog.SeverityNumberTrace4:      entry.Trace4,
-	plog.SeverityNumberDebug:       entry.Debug,
-	plog.SeverityNumberDebug2:      entry.Debug2,
-	plog.SeverityNumberDebug3:      entry.Debug3,
-	plog.SeverityNumberDebug4:      entry.Debug4,
-	plog.SeverityNumberInfo:        entry.Info,
-	plog.SeverityNumberInfo2:       entry.Info2,
-	plog.SeverityNumberInfo3:       entry.Info3,
-	plog.SeverityNumberInfo4:       entry.Info4,
-	plog.SeverityNumberWarn:        entry.Warn,
-	plog.SeverityNumberWarn2:       entry.Warn2,
-	plog.SeverityNumberWarn3:       entry.Warn3,
-	plog.SeverityNumberWarn4:       entry.Warn4,
-	plog.SeverityNumberError:       entry.Error,
-	plog.SeverityNumberError2:      entry.Error2,
-	plog.SeverityNumberError3:      entry.Error3,
-	plog.SeverityNumberError4:      entry.Error4,
-	plog.SeverityNumberFatal:       entry.Fatal,
-	plog.SeverityNumberFatal2:      entry.Fatal2,
-	plog.SeverityNumberFatal3:      entry.Fatal3,
-	plog.SeverityNumberFatal4:      entry.Fatal4,
 }
