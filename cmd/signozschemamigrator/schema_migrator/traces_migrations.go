@@ -1184,8 +1184,23 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				After: &Column{Name: "attributes_bool"},
 			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "attributes_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
 		},
 		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "attributes_paths_tokenbf"},
+			},
 			AlterTableDropColumn{
 				Database: "signoz_traces",
 				Table:    "distributed_signoz_index_v3",
