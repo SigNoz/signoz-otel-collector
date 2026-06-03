@@ -1199,7 +1199,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "signoz_index_v3",
 				Index: Index{
 					Name:        "attributes_vals_ngrambf",
-					Expression:  JSONValuesIndexExpr("attributes"),
+					Expression:  JSONFullTextIndexExpr("attributes"),
 					Type:        "ngrambf_v1(4, 5000, 2, 0)",
 					Granularity: 1,
 				},
