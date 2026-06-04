@@ -57,6 +57,7 @@ const (
 		attributes_number,
 		attributes_bool,
 		attributes,
+		attributes_promoted,
 		resources_string,
 		resource,
 		scope,

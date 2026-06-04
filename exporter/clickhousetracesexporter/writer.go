@@ -74,6 +74,9 @@ type SpanWriter struct {
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
 	done                      chan struct{}
+
+	promotedAttributePaths    atomic.Value // using atomic.Value to allow lock-free reads
+	promotedPathsSyncInterval time.Duration
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -96,6 +99,12 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 	go func() {
 		writer.doFetchShouldSkipKeys() // Immediate first fetch
 		writer.fetchShouldSkipKeys()   // Start ticker routine
+	}()
+
+	writer.promotedAttributePaths.Store(map[string]struct{}{})
+	go func() {
+		// writer.doFetchPromotedPaths() // Immediate first fetch
+		// writer.fetchPromotedPaths()   // Start ticker routine
 	}()
 
 	return writer
@@ -186,6 +195,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesNumber,
 			span.AttributesBool,
 			span.Attributes,
+			span.AttributesPromoted,
 			span.ResourcesString,
 			span.ResourcesString,
 			marshalledScope,
