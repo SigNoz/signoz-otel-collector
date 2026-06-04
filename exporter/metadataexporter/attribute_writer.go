@@ -39,7 +39,7 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 		w.logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	totalLogRecords := 0
 	records := make([]writeToStatementBatchRecord, 0)

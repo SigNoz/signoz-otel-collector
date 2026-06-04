@@ -291,13 +291,13 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes key table due to error: %w", err)
 	}
-	defer tagKeyStatement.Close()
+	defer func() { _ = tagKeyStatement.Close() }()
 
 	tagStatementV2, err = w.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", w.traceDatabase, w.attributeTableV2), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for span attributes table v2 due to error: %w", err)
 	}
-	defer tagStatementV2.Close()
+	defer func() { _ = tagStatementV2.Close() }()
 
 	// create map of span attributes of key, tagType, dataType and isColumn to avoid duplicates in batch
 	mapOfSpanAttributeKeys := make(map[string]struct{})
@@ -353,8 +353,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 				continue
 			}
 
-			if spanAttribute.DataType == "string" {
-
+			switch spanAttribute.DataType {
+			case "string":
 				if _, ok := shouldSkipKeys[v2Key]; !ok {
 					// TODO: handle error
 					_ = tagStatementV2.Append(
@@ -366,8 +366,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 						nil,
 					)
 				}
-
-			} else if spanAttribute.DataType == "float64" {
+			case "float64":
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
 					// TODO: handle error
 					_ = tagStatementV2.Append(
@@ -379,7 +378,7 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 						spanAttribute.NumberValue,
 					)
 				}
-			} else if spanAttribute.DataType == "bool" {
+			case "bool":
 				if _, ok = shouldSkipKeys[v2Key]; !ok {
 					// TODO: handle erroe
 					_ = tagStatementV2.Append(
@@ -521,7 +520,7 @@ func (w *SpanWriter) WriteResourcesV3(ctx context.Context, resourcesSeen map[int
 	if err != nil {
 		return fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :%w", err)
 	}
-	defer insertResourcesStmtV3.Close()
+	defer func() { _ = insertResourcesStmtV3.Close() }()
 
 	for bucketTs, resources := range resourcesSeen {
 		for resourceLabels, fingerprint := range resources {
