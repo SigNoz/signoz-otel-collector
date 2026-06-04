@@ -101,3 +101,9 @@ func WithExporterID(id uuid.UUID) WriterOption {
 		e.exporterId = id
 	}
 }
+
+func WithPromotedPathsSyncInterval(interval time.Duration) WriterOption {
+	return func(e *SpanWriter) {
+		e.promotedPathsSyncInterval = interval
+	}
+}

@@ -94,6 +94,7 @@ func createTracesExporter(
 		WithRFCache(rfCache),
 		WithAttributesLimits(c.AttributesLimits),
 		WithExporterID(id),
+		WithPromotedPathsSyncInterval(5 * time.Minute),
 	}
 
 	exporterOpts := []TraceExporterOption{
