@@ -24,6 +24,7 @@ exporters:
       enabled: true
       queue_size: 100
       num_consumers: 5
+    promoted_paths_sync_interval: 5m
 service:
   pipelines:
     traces:
