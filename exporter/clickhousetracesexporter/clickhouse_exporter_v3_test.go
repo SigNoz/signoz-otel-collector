@@ -591,7 +591,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config)
+			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newStructuredSpanV3() error = %v, wantErr %v", err, tt.wantErr)
 				return
