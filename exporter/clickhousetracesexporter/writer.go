@@ -76,7 +76,7 @@ type SpanWriter struct {
 	fetchShouldSkipKeysTicker *time.Ticker
 	done                      chan struct{}
 
-	promotedAttributePaths    atomic.Value // using atomic.Value to allow lock-free reads
+	promotedAttributePaths    atomic.Value // stores []string; lock-free reads on hot path
 	promotedPathsSyncInterval time.Duration
 }
 
@@ -102,7 +102,7 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 		writer.fetchShouldSkipKeys()   // Start ticker routine
 	}()
 
-	writer.promotedAttributePaths.Store(map[string]struct{}{})
+	writer.promotedAttributePaths.Store([]string{})
 	go func() {
 		writer.doFetchPromotedPaths() // Immediate first fetch
 		writer.fetchPromotedPaths()   // Start ticker routine
@@ -165,9 +165,15 @@ func (e *SpanWriter) doFetchPromotedPaths() {
 		return
 	}
 
-	updated := make(map[string]struct{}, len(rows))
+	// deduplicate
+	seen := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
-		updated[r.FieldName] = struct{}{}
+		seen[r.FieldName] = struct{}{}
+	}
+
+	updated := make([]string, 0, len(seen))
+	for path := range seen {
+		updated = append(updated, path)
 	}
 	e.promotedAttributePaths.Store(updated)
 }
