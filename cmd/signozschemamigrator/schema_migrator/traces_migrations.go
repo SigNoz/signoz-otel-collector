@@ -1164,6 +1164,14 @@ var TracesMigrations = []SchemaMigrationRecord{
 	{
 		MigrationID: 1011,
 		UpItems: []Operation{
+			AlterTableModifySettings{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Settings: TableSettings{
+					{Name: "object_serialization_version", Value: "'v3'"},
+					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
+				},
+			},
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
