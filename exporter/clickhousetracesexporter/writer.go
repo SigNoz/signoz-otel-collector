@@ -104,8 +104,8 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 
 	writer.promotedAttributePaths.Store(map[string]struct{}{})
 	go func() {
-		// writer.doFetchPromotedPaths() // Immediate first fetch
-		// writer.fetchPromotedPaths()   // Start ticker routine
+		writer.doFetchPromotedPaths() // Immediate first fetch
+		writer.fetchPromotedPaths()   // Start ticker routine
 	}()
 
 	return writer
@@ -146,6 +146,44 @@ func (e *SpanWriter) fetchShouldSkipKeys() {
 			return
 		case <-e.fetchShouldSkipKeysTicker.C:
 			e.doFetchShouldSkipKeys()
+		}
+	}
+}
+
+func (e *SpanWriter) doFetchPromotedPaths() {
+	query := fmt.Sprintf(
+		`SELECT field_name FROM %s WHERE signal = 'traces' AND column_name = '%s' AND field_context = 'attribute' AND field_name != '__all__' SETTINGS max_threads = 1`,
+		constants.DistTableColumnEvolution,
+		constants.TracesColumnAttributesPromoted,
+	)
+
+	rows := []struct {
+		FieldName string `ch:"field_name"`
+	}{}
+	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+		e.logger.Error("error while fetching promoted attribute paths", zap.Error(err))
+		return
+	}
+
+	updated := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		updated[r.FieldName] = struct{}{}
+	}
+	e.promotedAttributePaths.Store(updated)
+}
+
+func (e *SpanWriter) fetchPromotedPaths() {
+	if e.promotedPathsSyncInterval == 0 {
+		return
+	}
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.done:
+			return
+		case <-ticker.C:
+			e.doFetchPromotedPaths()
 		}
 	}
 }
