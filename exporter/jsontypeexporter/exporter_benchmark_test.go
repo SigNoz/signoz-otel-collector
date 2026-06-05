@@ -27,7 +27,7 @@ func buildLogs(count int) plog.Logs {
 	for i := 0; i < count; i++ {
 		lr := lrs.AppendEmpty()
 		lr.SetTimestamp(pcommon.Timestamp(0))
-		_ = lr.Body().FromRaw(batch.Rows[i].Body)
+		lr.Body().FromRaw(batch.Rows[i].Body)
 	}
 	return ld
 }

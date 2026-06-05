@@ -309,7 +309,7 @@ func TestAnalyzePValue_EndToEndTypes(t *testing.T) {
 			// Expected final types per path (subset assertion)
 			if len(got) != len(testCase.expected) {
 				buf := bytes.NewBuffer(nil)
-				_ = json.NewEncoder(buf).Encode(got)
+				json.NewEncoder(buf).Encode(got)
 				t.Log(buf.String())
 				t.Fatalf("got %d paths, expected %d", len(got), len(testCase.expected))
 			}
