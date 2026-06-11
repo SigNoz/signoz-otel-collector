@@ -1,4 +1,4 @@
-type: signozspanmapper
+type: signozspanmappingprocessor
 status:
   class: processor
   stability:

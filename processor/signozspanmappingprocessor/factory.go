@@ -11,9 +11,9 @@ import (
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
-const typeStr = "signozspanmapper"
+const typeStr = "signozspanmappingprocessor"
 
-// NewFactory returns the component factory for signozspanmapper.
+// NewFactory returns the component factory for signozspanmapping.
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		component.MustNewType(typeStr),

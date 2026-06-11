@@ -28,14 +28,14 @@ type parsedGroup struct {
 	rules        []parsedRule
 }
 
-type spanMapperProcessor struct {
+type spanMappingProcessor struct {
 	groups []parsedGroup
 }
 
 // newProcessor pre-parses the configuration so that the hot path (per span/log)
 // performs no string allocation or parsing. The per-source action is resolved
 // to a single bool (`move`) — an empty action means ActionCopy.
-func newProcessor(cfg *Config) *spanMapperProcessor {
+func newProcessor(cfg *Config) *spanMappingProcessor {
 	groups := make([]parsedGroup, len(cfg.Groups))
 	for i, g := range cfg.Groups {
 		pg := parsedGroup{
@@ -61,11 +61,11 @@ func newProcessor(cfg *Config) *spanMapperProcessor {
 		}
 		groups[i] = pg
 	}
-	return &spanMapperProcessor{groups: groups}
+	return &spanMappingProcessor{groups: groups}
 }
 
 // ProcessTraces applies attribute mappings to every span in the batch.
-func (p *spanMapperProcessor) ProcessTraces(_ context.Context, td ptrace.Traces) (ptrace.Traces, error) {
+func (p *spanMappingProcessor) ProcessTraces(_ context.Context, td ptrace.Traces) (ptrace.Traces, error) {
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
@@ -83,7 +83,7 @@ func (p *spanMapperProcessor) ProcessTraces(_ context.Context, td ptrace.Traces)
 
 // applyGroups iterates groups and applies the rules of each group whose
 // exists_any condition is satisfied.
-func (p *spanMapperProcessor) applyGroups(attrs, resourceAttrs pcommon.Map) {
+func (p *spanMappingProcessor) applyGroups(attrs, resourceAttrs pcommon.Map) {
 	for i := range p.groups {
 		g := &p.groups[i]
 		if !conditionMet(g, attrs, resourceAttrs) {
