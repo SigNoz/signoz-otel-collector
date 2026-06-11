@@ -127,6 +127,53 @@ func (c *clickhouseMeterExporter) processSum(batch *batch, metric pmetric.Metric
 	}
 }
 
+// processGauge processes gauge metrics
+func (c *clickhouseMeterExporter) processGauge(batch *batch, metric pmetric.Metric, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) {
+	name := metric.Name()
+	desc := metric.Description()
+	unit := metric.Unit()
+	typ := metric.Type()
+	// gauge metrics do not have a temporality
+	temporality := pmetric.AggregationTemporalityUnspecified
+	// there is no monotonicity for gauge metrics
+	isMonotonic := false
+
+	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
+	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
+
+	for i := 0; i < metric.Gauge().DataPoints().Len(); i++ {
+		dp := metric.Gauge().DataPoints().At(i)
+		var value float64
+		switch dp.ValueType() {
+		case pmetric.NumberDataPointValueTypeInt:
+			value = float64(dp.IntValue())
+		case pmetric.NumberDataPointValueTypeDouble:
+			value = dp.DoubleValue()
+		}
+		if math.IsNaN(value) {
+			c.logger.Warn(NanDetectedErrMsg, zap.String("metric_name", name))
+			continue
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
+			"__temporality__": temporality.String(),
+		})
+		fingerprintMap := fingerprint.AttributesAsMap()
+		batch.addSample(&sample{
+			temporality: temporality,
+			metricName:  name,
+			fingerprint: fingerprint.HashWithName(name),
+			unixMilli:   unixMilli,
+			value:       value,
+			description: desc,
+			unit:        unit,
+			typ:         typ,
+			isMonotonic: isMonotonic,
+			labels:      pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
+		})
+	}
+}
+
 func (c *clickhouseMeterExporter) prepareBatch(_ context.Context, md pmetric.Metrics) *batch {
 	batch := newBatch()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
@@ -143,6 +190,8 @@ func (c *clickhouseMeterExporter) prepareBatch(_ context.Context, md pmetric.Met
 			for k := 0; k < sm.Metrics().Len(); k++ {
 				metric := sm.Metrics().At(k)
 				switch metric.Type() {
+				case pmetric.MetricTypeGauge:
+					c.processGauge(batch, metric, resourceFingerprint, scopeFingerprint)
 				case pmetric.MetricTypeSum:
 					c.processSum(batch, metric, resourceFingerprint, scopeFingerprint)
 				default:
@@ -176,7 +225,6 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 	defer statement.Close()
 
 	for _, sample := range batch.samples {
-		roundedUnixMilli := sample.unixMilli / 3600000 * 3600000
 		err = statement.Append(
 			sample.temporality.String(),
 			sample.metricName,
@@ -186,7 +234,7 @@ func (c *clickhouseMeterExporter) writeBatch(ctx context.Context, batch *batch) 
 			sample.isMonotonic,
 			sample.labels,
 			sample.fingerprint,
-			roundedUnixMilli,
+			sample.unixMilli,
 			sample.value,
 		)
 		if err != nil {

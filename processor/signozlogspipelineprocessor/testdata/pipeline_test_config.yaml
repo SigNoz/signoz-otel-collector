@@ -1,0 +1,27 @@
+operators:
+  - id: router_signoz
+    type: router
+    default: noop
+    routes:
+      - expr: '"log_tags" in attributes'
+        output: parse-namespace
+  - id: parse-namespace
+    type: regex_parser
+    if: attributes?.log_tags != nil && attributes.log_tags matches "kube_namespace:(?P<k8s_namespace_name>[^,]+)"
+    on_error: send
+    parse_from: attributes.log_tags
+    parse_to: attributes
+    regex: kube_namespace:(?P<k8s_namespace_name>[^,]+)
+    output: remove-log-tags
+  - id: remove-log-tags
+    type: remove
+    if: attributes?.k8s_namespace_name != nil
+    field: attributes.log_tags
+    output: add-worked
+  - id: add-worked
+    type: add
+    field: attributes.worked
+    value: "true"
+    output: noop
+  - id: noop
+    type: noop

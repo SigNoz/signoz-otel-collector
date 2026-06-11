@@ -327,6 +327,22 @@ func TestProcessorConsumeTraces(t *testing.T) {
 	}
 }
 
+func TestAggregateMetricsDoesNotMutateSpans(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+	p := newProcessorImp(mexp, tcon, nil, cumulative, logger, nil)
+
+	traces := buildSampleTrace()
+	p.aggregateMetrics(traces)
+
+	rss := traces.ResourceSpans()
+	for i := 0; i < rss.Len(); i++ {
+		_, found := rss.At(i).Resource().Attributes().Get(signozID)
+		assert.False(t, found, "%s must not be set on spans", signozID)
+	}
+}
+
 func TestMetricKeyCache(t *testing.T) {
 	mexp := &mocks.MetricsExporter{}
 	tcon := &mocks.TracesConsumer{}
@@ -790,6 +806,24 @@ func TestBuildKeySameServiceOperationCharSequence(t *testing.T) {
 	assert.NotEqual(t, k0, k1)
 	assert.Equal(t, metricKey("ab\u0000c\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET"), k0)
 	assert.Equal(t, metricKey("a\u0000bc\u0000SPAN_KIND_UNSPECIFIED\u0000STATUS_CODE_UNSET"), k1)
+}
+
+func TestBuildDimensionKVsTagsCollectorID(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+	logger := zap.NewNop()
+	p := newProcessorImp(mexp, tcon, nil, cumulative, logger, nil)
+	p.instanceID = testID
+
+	dims := p.buildDimensionKVs("svc", ptrace.NewSpan(), nil, pcommon.NewMap())
+
+	v, ok := dims.Get(signozID)
+	require.True(t, ok, "%s must be present as a label", signozID)
+	assert.Equal(t, testID, v.Str())
+
+	rv, ok := dims.Get(resourcePrefix + signozID)
+	require.True(t, ok, "%s%s must be present as a label", resourcePrefix, signozID)
+	assert.Equal(t, testID, rv.Str())
 }
 
 func TestBuildKeyWithDimensions(t *testing.T) {
