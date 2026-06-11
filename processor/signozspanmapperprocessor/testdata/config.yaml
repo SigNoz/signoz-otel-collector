@@ -1,5 +1,5 @@
 # Full valid config — llm + agent + tool groups matching the spec.
-signozspanmappingprocessor:
+signozspanmapper:
   groups:
     - id: llm
       exists_any:
@@ -50,7 +50,7 @@ signozspanmappingprocessor:
             - key: llm.tool.name
 
 # Only resource-based exists_any.
-signozspanmappingprocessor/resource_only:
+signozspanmapper/resource_only:
   groups:
     - id: res
       exists_any:
@@ -62,7 +62,7 @@ signozspanmappingprocessor/resource_only:
             - key: resource.service.name
 
 # Defaults: no action, no context — must accept as valid.
-signozspanmappingprocessor/defaults:
+signozspanmapper/defaults:
   groups:
     - id: defaults
       exists_any:
@@ -75,7 +75,7 @@ signozspanmappingprocessor/defaults:
 
 # Per-source action overrides the rule-level default. The two sources have
 # different actions even within the same target.
-signozspanmappingprocessor/per_source_action:
+signozspanmapper/per_source_action:
   groups:
     - id: mixed
       exists_any:
@@ -90,7 +90,7 @@ signozspanmappingprocessor/per_source_action:
               action: copy
 
 # Invalid: exists_any has no patterns at all.
-signozspanmappingprocessor/no_patterns:
+signozspanmapper/no_patterns:
   groups:
     - id: bad
       exists_any: {}
@@ -100,7 +100,7 @@ signozspanmappingprocessor/no_patterns:
             - key: src
 
 # Invalid: empty target.
-signozspanmappingprocessor/empty_target:
+signozspanmapper/empty_target:
   groups:
     - id: bad
       exists_any:
@@ -112,7 +112,7 @@ signozspanmappingprocessor/empty_target:
             - key: src
 
 # Invalid: no sources.
-signozspanmappingprocessor/no_sources:
+signozspanmapper/no_sources:
   groups:
     - id: bad
       exists_any:
@@ -123,7 +123,7 @@ signozspanmappingprocessor/no_sources:
           sources: []
 
 # Invalid: unknown context value.
-signozspanmappingprocessor/bad_context:
+signozspanmapper/bad_context:
   groups:
     - id: bad
       exists_any:
@@ -136,7 +136,7 @@ signozspanmappingprocessor/bad_context:
             - key: src
 
 # Invalid: unknown action value at source level.
-signozspanmappingprocessor/bad_source_action:
+signozspanmapper/bad_source_action:
   groups:
     - id: bad
       exists_any:
@@ -149,7 +149,7 @@ signozspanmappingprocessor/bad_source_action:
               action: delete
 
 # Invalid: empty source key.
-signozspanmappingprocessor/empty_source_key:
+signozspanmapper/empty_source_key:
   groups:
     - id: bad
       exists_any:

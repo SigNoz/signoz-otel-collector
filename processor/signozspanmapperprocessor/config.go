@@ -1,4 +1,4 @@
-package signozspanmappingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozspanmappingprocessor"
+package signozspanmapperprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozspanmapperprocessor"
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package signozspanmappingprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozspanmappingprocessor"
+package signozspanmapperprocessor // import "github.com/SigNoz/signoz-otel-collector/processor/signozspanmapperprocessor"
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
-const typeStr = "signozspanmappingprocessor"
+const typeStr = "signozspanmapper"
 
-// NewFactory returns the component factory for signozspanmapping.
+// NewFactory returns the component factory for signozspanmapper.
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		component.MustNewType(typeStr),

@@ -13,7 +13,7 @@ import (
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor"
-	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmappingprocessor"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmapperprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozspanmetricsprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztailsampler"
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor"
@@ -410,7 +410,7 @@ func Components() (otelcol.Factories, error) {
 		signoztailsampler.NewFactory(),
 		signoztransformprocessor.NewFactory(),
 		signozlogspipelineprocessor.NewFactory(),
-		signozspanmappingprocessor.NewFactory(),
+		signozspanmapperprocessor.NewFactory(),
 		signozllmpricingprocessor.NewFactory(),
 	}
 

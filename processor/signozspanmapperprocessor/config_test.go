@@ -1,4 +1,4 @@
-package signozspanmappingprocessor
+package signozspanmapperprocessor
 
 import (
 	"path/filepath"
