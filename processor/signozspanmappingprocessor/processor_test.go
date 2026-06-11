@@ -36,7 +36,7 @@ func resAttrs(t *testing.T, td ptrace.Traces) pcommon.Map {
 	return td.ResourceSpans().At(0).Resource().Attributes()
 }
 
-func TestGlobMatchInSpanAttrs(t *testing.T) {
+func TestSubstringMatchInSpanAttrs(t *testing.T) {
 	cfg := &Config{
 		Groups: []Group{
 			{
@@ -63,7 +63,7 @@ func TestGlobMatchInSpanAttrs(t *testing.T) {
 	assert.Equal(t, "gpt-4", val.Str())
 }
 
-func TestGlobMatchInResourceAttrs(t *testing.T) {
+func TestSubstringMatchInResourceAttrs(t *testing.T) {
 	cfg := &Config{
 		Groups: []Group{
 			{
@@ -179,62 +179,6 @@ func TestSourceFallsBackToSecond(t *testing.T) {
 	assert.Equal(t, "200", val.Str())
 }
 
-func TestActionMove(t *testing.T) {
-	cfg := &Config{
-		Groups: []Group{
-			{
-				ID:        "input",
-				ExistsAny: ExistsAny{Attributes: []string{"gen_ai"}},
-				Attributes: []AttributeRule{
-					{
-						Target:  "gen_ai.request.input",
-						Sources: []Source{{Key: "gen_ai.input", Action: ActionMove}},
-					},
-				},
-			},
-		},
-	}
-	require.NoError(t, cfg.Validate())
-
-	td := buildTrace(t, map[string]string{"gen_ai.input": "hello"}, nil)
-	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
-	require.NoError(t, err)
-
-	val, ok := spanAttrs(t, td).Get("gen_ai.request.input")
-	require.True(t, ok)
-	assert.Equal(t, "hello", val.Str())
-
-	// Source must have been deleted.
-	_, srcPresent := spanAttrs(t, td).Get("gen_ai.input")
-	assert.False(t, srcPresent, "source key must be deleted when action=move")
-}
-
-func TestActionCopy(t *testing.T) {
-	cfg := &Config{
-		Groups: []Group{
-			{
-				ID:        "input",
-				ExistsAny: ExistsAny{Attributes: []string{"gen_ai"}},
-				Attributes: []AttributeRule{
-					{
-						Target:  "gen_ai.request.input",
-						Sources: []Source{{Key: "gen_ai.input", Action: ActionCopy}},
-					},
-				},
-			},
-		},
-	}
-	require.NoError(t, cfg.Validate())
-
-	td := buildTrace(t, map[string]string{"gen_ai.input": "hello"}, nil)
-	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
-	require.NoError(t, err)
-
-	// Source must still be present.
-	_, srcPresent := spanAttrs(t, td).Get("gen_ai.input")
-	assert.True(t, srcPresent, "source key must be kept when action=copy")
-}
-
 // TestPerSourceAction asserts that move and copy on sibling sources of the
 // same rule are each honored independently — the central guarantee of the
 // per-source action design.
@@ -313,6 +257,86 @@ func TestContextResource(t *testing.T) {
 	// Must NOT appear in span attributes.
 	_, inSpan := spanAttrs(t, td).Get("gen_ai.request.model")
 	assert.False(t, inSpan)
+}
+
+// TestResourceConditionAppliesToAllSpans guards the optimization that hoists
+// the resource-condition check out of the per-span loop: when a group matches
+// only via its resource pattern, every span under that resource must still have
+// the rule applied.
+func TestResourceConditionAppliesToAllSpans(t *testing.T) {
+	cfg := &Config{
+		Groups: []Group{
+			{
+				ID:        "llm",
+				ExistsAny: ExistsAny{Resource: []string{"service.name"}},
+				Attributes: []AttributeRule{
+					{Target: "gen_ai.request.model", Sources: []Source{{Key: "llm.model"}}},
+				},
+			},
+		},
+	}
+	require.NoError(t, cfg.Validate())
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "my-llm-service")
+	ss := rs.ScopeSpans().AppendEmpty()
+	const numSpans = 3
+	for range numSpans {
+		span := ss.Spans().AppendEmpty()
+		span.Attributes().PutStr("llm.model", "gpt-4")
+	}
+
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	for i := range numSpans {
+		val, ok := ss.Spans().At(i).Attributes().Get("gen_ai.request.model")
+		require.True(t, ok, "span %d: target must be set for every span under the matching resource", i)
+		assert.Equal(t, "gpt-4", val.Str())
+	}
+}
+
+// TestResourceConditionNotLeakedAcrossResources guards the reuse of the
+// resMatched slice across ResourceSpans: a resource that matches the resource
+// condition must not cause rules to be applied to spans under a later resource
+// that does not match.
+func TestResourceConditionNotLeakedAcrossResources(t *testing.T) {
+	cfg := &Config{
+		Groups: []Group{
+			{
+				ID:        "llm",
+				ExistsAny: ExistsAny{Resource: []string{"service.name"}},
+				Attributes: []AttributeRule{
+					{Target: "gen_ai.request.model", Sources: []Source{{Key: "llm.model"}}},
+				},
+			},
+		},
+	}
+	require.NoError(t, cfg.Validate())
+
+	td := ptrace.NewTraces()
+
+	// First resource matches the resource condition.
+	rs1 := td.ResourceSpans().AppendEmpty()
+	rs1.Resource().Attributes().PutStr("service.name", "my-llm-service")
+	span1 := rs1.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	span1.Attributes().PutStr("llm.model", "gpt-4")
+
+	// Second resource does NOT match (no service.name, no attr pattern either).
+	rs2 := td.ResourceSpans().AppendEmpty()
+	rs2.Resource().Attributes().PutStr("host.name", "node-1")
+	span2 := rs2.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	span2.Attributes().PutStr("llm.model", "gpt-4")
+
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	_, ok := span1.Attributes().Get("gen_ai.request.model")
+	assert.True(t, ok, "matching resource: target must be set")
+
+	_, ok = span2.Attributes().Get("gen_ai.request.model")
+	assert.False(t, ok, "non-matching resource: target must NOT be set (resMatched must be recomputed per resource)")
 }
 
 func TestLLMGroupScenario(t *testing.T) {

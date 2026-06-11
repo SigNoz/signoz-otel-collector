@@ -67,14 +67,23 @@ func newProcessor(cfg *Config) *spanMappingProcessor {
 // ProcessTraces applies attribute mappings to every span in the batch.
 func (p *spanMappingProcessor) ProcessTraces(_ context.Context, td ptrace.Traces) (ptrace.Traces, error) {
 	rss := td.ResourceSpans()
+	resMatched := make([]bool, len(p.groups))
 	for i := 0; i < rss.Len(); i++ {
 		rs := rss.At(i)
 		resourceAttrs := rs.Resource().Attributes()
+
+		// Resource attributes are invariant across all spans under this
+		// ResourceSpans, so evaluate each group's resource condition once here
+		// rather than per span.
+		for gi := range p.groups {
+			resMatched[gi] = matchesAny(resourceAttrs, p.groups[gi].resPatterns)
+		}
+
 		ilss := rs.ScopeSpans()
 		for j := 0; j < ilss.Len(); j++ {
 			spans := ilss.At(j).Spans()
 			for k := 0; k < spans.Len(); k++ {
-				p.applyGroups(spans.At(k).Attributes(), resourceAttrs)
+				p.applyGroups(spans.At(k).Attributes(), resourceAttrs, resMatched)
 			}
 		}
 	}
@@ -82,11 +91,13 @@ func (p *spanMappingProcessor) ProcessTraces(_ context.Context, td ptrace.Traces
 }
 
 // applyGroups iterates groups and applies the rules of each group whose
-// exists_any condition is satisfied.
-func (p *spanMappingProcessor) applyGroups(attrs, resourceAttrs pcommon.Map) {
+// exists_any condition is satisfied. resMatched[i] reports whether group i's
+// resource condition was already satisfied for the enclosing resource, so only
+// the attribute patterns need to be checked per span.
+func (p *spanMappingProcessor) applyGroups(attrs, resourceAttrs pcommon.Map, resMatched []bool) {
 	for i := range p.groups {
 		g := &p.groups[i]
-		if !conditionMet(g, attrs, resourceAttrs) {
+		if !resMatched[i] && !matchesAny(attrs, g.attrPatterns) {
 			continue
 		}
 		for j := range g.rules {
@@ -95,44 +106,24 @@ func (p *spanMappingProcessor) applyGroups(attrs, resourceAttrs pcommon.Map) {
 	}
 }
 
-// conditionMet returns true when at least one attribute key in attrs or
-// resourceAttrs contains any of the substrings configured in the group. It
-// iterates the attribute maps only when there are substrings to check, and
+// matchesAny returns true when at least one key in m contains any of the given
+// substrings. It iterates only when there are substrings to check and
 // short-circuits as soon as a match is found.
-func conditionMet(g *parsedGroup, attrs, resourceAttrs pcommon.Map) bool {
-	if len(g.attrPatterns) > 0 {
-		found := false
-		attrs.Range(func(k string, _ pcommon.Value) bool {
-			for _, pat := range g.attrPatterns {
-				if ok := strings.Contains(k, pat); ok {
-					found = true
-					return false // stop iteration
-				}
-			}
-			return true
-		})
-		if found {
-			return true
-		}
+func matchesAny(m pcommon.Map, patterns []string) bool {
+	if len(patterns) == 0 {
+		return false
 	}
-
-	if len(g.resPatterns) > 0 {
-		found := false
-		resourceAttrs.Range(func(k string, _ pcommon.Value) bool {
-			for _, pat := range g.resPatterns {
-				if ok := strings.Contains(k, pat); ok {
-					found = true
-					return false // stop iteration
-				}
+	found := false
+	m.Range(func(k string, _ pcommon.Value) bool {
+		for _, pat := range patterns {
+			if strings.Contains(k, pat) {
+				found = true
+				return false // stop iteration
 			}
-			return true
-		})
-		if found {
-			return true
 		}
-	}
-
-	return false
+		return true
+	})
+	return found
 }
 
 // applyRule finds the first existing source and writes its value to the target.
