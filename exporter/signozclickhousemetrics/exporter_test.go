@@ -516,7 +516,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityCumulative,
+			temporality: pmetric.AggregationTemporalityUnspecified,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286182000,
 			value:       0,
@@ -537,7 +537,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityCumulative,
+			temporality: pmetric.AggregationTemporalityUnspecified,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286183000,
 			value:       1,
@@ -574,7 +574,7 @@ func Test_prepareBatchSummary(t *testing.T) {
 		}
 		if strings.HasSuffix(item.metricName, quantilesSuffix) {
 			validSuffix = true
-			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityCumulative)
+			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityUnspecified)
 			assert.Equal(t, item.typ, pmetric.MetricTypeSummary)
 		}
 		assert.True(t, validSuffix)
@@ -1039,7 +1039,7 @@ func Test_prepareBatchSummaryWithNoRecordedValue(t *testing.T) {
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityCumulative,
+			temporality: pmetric.AggregationTemporalityUnspecified,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286182000,
 			value:       0,
@@ -1063,7 +1063,7 @@ func Test_prepareBatchSummaryWithNoRecordedValue(t *testing.T) {
 		},
 		{
 			env:         "",
-			temporality: pmetric.AggregationTemporalityCumulative,
+			temporality: pmetric.AggregationTemporalityUnspecified,
 			metricName:  "zk.duration0.quantile",
 			unixMilli:   1727286183000,
 			value:       1,

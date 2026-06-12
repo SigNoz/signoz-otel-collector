@@ -449,6 +449,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		sampleTyp := typ
 		sampleUnit := unit
 		sampleTemporality := temporality
+		sampleIsMonotonic := isMonotonic
 		var value float64
 		switch suffix {
 		case countSuffix:
@@ -459,13 +460,16 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
 		case minSuffix:
+			// min/max are instantaneous values with gauge semantics, not counters
 			value = dp.Min()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
+			sampleIsMonotonic = false
 		case maxSuffix:
 			value = dp.Max()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
+			sampleIsMonotonic = false
 		}
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": sampleTemporality.String(),
@@ -480,7 +484,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
 
 		batch.addTs(&ts{
 			env:           env,
@@ -489,7 +493,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			description:   desc,
 			unit:          sampleUnit,
 			typ:           sampleTyp,
-			isMonotonic:   isMonotonic,
+			isMonotonic:   sampleIsMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
 			unixMilli:     unixMilli,
 			labels:        pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
@@ -618,11 +622,11 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
-	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
-	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
 	b.addMetadata(name+bucketSuffix, desc, unit, typ, temporality, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 	b.addMetadata(name+bucketSuffix, desc, unit, typ, temporality, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
@@ -688,6 +692,10 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 	}
 
 	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
+		// quantile values are instantaneous estimates, not cumulative counters;
+		// unlike the .count/.sum series they carry gauge semantics
+		quantileTemporality := pmetric.AggregationTemporalityUnspecified
+		quantileIsMonotonic := false
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		for i := 0; i < dp.QuantileValues().Len(); i++ {
 			quantile := dp.QuantileValues().At(i)
@@ -696,27 +704,27 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 			fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 				"quantile":        quantileStr,
-				"__temporality__": temporality.String(),
+				"__temporality__": quantileTemporality.String(),
 			})
 			fingerprintMap := fingerprint.AttributesAsMap()
 			batch.addSample(&sample{
 				env:         env,
-				temporality: temporality,
+				temporality: quantileTemporality,
 				metricName:  name + suffix,
 				fingerprint: fingerprint.HashWithName(name + suffix),
 				unixMilli:   unixMilli,
 				value:       quantileValue,
 				flags:       uint32(dp.Flags()),
 			})
-			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+			batch.addMetadata(name+suffix, desc, unit, typ, quantileTemporality, quantileIsMonotonic, fingerprint, unixMilli, unixMilli)
 			batch.addTs(&ts{
 				env:           env,
-				temporality:   temporality,
+				temporality:   quantileTemporality,
 				metricName:    name + suffix,
 				description:   desc,
 				unit:          unit,
 				typ:           typ,
-				isMonotonic:   isMonotonic,
+				isMonotonic:   quantileIsMonotonic,
 				fingerprint:   fingerprint.HashWithName(name + suffix),
 				unixMilli:     unixMilli,
 				labels:        pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
@@ -771,8 +779,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
-	b.addMetadata(name+quantilesSuffix, desc, unit, typ, temporality, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-	b.addMetadata(name+quantilesSuffix, desc, unit, typ, temporality, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+quantilesSuffix, desc, unit, typ, pmetric.AggregationTemporalityUnspecified, false, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+quantilesSuffix, desc, unit, typ, pmetric.AggregationTemporalityUnspecified, false, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 }
 
 func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric pmetric.Metric, env string, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) {
@@ -802,6 +810,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		sampleTyp := typ
 		sampleTemporality := temporality
 		sampleUnit := unit
+		sampleIsMonotonic := isMonotonic
 		var value float64
 		switch suffix {
 		case countSuffix:
@@ -812,16 +821,19 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
 		case minSuffix:
+			// min/max are instantaneous values with gauge semantics, not counters
 			value = dp.Min()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
+			sampleIsMonotonic = false
 		case maxSuffix:
 			value = dp.Max()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
+			sampleIsMonotonic = false
 		}
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
-			"__temporality__": temporality.String(),
+			"__temporality__": sampleTemporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		batch.addSample(&sample{
@@ -833,7 +845,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
-		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, isMonotonic, fingerprint, unixMilli, unixMilli)
+		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
 
 		batch.addTs(&ts{
 			env:           env,
@@ -842,7 +854,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			description:   desc,
 			unit:          sampleUnit,
 			typ:           sampleTyp,
-			isMonotonic:   isMonotonic,
+			isMonotonic:   sampleIsMonotonic,
 			fingerprint:   fingerprint.HashWithName(name + suffix),
 			unixMilli:     unixMilli,
 			labels:        pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
@@ -953,11 +965,11 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 	b.addMetadata(name+sumSuffix, desc, unit, pmetric.MetricTypeSum, temporality, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
-	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+minSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 
-	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
-	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, isMonotonic, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, resourceFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
+	b.addMetadata(name+maxSuffix, desc, unit, pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified, false, scopeFingerprint, firstSeenUnixMilli, lastSeenUnixMilli)
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
