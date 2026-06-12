@@ -265,7 +265,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare tag attrs batch: %w", err)
 	}
-	defer vaStmt.Close()
+	defer func() { _ = vaStmt.Close() }()
 
 	va := &valueAccumulator{
 		stmt:             vaStmt,
@@ -313,7 +313,7 @@ func (w *jsonMetadataWriter) flushTypeSet(ctx context.Context, ta *typesAccumula
 	if err != nil {
 		return fmt.Errorf("failed to prepare path types batch: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	if err := appendTypeSet(ta, pipeline.SignalLogs.String(), string(utils.TagTypeBodyField), stmt, time.Now().UnixNano()); err != nil {
 		return fmt.Errorf("failed to append to path types batch: %w", err)
