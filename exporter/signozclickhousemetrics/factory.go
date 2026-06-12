@@ -3,6 +3,7 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
@@ -98,5 +99,12 @@ func createDefaultConfig() component.Config {
 		TimeSeriesTable:  "distributed_time_series_v4",
 		ExpHistTable:     "distributed_exp_hist",
 		MetadataTable:    "distributed_metadata",
+		Reduction: ReductionConfig{
+			Enabled:               false,
+			PollInterval:          45 * time.Second,
+			RulesTable:            "distributed_metric_reduction_rules",
+			BufferSamplesTable:    "distributed_samples_v4_buffer",
+			BufferTimeSeriesTable: "distributed_time_series_v4_buffer",
+		},
 	}
 }
