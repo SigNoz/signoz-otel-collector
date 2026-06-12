@@ -36,6 +36,67 @@ func resAttrs(t *testing.T, td ptrace.Traces) pcommon.Map {
 	return td.ResourceSpans().At(0).Resource().Attributes()
 }
 
+// TestEmptyConfig asserts that a config with no groups is a pass-through: the
+// processor must not panic and must leave every span attribute untouched.
+func TestEmptyConfig(t *testing.T) {
+	cfg := &Config{}
+	require.NoError(t, cfg.Validate())
+
+	td := buildTrace(t, map[string]string{"llm.model": "gpt-4"}, map[string]string{"service.name": "svc"})
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	// Nothing added, nothing removed.
+	assert.Equal(t, 1, spanAttrs(t, td).Len())
+	val, ok := spanAttrs(t, td).Get("llm.model")
+	require.True(t, ok)
+	assert.Equal(t, "gpt-4", val.Str())
+	assert.Equal(t, 1, resAttrs(t, td).Len())
+}
+
+// TestEmptyGroups is the same pass-through guarantee, but via an explicitly
+// empty (non-nil) Groups slice rather than the zero value.
+func TestEmptyGroups(t *testing.T) {
+	cfg := &Config{Groups: []Group{}}
+	require.NoError(t, cfg.Validate())
+
+	td := buildTrace(t, map[string]string{"llm.model": "gpt-4"}, nil)
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	_, ok := spanAttrs(t, td).Get("gen_ai.request.model")
+	assert.False(t, ok, "no groups → no rules → no target written")
+}
+
+// TestEmptyTraces asserts the processor handles a batch with no spans (and an
+// empty batch) without panicking, for both an empty and a populated config.
+func TestEmptyTraces(t *testing.T) {
+	cfg := &Config{
+		Groups: []Group{
+			{
+				ID:        "llm",
+				ExistsAny: ExistsAny{Attributes: []string{"model"}},
+				Attributes: []AttributeRule{
+					{Target: "gen_ai.request.model", Sources: []Source{{Key: "llm.model"}}},
+				},
+			},
+		},
+	}
+	require.NoError(t, cfg.Validate())
+
+	// Completely empty batch.
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), ptrace.NewTraces())
+	require.NoError(t, err)
+
+	// ResourceSpans present but with no spans under it.
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "svc")
+	rs.ScopeSpans().AppendEmpty() // scope with zero spans
+	_, err = newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+}
+
 func TestSubstringMatchInSpanAttrs(t *testing.T) {
 	cfg := &Config{
 		Groups: []Group{
