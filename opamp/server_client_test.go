@@ -32,7 +32,7 @@ func TestNewClient(t *testing.T) {
 		fileContents, err := os.ReadFile("testdata/coll-config-path-changed.yaml")
 		assert.NoError(t, err)
 		atomic.AddInt64(&connected, 1)
-		var resp *protobufs.ServerToAgent = &protobufs.ServerToAgent{}
+		var resp = &protobufs.ServerToAgent{}
 		if atomic.LoadInt64(&connected) == 1 {
 			resp = &protobufs.ServerToAgent{
 				RemoteConfig: &protobufs.AgentRemoteConfig{
