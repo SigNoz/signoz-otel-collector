@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -21,7 +20,6 @@ const (
 	benchSpansPerScope = 200
 )
 
-// processor config
 func threeGroupConfig() *Config {
 	return &Config{
 		Groups: []Group{
@@ -82,9 +80,6 @@ func threeGroupConfig() *Config {
 	}
 }
 
-// commonAttrs is non-matching noise present on every span, so the exists_any
-// substring scan has realistic keys to walk past before it finds (or fails to
-// find) a match.
 func commonAttrs(a pcommon.Map) {
 	a.PutStr("http.method", "POST")
 	a.PutStr("http.status_code", "200")
@@ -103,19 +98,15 @@ func agentAttrs(a pcommon.Map) {
 	a.PutStr("llm.agent.name", "planner")
 }
 
-// variation describes how the spans in a batch are populated, letting each
-// benchmark exercise a different match pattern against the three groups.
 type variation struct {
 	name string
 	fill func(a pcommon.Map, spanIdx int)
 }
 
 var variations = []variation{
-	// Every span matches exactly one group.
 	{"model_only", func(a pcommon.Map, _ int) { modelAttrs(a) }},
 	{"tool_only", func(a pcommon.Map, _ int) { toolAttrs(a) }},
 	{"agent_only", func(a pcommon.Map, _ int) { agentAttrs(a) }},
-	// Spans rotate across the three groups (one group matches each span).
 	{"mixed", func(a pcommon.Map, i int) {
 		switch i % 3 {
 		case 0:
@@ -126,15 +117,10 @@ var variations = []variation{
 			agentAttrs(a)
 		}
 	}},
-	// No span matches any group — worst case for the exists_any scan: all
-	// three groups' patterns are checked against every key and never match.
 	{"no_match", func(pcommon.Map, int) {}},
 }
 
-// newBenchTraces builds a fresh batch every call. A fresh batch is required per
-// iteration because the processor mutates the data in place (move actions
-// delete source attributes), so reusing a batch would not reflect steady-state
-// work.
+// newBenchTraces builds a fresh batch per call — the processor mutates in place.
 func newBenchTraces(v variation) ptrace.Traces {
 	td := ptrace.NewTraces()
 	for r := range benchResourceSpans {
@@ -153,7 +139,7 @@ func newBenchTraces(v variation) ptrace.Traces {
 	return td
 }
 
-// BenchmarkReceiverExporter is the baseline pipeline: a receiver feeding straight
+// BenchmarkReceiverExporter is the baseline: receiver → exporter, no processor.
 func BenchmarkReceiverExporter(b *testing.B) {
 	exporter := consumertest.NewNop()
 	ctx := context.Background()
@@ -171,7 +157,7 @@ func BenchmarkReceiverExporter(b *testing.B) {
 	}
 }
 
-// BenchmarkReceiverProcessorExporter adds the pipelines which processes the data.
+// BenchmarkReceiverProcessorExporter is the full pipeline: receiver → processor → exporter.
 func BenchmarkReceiverProcessorExporter(b *testing.B) {
 	cfg := threeGroupConfig()
 	require.NoError(b, cfg.Validate())
@@ -188,7 +174,6 @@ func BenchmarkReceiverProcessorExporter(b *testing.B) {
 	require.NoError(b, proc.Start(context.Background(), componenttest.NewNopHost()))
 	b.Cleanup(func() { _ = proc.Shutdown(context.Background()) })
 
-	var _ consumer.Traces = proc
 	ctx := context.Background()
 
 	for _, v := range variations {
