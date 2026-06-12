@@ -223,6 +223,117 @@ func (c CreateMaterializedViewOperation) ToSQL() string {
 	return sql.String()
 }
 
+// CreateRefreshableMaterializedViewOperation is used to represent the CREATE MATERIALIZED VIEW
+// statement with a REFRESH clause (refreshable materialized view) in the SQL.
+// Unlike incremental materialized views, the query runs periodically over the
+// source data at rest rather than per inserted block.
+type CreateRefreshableMaterializedViewOperation struct {
+	cluster   string
+	Database  string
+	ViewName  string
+	DestTable string
+	Columns   []Column
+	Query     string
+
+	// RefreshEvery is the refresh schedule interval, e.g. "1 MINUTE".
+	RefreshEvery string
+	// RandomizeFor spreads each refresh start uniformly over the given
+	// interval, e.g. "10 SECOND".
+	RandomizeFor string
+	// Append makes each refresh append its result to the destination table
+	// instead of atomically replacing its contents.
+	Append bool
+	// Empty creates the view without running the initial refresh.
+	Empty bool
+	// Definer is the user the view query runs as; rendered only when set.
+	Definer string
+	// SQLSecurity is one of DEFINER, INVOKER, NONE; rendered only when set.
+	SQLSecurity string
+}
+
+// OnCluster is used to specify the cluster on which the operation should be performed.
+// This is useful when the operation is to be performed on a cluster setup.
+func (c CreateRefreshableMaterializedViewOperation) OnCluster(cluster string) Operation {
+	c.cluster = cluster
+	return &c
+}
+
+func (c CreateRefreshableMaterializedViewOperation) WithReplication() Operation {
+	// no-op
+	return &c
+}
+
+func (c CreateRefreshableMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, c.Database, c.ViewName
+}
+
+func (c CreateRefreshableMaterializedViewOperation) IsMutation() bool {
+	// Create materialized view is not a mutation.
+	return false
+}
+
+func (c CreateRefreshableMaterializedViewOperation) IsIdempotent() bool {
+	// Create materialized view is idempotent. It will not change the materialized view if the materialized view already exists.
+	return true
+}
+
+func (c CreateRefreshableMaterializedViewOperation) IsLightweight() bool {
+	// Create materialized view is lightweight.
+	return true
+}
+
+func (c CreateRefreshableMaterializedViewOperation) ForceMigrate() bool {
+	return false
+}
+
+func (c CreateRefreshableMaterializedViewOperation) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("CREATE MATERIALIZED VIEW IF NOT EXISTS ")
+	sql.WriteString(c.Database)
+	sql.WriteString(".")
+	sql.WriteString(c.ViewName)
+	if c.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(c.cluster)
+	}
+	sql.WriteString(" REFRESH EVERY ")
+	sql.WriteString(c.RefreshEvery)
+	if c.RandomizeFor != "" {
+		sql.WriteString(" RANDOMIZE FOR ")
+		sql.WriteString(c.RandomizeFor)
+	}
+	if c.Append {
+		sql.WriteString(" APPEND")
+	}
+	sql.WriteString(" TO ")
+	sql.WriteString(c.Database)
+	sql.WriteString(".")
+	sql.WriteString(c.DestTable)
+	if len(c.Columns) > 0 {
+		sql.WriteString(" (")
+		columnParts := []string{}
+		for _, column := range c.Columns {
+			columnParts = append(columnParts, column.ToSQL())
+		}
+		sql.WriteString(strings.Join(columnParts, ", "))
+		sql.WriteString(")")
+	}
+	if c.Empty {
+		sql.WriteString(" EMPTY")
+	}
+	if c.Definer != "" {
+		sql.WriteString(" DEFINER = ")
+		sql.WriteString(c.Definer)
+	}
+	if c.SQLSecurity != "" {
+		sql.WriteString(" SQL SECURITY ")
+		sql.WriteString(c.SQLSecurity)
+	}
+	sql.WriteString(" AS ")
+	sql.WriteString(c.Query)
+	return sql.String()
+}
+
 // ModifyQueryMaterializedViewOperation is used to represent the ALTER TABLE ... MODIFY QUERY statement in the SQL.
 type ModifyQueryMaterializedViewOperation struct {
 	cluster  string

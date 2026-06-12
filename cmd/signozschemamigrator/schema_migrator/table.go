@@ -100,6 +100,9 @@ func (m MergeTree) EngineType() string {
 // Replacing represents the ReplacingMergeTree engine of the table.
 type ReplacingMergeTree struct {
 	MergeTree
+	// Version is the optional version column: during merges, the row with the
+	// highest version is kept instead of the last inserted one.
+	Version string
 }
 
 func (r ReplacingMergeTree) OnCluster(cluster string) TableEngine {
@@ -121,6 +124,11 @@ func (r ReplacingMergeTree) EngineType() string {
 func (r ReplacingMergeTree) ToSQL() string {
 	var sql strings.Builder
 	sql.WriteString(r.EngineType())
+	if r.Version != "" {
+		sql.WriteString("(")
+		sql.WriteString(r.Version)
+		sql.WriteString(")")
+	}
 	sql.WriteString(r.EngineParams())
 	return sql.String()
 }

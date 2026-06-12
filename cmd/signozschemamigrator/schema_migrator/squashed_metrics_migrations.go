@@ -79,7 +79,7 @@ var (
 						{Name: "temporality_index", Expression: "temporality", Type: "SET(3)", Granularity: 1},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							PartitionBy: "toDate(timestamp_ms / 1000)",
 							OrderBy:     "(metric_name, fingerprint)",
 							Settings: TableSettings{
@@ -264,7 +264,7 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
 							OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
 							TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
@@ -334,7 +334,7 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
 							OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
 							TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
@@ -404,7 +404,7 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
 							OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
 							TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
@@ -474,7 +474,7 @@ var (
 						{Name: "labels", Type: ColumnTypeString, Codec: "ZSTD(5)"},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							PartitionBy: "toDate(unix_milli / 1000)",
 							OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
 							TTL:         "toDateTime(unix_milli / 1000) + toIntervalSecond(2592000)",
