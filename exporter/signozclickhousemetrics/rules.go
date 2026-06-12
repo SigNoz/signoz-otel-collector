@@ -91,7 +91,11 @@ func (c *clickhouseMetricsExporter) fetchReductionRules(ctx context.Context) (ru
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			c.logger.Warn("failed to close reduction rules result set", zap.Error(err))
+		}
+	}()
 
 	rules := make(ruleSet)
 	for rows.Next() {
