@@ -32,6 +32,14 @@ func NewFingerprint(typ FingerprintType, offset uint64, attrs pcommon.Map, extra
 		}
 	}
 
+	return &Fingerprint{
+		attributes: attributes,
+		hash:       hashAttributes(offset, attributes),
+		typ:        typ,
+	}
+}
+
+func hashAttributes(offset uint64, attributes Attributes) uint64 {
 	hash := offset
 
 	sortedKeys := make([]string, 0, len(attributes))
@@ -48,10 +56,28 @@ func NewFingerprint(typ FingerprintType, offset uint64, attrs pcommon.Map, extra
 		hash = hashAddByte(hash, separatorByte)
 	}
 
+	return hash
+}
+
+// Reduced returns a new fingerprint computed over this fingerprint's
+// attributes minus the keys for which drop returns true, hashed from the
+// given offset. Reducing a resource -> scope -> point chain requires passing
+// the previous reduced fingerprint's hash as the offset at each level, the
+// same way the raw chain is built; series that differ only in dropped keys
+// then collapse to the same reduced fingerprint.
+func (f *Fingerprint) Reduced(offset uint64, drop func(key string) bool) *Fingerprint {
+	attributes := make(Attributes, len(f.attributes))
+	for k, v := range f.attributes {
+		if drop(k) {
+			continue
+		}
+		attributes[k] = v
+	}
+
 	return &Fingerprint{
 		attributes: attributes,
-		hash:       hash,
-		typ:        typ,
+		hash:       hashAttributes(offset, attributes),
+		typ:        f.typ,
 	}
 }
 
