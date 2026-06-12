@@ -3,6 +3,3 @@ status:
   class: processor
   stability:
     development: [traces]
-tests:
-  skip_lifecycle: true
-  skip_shutdown: true
