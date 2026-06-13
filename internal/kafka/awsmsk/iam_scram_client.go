@@ -12,8 +12,8 @@ import (
 	"github.com/goccy/go-json"
 
 	"github.com/IBM/sarama"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	sign "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/aws/aws-sdk-go/aws/credentials" //nolint:staticcheck
+	sign "github.com/aws/aws-sdk-go/aws/signer/v4" //nolint:staticcheck
 	"go.uber.org/multierr"
 )
 
