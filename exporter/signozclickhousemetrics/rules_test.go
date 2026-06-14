@@ -307,3 +307,28 @@ func Benchmark_prepareBatchGaugeWithReduction(b *testing.B) {
 		exp.prepareBatch(context.Background(), metrics)
 	}
 }
+
+func Benchmark_prepareBatchGaugeWithReduction50k(b *testing.B) {
+	// 5x the scale of Benchmark_prepareBatchGaugeWithReduction: 50k metrics *
+	// 10 points = 500k datapoints, 30 attributes each, every metric ruled
+	const numMetrics = 50000
+	metrics := pmetricsgen.GenerateGaugeMetrics(numMetrics, 10, 10, 10, 10, 0, 0)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(reductionTestConfig()),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	rules := make(ruleSet, numMetrics)
+	for i := 0; i < numMetrics; i++ {
+		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{dropKeys: dropSet("resource.attr_0")}
+	}
+	exp.reductionRules.Store(&rules)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		exp.prepareBatch(context.Background(), metrics)
+	}
+}

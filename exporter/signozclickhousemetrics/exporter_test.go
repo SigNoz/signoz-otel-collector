@@ -341,20 +341,17 @@ func Test_prepareBatchHistogram(t *testing.T) {
 		assert.Equal(t, ts.typ, currentTs.typ)
 	}
 
-	// metadata
-	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
-	// Per datapoint (1 datapoint):
-	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - min with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - max with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - 21 buckets (20 + +Inf) with point fingerprint (1 point attr + le + __temporality__) = 21*3 = 63 entries
-	//   Subtotal: 2+2+2+2+63 = 71
-	// After all datapoints (5 metrics: count, sum, min, max, bucket):
-	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 5*(1+4) = 25 entries
-	// Total: 71 + 25 = 96
+	// metadata (deduplicated within the batch by ClickHouse identity)
+	// Point metadata per derived metric:
+	//   - count/sum/min/max: 1 point attr + __temporality__ = 2 each
+	//   - bucket: the 21 buckets (20 + +Inf) share one point attr value and one
+	//     __temporality__ value but each carries a distinct le, so 1 + 1 + 21 = 23
+	//   Subtotal: 2+2+2+2+23 = 31
+	// Resource/scope metadata: 5 metrics (count, sum, min, max, bucket), each
+	//   with resource (1 attr) and scope (4 attrs) = 5*(1+4) = 25
+	// Total: 31 + 25 = 56
 
-	assert.Equal(t, len(batch.metadata), 1*(2+2+2+2+21*3)+5*(1+4))
+	assert.Equal(t, len(batch.metadata), (2+2+2+2+(1+1+21))+5*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -553,18 +550,18 @@ func Test_prepareBatchSummary(t *testing.T) {
 		assert.Equal(t, sample.value, curSample.value)
 	}
 
-	// metadata
-	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
-	// Per datapoint (2 datapoints):
-	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
-	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
-	//   - 1 quantile with point fingerprint (1 point attr + quantile + __temporality__) = 3 entries per datapoint
-	//   Subtotal per datapoint: 2+2+3 = 7, total for 2 datapoints: 14
-	// After all datapoints (3 metrics: count, sum, quantile):
-	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 3*(1+4) = 15 entries
-	// Total: 14 + 15 = 29
+	// metadata (deduplicated within the batch by ClickHouse identity)
+	// The 2 datapoints carry identical point attributes and the same quantile,
+	// so their point metadata collapses to a single set (timestamps widened):
+	//   - count: 1 point attr + __temporality__ = 2
+	//   - sum:   1 point attr + __temporality__ = 2
+	//   - quantile: 1 point attr + quantile + __temporality__ = 3
+	//   Subtotal: 2+2+3 = 7
+	// Resource/scope metadata: 3 metrics (count, sum, quantile), each with
+	//   resource (1 attr) and scope (4 attrs) = 3*(1+4) = 15
+	// Total: 7 + 15 = 22
 
-	assert.Equal(t, len(batch.metadata), 2*(2+2+3)+3*(1+4))
+	assert.Equal(t, len(batch.metadata), (2+2+3)+3*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {

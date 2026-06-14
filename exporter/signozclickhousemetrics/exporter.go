@@ -80,6 +80,10 @@ type clickhouseMetricsExporter struct {
 	reductionActiveRules metricapi.Int64Gauge
 	reductionPollErrors  metricapi.Int64Counter
 
+	lastSamplesLen  atomic.Int64
+	lastTsLen       atomic.Int64
+	lastMetadataLen atomic.Int64
+
 	closeChan chan struct{}
 }
 
@@ -152,6 +156,14 @@ type metadata struct {
 	attrStringValue        string
 	firstReportedUnixMilli int64
 	lastReportedUnixMilli  int64
+}
+type metaKey struct {
+	temporality     pmetric.AggregationTemporality
+	metricName      string
+	attrName        string
+	attrType        string
+	attrDatatype    pcommon.ValueType
+	attrStringValue string
 }
 
 type ExporterOption func(e *clickhouseMetricsExporter) error
@@ -405,7 +417,8 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -486,7 +499,8 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -573,7 +587,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -625,7 +640,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			}
 			batch.addTs(rawTs)
 			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				batch.addTs(reducedTsFrom(rawTs, reduced))
+				reducedTs := reducedTsFrom(rawTs, reduced)
+				batch.addTs(&reducedTs)
 			}
 		}
 
@@ -666,7 +682,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -787,7 +804,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -838,7 +856,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			}
 			batch.addTs(rawTs)
 			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				batch.addTs(reducedTsFrom(rawTs, reduced))
+				reducedTs := reducedTsFrom(rawTs, reduced)
+				batch.addTs(&reducedTs)
 			}
 		}
 	}
@@ -1085,7 +1104,10 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
-	batch := newBatch(c.logger)
+	batch := newBatch(c.logger,
+		int(c.lastSamplesLen.Load()),
+		int(c.lastTsLen.Load()),
+		int(c.lastMetadataLen.Load()))
 	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
@@ -1132,6 +1154,10 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 			attribute.String("exporter", c.settings.ID.String()),
 		),
 	)
+
+	c.lastSamplesLen.Store(int64(len(batch.samples)))
+	c.lastTsLen.Store(int64(len(batch.ts)))
+	c.lastMetadataLen.Store(int64(len(batch.metadata)))
 	return batch
 }
 
@@ -1147,7 +1173,7 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch) error {
-	writeTimeSeries := func(ctx context.Context, timeSeries []*ts) error {
+	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
 		start := time.Now()
 
 		defer func() {
@@ -1170,7 +1196,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, ts := range timeSeries {
+		for i := range timeSeries {
+			ts := &timeSeries[i]
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
 			if ts.isReduced {
@@ -1230,7 +1257,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeSamples := func(ctx context.Context, samples []*sample) error {
+	writeSamples := func(ctx context.Context, samples []sample) error {
 		start := time.Now()
 		metrics := map[string]usage.Metric{}
 
@@ -1254,7 +1281,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, sample := range samples {
+		for i := range samples {
+			sample := &samples[i]
 			if c.cfg.Reduction.Enabled {
 				err = statement.Append(
 					sample.env,
@@ -1301,7 +1329,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeExpHist := func(ctx context.Context, expHist []*exponentialHistogramSample) error {
+	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
 		start := time.Now()
 
 		defer func() {
@@ -1324,7 +1352,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, expHist := range expHist {
+		for i := range expHist {
+			expHist := &expHist[i]
 			err = statement.Append(
 				expHist.env,
 				expHist.temporality.String(),
@@ -1346,7 +1375,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeMetadata := func(ctx context.Context, metadata []*metadata) error {
+	writeMetadata := func(ctx context.Context, metadata []metadata) error {
 		start := time.Now()
 
 		defer func() {
@@ -1369,7 +1398,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, meta := range metadata {
+		for i := range metadata {
+			meta := &metadata[i]
 			err = statement.Append(
 				meta.temporality.String(),
 				meta.metricName,

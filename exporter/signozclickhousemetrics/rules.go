@@ -163,6 +163,12 @@ type reducer struct {
 	reducedResource *pkgfingerprint.Fingerprint
 	reducedScope    *pkgfingerprint.Fingerprint
 	seen            map[uint64]struct{}
+
+	// scratch backs the *reducedSeries handed to each call site. A reducer is
+	// used by a single goroutine and each datapoint's result is fully consumed
+	// before the next reduce call, so one reusable value avoids a per-datapoint
+	// heap allocation.
+	scratch reducedSeries
 }
 
 // firstSeen reports whether this reduced fingerprint is new within the batch:
@@ -219,12 +225,13 @@ func (r *reducer) reduce(pointFingerprint *pkgfingerprint.Fingerprint, nameWithS
 		r.reducedScope = r.scopeFingerprint.Reduced(r.reducedResource.Hash(), r.rule.drop)
 	}
 	reducedPoint := pointFingerprint.Reduced(r.reducedScope.Hash(), r.rule.drop)
-	return &reducedSeries{
+	r.scratch = reducedSeries{
 		fingerprint: reducedPoint.HashWithName(nameWithSuffix),
 		point:       reducedPoint,
 		scope:       r.reducedScope,
 		resource:    r.reducedResource,
 	}
+	return &r.scratch
 }
 
 func (r *reducedSeries) fingerprintOrZero() uint64 {
@@ -237,11 +244,11 @@ func (r *reducedSeries) fingerprintOrZero() uint64 {
 // reducedTsFrom builds the reduced series row from the raw one: same series
 // metadata, but the reduced fingerprint as identity and the remaining label
 // set as labels/attrs.
-func reducedTsFrom(raw *ts, reduced *reducedSeries) *ts {
+func reducedTsFrom(raw *ts, reduced *reducedSeries) ts {
 	pointMap := reduced.point.AttributesAsMap()
 	scopeMap := reduced.scope.AttributesAsMap()
 	resourceMap := reduced.resource.AttributesAsMap()
-	return &ts{
+	return ts{
 		env:                raw.env,
 		temporality:        raw.temporality,
 		metricName:         raw.metricName,
