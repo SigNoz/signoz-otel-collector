@@ -110,5 +110,6 @@ func createDefaultConfig() component.Config {
 			MaxCost:     seriesCacheMaxCost,
 			NumCounters: seriesCacheNumCounters,
 		},
+		MetadataWriteSampleRatio: 1.0,
 	}
 }

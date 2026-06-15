@@ -29,6 +29,13 @@ type Config struct {
 	Reduction ReductionConfig `mapstructure:"reduction"`
 
 	SeriesCache SeriesCacheConfig `mapstructure:"series_cache"`
+
+	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
+	// written each batch. 1.0 (default) writes every row, keeping the attribute
+	// catalog complete. Lowering it trades completeness for fewer writes at
+	// extreme ingest: a row recurring across batches still lands quickly, but
+	// genuinely rare attribute values may be delayed or missed. Opt-in only.
+	MetadataWriteSampleRatio float64 `mapstructure:"metadata_write_sample_ratio"`
 }
 
 // SeriesCacheConfig bounds the in-memory cache that dedups time-series writes so
@@ -88,6 +95,10 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.SeriesCache.NumCounters <= 0 {
 		return errors.New("series_cache.num_counters must be positive")
+	}
+
+	if cfg.MetadataWriteSampleRatio <= 0 || cfg.MetadataWriteSampleRatio > 1 {
+		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
 	}
 
 	if cfg.Reduction.Enabled {

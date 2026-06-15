@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -1422,7 +1423,17 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
+		// Optional opt-in sampling of metadata writes. metadata rows are
+		// re-written every batch and the AggregatingMergeTree dedups them, so at
+		// extreme ingest a tenant can trade some attribute-value completeness for
+		// far fewer writes: each distinct row is then written ~sampleRatio of the
+		// time, so values that recur across batches still surface quickly (only
+		// genuinely rare values may be delayed/missed). Defaults to 1.0 (write all).
+		sampleRatio := c.cfg.MetadataWriteSampleRatio
 		for i := range metadata {
+			if sampleRatio < 1.0 && rand.Float64() >= sampleRatio {
+				continue
+			}
 			meta := &metadata[i]
 			err = statement.Append(
 				meta.temporality.String(),
