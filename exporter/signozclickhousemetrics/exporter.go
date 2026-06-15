@@ -2,6 +2,7 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -21,7 +22,7 @@ import (
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/jellydator/ttlcache/v3"
+	"github.com/dgraph-io/ristretto/v2"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -58,8 +59,7 @@ type clickhouseMetricsExporter struct {
 	cfg           *Config
 	logger        *zap.Logger
 	meter         metricapi.Meter
-	cache         *ttlcache.Cache[string, bool]
-	cacheRunning  bool
+	cache         *ristretto.Cache[[]byte, bool]
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
 	enableExpHist bool
@@ -189,7 +189,7 @@ func WithEnableExpHist(enableExpHist bool) ExporterOption {
 	}
 }
 
-func WithCache(cache *ttlcache.Cache[string, bool]) ExporterOption {
+func WithCache(cache *ristretto.Cache[[]byte, bool]) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
 		e.cache = cache
 		return nil
@@ -231,14 +231,19 @@ func WithExporterID(exporterID uuid.UUID) ExporterOption {
 	}
 }
 
-func defaultOptions() []ExporterOption {
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, bool](45*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-	)
+// seriesCacheTTL bounds how long a (series, hour) write is remembered so the
+// same time-series row isn't re-sent to ClickHouse within the window.
+const seriesCacheTTL = 45 * time.Minute
 
+// Defaults for SeriesCacheConfig, used by createDefaultConfig and as a fallback
+// when the config leaves them unset. See SeriesCacheConfig for the tradeoffs.
+const (
+	seriesCacheMaxCost     = 10_000_000
+	seriesCacheNumCounters = 100_000_000
+)
+
+func defaultOptions() []ExporterOption {
 	return []ExporterOption{
-		WithCache(cache),
 		WithLogger(zap.NewNop()),
 		WithEnableExpHist(false),
 		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
@@ -316,8 +321,28 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
-	go c.cache.Start()
-	c.cacheRunning = true
+	// Create the dedup cache here (not in the constructor) so its background
+	// goroutines live exactly between Start and Shutdown, and so exporters built
+	// for prepare-only use never spin it up. A caller may inject one via WithCache.
+	if c.cache == nil {
+		maxCost := c.cfg.SeriesCache.MaxCost
+		if maxCost <= 0 {
+			maxCost = seriesCacheMaxCost
+		}
+		numCounters := c.cfg.SeriesCache.NumCounters
+		if numCounters <= 0 {
+			numCounters = seriesCacheNumCounters
+		}
+		cache, err := ristretto.NewCache(&ristretto.Config[[]byte, bool]{
+			NumCounters: numCounters,
+			MaxCost:     maxCost,
+			BufferItems: 64,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create series dedup cache: %w", err)
+		}
+		c.cache = cache
+	}
 	if c.cfg.Reduction.Enabled {
 		// fail open: with no rules loaded everything is written unreduced,
 		// which is always correct
@@ -330,8 +355,8 @@ func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Ho
 }
 
 func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
-	if c.cacheRunning {
-		c.cache.Stop()
+	if c.cache != nil {
+		c.cache.Close()
 	}
 	if c.usageCollector != nil {
 		err := c.usageCollector.Stop()
@@ -1199,14 +1224,11 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		for i := range timeSeries {
 			ts := &timeSeries[i]
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
-			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
-			if ts.isReduced {
-				// a series whose rule drops only labels it doesn't have is its
-				// own reduction: keep its raw and reduced rows distinct
-				cacheKey += ":reduced"
-			}
-			if item := c.cache.Get(cacheKey); item != nil {
-				if value := item.Value(); value {
+			// isReduced distinguishes a reduced row from its raw row in the rare
+			// case a series is its own reduction (rule drops only absent labels).
+			cacheKey := makeCacheKey(ts.fingerprint, roundedUnixMilli, ts.isReduced)
+			if c.cache != nil {
+				if _, found := c.cache.Get(cacheKey); found {
 					continue
 				}
 			}
@@ -1252,7 +1274,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
-			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
+			if c.cache != nil {
+				c.cache.SetWithTTL(cacheKey, true, 1, seriesCacheTTL)
+			}
 		}
 		return statement.Send()
 	}
@@ -1457,18 +1481,17 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	return errors.Join(errs...)
 }
 
-func makeCacheKey(a, b uint64) string {
-	var builder strings.Builder
-	builder.Grow(40) // Max length: 20 digits for each uint64 + 1 for the colon
-
-	// Convert and write the first uint64
-	builder.WriteString(strconv.FormatUint(a, 10))
-
-	// Write the separator
-	builder.WriteByte(':')
-
-	// Convert and write the second uint64
-	builder.WriteString(strconv.FormatUint(b, 10))
-
-	return builder.String()
+// makeCacheKey builds the series-dedup cache key as raw bytes: fingerprint,
+// rounded-hour, and a reduced flag. ristretto hashes []byte keys with a second
+// conflict hash, so this is collision-safe without retaining the bytes (it
+// stores only the two hashes). Returning bytes avoids the per-row string
+// formatting the old key used.
+func makeCacheKey(fingerprint uint64, roundedUnixMilli int64, reduced bool) []byte {
+	key := make([]byte, 17)
+	binary.BigEndian.PutUint64(key[0:8], fingerprint)
+	binary.BigEndian.PutUint64(key[8:16], uint64(roundedUnixMilli))
+	if reduced {
+		key[16] = 1
+	}
+	return key
 }

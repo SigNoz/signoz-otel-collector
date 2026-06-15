@@ -23,6 +23,7 @@ import (
 
 func reductionTestConfig() *Config {
 	return &Config{
+		SeriesCache: SeriesCacheConfig{MaxCost: seriesCacheMaxCost, NumCounters: seriesCacheNumCounters},
 		Reduction: ReductionConfig{
 			Enabled:               true,
 			PollInterval:          time.Minute,

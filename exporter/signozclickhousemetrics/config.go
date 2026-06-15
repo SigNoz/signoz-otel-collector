@@ -27,6 +27,22 @@ type Config struct {
 	MetadataTable   string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
+
+	SeriesCache SeriesCacheConfig `mapstructure:"series_cache"`
+}
+
+// SeriesCacheConfig bounds the in-memory cache that dedups time-series writes so
+// the same (series, hour) row isn't re-sent to ClickHouse within the window.
+type SeriesCacheConfig struct {
+	// MaxCost caps how many (series, hour) entries are kept; beyond it the cache
+	// evicts least-valuable entries. An eviction only causes a redundant row that
+	// the ReplacingMergeTree dedups — never a dropped write. Raising it improves
+	// dedup (fewer ClickHouse writes) at the cost of memory; lowering it trades
+	// the other way. Size it near the active (series, hour) cardinality.
+	MaxCost int64 `mapstructure:"max_cost"`
+	// NumCounters sizes the admission sketch (eagerly allocated, ~2 bytes each).
+	// ristretto recommends ~10x MaxCost.
+	NumCounters int64 `mapstructure:"num_counters"`
 }
 
 // ReductionConfig configures cardinality control. When enabled, samples and
@@ -65,6 +81,13 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.BackOffConfig.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.SeriesCache.MaxCost <= 0 {
+		return errors.New("series_cache.max_cost must be positive")
+	}
+	if cfg.SeriesCache.NumCounters <= 0 {
+		return errors.New("series_cache.num_counters must be positive")
 	}
 
 	if cfg.Reduction.Enabled {

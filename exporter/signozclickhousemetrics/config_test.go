@@ -14,7 +14,8 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestConfig_Validate_Valid(t *testing.T) {
 	cfg := &Config{
-		DSN: "tcp://localhost:9000?database=default",
+		DSN:         "tcp://localhost:9000?database=default",
+		SeriesCache: SeriesCacheConfig{MaxCost: seriesCacheMaxCost, NumCounters: seriesCacheNumCounters},
 	}
 	err := cfg.Validate()
 	require.NoError(t, err)

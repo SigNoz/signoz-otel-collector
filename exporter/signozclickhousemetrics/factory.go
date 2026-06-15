@@ -106,5 +106,9 @@ func createDefaultConfig() component.Config {
 			BufferSamplesTable:    "distributed_samples_v4_buffer",
 			BufferTimeSeriesTable: "distributed_time_series_v4_buffer",
 		},
+		SeriesCache: SeriesCacheConfig{
+			MaxCost:     seriesCacheMaxCost,
+			NumCounters: seriesCacheNumCounters,
+		},
 	}
 }
