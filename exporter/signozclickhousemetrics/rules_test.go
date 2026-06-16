@@ -23,6 +23,7 @@ import (
 
 func reductionTestConfig() *Config {
 	return &Config{
+		MetadataWriteSampleRatio: 1.0,
 		Reduction: ReductionConfig{
 			Enabled:               true,
 			PollInterval:          time.Minute,
@@ -65,8 +66,7 @@ func Test_reductionGauge(t *testing.T) {
 	assert.NotZero(t, s.reducedFingerprint)
 	assert.NotEqual(t, s.fingerprint, s.reducedFingerprint)
 
-	// the raw series row carries the reduced fingerprint; the reduced series
-	// row is its own entry with the remaining label set
+	// raw series row carries the reduced fingerprint; reduced series row is its own entry
 	require.Equal(t, 2, len(batch.ts))
 	rawTs, reducedTs := batch.ts[0], batch.ts[1]
 	assert.False(t, rawTs.isReduced)
@@ -107,8 +107,7 @@ func Test_reductionGauge(t *testing.T) {
 }
 
 func Test_reductionEffectiveFromFuture(t *testing.T) {
-	// generator datapoints are stamped at 1727286182000; a rule effective
-	// after that must not apply (rules apply by datapoint timestamp)
+	// datapoints stamped at 1727286182000; a rule effective after that must not apply
 	exp := newReductionExporter(t, ruleSet{
 		"system.memory.usage0": {dropKeys: dropSet("resource.attr_0"), effectiveFromUnixMilli: 1727286182001},
 	})
@@ -285,8 +284,7 @@ func Test_writeBatchReductionEnabled(t *testing.T) {
 }
 
 func Benchmark_prepareBatchGaugeWithReduction(b *testing.B) {
-	// same shape as Benchmark_prepareBatchGauge: 10k metrics * 10 points,
-	// 30 attributes each, every metric ruled
+	// same shape as Benchmark_prepareBatchGauge, every metric ruled
 	metrics := pmetricsgen.GenerateGaugeMetrics(10000, 10, 10, 10, 10, 0, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
@@ -298,6 +296,30 @@ func Benchmark_prepareBatchGaugeWithReduction(b *testing.B) {
 	}
 	rules := make(ruleSet, 10000)
 	for i := 0; i < 10000; i++ {
+		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{dropKeys: dropSet("resource.attr_0")}
+	}
+	exp.reductionRules.Store(&rules)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		exp.prepareBatch(context.Background(), metrics)
+	}
+}
+
+func Benchmark_prepareBatchGaugeWithReduction50k(b *testing.B) {
+	// 5x the scale of Benchmark_prepareBatchGaugeWithReduction, every metric ruled
+	const numMetrics = 50000
+	metrics := pmetricsgen.GenerateGaugeMetrics(numMetrics, 10, 10, 10, 10, 0, 0)
+	exp, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(reductionTestConfig()),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	rules := make(ruleSet, numMetrics)
+	for i := 0; i < numMetrics; i++ {
 		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{dropKeys: dropSet("resource.attr_0")}
 	}
 	exp.reductionRules.Store(&rules)

@@ -100,8 +100,7 @@ func (m MergeTree) EngineType() string {
 // Replacing represents the ReplacingMergeTree engine of the table.
 type ReplacingMergeTree struct {
 	MergeTree
-	// Version is the optional version column: during merges, the row with the
-	// highest version is kept instead of the last inserted one.
+	// Version is the optional version column: merges keep the highest-version row instead of the last inserted.
 	Version string
 }
 

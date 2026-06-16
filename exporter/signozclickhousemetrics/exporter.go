@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,12 +81,15 @@ type clickhouseMetricsExporter struct {
 	reductionActiveRules metricapi.Int64Gauge
 	reductionPollErrors  metricapi.Int64Counter
 
+	lastSamplesLen  atomic.Int64
+	lastTsLen       atomic.Int64
+	lastMetadataLen atomic.Int64
+
 	closeChan chan struct{}
 }
 
-// sample represents a single metric sample
-// directly mapped to the table `samples_v4` schema; reducedFingerprint and
-// isMonotonic are only written on the buffer-table path
+// sample maps to the samples_v4 schema; reducedFingerprint and isMonotonic
+// are only written on the buffer-table path.
 type sample struct {
 	env                string
 	temporality        pmetric.AggregationTemporality
@@ -98,8 +102,7 @@ type sample struct {
 	flags              uint32
 }
 
-// exponentialHistogramSample represents a single exponential histogram sample
-// directly mapped to the table `exp_hist` schema
+// exponentialHistogramSample maps to the exp_hist schema.
 type exponentialHistogramSample struct {
 	env         string
 	temporality pmetric.AggregationTemporality
@@ -114,11 +117,9 @@ type exponentialHistogramSample struct {
 	flags       uint32
 }
 
-// ts represents a single time series
-// directly mapped to the table `time_series_v4` schema; reducedFingerprint
-// and isReduced are only written on the buffer-table path. A reduced series
-// row carries the reduced fingerprint in the fingerprint field and the
-// remaining label set in labels/attrs.
+// ts maps to the time_series_v4 schema; reducedFingerprint and isReduced are
+// only written on the buffer-table path. A reduced row carries the reduced
+// fingerprint in the fingerprint field and the remaining labels in labels/attrs.
 type ts struct {
 	env                string
 	temporality        pmetric.AggregationTemporality
@@ -137,8 +138,7 @@ type ts struct {
 	resourceAttrs      map[string]string
 }
 
-// metadata represents a single metric metadata
-// directly mapped to the table `metadata` schema
+// metadata maps to the metadata schema.
 type metadata struct {
 	metricName             string
 	temporality            pmetric.AggregationTemporality
@@ -152,6 +152,14 @@ type metadata struct {
 	attrStringValue        string
 	firstReportedUnixMilli int64
 	lastReportedUnixMilli  int64
+}
+type metaKey struct {
+	temporality     pmetric.AggregationTemporality
+	metricName      string
+	attrName        string
+	attrType        string
+	attrDatatype    pcommon.ValueType
+	attrStringValue string
 }
 
 type ExporterOption func(e *clickhouseMetricsExporter) error
@@ -307,8 +315,7 @@ func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Ho
 	go c.cache.Start()
 	c.cacheRunning = true
 	if c.cfg.Reduction.Enabled {
-		// fail open: with no rules loaded everything is written unreduced,
-		// which is always correct
+		// fail open: with no rules loaded everything is written unreduced, which is always correct
 		pollCtx, cancel := context.WithTimeout(ctx, rulesPollTimeout)
 		c.pollReductionRules(pollCtx)
 		cancel()
@@ -405,7 +412,8 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -486,7 +494,8 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -526,7 +535,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
 		case minSuffix:
-			// min/max are instantaneous values with gauge semantics, not counters
+			// min/max have gauge semantics, not counters
 			value = dp.Min()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
@@ -573,7 +582,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -625,7 +635,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			}
 			batch.addTs(rawTs)
 			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				batch.addTs(reducedTsFrom(rawTs, reduced))
+				reducedTs := reducedTsFrom(rawTs, reduced)
+				batch.addTs(&reducedTs)
 			}
 		}
 
@@ -666,7 +677,8 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
@@ -787,13 +799,13 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		}
 		batch.addTs(rawTs)
 		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			batch.addTs(reducedTsFrom(rawTs, reduced))
+			reducedTs := reducedTsFrom(rawTs, reduced)
+			batch.addTs(&reducedTs)
 		}
 	}
 
 	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
-		// quantile values are instantaneous estimates, not cumulative counters;
-		// unlike the .count/.sum series they carry gauge semantics
+		// quantile values are instantaneous estimates with gauge semantics, not counters
 		quantileTemporality := pmetric.AggregationTemporalityUnspecified
 		quantileIsMonotonic := false
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
@@ -838,7 +850,8 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			}
 			batch.addTs(rawTs)
 			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				batch.addTs(reducedTsFrom(rawTs, reduced))
+				reducedTs := reducedTsFrom(rawTs, reduced)
+				batch.addTs(&reducedTs)
 			}
 		}
 	}
@@ -929,7 +942,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			value = dp.Sum()
 			sampleTyp = pmetric.MetricTypeSum
 		case minSuffix:
-			// min/max are instantaneous values with gauge semantics, not counters
+			// min/max have gauge semantics, not counters
 			value = dp.Min()
 			sampleTyp = pmetric.MetricTypeGauge
 			sampleTemporality = pmetric.AggregationTemporalityUnspecified
@@ -944,9 +957,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			"__temporality__": sampleTemporality.String(),
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
-		// exponential histograms are excluded from reduction: their sketches
-		// are not reduced in v1 and reduced suffix series next to raw sketches
-		// would be incoherent
+		// exp histograms are excluded from reduction: sketches aren't reduced in v1
 		batch.addSample(&sample{
 			env:         env,
 			temporality: sampleTemporality,
@@ -1085,7 +1096,10 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
-	batch := newBatch(c.logger)
+	batch := newBatch(c.logger,
+		int(c.lastSamplesLen.Load()),
+		int(c.lastTsLen.Load()),
+		int(c.lastMetadataLen.Load()))
 	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
@@ -1132,6 +1146,10 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 			attribute.String("exporter", c.settings.ID.String()),
 		),
 	)
+
+	c.lastSamplesLen.Store(int64(len(batch.samples)))
+	c.lastTsLen.Store(int64(len(batch.ts)))
+	c.lastMetadataLen.Store(int64(len(batch.metadata)))
 	return batch
 }
 
@@ -1147,7 +1165,7 @@ func (c *clickhouseMetricsExporter) PushMetrics(ctx context.Context, md pmetric.
 }
 
 func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch) error {
-	writeTimeSeries := func(ctx context.Context, timeSeries []*ts) error {
+	writeTimeSeries := func(ctx context.Context, timeSeries []ts) error {
 		start := time.Now()
 
 		defer func() {
@@ -1170,12 +1188,12 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, ts := range timeSeries {
+		for i := range timeSeries {
+			ts := &timeSeries[i]
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
 			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
 			if ts.isReduced {
-				// a series whose rule drops only labels it doesn't have is its
-				// own reduction: keep its raw and reduced rows distinct
+				// a series whose rule drops nothing is its own reduction: keep raw+reduced rows distinct
 				cacheKey += ":reduced"
 			}
 			if item := c.cache.Get(cacheKey); item != nil {
@@ -1230,7 +1248,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeSamples := func(ctx context.Context, samples []*sample) error {
+	writeSamples := func(ctx context.Context, samples []sample) error {
 		start := time.Now()
 		metrics := map[string]usage.Metric{}
 
@@ -1254,7 +1272,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, sample := range samples {
+		for i := range samples {
+			sample := &samples[i]
 			if c.cfg.Reduction.Enabled {
 				err = statement.Append(
 					sample.env,
@@ -1301,7 +1320,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeExpHist := func(ctx context.Context, expHist []*exponentialHistogramSample) error {
+	writeExpHist := func(ctx context.Context, expHist []exponentialHistogramSample) error {
 		start := time.Now()
 
 		defer func() {
@@ -1324,7 +1343,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, expHist := range expHist {
+		for i := range expHist {
+			expHist := &expHist[i]
 			err = statement.Append(
 				expHist.env,
 				expHist.temporality.String(),
@@ -1346,7 +1366,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		return statement.Send()
 	}
 
-	writeMetadata := func(ctx context.Context, metadata []*metadata) error {
+	writeMetadata := func(ctx context.Context, metadata []metadata) error {
 		start := time.Now()
 
 		defer func() {
@@ -1369,7 +1389,14 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		for _, meta := range metadata {
+		// opt-in sampling of metadata writes: each distinct row (deduped by the
+		// AggregatingMergeTree) is written ~sampleRatio of the time. Default 1.0.
+		sampleRatio := c.cfg.MetadataWriteSampleRatio
+		for i := range metadata {
+			if sampleRatio < 1.0 && rand.Float64() >= sampleRatio {
+				continue
+			}
+			meta := &metadata[i]
 			err = statement.Append(
 				meta.temporality.String(),
 				meta.metricName,

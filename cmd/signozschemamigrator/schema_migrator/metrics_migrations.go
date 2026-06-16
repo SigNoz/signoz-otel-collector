@@ -976,11 +976,10 @@ var MetricsMigrations = []SchemaMigrationRecord{
 		},
 	},
 	{
-		// Cardinality control: buffer tables are the universal landing target for
-		// samples and series rows. Incremental MVs feed the long-retention tables
-		// for unruled rows (reduced_fingerprint = 0); refreshable MVs aggregate
-		// ruled series into the 60s reduced tables. Rules live in
-		// metric_reduction_rules and are polled by the metrics exporter.
+		// Cardinality control: buffer tables are the universal landing target.
+		// Incremental MVs feed long-retention tables for unruled rows
+		// (reduced_fingerprint = 0); refreshable MVs aggregate ruled series into
+		// the 60s reduced tables. Rules live in metric_reduction_rules.
 		MigrationID: 1008,
 		UpItems: []Operation{
 			CreateTableOperation{
@@ -999,15 +998,13 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "inserted_at_unix_milli", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
 				},
 				Indexes: []Index{
-					// merged parts age out of the refresh scan window; the minmax
-					// index lets each refresh prune to the small fresh parts
+					// minmax index lets each refresh prune to the small fresh parts
 					{Name: "idx_unix_milli", Expression: "unix_milli", Type: "minmax", Granularity: 1},
 				},
 				Engine: MergeTree{
 					PartitionBy: "toDate(unix_milli / 1000)",
 					OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
-					// with ttl_only_drop_parts and daily partitions the effective
-					// retention is 24-48h: day D's partition drops at D+2 00:00
+					// with ttl_only_drop_parts and daily partitions effective retention is 24-48h
 					TTL: "toDateTime(unix_milli / 1000) + toIntervalSecond(86400)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
@@ -1033,9 +1030,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Engine: Distributed{
 					Database: "signoz_metrics",
 					Table:    "samples_v4_buffer",
-					// all series of a reduced group must land on one shard for the
-					// per-shard refreshable MVs to see the whole group; unruled rows
-					// shard exactly as distributed_samples_v4 does today
+					// all series of a reduced group must land on one shard so the per-shard refreshable MVs see the whole group
 					ShardingKey: "cityHash64(env, temporality, metric_name, if(reduced_fingerprint != 0, reduced_fingerprint, fingerprint))",
 				},
 			},
@@ -1064,8 +1059,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
 						PartitionBy: "toDate(unix_milli / 1000)",
-						// is_reduced is part of the dedup identity so a series that
-						// is its own reduction keeps both its raw and reduced rows
+						// is_reduced is part of the dedup identity so a self-reducing series keeps both its raw and reduced rows
 						OrderBy: "(env, temporality, metric_name, fingerprint, unix_milli, is_reduced)",
 						TTL:     "toDateTime(unix_milli / 1000) + toIntervalSecond(86400)",
 						Settings: TableSettings{
@@ -1100,8 +1094,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Engine: Distributed{
 					Database: "signoz_metrics",
 					Table:    "time_series_v4_buffer",
-					// same conditional expression as distributed_samples_v4_buffer so
-					// series rows stay co-located with their samples per shard
+					// same expression as distributed_samples_v4_buffer so series rows stay co-located with their samples
 					ShardingKey: "cityHash64(env, temporality, metric_name, if(reduced_fingerprint != 0, reduced_fingerprint, fingerprint))",
 				},
 			},
@@ -1160,8 +1153,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Engine: Distributed{
 					Database: "signoz_metrics",
 					Table:    "time_series_v4_reduced",
-					// the fingerprint column holds the reduced fingerprint, so this
-					// matches the reduced-sample shard placement
+					// the fingerprint column holds the reduced fingerprint, matching the reduced-sample shard placement
 					ShardingKey: "cityHash64(env, temporality, metric_name, fingerprint)",
 				},
 			},
@@ -1192,9 +1184,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
 					},
-					// each bucket is recomputed and APPENDed 3-4 times across
-					// overlapping refreshes; merges keep the latest recompute and
-					// reads use argMax(computed_at)
+					// buckets are recomputed and appended across refreshes; merges keep the latest, reads use argMax(computed_at)
 					Version: "computed_at",
 				},
 			},
@@ -1429,11 +1419,10 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "count_samples", Type: ColumnTypeUInt64},
 					{Name: "computed_at", Type: DateTimeColumnType{}},
 				},
-				// gauges and non-monotonic cumulative sums (UpDownCounters): take the
-				// last value per series per 60s bucket, then aggregate across series.
-				// upper time bound leaves room for in-flight ingestion; lower bound
-				// re-reads ~5m so late arrivals within the grace window land in a
-				// recomputed bucket (reads dedup with argMax(computed_at)).
+				// gauges and non-monotonic cumulative sums (UpDownCounters): last value
+				// per series per 60s bucket, then aggregated across series. only whole
+				// buckets are emitted (scan reaches now-11m, emit bucket_unix_milli >=
+				// now-10m) so the latest computed_at row is never a truncated sliver.
 				// the bucket alias must NOT be named unix_milli: it would shadow the
 				// source column inside argMax/min/max and break the aggregation.
 				Query: `SELECT
@@ -1468,7 +1457,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							WHERE (bitAnd(flags, 1) = 0)
 								AND ((temporality = 'Unspecified') OR ((temporality = 'Cumulative') AND (is_monotonic = false)))
 								AND (unix_milli < (toUnixTimestamp(now() - toIntervalSecond(120)) * 1000))
-								AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(5)) * 1000))
+								AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(11)) * 1000))
 							GROUP BY
 								env,
 								temporality,
@@ -1477,6 +1466,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								fingerprint,
 								bucket_unix_milli
 						)
+						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(10)) * 1000)
 						GROUP BY
 							env,
 							temporality,
@@ -1503,8 +1493,10 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "count_samples", Type: ColumnTypeUInt64},
 					{Name: "computed_at", Type: DateTimeColumnType{}},
 				},
-				// delta sums commute: per-series sum within the bucket, then sum
-				// across series
+				// delta sums commute: per-series sum within the bucket, then sum across
+				// series. only whole buckets are emitted (scan reaches now-11m, emit
+				// bucket_unix_milli >= now-10m) so the latest computed_at row is never a
+				// truncated sliver.
 				Query: `SELECT
 							env,
 							temporality,
@@ -1531,7 +1523,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 							WHERE (bitAnd(flags, 1) = 0)
 								AND (temporality = 'Delta')
 								AND (unix_milli < (toUnixTimestamp(now() - toIntervalSecond(120)) * 1000))
-								AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(5)) * 1000))
+								AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(11)) * 1000))
 							GROUP BY
 								env,
 								temporality,
@@ -1540,6 +1532,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								fingerprint,
 								bucket_unix_milli
 						)
+						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(10)) * 1000)
 						GROUP BY
 							env,
 							temporality,
@@ -1566,15 +1559,11 @@ var MetricsMigrations = []SchemaMigrationRecord{
 					{Name: "count_samples", Type: ColumnTypeUInt64},
 					{Name: "computed_at", Type: DateTimeColumnType{}},
 				},
-				// cumulative counters are reduced to per-bucket increments with
-				// per-point reset detection: a drop in value means a counter reset
-				// and the post-reset value counts as an increment from zero. the lag
-				// runs over raw points (not bucket representatives) so resets inside
-				// a bucket are handled; each increment is attributed to the later
-				// point's bucket, so consecutive buckets tile exactly. the scan
-				// reaches one minute further back than the output range to provide
-				// the previous point at the window edge; a series' first-ever point
-				// yields no increment (Prometheus increase() semantics).
+				// cumulative counters reduced to per-bucket increments with per-point
+				// reset detection (a value drop counts the post-reset value as the
+				// increment). the scan reaches one minute further back to supply the
+				// previous point at the window edge; a series' first point yields no
+				// increment (Prometheus increase() semantics).
 				Query: `SELECT
 							env,
 							temporality,

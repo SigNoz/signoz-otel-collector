@@ -10,10 +10,9 @@ import (
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 )
 
-// protectedLabels can never be aggregated away: le and quantile are series
-// identity for histogram buckets and summary quantiles, the dunder keys are
-// internal markers baked into every fingerprint, and deployment.environment
-// is a physical column and part of the sharding key.
+// protectedLabels can never be aggregated away: le/quantile are series identity,
+// the dunder keys are baked into every fingerprint, and deployment.environment is
+// a physical column and part of the sharding key.
 var protectedLabels = map[string]struct{}{
 	"le":                     {},
 	"quantile":               {},
@@ -24,15 +23,12 @@ var protectedLabels = map[string]struct{}{
 
 const rulesPollTimeout = 30 * time.Second
 
-// reductionRule is one compiled label-drop rule, keyed by the base metric
-// name; it covers every series derived from that metric (.count, .sum, .min,
-// .max, .bucket, .quantile).
+// reductionRule is one compiled label-drop rule, keyed by base metric name; it
+// covers every series derived from that metric.
 type reductionRule struct {
 	dropKeys map[string]struct{}
-	// effectiveFromUnixMilli is compared against the datapoint timestamp, not
-	// the wall clock: every collector replica then starts reducing at the same
-	// data-time boundary regardless of when it polled the rule, so no 60s
-	// bucket is ever partially reduced.
+	// effectiveFromUnixMilli is compared against the datapoint timestamp, not the
+	// wall clock, so every replica reduces at the same data-time boundary.
 	effectiveFromUnixMilli int64
 }
 
@@ -56,10 +52,9 @@ func (c *clickhouseMetricsExporter) ruleFor(metricName string) *reductionRule {
 	return (*rules)[metricName]
 }
 
-// pollReductionRules refreshes the in-memory ruleset from ClickHouse. It
-// fails open: on error the last known ruleset stays active, and a series
-// without an applicable rule is written unreduced, which is always correct,
-// just at full fidelity.
+// pollReductionRules refreshes the in-memory ruleset from ClickHouse. It fails
+// open: on error the last known ruleset stays active, and an unreduced series is
+// always correct, just at full fidelity.
 func (c *clickhouseMetricsExporter) pollReductionRules(ctx context.Context) {
 	rules, err := c.fetchReductionRules(ctx)
 	if err != nil {
@@ -76,9 +71,7 @@ func (c *clickhouseMetricsExporter) pollReductionRules(ctx context.Context) {
 }
 
 func (c *clickhouseMetricsExporter) fetchReductionRules(ctx context.Context) (ruleSet, error) {
-	// the table is tiny and append-only per (metric_name, updated_at); argMax
-	// over the distributed table picks the latest version of each rule no
-	// matter which shard its rows landed on
+	// argMax over the distributed table picks the latest rule regardless of shard.
 	query := fmt.Sprintf(`SELECT
 			metric_name,
 			argMax(drop_labels, updated_at) AS drop_labels,
@@ -152,9 +145,9 @@ func (c *clickhouseMetricsExporter) startReductionRulesPoller() {
 	}()
 }
 
-// reducer computes reduced fingerprints and series for the datapoints of one
-// metric under one rule. The reduced resource and scope fingerprints are
-// computed lazily once and reused for every datapoint of the metric.
+// reducer computes reduced fingerprints and series for one metric's datapoints
+// under one rule; the reduced resource/scope fingerprints are computed once and
+// reused for every datapoint.
 type reducer struct {
 	rule                *reductionRule
 	resourceFingerprint *pkgfingerprint.Fingerprint
@@ -163,12 +156,14 @@ type reducer struct {
 	reducedResource *pkgfingerprint.Fingerprint
 	reducedScope    *pkgfingerprint.Fingerprint
 	seen            map[uint64]struct{}
+
+	// scratch backs the *reducedSeries handed to each call site, reused to avoid a
+	// per-datapoint heap allocation.
+	scratch reducedSeries
 }
 
-// firstSeen reports whether this reduced fingerprint is new within the batch:
-// consecutive datapoints of one series all map to the same reduced series, so
-// one reduced series row per batch is enough (the hourly write cache dedups
-// across batches anyway) and building the labels JSON per point is wasted.
+// firstSeen reports whether this reduced fingerprint is new within the batch.
+// Many datapoints map to the same reduced series, so one row per batch is enough.
 func (r *reducer) firstSeen(fingerprint uint64) bool {
 	if r.seen == nil {
 		r.seen = make(map[uint64]struct{})
@@ -180,8 +175,7 @@ func (r *reducer) firstSeen(fingerprint uint64) bool {
 	return true
 }
 
-// reducedSeries carries everything a call site needs to write the reduced
-// sample column and the reduced series row.
+// reducedSeries carries what a call site needs to write the reduced sample and row.
 type reducedSeries struct {
 	fingerprint uint64
 	point       *pkgfingerprint.Fingerprint
@@ -190,7 +184,7 @@ type reducedSeries struct {
 }
 
 // newReducerFor returns a reducer for the metric, or nil when reduction is
-// disabled or no rule matches the base metric name.
+// disabled or no rule matches.
 func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) *reducer {
 	if !c.cfg.Reduction.Enabled {
 		return nil
@@ -206,10 +200,10 @@ func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFin
 	}
 }
 
-// reduce returns the reduced series for a datapoint fingerprint, or nil when
-// the rule does not apply at the datapoint's timestamp (pre-epoch data stays
-// unreduced and flows to the long-retention tables, where pre-epoch queries
-// look for it). nameWithSuffix is the stored series name, e.g. metric.bucket.
+// reduce returns the reduced series for a datapoint fingerprint, or nil when the
+// rule does not apply at the datapoint's timestamp (pre-epoch data stays unreduced
+// and flows to the long-retention tables). nameWithSuffix is the stored series
+// name, e.g. metric.bucket.
 func (r *reducer) reduce(pointFingerprint *pkgfingerprint.Fingerprint, nameWithSuffix string, unixMilli int64) *reducedSeries {
 	if r == nil || !r.rule.appliesAt(unixMilli) {
 		return nil
@@ -219,12 +213,13 @@ func (r *reducer) reduce(pointFingerprint *pkgfingerprint.Fingerprint, nameWithS
 		r.reducedScope = r.scopeFingerprint.Reduced(r.reducedResource.Hash(), r.rule.drop)
 	}
 	reducedPoint := pointFingerprint.Reduced(r.reducedScope.Hash(), r.rule.drop)
-	return &reducedSeries{
+	r.scratch = reducedSeries{
 		fingerprint: reducedPoint.HashWithName(nameWithSuffix),
 		point:       reducedPoint,
 		scope:       r.reducedScope,
 		resource:    r.reducedResource,
 	}
+	return &r.scratch
 }
 
 func (r *reducedSeries) fingerprintOrZero() uint64 {
@@ -234,14 +229,13 @@ func (r *reducedSeries) fingerprintOrZero() uint64 {
 	return r.fingerprint
 }
 
-// reducedTsFrom builds the reduced series row from the raw one: same series
-// metadata, but the reduced fingerprint as identity and the remaining label
-// set as labels/attrs.
-func reducedTsFrom(raw *ts, reduced *reducedSeries) *ts {
+// reducedTsFrom builds the reduced series row from the raw one: same metadata, but
+// the reduced fingerprint as identity and the remaining labels as labels/attrs.
+func reducedTsFrom(raw *ts, reduced *reducedSeries) ts {
 	pointMap := reduced.point.AttributesAsMap()
 	scopeMap := reduced.scope.AttributesAsMap()
 	resourceMap := reduced.resource.AttributesAsMap()
-	return &ts{
+	return ts{
 		env:                raw.env,
 		temporality:        raw.temporality,
 		metricName:         raw.metricName,

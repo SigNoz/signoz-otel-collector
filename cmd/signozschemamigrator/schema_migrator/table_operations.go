@@ -168,7 +168,6 @@ func (c CreateMaterializedViewOperation) OnCluster(cluster string) Operation {
 }
 
 func (c CreateMaterializedViewOperation) WithReplication() Operation {
-	// no-op
 	return &c
 }
 
@@ -177,17 +176,14 @@ func (c CreateMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool,
 }
 
 func (c CreateMaterializedViewOperation) IsMutation() bool {
-	// Create materialized view is not a mutation.
 	return false
 }
 
 func (c CreateMaterializedViewOperation) IsIdempotent() bool {
-	// Create materialized view is idempotent. It will not change the materialized view if the materialized view already exists.
 	return true
 }
 
 func (c CreateMaterializedViewOperation) IsLightweight() bool {
-	// Create materialized view is lightweight.
 	return true
 }
 
@@ -223,10 +219,8 @@ func (c CreateMaterializedViewOperation) ToSQL() string {
 	return sql.String()
 }
 
-// CreateRefreshableMaterializedViewOperation is used to represent the CREATE MATERIALIZED VIEW
-// statement with a REFRESH clause (refreshable materialized view) in the SQL.
-// Unlike incremental materialized views, the query runs periodically over the
-// source data at rest rather than per inserted block.
+// CreateRefreshableMaterializedViewOperation represents a CREATE MATERIALIZED VIEW
+// with a REFRESH clause: the query runs periodically over data at rest, not per inserted block.
 type CreateRefreshableMaterializedViewOperation struct {
 	cluster   string
 	Database  string
@@ -251,15 +245,13 @@ type CreateRefreshableMaterializedViewOperation struct {
 	SQLSecurity string
 }
 
-// OnCluster is used to specify the cluster on which the operation should be performed.
-// This is useful when the operation is to be performed on a cluster setup.
+// OnCluster specifies the cluster on which the operation should be performed.
 func (c CreateRefreshableMaterializedViewOperation) OnCluster(cluster string) Operation {
 	c.cluster = cluster
 	return &c
 }
 
 func (c CreateRefreshableMaterializedViewOperation) WithReplication() Operation {
-	// no-op
 	return &c
 }
 
@@ -268,17 +260,14 @@ func (c CreateRefreshableMaterializedViewOperation) ShouldWaitForDistributionQue
 }
 
 func (c CreateRefreshableMaterializedViewOperation) IsMutation() bool {
-	// Create materialized view is not a mutation.
 	return false
 }
 
 func (c CreateRefreshableMaterializedViewOperation) IsIdempotent() bool {
-	// Create materialized view is idempotent. It will not change the materialized view if the materialized view already exists.
 	return true
 }
 
 func (c CreateRefreshableMaterializedViewOperation) IsLightweight() bool {
-	// Create materialized view is lightweight.
 	return true
 }
 

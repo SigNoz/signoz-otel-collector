@@ -341,20 +341,9 @@ func Test_prepareBatchHistogram(t *testing.T) {
 		assert.Equal(t, ts.typ, currentTs.typ)
 	}
 
-	// metadata
-	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
-	// Per datapoint (1 datapoint):
-	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - min with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - max with point fingerprint (1 point attr + __temporality__) = 2 entries
-	//   - 21 buckets (20 + +Inf) with point fingerprint (1 point attr + le + __temporality__) = 21*3 = 63 entries
-	//   Subtotal: 2+2+2+2+63 = 71
-	// After all datapoints (5 metrics: count, sum, min, max, bucket):
-	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 5*(1+4) = 25 entries
-	// Total: 71 + 25 = 96
-
-	assert.Equal(t, len(batch.metadata), 1*(2+2+2+2+21*3)+5*(1+4))
+	// deduplicated within the batch by ClickHouse identity
+	// expect 56 metadata rows: 31 point (count/sum/min/max=2 each, bucket=23) + 25 resource/scope (5 metrics x 5)
+	assert.Equal(t, len(batch.metadata), (2+2+2+2+(1+1+21))+5*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -553,18 +542,9 @@ func Test_prepareBatchSummary(t *testing.T) {
 		assert.Equal(t, sample.value, curSample.value)
 	}
 
-	// metadata
-	// With addMetadata (no deduplication), each call creates entries for all fingerprint attributes
-	// Per datapoint (2 datapoints):
-	//   - count with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
-	//   - sum with point fingerprint (1 point attr + __temporality__) = 2 entries per datapoint
-	//   - 1 quantile with point fingerprint (1 point attr + quantile + __temporality__) = 3 entries per datapoint
-	//   Subtotal per datapoint: 2+2+3 = 7, total for 2 datapoints: 14
-	// After all datapoints (3 metrics: count, sum, quantile):
-	//   - Each called twice with resource (1 attr) and scope (4 attrs) = 3*(1+4) = 15 entries
-	// Total: 14 + 15 = 29
-
-	assert.Equal(t, len(batch.metadata), 2*(2+2+3)+3*(1+4))
+	// deduplicated within the batch by ClickHouse identity
+	// expect 22 metadata rows: 7 point (count=2, sum=2, quantile=3; 2 datapoints collapse) + 15 resource/scope (3 metrics x 5)
+	assert.Equal(t, len(batch.metadata), (2+2+3)+3*(1+4))
 	for _, item := range batch.metadata {
 		validSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {

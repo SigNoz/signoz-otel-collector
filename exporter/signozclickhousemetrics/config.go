@@ -27,17 +27,19 @@ type Config struct {
 	MetadataTable   string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
+
+	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
+	// written per batch; 1.0 (default) writes all. Opt-in; lowering it trades
+	// attribute-catalog completeness for fewer writes at extreme ingest.
+	MetadataWriteSampleRatio float64 `mapstructure:"metadata_write_sample_ratio"`
 }
 
-// ReductionConfig configures cardinality control. When enabled, samples and
-// series land in the buffer tables with a reduced fingerprint computed from
-// per-metric label-drop rules, which are polled from a ClickHouse table.
+// ReductionConfig configures cardinality control. When enabled, samples and series
+// land in the buffer tables with a reduced fingerprint from per-metric label-drop rules.
 type ReductionConfig struct {
 	Enabled bool `mapstructure:"enabled"`
-	// PollInterval is how often the rules table is re-read. Rules carry an
-	// effective_from timestamp set ahead by the writer, so the exact poll
-	// cadence does not affect correctness as long as it stays well within
-	// that margin.
+	// PollInterval is how often the rules table is re-read. effective_from is set
+	// ahead by the writer so poll cadence doesn't affect correctness within that margin.
 	PollInterval time.Duration `mapstructure:"poll_interval"`
 	RulesTable   string        `mapstructure:"rules_table"`
 	// BufferSamplesTable and BufferTimeSeriesTable replace SamplesTable and
@@ -65,6 +67,10 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.BackOffConfig.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.MetadataWriteSampleRatio <= 0 || cfg.MetadataWriteSampleRatio > 1 {
+		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
 	}
 
 	if cfg.Reduction.Enabled {

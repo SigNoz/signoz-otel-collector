@@ -1,8 +1,6 @@
 package fingerprint
 
 import (
-	"sort"
-
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -23,14 +21,15 @@ type Fingerprint struct {
 }
 
 func NewFingerprint(typ FingerprintType, offset uint64, attrs pcommon.Map, extras map[string]string) *Fingerprint {
-	attributes := NewAttributesFromPcommonMap(attrs)
-
+	attributes := make(Attributes, 0, attrs.Len()+len(extras))
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		attributes = append(attributes, Attribute{Key: k, Value: Value{DataType: v.Type(), Val: v.AsString()}})
+		return true
+	})
 	for k, v := range extras {
-		attributes[k] = Value{
-			DataType: pcommon.ValueTypeStr,
-			Val:      v,
-		}
+		attributes = append(attributes, Attribute{Key: k, Value: Value{DataType: pcommon.ValueTypeStr, Val: v}})
 	}
+	attributes.sortAndDedup()
 
 	return &Fingerprint{
 		attributes: attributes,
@@ -39,39 +38,42 @@ func NewFingerprint(typ FingerprintType, offset uint64, attrs pcommon.Map, extra
 	}
 }
 
+// hashAttributes hashes attributes in their stored (key-sorted) order.
 func hashAttributes(offset uint64, attributes Attributes) uint64 {
 	hash := offset
-
-	sortedKeys := make([]string, 0, len(attributes))
-	for k := range attributes {
-		sortedKeys = append(sortedKeys, k)
-	}
-	sort.Strings(sortedKeys)
-
-	for _, k := range sortedKeys {
-		v := attributes[k]
-		hash = hashAdd(hash, k)
+	for _, a := range attributes {
+		hash = hashAdd(hash, a.Key)
 		hash = hashAddByte(hash, separatorByte)
-		hash = hashAdd(hash, v.Val)
+		hash = hashAdd(hash, a.Value.Val)
 		hash = hashAddByte(hash, separatorByte)
 	}
-
 	return hash
 }
 
-// Reduced returns a new fingerprint computed over this fingerprint's
-// attributes minus the keys for which drop returns true, hashed from the
-// given offset. Reducing a resource -> scope -> point chain requires passing
-// the previous reduced fingerprint's hash as the offset at each level, the
-// same way the raw chain is built; series that differ only in dropped keys
-// then collapse to the same reduced fingerprint.
+// Reduced returns a new fingerprint over this fingerprint's attributes minus the
+// keys for which drop returns true, hashed from offset. Reducing a
+// resource -> scope -> point chain requires passing the previous reduced hash as
+// offset at each level, so series differing only in dropped keys collapse.
 func (f *Fingerprint) Reduced(offset uint64, drop func(key string) bool) *Fingerprint {
-	attributes := make(Attributes, len(f.attributes))
-	for k, v := range f.attributes {
-		if drop(k) {
-			continue
+	// When the drop set touches none of this fingerprint's keys, share the
+	// (read-only) attribute slice and only recompute the hash.
+	attributes := f.attributes
+	dropsAny := false
+	for _, a := range f.attributes {
+		if drop(a.Key) {
+			dropsAny = true
+			break
 		}
-		attributes[k] = v
+	}
+	if dropsAny {
+		// Filtering a sorted, de-duplicated slice keeps it sorted and de-duplicated.
+		attributes = make(Attributes, 0, len(f.attributes))
+		for _, a := range f.attributes {
+			if drop(a.Key) {
+				continue
+			}
+			attributes = append(attributes, a)
+		}
 	}
 
 	return &Fingerprint{
@@ -87,8 +89,8 @@ func (f *Fingerprint) Attributes() Attributes {
 
 func (f *Fingerprint) AttributesAsMap() map[string]string {
 	attrMap := make(map[string]string, len(f.attributes))
-	for k, v := range f.attributes {
-		attrMap[k] = v.Val
+	for _, a := range f.attributes {
+		attrMap[a.Key] = a.Value.Val
 	}
 	return attrMap
 }
