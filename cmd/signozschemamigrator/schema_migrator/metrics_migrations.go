@@ -1263,7 +1263,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "metric_reduction_rules",
 				Columns: []Column{
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "drop_labels", Type: ArrayColumnType{ElementType: LowCardinalityColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "labels", Type: ArrayColumnType{ElementType: LowCardinalityColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "match_type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'drop'", Codec: "ZSTD(1)"},
 					{Name: "effective_from_unix_milli", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
 					{Name: "deleted", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 3}, Default: "now64(3)", Codec: "ZSTD(1)"},
@@ -1280,7 +1281,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Table:    "distributed_metric_reduction_rules",
 				Columns: []Column{
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "drop_labels", Type: ArrayColumnType{ElementType: LowCardinalityColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "labels", Type: ArrayColumnType{ElementType: LowCardinalityColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "match_type", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'drop'", Codec: "ZSTD(1)"},
 					{Name: "effective_from_unix_milli", Type: ColumnTypeInt64, Codec: "ZSTD(1)"},
 					{Name: "deleted", Type: ColumnTypeBool, Default: "false", Codec: "ZSTD(1)"},
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 3}, Default: "now64(3)", Codec: "ZSTD(1)"},
@@ -1380,7 +1382,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				},
 				Query: `SELECT
 							env,
-							temporality,
+							if((temporality = 'Cumulative') AND is_monotonic, 'Delta', temporality) AS temporality,
 							metric_name,
 							description,
 							unit,
@@ -1563,10 +1565,12 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				// reset detection (a value drop counts the post-reset value as the
 				// increment). the scan reaches one minute further back to supply the
 				// previous point at the window edge; a series' first point yields no
-				// increment (Prometheus increase() semantics).
+				// increment (Prometheus increase() semantics). the output is labeled
+				// Delta temporality because the reduced per-bucket values are deltas
+				// (the reduced series catalog MV relabels these series to match).
 				Query: `SELECT
 							env,
-							temporality,
+							'Delta' AS temporality,
 							metric_name,
 							reduced_fingerprint,
 							bucket_unix_milli AS unix_milli,

@@ -23,18 +23,28 @@ var protectedLabels = map[string]struct{}{
 
 const rulesPollTimeout = 30 * time.Second
 
-// reductionRule is one compiled label-drop rule, keyed by base metric name; it
-// covers every series derived from that metric.
+// reductionRule is one compiled label drop/keep rule, keyed by base metric
+// name; it covers every series derived from that metric.
 type reductionRule struct {
-	dropKeys map[string]struct{}
+	// keys is the configured label set; keep picks the mode. keep=false drops
+	// keys (rest kept); keep=true keeps only keys (rest dropped). protected
+	// labels are kept either way.
+	keys map[string]struct{}
+	keep bool
 	// effectiveFromUnixMilli is compared against the datapoint timestamp, not the
 	// wall clock, so every replica reduces at the same data-time boundary.
 	effectiveFromUnixMilli int64
 }
 
 func (r *reductionRule) drop(key string) bool {
-	_, ok := r.dropKeys[key]
-	return ok
+	_, listed := r.keys[key]
+	if r.keep {
+		if _, protected := protectedLabels[key]; protected {
+			return false
+		}
+		return !listed
+	}
+	return listed
 }
 
 func (r *reductionRule) appliesAt(unixMilli int64) bool {
@@ -74,7 +84,8 @@ func (c *clickhouseMetricsExporter) fetchReductionRules(ctx context.Context) (ru
 	// argMax over the distributed table picks the latest rule regardless of shard.
 	query := fmt.Sprintf(`SELECT
 			metric_name,
-			argMax(drop_labels, updated_at) AS drop_labels,
+			argMax(labels, updated_at) AS labels,
+			argMax(match_type, updated_at) AS match_type,
 			argMax(effective_from_unix_milli, updated_at) AS effective_from_unix_milli,
 			argMax(deleted, updated_at) AS deleted
 		FROM %s.%s
@@ -94,32 +105,54 @@ func (c *clickhouseMetricsExporter) fetchReductionRules(ctx context.Context) (ru
 	for rows.Next() {
 		var (
 			metricName    string
-			dropLabels    []string
+			labels        []string
+			matchType     string
 			effectiveFrom int64
 			deleted       bool
 		)
-		if err := rows.Scan(&metricName, &dropLabels, &effectiveFrom, &deleted); err != nil {
+		if err := rows.Scan(&metricName, &labels, &matchType, &effectiveFrom, &deleted); err != nil {
 			return nil, err
 		}
-		if deleted || len(dropLabels) == 0 {
+		if deleted {
 			continue
 		}
-		dropKeys := make(map[string]struct{}, len(dropLabels))
+		var keep bool
+		switch matchType {
+		case "", "drop":
+			keep = false
+		case "keep":
+			keep = true
+		default:
+			// unknown mode: fail open (leave the metric unreduced) rather than
+			// risk inverting drop/keep semantics on a typo.
+			c.logger.Warn("ignoring reduction rule with unknown match_type",
+				zap.String("metric_name", metricName), zap.String("match_type", matchType))
+			continue
+		}
+		// drop mode with no labels is a no-op; keep mode with no labels is a
+		// valid (maximal) reduction down to just the protected labels.
+		if !keep && len(labels) == 0 {
+			continue
+		}
+		keys := make(map[string]struct{}, len(labels))
 		valid := true
-		for _, label := range dropLabels {
-			if _, protected := protectedLabels[label]; protected {
-				c.logger.Warn("ignoring reduction rule that drops a protected label",
-					zap.String("metric_name", metricName), zap.String("label", label))
-				valid = false
-				break
+		for _, label := range labels {
+			if !keep {
+				if _, protected := protectedLabels[label]; protected {
+					c.logger.Warn("ignoring reduction rule that drops a protected label",
+						zap.String("metric_name", metricName), zap.String("label", label))
+					valid = false
+					break
+				}
 			}
-			dropKeys[label] = struct{}{}
+			keys[label] = struct{}{}
 		}
 		if !valid {
 			continue
 		}
 		rules[metricName] = &reductionRule{
-			dropKeys:               dropKeys,
+			keys:                   keys,
+			keep:                   keep,
 			effectiveFromUnixMilli: effectiveFrom,
 		}
 	}

@@ -46,7 +46,7 @@ func newReductionExporter(t *testing.T, rules ruleSet) *clickhouseMetricsExporte
 	return exp
 }
 
-func dropSet(keys ...string) map[string]struct{} {
+func labelSet(keys ...string) map[string]struct{} {
 	set := make(map[string]struct{}, len(keys))
 	for _, k := range keys {
 		set[k] = struct{}{}
@@ -54,9 +54,62 @@ func dropSet(keys ...string) map[string]struct{} {
 	return set
 }
 
+func Test_reductionKeepMode(t *testing.T) {
+	// keep mode: only the listed label (plus protected labels) survives; every
+	// other label, including scope dunders, is dropped.
+	exp := newReductionExporter(t, ruleSet{
+		"system.memory.usage0": {keys: labelSet("gauge.attr_0"), keep: true},
+	})
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+	batch := exp.prepareBatch(context.Background(), metrics)
+
+	require.Equal(t, 1, len(batch.samples))
+	s := batch.samples[0]
+	assert.NotZero(t, s.reducedFingerprint)
+	assert.NotEqual(t, s.fingerprint, s.reducedFingerprint)
+
+	require.Equal(t, 2, len(batch.ts))
+	reducedTs := batch.ts[1]
+	require.True(t, reducedTs.isReduced)
+	assert.Contains(t, reducedTs.attrs, "gauge.attr_0")
+	assert.NotContains(t, reducedTs.resourceAttrs, "resource.attr_0")
+	assert.NotContains(t, reducedTs.scopeAttrs, "scope.attr_0")
+
+	// cross-check the reduced fingerprint against a manual keep-only chain
+	keepDrop := func(k string) bool {
+		switch k {
+		case "gauge.attr_0", "__name__", "__temporality__", "deployment.environment", "le", "quantile":
+			return false
+		}
+		return true
+	}
+	resourceAttrs := pcommon.NewMap()
+	resourceAttrs.PutStr("resource.attr_0", "value0")
+	resourceFp := pkgfingerprint.NewFingerprint(pkgfingerprint.ResourceFingerprintType, pkgfingerprint.InitialOffset, resourceAttrs, map[string]string{})
+
+	scopeAttrs := pcommon.NewMap()
+	scopeAttrs.PutStr("scope.attr_0", "value0")
+	scopeFp := pkgfingerprint.NewFingerprint(pkgfingerprint.ScopeFingerprintType, resourceFp.Hash(), scopeAttrs, map[string]string{
+		"__scope.name__":       "go.signoz.io/app/reader",
+		"__scope.version__":    "1.0.0",
+		"__scope.schema_url__": "scope.schema_url",
+	})
+
+	pointAttrs := pcommon.NewMap()
+	pointAttrs.PutStr("gauge.attr_0", "1")
+	pointFp := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFp.Hash(), pointAttrs, map[string]string{
+		"__temporality__": pmetric.AggregationTemporalityUnspecified.String(),
+	})
+
+	reducedResource := resourceFp.Reduced(pkgfingerprint.InitialOffset, keepDrop)
+	reducedScope := scopeFp.Reduced(reducedResource.Hash(), keepDrop)
+	reducedPoint := pointFp.Reduced(reducedScope.Hash(), keepDrop)
+	assert.Equal(t, s.reducedFingerprint, reducedPoint.HashWithName("system.memory.usage0"))
+}
+
 func Test_reductionGauge(t *testing.T) {
 	exp := newReductionExporter(t, ruleSet{
-		"system.memory.usage0": {dropKeys: dropSet("resource.attr_0")},
+		"system.memory.usage0": {keys: labelSet("resource.attr_0")},
 	})
 	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -109,7 +162,7 @@ func Test_reductionGauge(t *testing.T) {
 func Test_reductionEffectiveFromFuture(t *testing.T) {
 	// datapoints stamped at 1727286182000; a rule effective after that must not apply
 	exp := newReductionExporter(t, ruleSet{
-		"system.memory.usage0": {dropKeys: dropSet("resource.attr_0"), effectiveFromUnixMilli: 1727286182001},
+		"system.memory.usage0": {keys: labelSet("resource.attr_0"), effectiveFromUnixMilli: 1727286182001},
 	})
 	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -124,7 +177,7 @@ func Test_reductionEffectiveFromFuture(t *testing.T) {
 func Test_reductionNoRuleOrDisabled(t *testing.T) {
 	// no rule for the metric
 	exp := newReductionExporter(t, ruleSet{
-		"some.other.metric": {dropKeys: dropSet("resource.attr_0")},
+		"some.other.metric": {keys: labelSet("resource.attr_0")},
 	})
 	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -138,7 +191,7 @@ func Test_reductionNoRuleOrDisabled(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
-	rules := ruleSet{"system.memory.usage0": {dropKeys: dropSet("resource.attr_0")}}
+	rules := ruleSet{"system.memory.usage0": {keys: labelSet("resource.attr_0")}}
 	disabled.reductionRules.Store(&rules)
 	batch = disabled.prepareBatch(context.Background(), metrics)
 	require.Equal(t, 1, len(batch.samples))
@@ -166,7 +219,7 @@ func Test_reductionCollapsesAcrossResources(t *testing.T) {
 	}
 
 	exp := newReductionExporter(t, ruleSet{
-		"http.server.requests.count": {dropKeys: dropSet("service.instance.id")},
+		"http.server.requests.count": {keys: labelSet("service.instance.id")},
 	})
 	batch := exp.prepareBatch(context.Background(), buildMetrics("instance-1", "instance-2"))
 
@@ -178,7 +231,7 @@ func Test_reductionCollapsesAcrossResources(t *testing.T) {
 
 func Test_reductionHistogramDerivedSeries(t *testing.T) {
 	exp := newReductionExporter(t, ruleSet{
-		"http.server.duration0": {dropKeys: dropSet("resource.attr_0")},
+		"http.server.duration0": {keys: labelSet("resource.attr_0")},
 	})
 	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
@@ -208,7 +261,7 @@ func Test_reductionSkipsExponentialHistogram(t *testing.T) {
 	)
 	require.NoError(t, err)
 	rules := ruleSet{
-		"http.server.duration1": {dropKeys: dropSet("resource.attr_0")},
+		"http.server.duration1": {keys: labelSet("resource.attr_0")},
 	}
 	exp.reductionRules.Store(&rules)
 
@@ -224,7 +277,7 @@ func Test_reductionSkipsExponentialHistogram(t *testing.T) {
 }
 
 func Test_reductionRuleAppliesAt(t *testing.T) {
-	rule := &reductionRule{dropKeys: dropSet("a"), effectiveFromUnixMilli: 100}
+	rule := &reductionRule{keys: labelSet("a"), effectiveFromUnixMilli: 100}
 	assert.False(t, rule.appliesAt(99))
 	assert.True(t, rule.appliesAt(100))
 	assert.True(t, rule.appliesAt(101))
@@ -275,7 +328,7 @@ func Test_writeBatchReductionEnabled(t *testing.T) {
 		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
 	)
 	require.NoError(t, err)
-	rules := ruleSet{"system.memory.usage0": {dropKeys: dropSet("resource.attr_0")}}
+	rules := ruleSet{"system.memory.usage0": {keys: labelSet("resource.attr_0")}}
 	exp.reductionRules.Store(&rules)
 
 	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
@@ -296,7 +349,7 @@ func Benchmark_prepareBatchGaugeWithReduction(b *testing.B) {
 	}
 	rules := make(ruleSet, 10000)
 	for i := 0; i < 10000; i++ {
-		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{dropKeys: dropSet("resource.attr_0")}
+		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{keys: labelSet("resource.attr_0")}
 	}
 	exp.reductionRules.Store(&rules)
 	b.ResetTimer()
@@ -320,7 +373,7 @@ func Benchmark_prepareBatchGaugeWithReduction50k(b *testing.B) {
 	}
 	rules := make(ruleSet, numMetrics)
 	for i := 0; i < numMetrics; i++ {
-		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{dropKeys: dropSet("resource.attr_0")}
+		rules["system.memory.usage"+strconv.Itoa(i)] = &reductionRule{keys: labelSet("resource.attr_0")}
 	}
 	exp.reductionRules.Store(&rules)
 	b.ResetTimer()
