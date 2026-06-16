@@ -62,12 +62,3 @@ func (t *typesAccumulator) record(path string, mask uint16) {
 
 	cs.Insert(maskToType(mask))
 }
-
-func (t *typesAccumulator) Len() int64 {
-	var n int64
-	t.types.Range(func(_, _ any) bool {
-		n++
-		return true
-	})
-	return n
-}
