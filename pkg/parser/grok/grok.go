@@ -114,7 +114,7 @@ type Parser struct {
 
 // Process will parse an entry for grok.
 func (r *Parser) Process(ctx context.Context, entry *entry.Entry) error {
-	return r.ParserOperator.ProcessWith(ctx, entry, r.parse)
+	return r.ProcessWith(ctx, entry, r.parse)
 }
 
 func (r *Parser) ProcessBatch(ctx context.Context, entries []*entry.Entry) error {

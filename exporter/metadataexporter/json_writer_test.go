@@ -271,7 +271,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 
 			if len(got) != len(tc.expected) {
 				buf := bytes.NewBuffer(nil)
-				json.NewEncoder(buf).Encode(got)
+				_ = json.NewEncoder(buf).Encode(got)
 				t.Log(buf.String())
 				t.Fatalf("got %d paths, expected %d", len(got), len(tc.expected))
 			}
