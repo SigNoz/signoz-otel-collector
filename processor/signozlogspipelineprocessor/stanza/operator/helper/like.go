@@ -39,7 +39,7 @@ func parseLikePattern(pattern string) (kind patternKind, lit1, lit2 string) {
 	n := len(runes)
 
 	leadingPct := n > 0 && runes[0] == '%'
-	trailingPct := n > 0 && runes[n-1] == '%' && !(n > 1 && runes[n-2] == '\\')
+	trailingPct := n > 0 && runes[n-1] == '%' && (n <= 1 || runes[n-2] != '\\')
 
 	// Walk the pattern collecting literal characters. When we encounter an
 	// unescaped '%' in the interior (not the leading/trailing sentinel), we
