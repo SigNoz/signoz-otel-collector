@@ -135,7 +135,7 @@ func (r *httplogreceiver) Start(ctx context.Context, host component.Host) error 
 	mx := mux.NewRouter()
 	mx.HandleFunc("/", r.handleLogs)
 
-	r.server, err = r.config.ServerConfig.ToServer(ctx, host.GetExtensions(), r.settings.TelemetrySettings, mx)
+	r.server, err = r.config.ToServer(ctx, host.GetExtensions(), r.settings.TelemetrySettings, mx)
 	if err != nil {
 		return err
 	}
