@@ -65,6 +65,9 @@ func newSyncUp(dsn string, cluster string, replication bool, timeout time.Durati
 		schemamigrator.WithConnOptions(*opts),
 		schemamigrator.WithLogger(logger),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &syncUp{
 		conn:             conn,

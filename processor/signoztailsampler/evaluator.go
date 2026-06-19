@@ -33,7 +33,7 @@ type defaultEvaluator struct {
 func NewDefaultEvaluator(logger *zap.Logger, policyCfg BasePolicy, subpolicies []BasePolicy) sampling.PolicyEvaluator {
 
 	// condition operator to apply on filters (AND | OR)
-	filterOperator := policyCfg.PolicyFilterCfg.FilterOp
+	filterOperator := policyCfg.FilterOp
 
 	// list of filter evaluators used to decide if this policy
 	// should be applied

@@ -117,10 +117,11 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		input    map[string]any
-		cfg      JSONConfig
-		expected map[string][]utils.FieldDataType
+		name               string
+		input              map[string]any
+		cfg                JSONConfig
+		expected           map[string][]utils.FieldDataType
+		expectedNumOfKeys  int
 	}{
 		{
 			name: "message_skip_test_simple",
@@ -133,6 +134,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"message": {utils.FieldDataTypeString},
 				"test":    {utils.FieldDataTypeString},
 			},
+			expectedNumOfKeys: 2,
 		},
 		{
 			name: "message_skip_test_x2",
@@ -144,6 +146,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 			expected: map[string][]utils.FieldDataType{
 				"test": {utils.FieldDataTypeString},
 			},
+			expectedNumOfKeys: 1,
 		},
 		{
 			name: "simple_datatype_test",
@@ -160,11 +163,15 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"float":  {utils.FieldDataTypeFloat64},
 				"bool":   {utils.FieldDataTypeArrayBool},
 			},
+			expectedNumOfKeys: 4,
 		},
 		{
 			name:  "full_test",
 			input: input,
 			cfg:   JSONConfig{MaxDepthTraverse: to.Ptr(100), MaxArrayElementsAllowed: to.Ptr(5), MaxKeysAtLevel: to.Ptr(1024)},
+			// expectedNumOfKeys is 46, not 45: "array_objects[].nested[].inside_a" is visited
+			// twice (once per distinct map element in the nested slice), so it contributes 2 to
+			// the walk count even though it maps to one unique path in the type accumulator.
 			expected: map[string][]utils.FieldDataType{
 				"_p":                                              {utils.FieldDataTypeString},
 				"array_objects":                                   {utils.FieldDataTypeArrayJSON},
@@ -212,6 +219,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"stream":                                          {utils.FieldDataTypeString},
 				"uninstall":                                       {utils.FieldDataTypeBool},
 			},
+			expectedNumOfKeys: 46,
 		},
 		{
 			name:  "max_depth_traverse_test",
@@ -244,6 +252,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 				"stream":                           {utils.FieldDataTypeString},
 				"uninstall":                        {utils.FieldDataTypeBool},
 			},
+			expectedNumOfKeys: 25,
 		},
 	}
 
@@ -256,8 +265,9 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 			require.NoError(t, body.FromRaw(tc.input))
 
 			ts := &typesAccumulator{}
-			err := w.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, ts, va)
+			numOfKeys, err := w.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, ts, va)
 			require.NoError(t, err)
+			assert.Equal(t, tc.expectedNumOfKeys, numOfKeys)
 
 			got := map[string][]utils.FieldDataType{}
 			ts.types.Range(func(key, value any) bool {
@@ -271,7 +281,7 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 
 			if len(got) != len(tc.expected) {
 				buf := bytes.NewBuffer(nil)
-				json.NewEncoder(buf).Encode(got)
+				_ = json.NewEncoder(buf).Encode(got)
 				t.Log(buf.String())
 				t.Fatalf("got %d paths, expected %d", len(got), len(tc.expected))
 			}

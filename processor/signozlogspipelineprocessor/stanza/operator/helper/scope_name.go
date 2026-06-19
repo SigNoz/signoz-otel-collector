@@ -4,6 +4,8 @@
 package signozstanzahelper
 
 import (
+	"fmt"
+
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/errors"
@@ -34,7 +36,7 @@ func (p *ScopeNameParser) Parse(ent *entry.Entry) error {
 	if !ok {
 		err := ent.Set(p.ParseFrom, value)
 		if err != nil {
-			return errors.Wrap(err, "parse_from field does not contain a string")
+			return fmt.Errorf("parse_from field does not contain a string: %w", err)
 		}
 		return errors.NewError(
 			"parse_from field does not contain a string",
