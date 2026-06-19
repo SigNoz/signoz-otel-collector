@@ -82,8 +82,8 @@ func TestMetricsReceiverWithSuccess(t *testing.T) {
 	sink := &consumertest.MetricsSink{}
 	cfg := createDefaultConfig().(*Config)
 	cfg.RecordType = "test"
-	cfg.ServerConfig.NetAddr.Endpoint = "localhost:0"
-	cfg.ServerConfig.NetAddr.Transport = "tcp"
+	cfg.NetAddr.Endpoint = "localhost:0"
+	cfg.NetAddr.Transport = "tcp"
 
 	receiver, err := newMetricsReceiver(
 		cfg,
@@ -129,8 +129,8 @@ func TestMetricsReceiverWithError(t *testing.T) {
 
 	cfg := createDefaultConfig().(*Config)
 	cfg.RecordType = "test"
-	cfg.ServerConfig.NetAddr.Endpoint = "localhost:0"
-	cfg.ServerConfig.NetAddr.Transport = "tcp"
+	cfg.NetAddr.Endpoint = "localhost:0"
+	cfg.NetAddr.Transport = "tcp"
 
 	receiver, err := newMetricsReceiver(
 		cfg,

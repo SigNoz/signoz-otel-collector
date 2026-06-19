@@ -29,7 +29,7 @@ type Processor struct {
 
 // Process will parse an entry for JSON.
 func (p *Processor) Process(ctx context.Context, entry *entry.Entry) error {
-	err := p.TransformerOperator.ProcessWith(ctx, entry, p.transform)
+	err := p.ProcessWith(ctx, entry, p.transform)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) er
 
 // normalize log body
 func (p *Processor) transform(entry *entry.Entry) error {
-	parsedValue := make(map[string]any)
+	var parsedValue map[string]any
 	switch v := entry.Body.(type) {
 	case string:
 		parsedValue = p.processTextLogs(v)
@@ -132,7 +132,9 @@ func (p *Processor) normalize(entry *entry.Entry) {
 				// delete "message" first, then shift all inner keys to top level
 				entry.Delete(message)
 				for key, value := range mapValue {
-					entry.Set(signozstanzaentry.NewBodyField(key), value)
+					if err := entry.Set(signozstanzaentry.NewBodyField(key), value); err != nil {
+						p.Logger().Error("Failed to set body field", zap.Error(err))
+					}
 				}
 			}
 		}
