@@ -1004,8 +1004,15 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Engine: MergeTree{
 					PartitionBy: "toDate(unix_milli / 1000)",
 					OrderBy:     "(env, temporality, metric_name, fingerprint, unix_milli)",
-					// with ttl_only_drop_parts and daily partitions effective retention is 24-48h
-					TTL: "toDateTime(unix_milli / 1000) + toIntervalSecond(86400)",
+					// 25h TTL is deliberate. The querier reads this buffer for <24h ranges
+					// at full fidelity, so a full 24h query window must always be present.
+					// ttl_only_drop_parts + daily partitions mean a day's partition is dropped only
+					// once its newest row passes TTL (~D+2), giving 24-48h effective retention. However,
+					// at a flat 24h the end-of-day rows become evictable exactly at the 24h mark,
+					// leaving no margin for partition-drop timing.
+					// The extra hour just delays each daily drop by 1h
+					// and guarantees the read window is always covered.
+					TTL: "toDateTime(unix_milli / 1000) + toIntervalSecond(90000)",
 					Settings: TableSettings{
 						{Name: "index_granularity", Value: "8192"},
 						{Name: "ttl_only_drop_parts", Value: "1"},
@@ -1061,7 +1068,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 						PartitionBy: "toDate(unix_milli / 1000)",
 						// is_reduced is part of the dedup identity so a self-reducing series keeps both its raw and reduced rows
 						OrderBy: "(env, temporality, metric_name, fingerprint, unix_milli, is_reduced)",
-						TTL:     "toDateTime(unix_milli / 1000) + toIntervalSecond(86400)",
+						TTL:     "toDateTime(unix_milli / 1000) + toIntervalSecond(90000)",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -1608,11 +1615,11 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								WHERE (bitAnd(flags, 1) = 0)
 									AND ((temporality = 'Cumulative') AND (is_monotonic = true))
 									AND (unix_milli < (toUnixTimestamp(now() - toIntervalSecond(120)) * 1000))
-									AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(6)) * 1000))
+									AND (unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(11)) * 1000))
 								WINDOW rate_window AS (PARTITION BY env, temporality, metric_name, fingerprint ORDER BY unix_milli)
 							)
 							WHERE (isNaN(increment) = 0)
-								AND (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(5)) * 1000))
+								AND (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(10)) * 1000))
 							GROUP BY
 								env,
 								temporality,
