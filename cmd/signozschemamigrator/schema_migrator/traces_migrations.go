@@ -1172,6 +1172,12 @@ var TracesMigrations = []SchemaMigrationRecord{
 					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
 				},
 			},
+		},
+		DownItems: []Operation{},
+	},
+	{
+		MigrationID: 1012,
+		UpItems: []Operation{
 			AlterTableAddColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
@@ -1192,6 +1198,23 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				After: &Column{Name: "attributes_bool"},
 			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attributes"},
+			},
+		},
+	},
+	{
+		MigrationID: 1013,
+		UpItems: []Operation{
 			AlterTableAddIndex{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
@@ -1208,16 +1231,6 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
 				Index:    Index{Name: "attributes_paths_tokenbf"},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: "attributes"},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column:   Column{Name: "attributes"},
 			},
 		},
 	},
