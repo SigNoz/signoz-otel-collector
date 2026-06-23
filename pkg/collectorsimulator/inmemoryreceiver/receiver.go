@@ -8,18 +8,26 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-// In memory receiver for testing and simulation
+// In memory receiver for testing and simulation.
+// A single instance is wired for one signal (logs or traces) per simulation;
+// the corresponding next-consumer field is set by the factory.
 type InMemoryReceiver struct {
 	// Unique identifier for the receiver.
 	id string
 
-	nextConsumer consumer.Logs
+	nextLogsConsumer   consumer.Logs
+	nextTracesConsumer consumer.Traces
 }
 
 func (r *InMemoryReceiver) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
-	return r.nextConsumer.ConsumeLogs(ctx, ld)
+	return r.nextLogsConsumer.ConsumeLogs(ctx, ld)
+}
+
+func (r *InMemoryReceiver) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
+	return r.nextTracesConsumer.ConsumeTraces(ctx, td)
 }
 
 func (r *InMemoryReceiver) Capabilities() consumer.Capabilities {

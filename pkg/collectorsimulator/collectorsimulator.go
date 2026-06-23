@@ -40,8 +40,18 @@ type CollectorSimulator struct {
 
 type ConfigGenerator func(baseConfYaml []byte) ([]byte, error)
 
+// PipelineSignal is the otel collector pipeline signal the simulator wires
+// the in-memory receiver and exporter into. One of "logs", "traces", "metrics".
+type PipelineSignal string
+
+const (
+	PipelineSignalLogs   PipelineSignal = "logs"
+	PipelineSignalTraces PipelineSignal = "traces"
+)
+
 func NewCollectorSimulator(
 	ctx context.Context,
+	pipelineSignal PipelineSignal,
 	processorFactories map[component.Type]processor.Factory,
 	configGenerator ConfigGenerator,
 ) (simulator *CollectorSimulator, cleanupFn func(), err error) {
@@ -79,6 +89,7 @@ func NewCollectorSimulator(
 	}
 
 	collectorConfYaml, err := generateSimulationConfig(
+		pipelineSignal,
 		inMemoryReceiverId,
 		configGenerator,
 		inMemoryExporterId,
@@ -228,6 +239,7 @@ func (l *CollectorSimulator) Shutdown(ctx context.Context) (
 }
 
 func generateSimulationConfig(
+	pipelineSignal PipelineSignal,
 	receiverId string,
 	configGenerator ConfigGenerator,
 	exporterId string,
@@ -242,7 +254,7 @@ func generateSimulationConfig(
         id: %s
     service:
       pipelines:
-        logs:
+        %s:
           receivers:
             - memory
           exporters:
@@ -253,7 +265,7 @@ func generateSimulationConfig(
         logs:
           level: warn
           output_paths: ["%s"]
-    `, receiverId, exporterId, collectorLogsOutputPath)
+    `, receiverId, exporterId, pipelineSignal, collectorLogsOutputPath)
 
 	return configGenerator([]byte(baseConf))
 }

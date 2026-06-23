@@ -8,9 +8,12 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 // An in-memory exporter for testing and generating previews.
+// A single instance accumulates data for whichever signal pipeline it is
+// wired into (logs or traces).
 type InMemoryExporter struct {
 	// Unique identifier for the exporter.
 	id string
@@ -18,6 +21,8 @@ type InMemoryExporter struct {
 	mu sync.Mutex
 	// slice of pdata.Logs that were received by this exporter.
 	logs []plog.Logs
+	// slice of pdata.Traces that were received by this exporter.
+	traces []ptrace.Traces
 }
 
 // ConsumeLogs implements component.LogsExporter.
@@ -41,6 +46,29 @@ func (e *InMemoryExporter) ResetLogs() {
 	defer e.mu.Unlock()
 
 	e.logs = nil
+}
+
+// ConsumeTraces implements component.TracesExporter.
+func (e *InMemoryExporter) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.traces = append(e.traces, td)
+	return nil
+}
+
+func (e *InMemoryExporter) GetTraces() []ptrace.Traces {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.traces
+}
+
+func (e *InMemoryExporter) ResetTraces() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.traces = nil
 }
 
 func (e *InMemoryExporter) Capabilities() consumer.Capabilities {

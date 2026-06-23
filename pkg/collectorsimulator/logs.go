@@ -24,7 +24,7 @@ func SimulateLogsProcessing(
 ) {
 	// Construct and start a simulator (wraps a collector service)
 	simulator, simulatorInitCleanup, err := NewCollectorSimulator(
-		ctx, processorFactories, configGenerator,
+		ctx, PipelineSignalLogs, processorFactories, configGenerator,
 	)
 	if simulatorInitCleanup != nil {
 		defer simulatorInitCleanup()
