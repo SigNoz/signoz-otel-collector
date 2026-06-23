@@ -144,7 +144,7 @@ func (p *ParserOperator) ParseWith(ctx context.Context, entry *entry.Entry, pars
 	}
 
 	if err := entry.Set(p.ParseTo, newValue); err != nil {
-		return p.HandleEntryError(ctx, entry, errors.Wrap(err, "set parse_to"))
+		return p.HandleEntryError(ctx, entry, fmt.Errorf("set parse_to: %w", err))
 	}
 
 	if p.BodyField != nil {
@@ -175,16 +175,16 @@ func (p *ParserOperator) ParseWith(ctx context.Context, entry *entry.Entry, pars
 
 	// Handle parsing errors after attempting to parse all
 	if timeParseErr != nil {
-		return p.HandleEntryError(ctx, entry, errors.Wrap(timeParseErr, "time parser"))
+		return p.HandleEntryError(ctx, entry, fmt.Errorf("time parser: %w", timeParseErr))
 	}
 	if severityParseErr != nil {
-		return p.HandleEntryError(ctx, entry, errors.Wrap(severityParseErr, "severity parser"))
+		return p.HandleEntryError(ctx, entry, fmt.Errorf("severity parser: %w", severityParseErr))
 	}
 	if traceParseErr != nil {
-		return p.HandleEntryError(ctx, entry, errors.Wrap(traceParseErr, "trace parser"))
+		return p.HandleEntryError(ctx, entry, fmt.Errorf("trace parser: %w", traceParseErr))
 	}
 	if scopeNameParserErr != nil {
-		return p.HandleEntryError(ctx, entry, errors.Wrap(scopeNameParserErr, "scope_name parser"))
+		return p.HandleEntryError(ctx, entry, fmt.Errorf("scope_name parser: %w", scopeNameParserErr))
 	}
 	return nil
 }

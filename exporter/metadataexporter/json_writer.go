@@ -155,6 +155,7 @@ type jsonMetadataWriter struct {
 	limits       LimitsConfig
 
 	logsProcessed metric.Int64Counter
+	keysIngested  metric.Int64Counter
 }
 
 func newJSONMetadataWriter(
@@ -167,9 +168,17 @@ func newJSONMetadataWriter(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cardinal key cache: %w", err)
 	}
-	logsProcessed, err := e.set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter").Int64Counter(
+	meter := e.set.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter")
+	logsProcessed, err := meter.Int64Counter(
 		"signoz_metadata_exporter_json_logs_processed",
 		metric.WithDescription("Number of log records with a JSON (map) body processed by the JSON metadata writer"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create json writer metrics: %w", err)
+	}
+	keysIngested, err := meter.Int64Counter(
+		"signoz_metadata_exporter_json_keys_ingested",
+		metric.WithDescription("Number of distinct JSON keys ingested per log by the JSON metadata writer"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create json writer metrics: %w", err)
@@ -182,6 +191,7 @@ func newJSONMetadataWriter(
 		valueTracker:     e.logsTracker,
 		limits:           e.cfg.MaxDistinctValues.Logs,
 		logsProcessed:    logsProcessed,
+		keysIngested:     keysIngested,
 	}
 	empty := make(map[string]struct{})
 	w.skipKeys.Store(&empty)
@@ -291,10 +301,11 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 					w.logger.Error("body expected to be map", zap.String("body.type", val.Type().String()))
 					continue
 				}
-				if err := w.walkNode(ctx, "", val, 0, utils.TagTypeBodyField, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
+				if numOfKeys, err := w.walkNode(ctx, "", val, 0, utils.TagTypeBodyField, ts.AsTime().UnixMilli(), bodyTypes, va); err != nil {
 					w.logger.Error("json walk failed", zap.String("source", string(utils.TagTypeBodyField)), zap.Error(err))
 				} else {
 					w.logsProcessed.Add(ctx, 1)
+					w.keysIngested.Add(ctx, int64(numOfKeys))
 				}
 			}
 		}
@@ -332,20 +343,20 @@ func (w *jsonMetadataWriter) walkNode(
 	unixMilli int64,
 	ta *typesAccumulator,
 	va *valueAccumulator,
-) error {
+) (int, error) {
 	// Skip children of the "message" type-hint field (fixed column).
 	if strings.HasPrefix(prefix, jsonMessageField+".") {
-		return nil
+		return 0, nil
 	} else if prefix == jsonMessageField {
 		ta.record(prefix, maskString)
 		// We intentionally skip recording value suggestions for message field, due to high cardinality.
-		return nil
+		return 1, nil
 	}
 
 	// Depth guard: do not descend into containers beyond the configured limit.
 	if level > *w.cfg.MaxDepthTraverse &&
 		(val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
-		return nil
+		return 0, nil
 	}
 
 	switch val.Type() {
@@ -362,10 +373,10 @@ func (w *jsonMetadataWriter) walkNode(
 	case pcommon.ValueTypeInt:
 		ta.record(prefix, maskInt)
 	default:
-		return fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
+		return 0, fmt.Errorf("unknown value type at path %q: %v", prefix, val.Type())
 	}
 
-	return va.record(prefix, val, tagType, unixMilli)
+	return 1, va.record(prefix, val, tagType, unixMilli)
 }
 
 // walkMap iterates over a map, skips high-cardinality keys, and recurses into
@@ -379,12 +390,13 @@ func (w *jsonMetadataWriter) walkMap(
 	unixMilli int64,
 	ta *typesAccumulator,
 	va *valueAccumulator,
-) error {
+) (int, error) {
 	m := val.Map()
 	if m.Len() > *w.cfg.MaxKeysAtLevel {
-		return nil
+		return 0, nil
 	}
 	var iterErr error
+	var totalKeys int
 	m.Range(func(key string, child pcommon.Value) bool {
 		// Skip high-cardinality keys (e.g. UUIDs used as map keys).
 		if !w.cardinalKeyCache.Contains(key) {
@@ -394,13 +406,15 @@ func (w *jsonMetadataWriter) walkMap(
 			w.cardinalKeyCache.Add(key, struct{}{})
 		}
 		childPath := joinPath(prefix, key)
-		if err := w.walkNode(ctx, childPath, child, level+1, tagType, unixMilli, ta, va); err != nil {
+		numOfKeys, err := w.walkNode(ctx, childPath, child, level+1, tagType, unixMilli, ta, va)
+		if err != nil {
 			iterErr = err
 			return false
 		}
+		totalKeys += numOfKeys
 		return true
 	})
-	return iterErr
+	return totalKeys, iterErr
 }
 
 // walkSlice collects element types, recurses into map elements, and records
@@ -414,28 +428,30 @@ func (w *jsonMetadataWriter) walkSlice(
 	unixMilli int64,
 	ta *typesAccumulator,
 	va *valueAccumulator,
-) error {
+) (int, error) {
 	s := val.Slice()
 	if s.Len() == 0 || s.Len() > *w.cfg.MaxArrayElementsAllowed {
-		return nil
+		return 0, nil
 	}
 	types := make([]pcommon.ValueType, 0, s.Len())
-
+	totalKeys := 0
 	for i := 0; i < s.Len(); i++ {
 		el := s.At(i)
 		switch el.Type() {
 		case pcommon.ValueTypeMap:
 			// Do not increment depth for array element objects — array indexing
 			// should not consume depth budget.
-			if err := w.walkNode(ctx, prefix+jsonArraySuffix, el, level, tagType, unixMilli, ta, va); err != nil {
-				return err
+			numOfKeys, err := w.walkNode(ctx, prefix+jsonArraySuffix, el, level, tagType, unixMilli, ta, va)
+			if err != nil {
+				return 0, err
 			}
 			types = append(types, el.Type())
+			totalKeys += numOfKeys
 		case pcommon.ValueTypeSlice:
 			// skip recording the type for entire array
 			// e.g. alphabets: ["a", "b", ["c", "d"]]; we don't want to record type for alphabets as array
 			w.logger.Debug("nested arrays not supported", zap.String("path", prefix))
-			return nil
+			return 0, nil
 		case pcommon.ValueTypeEmpty:
 			// skip empty elements
 		default:
@@ -443,13 +459,14 @@ func (w *jsonMetadataWriter) walkSlice(
 		}
 	}
 	if len(types) == 0 {
-		return nil
+		return 0, nil
 	}
 	mask := inferArrayMask(types)
 	ta.record(prefix, mask)
+	totalKeys += 1 // for the slice itself
 
 	// recordForSlice will only account for primitive types inside slices
-	return va.recordForSlice(prefix, val, tagType, maskToType(mask), unixMilli)
+	return totalKeys, va.recordForSlice(prefix, val, tagType, maskToType(mask), unixMilli)
 }
 
 // joinPath builds a dotted JSON path from a parent prefix and a child key.

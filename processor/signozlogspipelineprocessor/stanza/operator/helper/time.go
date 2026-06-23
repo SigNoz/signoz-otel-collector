@@ -78,7 +78,7 @@ func (t *TimeParser) Validate() error {
 		var err error
 		t.Layout, err = StrptimeToGotime(t.Layout)
 		if err != nil {
-			return errors.Wrap(err, "parse strptime layout")
+			return fmt.Errorf("parse strptime layout: %w", err)
 		}
 		t.LayoutType = GotimeKey
 	case EpochKey:
@@ -99,7 +99,7 @@ func (t *TimeParser) Validate() error {
 
 	if t.LayoutType == GotimeKey { // also covers StrptimeKey because it was remapped above
 		if err := t.setLocation(); err != nil {
-			return errors.Wrap(err, "invalid 'location'")
+			return fmt.Errorf("invalid 'location': %w", err)
 		}
 	}
 
