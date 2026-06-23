@@ -1238,7 +1238,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 		},
 	},
 	{
-		MigrationID: 1012,
+		MigrationID: 1014,
 		UpItems: []Operation{
 			AlterTableAddColumn{
 				Database: "signoz_traces",
@@ -1260,6 +1260,23 @@ var TracesMigrations = []SchemaMigrationRecord{
 				},
 				After: &Column{Name: "attributes"},
 			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+			},
+		},
+	},
+	{
+		MigrationID: 1015,
+		UpItems: []Operation{
 			AlterTableAddIndex{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
@@ -1277,16 +1294,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "signoz_index_v3",
 				Index:    Index{Name: "attributes_promoted_paths_tokenbf"},
 			},
-			AlterTableDropColumn{
-				Database: "signoz_traces",
-				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
-			},
-			AlterTableDropColumn{
-				Database: "signoz_traces",
-				Table:    "signoz_index_v3",
-				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
-			},
 		},
 	},
+	// add new new migration to test file for sync/async check as well
 }
