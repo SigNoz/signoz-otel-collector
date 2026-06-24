@@ -171,71 +171,48 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
-// normalizeForJSON converts []interface{} slices to typed slices so the
-// ClickHouse Go driver can determine the correct Array(T) type for JSON column
-// shared-data paths. Nested maps are recursed into; mixed-type slices fall
-// back to []string.
-func normalizeForJSON(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m))
-	for k, v := range m {
-		switch val := v.(type) {
-		case map[string]any:
-			out[k] = normalizeForJSON(val)
-		case []any:
-			out[k] = typedSliceForJSON(val)
+// attributesForJSON converts otel slice and map to Go typed values since
+// the ClickHouse Go driver cannot infer the type from []interface{}.
+func attributesForJSON(attrs pcommon.Map) map[string]any {
+	out := make(map[string]any, attrs.Len())
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		switch v.Type() {
+		case pcommon.ValueTypeSlice:
+			out[k] = toTypedSlice(v.Slice())
+		case pcommon.ValueTypeMap:
+			out[k] = attributesForJSON(v.Map())
 		default:
-			out[k] = v
+			out[k] = v.AsRaw()
 		}
-	}
+		return true
+	})
 	return out
 }
 
-func typedSliceForJSON(s []any) any {
-	if len(s) == 0 {
+func toTypedSlice(s pcommon.Slice) any {
+	if s.Len() == 0 {
 		return []string{}
 	}
-	switch s[0].(type) {
-	case string:
-		out := make([]string, len(s))
-		for i, e := range s {
-			if str, ok := e.(string); ok {
-				out[i] = str
-			} else {
-				out[i] = fmt.Sprintf("%v", e)
-			}
-		}
-		return out
-	case float64:
-		out := make([]float64, len(s))
-		for i, e := range s {
-			if f, ok := e.(float64); ok {
-				out[i] = f
-			}
-		}
-		return out
-	case int64:
-		out := make([]int64, len(s))
-		for i, e := range s {
-			if n, ok := e.(int64); ok {
-				out[i] = n
-			}
-		}
-		return out
-	case bool:
-		out := make([]bool, len(s))
-		for i, e := range s {
-			if b, ok := e.(bool); ok {
-				out[i] = b
-			}
-		}
-		return out
+	switch s.At(0).Type() {
+	case pcommon.ValueTypeStr:
+		return collectSlice(s, pcommon.Value.Str)
+	case pcommon.ValueTypeInt:
+		return collectSlice(s, pcommon.Value.Int)
+	case pcommon.ValueTypeDouble:
+		return collectSlice(s, pcommon.Value.Double)
+	case pcommon.ValueTypeBool:
+		return collectSlice(s, pcommon.Value.Bool)
 	default:
-		out := make([]string, len(s))
-		for i, e := range s {
-			out[i] = fmt.Sprintf("%v", e)
-		}
-		return out
+		return collectSlice(s, pcommon.Value.AsString)
 	}
+}
+
+func collectSlice[T any](s pcommon.Slice, toNativeType func(pcommon.Value) T) []T {
+	out := make([]T, s.Len())
+	for i := range out {
+		out[i] = toNativeType(s.At(i))
+	}
+	return out
 }
 
 type attributesData struct {
@@ -403,7 +380,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributeString:  attrMap.StringMap,
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
-		Attributes:       normalizeForJSON(otelSpan.Attributes().AsRaw()),
+		Attributes:       attributesForJSON(otelSpan.Attributes()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
