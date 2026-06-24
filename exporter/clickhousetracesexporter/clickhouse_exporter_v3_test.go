@@ -937,6 +937,31 @@ func Test_attributesForJSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Bytes fall through to AsString() which base64-encodes them — safe for ClickHouse.
+			name: "bytes attribute falls back to base64 string",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutEmptyBytes("raw").FromRaw([]byte{0xde, 0xad, 0xbe, 0xef})
+			}),
+			want: map[string]any{
+				"raw": "3q2+7w==",
+			},
+		},
+		{
+			// Mixed-type slices are technically invalid per OTel spec, but can arrive from
+			// misbehaving instrumentation. Type is inferred from the first element; elements
+			// of a different type return the zero value of the inferred type.
+			// This test documents (and pins) that behaviour.
+			name: "mixed-type slice: type inferred from first element",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("mixed")
+				s.AppendEmpty().SetStr("ok")
+				s.AppendEmpty().SetInt(42) // Int on a []string slice → Str() returns ""
+			}),
+			want: map[string]any{
+				"mixed": []string{"ok", ""},
+			},
+		},
 	}
 
 	for _, tt := range tests {
