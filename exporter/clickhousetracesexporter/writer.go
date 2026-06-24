@@ -185,7 +185,6 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributeString,
 			span.AttributesNumber,
 			span.AttributesBool,
-			span.Attributes,
 			span.ResourcesString,
 			span.ResourcesString,
 			marshalledScope,
