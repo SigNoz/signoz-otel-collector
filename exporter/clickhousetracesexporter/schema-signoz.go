@@ -168,7 +168,6 @@ type SpanV3 struct {
 	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
-	Attributes       map[string]any     `json:"-"`
 
 	ResourcesString map[string]string `json:"-"`
 	// billable resource contains filtered keys from resources string which needs to be billed
