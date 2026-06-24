@@ -171,8 +171,7 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
-// attributesForJSON converts otel slice and map to Go typed values since
-// the ClickHouse Go driver cannot infer the type from []interface{}.
+// attributesForJSON converts otel slice and map to typed values since the ClickHouse cannot infer the type from []interface{}.
 func attributesForJSON(attrs pcommon.Map) map[string]any {
 	out := make(map[string]any, attrs.Len())
 	attrs.Range(func(k string, v pcommon.Value) bool {
