@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -336,7 +336,6 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributeString:  attrMap.StringMap,
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
-		Attributes:       otelSpan.Attributes().AsRaw(),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
