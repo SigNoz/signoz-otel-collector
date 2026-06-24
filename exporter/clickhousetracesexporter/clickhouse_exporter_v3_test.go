@@ -948,18 +948,38 @@ func Test_attributesForJSON(t *testing.T) {
 			},
 		},
 		{
-			// Mixed-type slices are technically invalid per OTel spec, but can arrive from
-			// misbehaving instrumentation. Type is inferred from the first element; elements
-			// of a different type return the zero value of the inferred type.
-			// This test documents (and pins) that behaviour.
+			// Type is inferred from the first element; elements of a different type return the zero value of the inferred type.
 			name: "mixed-type slice: type inferred from first element",
 			attrs: makeMap(func(m pcommon.Map) {
 				s := m.PutEmptySlice("mixed")
 				s.AppendEmpty().SetStr("ok")
-				s.AppendEmpty().SetInt(42) // Int on a []string slice → Str() returns ""
+				s.AppendEmpty().SetInt(42)
 			}),
 			want: map[string]any{
 				"mixed": []string{"ok", ""},
+			},
+		},
+		{
+			name: "slice of slices: inner slices preserved as []any of typed slices",
+			attrs: makeMap(func(m pcommon.Map) {
+				outer := m.PutEmptySlice("nested_slices")
+				inner := outer.AppendEmpty().SetEmptySlice()
+				inner.AppendEmpty().SetStr("a")
+				inner.AppendEmpty().SetStr("b")
+			}),
+			want: map[string]any{
+				"nested_slices": []any{[]string{"a", "b"}},
+			},
+		},
+		{
+			name: "slice of maps: inner maps preserved as []map[string]any",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("map_slice")
+				inner := s.AppendEmpty().SetEmptyMap()
+				inner.PutStr("k", "v")
+			}),
+			want: map[string]any{
+				"map_slice": []map[string]any{{"k": "v"}},
 			},
 		},
 	}

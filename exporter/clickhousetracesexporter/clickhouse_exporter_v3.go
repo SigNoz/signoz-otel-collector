@@ -209,6 +209,18 @@ func toTypedSlice(s pcommon.Slice) any {
 		return collectSlice(s, pcommon.Value.Double)
 	case pcommon.ValueTypeBool:
 		return collectSlice(s, pcommon.Value.Bool)
+	case pcommon.ValueTypeMap:
+		out := make([]map[string]any, s.Len())
+		for i := range out {
+			out[i] = attributesForJSON(s.At(i).Map())
+		}
+		return out
+	case pcommon.ValueTypeSlice:
+		out := make([]any, s.Len())
+		for i := range out {
+			out[i] = toTypedSlice(s.At(i).Slice())
+		}
+		return out
 	default:
 		return collectSlice(s, pcommon.Value.AsString)
 	}
