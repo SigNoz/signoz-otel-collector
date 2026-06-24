@@ -171,6 +171,73 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
+// normalizeForJSON converts []interface{} slices to typed slices so the
+// ClickHouse Go driver can determine the correct Array(T) type for JSON column
+// shared-data paths. Nested maps are recursed into; mixed-type slices fall
+// back to []string.
+func normalizeForJSON(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		switch val := v.(type) {
+		case map[string]any:
+			out[k] = normalizeForJSON(val)
+		case []any:
+			out[k] = typedSliceForJSON(val)
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func typedSliceForJSON(s []any) any {
+	if len(s) == 0 {
+		return []string{}
+	}
+	switch s[0].(type) {
+	case string:
+		out := make([]string, len(s))
+		for i, e := range s {
+			if str, ok := e.(string); ok {
+				out[i] = str
+			} else {
+				out[i] = fmt.Sprintf("%v", e)
+			}
+		}
+		return out
+	case float64:
+		out := make([]float64, len(s))
+		for i, e := range s {
+			if f, ok := e.(float64); ok {
+				out[i] = f
+			}
+		}
+		return out
+	case int64:
+		out := make([]int64, len(s))
+		for i, e := range s {
+			if n, ok := e.(int64); ok {
+				out[i] = n
+			}
+		}
+		return out
+	case bool:
+		out := make([]bool, len(s))
+		for i, e := range s {
+			if b, ok := e.(bool); ok {
+				out[i] = b
+			}
+		}
+		return out
+	default:
+		out := make([]string, len(s))
+		for i, e := range s {
+			out[i] = fmt.Sprintf("%v", e)
+		}
+		return out
+	}
+}
+
 type attributesData struct {
 	StringMap      map[string]string
 	NumberMap      map[string]float64
@@ -336,7 +403,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributeString:  attrMap.StringMap,
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
-		Attributes:       otelSpan.Attributes().AsRaw(),
+		Attributes:       normalizeForJSON(otelSpan.Attributes().AsRaw()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
