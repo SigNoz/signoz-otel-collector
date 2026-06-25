@@ -59,7 +59,7 @@ func TestCreateTable(t *testing.T) {
 					},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy: "id",
 					},
 				},
@@ -297,7 +297,7 @@ func TestCreateWithCluster(t *testing.T) {
 					},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy: "id",
 					},
 				},
@@ -410,4 +410,79 @@ func TestAlterTableDropTTL(t *testing.T) {
 			require.Equal(t, tc.want, tc.op.ToSQL())
 		})
 	}
+}
+
+func TestCreateRefreshableMaterializedView(t *testing.T) {
+	testCases := []struct {
+		name string
+		op   Operation
+		want string
+	}{
+		{
+			name: "create-refreshable-mv-minimal",
+			op: CreateRefreshableMaterializedViewOperation{
+				Database:     "db",
+				ViewName:     "view",
+				DestTable:    "dest",
+				RefreshEvery: "1 MINUTE",
+				Query:        "SELECT id FROM db.table",
+			},
+			want: "CREATE MATERIALIZED VIEW IF NOT EXISTS db.view REFRESH EVERY 1 MINUTE TO db.dest AS SELECT id FROM db.table",
+		},
+		{
+			name: "create-refreshable-mv-with-all-options",
+			op: CreateRefreshableMaterializedViewOperation{
+				Database:  "db",
+				ViewName:  "view",
+				DestTable: "dest",
+				Columns: []Column{
+					{
+						Name: "id",
+						Type: ColumnTypeInt16,
+					},
+				},
+				RefreshEvery: "1 MINUTE",
+				RandomizeFor: "10 SECOND",
+				Append:       true,
+				Empty:        true,
+				Definer:      "admin",
+				SQLSecurity:  "DEFINER",
+				Query:        "SELECT id FROM db.table",
+			}.OnCluster("cluster"),
+			want: "CREATE MATERIALIZED VIEW IF NOT EXISTS db.view ON CLUSTER cluster REFRESH EVERY 1 MINUTE RANDOMIZE FOR 10 SECOND APPEND TO db.dest (id Int16) EMPTY DEFINER = admin SQL SECURITY DEFINER AS SELECT id FROM db.table",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.op.ToSQL())
+		})
+	}
+}
+
+func TestCreateTableReplacingMergeTreeWithVersion(t *testing.T) {
+	op := CreateTableOperation{
+		Database: "db",
+		Table:    "table",
+		Columns: []Column{
+			{
+				Name: "id",
+				Type: ColumnTypeInt16,
+			},
+			{
+				Name: "updated_at",
+				Type: DateTime64ColumnType{Precision: 3},
+			},
+		},
+		Engine: ReplacingMergeTree{
+			MergeTree: MergeTree{
+				OrderBy: "id",
+			},
+			Version: "updated_at",
+		},
+	}
+	require.Equal(t, "CREATE TABLE IF NOT EXISTS db.table (id Int16, updated_at DateTime64(3)) ENGINE = ReplacingMergeTree(updated_at) ORDER BY id", op.ToSQL())
+
+	replicated := op.WithReplication()
+	require.Equal(t, "CREATE TABLE IF NOT EXISTS db.table (id Int16, updated_at DateTime64(3)) ENGINE = ReplicatedReplacingMergeTree(updated_at) ORDER BY id", replicated.ToSQL())
 }
