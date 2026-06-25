@@ -32,12 +32,7 @@ func createLogsReceiver(
 	}, nil
 }
 
-func createTracesReceiver(
-	_ context.Context,
-	_ receiver.Settings,
-	config component.Config,
-	consumer consumer.Traces,
-) (receiver.Traces, error) {
+func createTracesReceiver(_ context.Context, _ receiver.Settings, config component.Config, consumer consumer.Traces) (receiver.Traces, error) {
 	if err := xconfmap.Validate(config); err != nil {
 		return nil, errors.Wrap(err, "invalid inmemory receiver config")
 	}

@@ -11,9 +11,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-// In memory receiver for testing and simulation.
-// A single instance is wired for one signal (logs or traces) per simulation;
-// the corresponding next-consumer field is set by the factory.
 type InMemoryReceiver struct {
 	// Unique identifier for the receiver.
 	id string
