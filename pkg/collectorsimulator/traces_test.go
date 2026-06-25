@@ -7,6 +7,7 @@ import (
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -14,6 +15,7 @@ import (
 
 func TestTracesProcessingSimulation(t *testing.T) {
 	require := require.New(t)
+	assert := assert.New(t)
 
 	inputTraces := []ptrace.Traces{
 		makeTestPtrace("test span 1", map[string]string{
@@ -82,13 +84,13 @@ func TestTracesProcessingSimulation(t *testing.T) {
 		ss := rs.ScopeSpans().At(0)
 		span := ss.Spans().At(0)
 		method, exists := span.Attributes().Get("method")
-		require.True(exists)
+		assert.True(exists)
 		testVal, exists := span.Attributes().Get("test")
-		require.True(exists)
+		assert.True(exists)
 		if method.Str() == "GET" {
-			require.Equal("test-value-get", testVal.Str())
+			assert.Equal("test-value-get", testVal.Str())
 		} else {
-			require.Equal("test-value-post", testVal.Str())
+			assert.Equal("test-value-post", testVal.Str())
 		}
 	}
 }

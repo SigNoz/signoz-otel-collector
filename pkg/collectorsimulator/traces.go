@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor"
 )
 
@@ -15,7 +16,7 @@ import (
 // Useful for testing, validation and generating previews.
 func SimulateTracesProcessing(ctx context.Context, processorFactories map[component.Type]processor.Factory, configGenerator ConfigGenerator, traces []ptrace.Traces, timeout time.Duration) (outputTraces []ptrace.Traces, collectorErrs []string, err error) {
 	simulator, simulatorInitCleanup, err := NewCollectorSimulator(
-		ctx, SignalTraces, processorFactories, configGenerator,
+		ctx, pipeline.SignalTraces, processorFactories, configGenerator,
 	)
 	if simulatorInitCleanup != nil {
 		defer simulatorInitCleanup()

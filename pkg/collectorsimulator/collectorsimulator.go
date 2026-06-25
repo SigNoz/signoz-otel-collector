@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 	"go.opentelemetry.io/collector/otelcol"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/service"
 	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
@@ -40,16 +41,9 @@ type CollectorSimulator struct {
 
 type ConfigGenerator func(baseConfYaml []byte) ([]byte, error)
 
-type Signal string
-
-const (
-	SignalLogs   Signal = "logs"
-	SignalTraces Signal = "traces"
-)
-
 func NewCollectorSimulator(
 	ctx context.Context,
-	signal Signal,
+	signal pipeline.Signal,
 	processorFactories map[component.Type]processor.Factory,
 	configGenerator ConfigGenerator,
 ) (simulator *CollectorSimulator, cleanupFn func(), err error) {
@@ -237,7 +231,7 @@ func (l *CollectorSimulator) Shutdown(ctx context.Context) (
 }
 
 func generateSimulationConfig(
-	pipelineSignal Signal,
+	pipelineSignal pipeline.Signal,
 	receiverId string,
 	configGenerator ConfigGenerator,
 	exporterId string,
