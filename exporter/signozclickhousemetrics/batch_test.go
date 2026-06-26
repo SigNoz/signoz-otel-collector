@@ -208,7 +208,7 @@ func TestBatch_addMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:        "multiple calls append without deduplication",
+			name:        "duplicates collapse, distinct values preserved",
 			metricName:  "test.metric",
 			metricDesc:  "Test description",
 			metricUnit:  "ms",
@@ -225,29 +225,41 @@ func TestBatch_addMetadata(t *testing.T) {
 			firstSeen:       baseTimestamp,
 			lastSeen:        baseTimestamp + 1000,
 			validate: func(t *testing.T, b *batch) {
-				// First call adds 2 entries
+				// first call (from harness): 2 entries
 				require.Len(t, b.metadata, 2)
 
-				// Second call with same attributes
+				// identical identities, wider window: collapses and only widens first/last
 				attrs := pcommon.NewMap()
 				attrs.PutStr("service.name", "test-service")
 				attrs.PutStr("env", "prod")
 				fp := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, 0, attrs, nil)
 				b.addMetadata("test.metric", "Test description", "ms",
 					pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified,
-					false, fp, baseTimestamp, baseTimestamp+1000)
-
-				// Should have 4 entries total (no deduplication)
-				require.Len(t, b.metadata, 4)
-
-				// Verify all entries
-				count := 0
+					false, fp, baseTimestamp-500, baseTimestamp+2000)
+				require.Len(t, b.metadata, 2, "identical metadata identities must collapse")
 				for _, m := range b.metadata {
-					if m.attrName == "service.name" || m.attrName == "env" {
-						count++
+					assert.Equal(t, baseTimestamp-500, m.firstReportedUnixMilli, "first reported widens to the earliest")
+					assert.Equal(t, baseTimestamp+2000, m.lastReportedUnixMilli, "last reported widens to the latest")
+				}
+
+				// regression guard for signoz#9787: value-blind dedup must not drop distinct attribute values
+				attrs2 := pcommon.NewMap()
+				attrs2.PutStr("service.name", "other-service")
+				attrs2.PutStr("env", "prod") // duplicate identity, collapses
+				fp2 := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, 0, attrs2, nil)
+				b.addMetadata("test.metric", "Test description", "ms",
+					pmetric.MetricTypeGauge, pmetric.AggregationTemporalityUnspecified,
+					false, fp2, baseTimestamp, baseTimestamp+1000)
+				require.Len(t, b.metadata, 3, "a distinct attribute value must add a row")
+
+				serviceValues := map[string]bool{}
+				for _, m := range b.metadata {
+					if m.attrName == "service.name" {
+						serviceValues[m.attrStringValue] = true
 					}
 				}
-				assert.Equal(t, 4, count, "should have 4 entries total")
+				assert.True(t, serviceValues["test-service"])
+				assert.True(t, serviceValues["other-service"], "distinct service.name value must be preserved")
 			},
 		},
 		{
@@ -331,7 +343,7 @@ func TestBatch_addMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := newBatch(zaptest.NewLogger(t))
+			b := newBatch(zaptest.NewLogger(t), 0, 0, 0)
 			attrs := tt.setupAttrs()
 			fp := pkgfingerprint.NewFingerprint(tt.fingerprintType, 0, attrs, nil)
 

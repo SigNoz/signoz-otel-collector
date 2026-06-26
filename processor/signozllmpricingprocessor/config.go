@@ -89,7 +89,7 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: invalid glob pattern %q: %w", i, j, p, err)
 			}
 		}
-		if r.Cache.Mode != CacheModeSubtract && r.Cache.Mode != CacheModeAdditive {
+		if r.Cache.Mode != CacheModeSubtract && r.Cache.Mode != CacheModeAdditive && r.Cache.Mode != "" {
 			return fmt.Errorf("default_pricing.rules[%d] (pattern=%v): cache.mode must be %q or %q, got %q",
 				i, r.Pattern, CacheModeSubtract, CacheModeAdditive, r.Cache.Mode)
 		}

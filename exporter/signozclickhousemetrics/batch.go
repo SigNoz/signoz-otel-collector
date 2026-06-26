@@ -10,19 +10,23 @@ import (
 )
 
 type batch struct {
-	samples  []*sample
-	expHist  []*exponentialHistogramSample
-	ts       []*ts
-	metadata []*metadata
-	logger   *zap.Logger
+	samples  []sample
+	expHist  []exponentialHistogramSample
+	ts       []ts
+	metadata []metadata
+	// per-batch dedup of metadata rows by identity (metaKey)
+	metaIdx map[metaKey]int
+	logger  *zap.Logger
 }
 
-func newBatch(logger *zap.Logger) *batch {
+// newBatch pre-sizes each slice from a per-table hint (the previous batch's length).
+func newBatch(logger *zap.Logger, samplesHint, tsHint, metadataHint int) *batch {
 	return &batch{
-		samples:  make([]*sample, 0),
-		expHist:  make([]*exponentialHistogramSample, 0),
-		ts:       make([]*ts, 0),
-		metadata: make([]*metadata, 0),
+		samples:  make([]sample, 0, max(samplesHint, 0)),
+		expHist:  make([]exponentialHistogramSample, 0),
+		ts:       make([]ts, 0, max(tsHint, 0)),
+		metadata: make([]metadata, 0, max(metadataHint, 0)),
+		metaIdx:  make(map[metaKey]int, max(metadataHint, 0)),
 		logger:   logger,
 	}
 }
@@ -36,8 +40,30 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 		b.logger.Debug("firstSeen/lastSeen not provided; defaulting to now", zap.Int64("first_seen_unix_milli", firstSeenUnixMilli), zap.Int64("last_seen_unix_milli", lastSeenUnixMilli))
 	}
 
-	for key, value := range fingerprint.Attributes() {
-		b.metadata = append(b.metadata, &metadata{
+	attrType := fingerprint.Type().String()
+	for _, attr := range fingerprint.Attributes() {
+		key, value := attr.Key, attr.Value
+		mk := metaKey{
+			temporality:     temporality,
+			metricName:      name,
+			attrName:        key,
+			attrType:        attrType,
+			attrDatatype:    value.DataType,
+			attrStringValue: value.Val,
+		}
+		if idx, ok := b.metaIdx[mk]; ok {
+			// already recorded this batch; widen its reported window (min first, max last)
+			existing := &b.metadata[idx]
+			if firstSeenUnixMilli < existing.firstReportedUnixMilli {
+				existing.firstReportedUnixMilli = firstSeenUnixMilli
+			}
+			if lastSeenUnixMilli > existing.lastReportedUnixMilli {
+				existing.lastReportedUnixMilli = lastSeenUnixMilli
+			}
+			continue
+		}
+		b.metaIdx[mk] = len(b.metadata)
+		b.metadata = append(b.metadata, metadata{
 			metricName:             name,
 			temporality:            temporality,
 			description:            desc,
@@ -45,7 +71,7 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 			typ:                    typ,
 			isMonotonic:            isMonotonic,
 			attrName:               key,
-			attrType:               fingerprint.Type().String(),
+			attrType:               attrType,
 			attrDatatype:           value.DataType,
 			attrStringValue:        value.Val,
 			firstReportedUnixMilli: firstSeenUnixMilli,
@@ -55,13 +81,13 @@ func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, tem
 }
 
 func (b *batch) addSample(sample *sample) {
-	b.samples = append(b.samples, sample)
+	b.samples = append(b.samples, *sample)
 }
 
 func (b *batch) addTs(ts *ts) {
-	b.ts = append(b.ts, ts)
+	b.ts = append(b.ts, *ts)
 }
 
 func (b *batch) addExpHist(expHist *exponentialHistogramSample) {
-	b.expHist = append(b.expHist, expHist)
+	b.expHist = append(b.expHist, *expHist)
 }
