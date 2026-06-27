@@ -18,6 +18,7 @@ require (
 	github.com/goccy/go-json v0.10.5
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
@@ -266,6 +267,7 @@ require (
 	go.opentelemetry.io/collector/extension/xextension v0.144.0
 	go.opentelemetry.io/collector/extension/zpagesextension v0.144.0
 	go.opentelemetry.io/collector/featuregate v1.50.0
+	go.opentelemetry.io/collector/filter v0.144.0
 	go.opentelemetry.io/collector/otelcol v0.144.0
 	go.opentelemetry.io/collector/otelcol/otelcoltest v0.144.0
 	go.opentelemetry.io/collector/pdata v1.50.0
@@ -503,7 +505,6 @@ require (
 	github.com/google/cadvisor v0.55.1 // indirect
 	github.com/google/flatbuffers v25.9.23+incompatible // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v81 v81.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
@@ -733,7 +734,6 @@ require (
 	go.opentelemetry.io/collector/exporter/xexporter v0.144.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionauth v1.50.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.144.0 // indirect
-	go.opentelemetry.io/collector/filter v0.144.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.144.0 // indirect
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.144.0 // indirect
 	go.opentelemetry.io/collector/internal/memorylimiter v0.144.0 // indirect

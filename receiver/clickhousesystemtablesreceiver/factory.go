@@ -3,6 +3,7 @@ package clickhousesystemtablesreceiver
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -13,7 +14,8 @@ import (
 )
 
 const (
-	defaultScrapeIntervalSeconds = 10
+	defaultScrapeIntervalSeconds     = 10
+	defaultMetricsCollectionInterval = 30 * time.Second
 )
 
 func NewFactory() receiver.Factory {
@@ -21,11 +23,17 @@ func NewFactory() receiver.Factory {
 		metadata.Type,
 		createDefaultConfig,
 		receiver.WithLogs(createLogsReceiver, metadata.LogsStability),
+		receiver.WithMetrics(createMetricsReceiver, metadata.MetricsStability),
 	)
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{
+		SystemTablesMetrics: SystemTablesMetricsConfig{
+			CollectionInterval:   defaultMetricsCollectionInterval,
+			MetricsBuilderConfig: metadata.DefaultMetricsBuilderConfig(),
+		},
+	}
 }
 
 func createLogsReceiver(
@@ -64,4 +72,36 @@ func createLogsReceiver(
 		obsrecv:               obsrecv,
 	}, nil
 
+}
+
+func createMetricsReceiver(
+	_ context.Context,
+	params receiver.Settings,
+	cfg component.Config,
+	consumer consumer.Metrics,
+) (receiver.Metrics, error) {
+	rCfg := cfg.(*Config)
+
+	metricsCfg := &rCfg.SystemTablesMetrics
+	if metricsCfg.CollectionInterval <= 0 {
+		metricsCfg.CollectionInterval = defaultMetricsCollectionInterval
+	}
+
+	obsrecv, err := receiverhelper.NewObsReport(receiverhelper.ObsReportSettings{
+		ReceiverID:             params.ID,
+		Transport:              "clickhouse",
+		ReceiverCreateSettings: params,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &systemTablesMetricsReceiver{
+		config:       rCfg,
+		metricsCfg:   metricsCfg,
+		mb:           metadata.NewMetricsBuilder(metricsCfg.MetricsBuilderConfig, params),
+		nextConsumer: consumer,
+		logger:       params.Logger,
+		obsrecv:      obsrecv,
+	}, nil
 }
