@@ -229,27 +229,45 @@ func Test_reductionCollapsesAcrossResources(t *testing.T) {
 	assert.Equal(t, batch.samples[0].reducedFingerprint, batch.samples[1].reducedFingerprint)
 }
 
-func Test_reductionHistogramDerivedSeries(t *testing.T) {
+func Test_reductionHistogramFlattenedRules(t *testing.T) {
+	// rules are keyed by the flattened metric name: only the listed derived
+	// metrics (.bucket and .count here) are reduced; .sum/.min/.max pass through.
 	exp := newReductionExporter(t, ruleSet{
-		"http.server.duration0": {keys: labelSet("resource.attr_0")},
+		"http.server.duration0.bucket": {keys: labelSet("resource.attr_0")},
+		"http.server.duration0.count":  {keys: labelSet("resource.attr_0")},
 	})
 	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
 
 	require.NotEmpty(t, batch.samples)
 	for _, s := range batch.samples {
-		assert.NotZero(t, s.reducedFingerprint, "derived series %s should inherit the base metric rule", s.metricName)
+		if strings.HasSuffix(s.metricName, bucketSuffix) || strings.HasSuffix(s.metricName, countSuffix) {
+			assert.NotZero(t, s.reducedFingerprint, "ruled metric %s should be reduced", s.metricName)
+		} else {
+			assert.Zero(t, s.reducedFingerprint, "unruled metric %s should pass through", s.metricName)
+		}
 	}
-	var reducedBuckets int
+
+	var reducedBuckets, reducedCount, reducedOther int
 	for _, ts := range batch.ts {
-		if ts.isReduced && strings.HasSuffix(ts.metricName, bucketSuffix) {
+		if !ts.isReduced {
+			continue
+		}
+		switch {
+		case strings.HasSuffix(ts.metricName, bucketSuffix):
 			reducedBuckets++
 			assert.Contains(t, ts.attrs, "le", "le is a protected label and must survive reduction")
 			assert.NotContains(t, ts.resourceAttrs, "resource.attr_0")
+		case strings.HasSuffix(ts.metricName, countSuffix):
+			reducedCount++
+		default:
+			reducedOther++
 		}
 	}
 	// 20 explicit bounds + the +Inf bucket
 	assert.Equal(t, 21, reducedBuckets)
+	assert.Equal(t, 1, reducedCount)
+	assert.Zero(t, reducedOther, "only ruled metrics emit reduced rows")
 }
 
 func Test_reductionSkipsExponentialHistogram(t *testing.T) {
@@ -283,6 +301,15 @@ func Test_reductionRuleAppliesAt(t *testing.T) {
 	assert.True(t, rule.appliesAt(101))
 	assert.True(t, rule.drop("a"))
 	assert.False(t, rule.drop("b"))
+}
+
+func Test_collectUsageForSample(t *testing.T) {
+	assert.True(t, collectUsageForSample(&sample{metricName: "http.server.duration.count"}))
+	assert.False(t, collectUsageForSample(&sample{metricName: "signoz.collector.foo"}))
+	assert.False(t, collectUsageForSample(&sample{metricName: "chi.foo"}))
+	assert.False(t, collectUsageForSample(&sample{metricName: "otelcol.foo"}))
+	// reduced (ruled) samples are billed via the reduced dimension, not as ingested usage
+	assert.False(t, collectUsageForSample(&sample{metricName: "http.server.duration.bucket", reducedFingerprint: 42}))
 }
 
 func Test_reductionConfigValidate(t *testing.T) {

@@ -516,10 +516,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
-	// rules match the base metric name and cover every derived series
-	reducer := c.newReducerFor(name, resourceFingerprint, scopeFingerprint)
+	// rules are keyed by the flattened metric name
+	countReducer := c.newReducerFor(name+countSuffix, resourceFingerprint, scopeFingerprint)
+	sumReducer := c.newReducerFor(name+sumSuffix, resourceFingerprint, scopeFingerprint)
+	minReducer := c.newReducerFor(name+minSuffix, resourceFingerprint, scopeFingerprint)
+	maxReducer := c.newReducerFor(name+maxSuffix, resourceFingerprint, scopeFingerprint)
+	bucketReducer := c.newReducerFor(name+bucketSuffix, resourceFingerprint, scopeFingerprint)
 
-	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
+	addSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string, reducer *reducer) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		sampleUnit := unit
@@ -587,7 +591,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		}
 	}
 
-	addBucketSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
+	addBucketSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string, reducer *reducer) {
 		var cumulativeCount uint64
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		pointAttrs := dp.Attributes()
@@ -704,17 +708,17 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			c.logger.Debug(NanDetectedErrMsg, zap.String("metric_name", name))
 			continue
 		}
-		addSample(b, dp, countSuffix)
+		addSample(b, dp, countSuffix, countReducer)
 		if dp.HasSum() {
-			addSample(b, dp, sumSuffix)
+			addSample(b, dp, sumSuffix, sumReducer)
 		}
 		if dp.HasMin() {
-			addSample(b, dp, minSuffix)
+			addSample(b, dp, minSuffix, minReducer)
 		}
 		if dp.HasMax() {
-			addSample(b, dp, maxSuffix)
+			addSample(b, dp, maxSuffix, maxReducer)
 		}
-		addBucketSample(b, dp, bucketSuffix)
+		addBucketSample(b, dp, bucketSuffix, bucketReducer)
 	}
 
 	// Add resource/scope metadata for all suffixes after processing all datapoints
@@ -746,10 +750,12 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 
 	resourceFingerprintMap := resourceFingerprint.AttributesAsMap()
 	scopeFingerprintMap := scopeFingerprint.AttributesAsMap()
-	// rules match the base metric name and cover every derived series
-	reducer := c.newReducerFor(name, resourceFingerprint, scopeFingerprint)
+	// rules are keyed by the flattened metric name
+	countReducer := c.newReducerFor(name+countSuffix, resourceFingerprint, scopeFingerprint)
+	sumReducer := c.newReducerFor(name+sumSuffix, resourceFingerprint, scopeFingerprint)
+	quantileReducer := c.newReducerFor(name+quantilesSuffix, resourceFingerprint, scopeFingerprint)
 
-	addSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
+	addSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string, reducer *reducer) {
 		unixMilli := dp.Timestamp().AsTime().UnixMilli()
 		sampleTyp := typ
 		sampleUnit := unit
@@ -804,7 +810,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		}
 	}
 
-	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
+	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string, reducer *reducer) {
 		// quantile values are instantaneous estimates with gauge semantics, not counters
 		quantileTemporality := pmetric.AggregationTemporalityUnspecified
 		quantileIsMonotonic := false
@@ -888,9 +894,9 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		if skip {
 			continue
 		}
-		addSample(b, dp, countSuffix)
-		addSample(b, dp, sumSuffix)
-		addQuantileSample(b, dp, quantilesSuffix)
+		addSample(b, dp, countSuffix, countReducer)
+		addSample(b, dp, sumSuffix, sumReducer)
+		addQuantileSample(b, dp, quantilesSuffix, quantileReducer)
 	}
 
 	// Add resource/scope metadata for all suffixes after processing all datapoints
@@ -1097,9 +1103,9 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
 	batch := newBatch(c.logger,
-		int(c.lastSamplesLen.Load()),
-		int(c.lastTsLen.Load()),
-		int(c.lastMetadataLen.Load()))
+		int(float64(c.lastSamplesLen.Load())*1.5),
+		int(float64(c.lastTsLen.Load())*1.5),
+		int(float64(c.lastMetadataLen.Load())*1.5))
 	start := time.Now()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
@@ -1302,12 +1308,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
-			collectUsage := true
-			if strings.HasPrefix(sample.metricName, "signoz") || strings.HasPrefix(sample.metricName, "chi") || strings.HasPrefix(sample.metricName, "otelcol") {
-				collectUsage = false
-			}
-
-			if collectUsage {
+			if collectUsageForSample(sample) {
 				usage.AddMetric(metrics, "default", 1, 0)
 			}
 		}
@@ -1452,6 +1453,18 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	}
 
 	return errors.Join(errs...)
+}
+
+func collectUsageForSample(s *sample) bool {
+	if s.reducedFingerprint != 0 {
+		return false
+	}
+	if strings.HasPrefix(s.metricName, "signoz") ||
+		strings.HasPrefix(s.metricName, "chi") ||
+		strings.HasPrefix(s.metricName, "otelcol") {
+		return false
+	}
+	return true
 }
 
 func makeCacheKey(a, b uint64) string {
