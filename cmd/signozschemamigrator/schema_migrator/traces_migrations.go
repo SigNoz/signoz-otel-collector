@@ -1,6 +1,9 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/utils"
+import (
+	"github.com/SigNoz/signoz-otel-collector/constants"
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
@@ -1234,4 +1237,64 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1014,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  constants.TracesColumnAttributesPromoted,
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  constants.TracesColumnAttributesPromoted,
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+			},
+		},
+	},
+	{
+		MigrationID: 1015,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "attributes_promoted_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr(constants.TracesColumnAttributesPromoted),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "attributes_promoted_paths_tokenbf"},
+			},
+		},
+	},
+	// add new new migration to test file for sync/async check as well
 }

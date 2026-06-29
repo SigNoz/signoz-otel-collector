@@ -25,6 +25,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -74,6 +75,9 @@ type SpanWriter struct {
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
 	done                      chan struct{}
+
+	promotedAttributePaths    atomic.Value // stores []string; lock-free reads on hot path
+	promotedPathsSyncInterval time.Duration
 }
 
 // NewSpanWriter returns a SpanWriter for the database
@@ -96,6 +100,12 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 	go func() {
 		writer.doFetchShouldSkipKeys() // Immediate first fetch
 		writer.fetchShouldSkipKeys()   // Start ticker routine
+	}()
+
+	writer.promotedAttributePaths.Store([]string{})
+	go func() {
+		writer.doFetchPromotedPaths() // Immediate first fetch
+		writer.fetchPromotedPaths()   // Start ticker routine
 	}()
 
 	return writer
@@ -136,6 +146,50 @@ func (e *SpanWriter) fetchShouldSkipKeys() {
 			return
 		case <-e.fetchShouldSkipKeysTicker.C:
 			e.doFetchShouldSkipKeys()
+		}
+	}
+}
+
+func (e *SpanWriter) doFetchPromotedPaths() {
+	query := fmt.Sprintf(
+		`SELECT field_name FROM %s WHERE signal = 'traces' AND column_name = '%s' AND field_context = 'attribute' AND field_name != '__all__' SETTINGS max_threads = 1`,
+		constants.DistTableColumnEvolution,
+		constants.TracesColumnAttributesPromoted,
+	)
+
+	rows := []struct {
+		FieldName string `ch:"field_name"`
+	}{}
+	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+		e.logger.Error("error while fetching promoted attribute paths", zap.Error(err))
+		return
+	}
+
+	// deduplicate
+	seen := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		seen[r.FieldName] = struct{}{}
+	}
+
+	updated := make([]string, 0, len(seen))
+	for path := range seen {
+		updated = append(updated, path)
+	}
+	e.promotedAttributePaths.Store(updated)
+}
+
+func (e *SpanWriter) fetchPromotedPaths() {
+	if e.promotedPathsSyncInterval == 0 {
+		return
+	}
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.done:
+			return
+		case <-ticker.C:
+			e.doFetchPromotedPaths()
 		}
 	}
 }
@@ -186,6 +240,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesNumber,
 			span.AttributesBool,
 			span.Attributes,
+			span.AttributesPromoted,
 			span.ResourcesString,
 			span.ResourcesString,
 			marshalledScope,
