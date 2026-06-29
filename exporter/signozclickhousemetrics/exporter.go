@@ -1308,7 +1308,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
-			if collectUsageForSample(sample) {
+			if c.collectUsageForSample(sample) {
 				usage.AddMetric(metrics, "default", 1, 0)
 			}
 		}
@@ -1455,13 +1455,13 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	return errors.Join(errs...)
 }
 
-func collectUsageForSample(s *sample) bool {
-	if s.reducedFingerprint != 0 {
-		return false
-	}
+func (c *clickhouseMetricsExporter) collectUsageForSample(s *sample) bool {
 	if strings.HasPrefix(s.metricName, "signoz") ||
 		strings.HasPrefix(s.metricName, "chi") ||
 		strings.HasPrefix(s.metricName, "otelcol") {
+		return false
+	}
+	if s.reducedFingerprint != 0 || c.ruleFor(s.metricName) != nil {
 		return false
 	}
 	return true

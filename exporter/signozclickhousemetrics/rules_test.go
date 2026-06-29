@@ -304,12 +304,30 @@ func Test_reductionRuleAppliesAt(t *testing.T) {
 }
 
 func Test_collectUsageForSample(t *testing.T) {
-	assert.True(t, collectUsageForSample(&sample{metricName: "http.server.duration.count"}))
-	assert.False(t, collectUsageForSample(&sample{metricName: "signoz.collector.foo"}))
-	assert.False(t, collectUsageForSample(&sample{metricName: "chi.foo"}))
-	assert.False(t, collectUsageForSample(&sample{metricName: "otelcol.foo"}))
-	// reduced (ruled) samples are billed via the reduced dimension, not as ingested usage
-	assert.False(t, collectUsageForSample(&sample{metricName: "http.server.duration.bucket", reducedFingerprint: 42}))
+	exp := newReductionExporter(t, ruleSet{
+		"http.server.duration0.bucket": {keys: labelSet("resource.attr_0")},
+	})
+
+	assert.True(t, exp.collectUsageForSample(&sample{metricName: "http.server.duration0.count"}))
+
+	// internal metrics
+	assert.False(t, exp.collectUsageForSample(&sample{metricName: "signoz.collector.foo"}))
+	assert.False(t, exp.collectUsageForSample(&sample{metricName: "chi.foo"}))
+	assert.False(t, exp.collectUsageForSample(&sample{metricName: "otelcol.foo"}))
+
+	// reduced
+	assert.False(t, exp.collectUsageForSample(&sample{metricName: "anything", reducedFingerprint: 42}))
+
+	// ruled metric is skipped
+	assert.False(t, exp.collectUsageForSample(&sample{metricName: "http.server.duration0.bucket"}))
+
+	disabled, err := NewClickHouseExporter(
+		WithLogger(zap.NewNop()),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+	assert.True(t, disabled.collectUsageForSample(&sample{metricName: "http.server.duration0.bucket"}))
 }
 
 func Test_reductionConfigValidate(t *testing.T) {
