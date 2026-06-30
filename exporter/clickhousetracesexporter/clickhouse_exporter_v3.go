@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -88,55 +88,51 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 	return service.Str()
 }
 
-func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
-	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == "http.status_code" || k == "http.response.status_code" {
-			// Handle both string/int http status codes.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
-			value := v.Str()
-			valueUrl, err := url.Parse(value)
-			if err == nil {
-				value = valueUrl.Hostname()
-			}
-			span.ExternalHttpUrl = value
-			span.HttpUrl = v.Str()
-			if span.HttpHost == "" { // skip override if already set using possibleHostAttr
-				span.HttpHost = value
-			}
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
-			span.ExternalHttpMethod = v.Str()
-			span.HttpMethod = v.Str()
-		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
-			span.HttpUrl = v.Str()
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
-			span.HttpMethod = v.Str()
-		} else if _, ok := possibleHostAttr[k]; ok {
-			span.HttpHost = v.Str()
-		} else if k == "db.name" || k == "db.namespace" {
-			span.DBName = v.Str()
-		} else if k == "db.operation" || k == "db.operation.name" {
-			span.DBOperation = v.Str()
-		} else if k == "rpc.grpc.status_code" {
-			// Handle both string/int status code in GRPC spans.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if k == "rpc.jsonrpc.error_code" {
-			span.ResponseStatusCode = v.Str()
+// applyCustomAttr extracts well-known HTTP/DB/RPC attributes into typed SpanV3 fields.
+func applyCustomAttr(k string, v pcommon.Value, span *SpanV3) {
+	if k == "http.status_code" || k == "http.response.status_code" {
+		// Handle both string/int http status codes.
+		statusString, err := strconv.Atoi(v.Str())
+		statusInt := v.Int()
+		if err == nil && statusString != 0 {
+			statusInt = int64(statusString)
 		}
-		return true
-
-	})
-
+		span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+	} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
+		value := v.Str()
+		valueUrl, err := url.Parse(value)
+		if err == nil {
+			value = valueUrl.Hostname()
+		}
+		span.ExternalHttpUrl = value
+		span.HttpUrl = v.Str()
+		if span.HttpHost == "" { // skip override if already set using possibleHostAttr
+			span.HttpHost = value
+		}
+	} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
+		span.ExternalHttpMethod = v.Str()
+		span.HttpMethod = v.Str()
+	} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
+		span.HttpUrl = v.Str()
+	} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
+		span.HttpMethod = v.Str()
+	} else if _, ok := possibleHostAttr[k]; ok {
+		span.HttpHost = v.Str()
+	} else if k == "db.name" || k == "db.namespace" {
+		span.DBName = v.Str()
+	} else if k == "db.operation" || k == "db.operation.name" {
+		span.DBOperation = v.Str()
+	} else if k == "rpc.grpc.status_code" {
+		// Handle both string/int status code in GRPC spans.
+		statusString, err := strconv.Atoi(v.Str())
+		statusInt := v.Int()
+		if err == nil && statusString != 0 {
+			statusInt = int64(statusString)
+		}
+		span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+	} else if k == "rpc.jsonrpc.error_code" {
+		span.ResponseStatusCode = v.Str()
+	}
 }
 
 func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExceptionGrouping bool) {
@@ -261,49 +257,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	resourceAttrs := map[string]string{}
 	billableResourceAttrs := map[string]string{}
 
-	otelSpan.Attributes().Range(func(k string, v pcommon.Value) bool {
-		attrMap.add(k, v)
-		return true
-
-	})
-
-	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		isBillable := !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k)
-		if v.Type() == pcommon.ValueTypeMap {
-			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
-			for tempKey, tempVal := range result {
-				strVal := fmt.Sprintf("%v", tempVal)
-				resourceAttrs[tempKey] = strVal
-				if isBillable {
-					billableResourceAttrs[tempKey] = strVal
-				}
-				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
-					Key:         tempKey,
-					TagType:     "resource",
-					IsColumn:    false,
-					StringValue: strVal,
-					DataType:    "string",
-				})
-			}
-		} else {
-			resourceAttrs[k] = v.AsString()
-			if isBillable {
-				billableResourceAttrs[k] = v.AsString()
-			}
-			attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
-				Key:         k,
-				TagType:     "resource",
-				IsColumn:    false,
-				StringValue: v.AsString(),
-				DataType:    "string",
-			})
-		}
-		return true
-
-	})
-
 	instrumentationScope := NewInstrumentationScope(scope)
-	attrMap.SpanAttributes = append(attrMap.SpanAttributes, instrumentationScope.GetSpanAttributes()...)
 
 	references, _ := makeJaegerProtoReferences(otelSpan.Links(), otelSpan.ParentSpanID(), otelSpan.TraceID())
 	referencesBytes, _ := json.Marshal(references)
@@ -348,15 +302,60 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 		Tenant: &tenant,
 
-		References:     string(referencesBytes),
-		SpanAttributes: attrMap.SpanAttributes,
+		References: string(referencesBytes),
 	}
 
 	if otelSpan.Status().Code() == ptrace.StatusCodeError {
 		span.HasError = true
 	}
 
-	populateCustomAttrsAndAttrs(otelSpan.Attributes(), span)
+	// Single pass over otelSpan.Attributes(): builds attrMap and extracts
+	// well-known HTTP/DB/RPC attributes. Previously this map was iterated
+	// twice (here and via populateCustomAttrsAndAttrs at the end).
+	otelSpan.Attributes().Range(func(k string, v pcommon.Value) bool {
+		attrMap.add(k, v)
+		applyCustomAttr(k, v, span)
+		return true
+	})
+
+	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
+		isBillable := !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k)
+		if v.Type() == pcommon.ValueTypeMap {
+			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
+			for tempKey, tempVal := range result {
+				strVal := fmt.Sprintf("%v", tempVal)
+				resourceAttrs[tempKey] = strVal
+				if isBillable {
+					billableResourceAttrs[tempKey] = strVal
+				}
+				attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+					Key:         tempKey,
+					TagType:     "resource",
+					IsColumn:    false,
+					StringValue: strVal,
+					DataType:    "string",
+				})
+			}
+		} else {
+			resourceAttrs[k] = v.AsString()
+			if isBillable {
+				billableResourceAttrs[k] = v.AsString()
+			}
+			attrMap.SpanAttributes = append(attrMap.SpanAttributes, SpanAttribute{
+				Key:         k,
+				TagType:     "resource",
+				IsColumn:    false,
+				StringValue: v.AsString(),
+				DataType:    "string",
+			})
+		}
+		return true
+
+	})
+
+	attrMap.SpanAttributes = append(attrMap.SpanAttributes, instrumentationScope.GetSpanAttributes()...)
+	span.SpanAttributes = attrMap.SpanAttributes
+
 	populateEventsV3(otelSpan.Events(), span, config.lowCardinalExceptionGrouping)
 	return span, nil
 }
@@ -444,12 +443,6 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}
 					batchOfSpans = append(batchOfSpans, structuredSpan)
-
-					serializedStructuredSpan, err := json.Marshal(structuredSpan)
-					if err != nil {
-						return fmt.Errorf("failed to marshal structured span: %w", err)
-					}
-					size += len(serializedStructuredSpan)
 					count += 1
 				}
 			}

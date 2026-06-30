@@ -647,7 +647,6 @@ producerIteration:
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		logs := ld.ResourceLogs().At(i)
 		res := logs.Resource()
-		resBytes, _ := getResourceAttributesByte(res)
 		resourcesMap := attributesToMap(res.Attributes(), true)
 		serializedRes, err := json.Marshal(resourcesMap.StringData)
 		if err != nil {
@@ -710,8 +709,6 @@ producerIteration:
 					if len(resourcesMap.StringData) > 100 {
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
-					// record size calculation
-					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
 					body, bodyJSON, promoted, err := e.processBody(record.Body())
 					if err != nil {
@@ -737,7 +734,6 @@ producerIteration:
 						scopeMap:         scopeMap,
 						attrsMap:         attrsMap,
 						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
 					return nil
 				})
