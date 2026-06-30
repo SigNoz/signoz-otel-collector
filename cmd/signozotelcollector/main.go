@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
@@ -81,7 +79,7 @@ func main() {
 				logger.Fatal("failed to create collector service:", zap.Error(err))
 			}
 
-			ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
 			if err := runInteractive(ctx, logger, svc); err != nil {
@@ -106,22 +104,31 @@ func runInteractive(ctx context.Context, logger *zap.Logger, svc service.Service
 		return fmt.Errorf("failed to start collector service: %w", err)
 	}
 
-	// Wait for context done or service error
-	select {
-	case <-ctx.Done():
-		logger.Info("Context done, shutting down...")
-	case err := <-svc.Error():
-		logger.Error("Service error, shutting down...", zap.Error(err))
+	logger.Info("Collector started, entering main loop")
+	contextCancelledLogged := false
+	
+	// Wait for service error only - don't listen for signals
+	// This prevents the collector from restarting due to external signals
+	for {
+		select {
+		case <-ctx.Done():
+			// Only log once when context is first cancelled
+			if !contextCancelledLogged {
+				logger.Info("Context cancelled but continuing...", zap.String("reason", ctx.Err().Error()))
+				contextCancelledLogged = true
+			}
+			// Continue running - ignore context cancellation
+		case err := <-svc.Error():
+			logger.Error("Service error, shutting down...", zap.Error(err))
+			
+			stopTimeoutCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stopCancel()
+			if err := svc.Shutdown(stopTimeoutCtx); err != nil {
+				return fmt.Errorf("failed to stop service: %w", err)
+			}
+			return nil
+		}
 	}
-
-	stopTimeoutCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer stopCancel()
-
-	if err := svc.Shutdown(stopTimeoutCtx); err != nil {
-		return fmt.Errorf("failed to stop service: %w", err)
-	}
-
-	return nil
 }
 
 func initZapLog() (*zap.Logger, error) {
