@@ -5,6 +5,59 @@ status:
   stability:
     beta:
       - logs
+    alpha:
+      - metrics
+
+resource_attributes:
+  clickhouse.hostname:
+    description: Hostname of the ClickHouse replica the row was read from.
+    type: string
+    enabled: true
+
+attributes:
+  database:
+    description: Name of the database.
+    type: string
+  view:
+    description: Name of the (refreshable materialized) view.
+    type: string
+
+metrics:
+  clickhouse.view_refresh.last_success_age:
+    description: Seconds since the last successful refresh of the view (now() - last_success_time). Primary staleness signal for refreshable materialized views.
+    unit: s
+    gauge:
+      value_type: int
+    attributes: [database, view]
+    enabled: true
+  clickhouse.view_refresh.last_duration:
+    description: Duration of the most recent refresh of the view. Compared against the refresh cadence to detect overrun.
+    unit: s
+    gauge:
+      value_type: double
+    attributes: [database, view]
+    enabled: true
+  clickhouse.view_refresh.exception:
+    description: 1 if the view's last refresh ended in an exception, 0 otherwise.
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [database, view]
+    enabled: true
+  clickhouse.view_refresh.retry:
+    description: Current retry count for the view's refresh.
+    unit: "{retries}"
+    gauge:
+      value_type: int
+    attributes: [database, view]
+    enabled: true
+  clickhouse.view_refresh.progress:
+    description: Progress of an in-flight refresh, between 0 and 1.
+    unit: "1"
+    gauge:
+      value_type: double
+    attributes: [database, view]
+    enabled: true
 
 tests:
   skip_lifecycle: true

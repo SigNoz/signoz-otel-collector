@@ -17,6 +17,9 @@ type clickhouseQuerier interface {
 
 	// Get unix epoch time now at the server (seconds)
 	unixTsNow(context.Context) (uint32, error)
+
+	// Snapshot the current state of system.view_refreshes (all refreshable MVs).
+	scrapeViewRefreshes(ctx context.Context) ([]ViewRefreshRow, error)
 }
 
 type querrierImpl struct {
@@ -53,4 +56,8 @@ func (q *querrierImpl) unixTsNow(ctx context.Context) (
 		)
 	}
 	return serverTsNow, nil
+}
+
+func (q *querrierImpl) scrapeViewRefreshes(ctx context.Context) ([]ViewRefreshRow, error) {
+	return scrapeViewRefreshesTable(ctx, q.db, q.clusterName)
 }
