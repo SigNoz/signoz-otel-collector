@@ -150,7 +150,7 @@ func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 
 func (m *MigrationManager) createDBs() error {
 	for _, db := range Databases {
-		cmd := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s", db, m.clusterName)
+		cmd := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s", db, EscapeClusterName(m.clusterName))
 		if err := m.conn.Exec(context.Background(), cmd); err != nil {
 			return errors.Join(ErrFailedToCreateDBs, err)
 		}
@@ -1038,7 +1038,7 @@ func (m *MigrationManager) insertMigrationEntry(ctx context.Context, db string, 
 }
 
 func (m *MigrationManager) updateMigrationEntry(ctx context.Context, db string, migrationID uint64, status string, err string) error {
-	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = $1, error = $2, updated_at = $3 WHERE migration_id = $4", db, m.clusterName)
+	query := fmt.Sprintf("ALTER TABLE %s.schema_migrations_v2 ON CLUSTER %s UPDATE status = $1, error = $2, updated_at = $3 WHERE migration_id = $4", db, EscapeClusterName(m.clusterName))
 	m.logger.Info("Updating migration entry", zap.String("query", query), zap.String("status", status), zap.String("error", err), zap.Uint64("migration_id", migrationID))
 	return m.conn.Exec(ctx, query, status, err, time.Now().UTC().Format("2006-01-02 15:04:05"), migrationID)
 }
