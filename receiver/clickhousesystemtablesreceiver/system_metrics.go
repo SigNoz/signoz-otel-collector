@@ -55,7 +55,7 @@ func scanRows[T any](ctx context.Context, db driver.Conn, query, label string) (
 	if err != nil {
 		return nil, fmt.Errorf("couldn't query %s: %w", label, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := []T{}
 	for rows.Next() {
