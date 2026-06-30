@@ -5,6 +5,7 @@ import (
 	"log"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -837,5 +838,101 @@ func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 			assert.Equal(t, tt.expectedHTTPHost, span.HttpHost)
 			assert.Equal(t, tt.expectedHTTPURL, span.HttpUrl)
 		})
+	}
+}
+
+// countingConn wraps a driver.Conn (typically the cmock connection) and tallies the
+// number of Batch.Append calls per INSERT statement. Used by
+// TestExporterPushTracesData_SkipsSpansWithEndBeforeStart to assert that a malformed
+// span never reaches the per-table Append path.
+type countingConn struct {
+	driver.Conn
+	mu             sync.Mutex
+	appendsByTable map[string]int
+}
+
+func (c *countingConn) PrepareBatch(ctx context.Context, query string, opts ...driver.PrepareBatchOption) (driver.Batch, error) {
+	batch, err := c.Conn.PrepareBatch(ctx, query, opts...)
+	if err != nil {
+		return batch, err
+	}
+	return &countingBatch{Batch: batch, conn: c, query: query}, nil
+}
+
+type countingBatch struct {
+	driver.Batch
+	conn  *countingConn
+	query string
+}
+
+func (b *countingBatch) Append(v ...any) error {
+	b.conn.mu.Lock()
+	b.conn.appendsByTable[b.query]++
+	b.conn.mu.Unlock()
+	return b.Batch.Append(v...)
+}
+
+// TestExporterPushTracesData_SkipsSpansWithEndBeforeStart is a regression test for
+// SigNoz/signoz-otel-collector#814. pcommon.Timestamp is a uint64; subtracting end-start
+// when end<start underflows to ~MAX_UINT64 (~213503 days) and pollutes durationNano in
+// ClickHouse. The malformed span must be skipped before reaching newStructuredSpanV3 so
+// no row is appended to the index_v3 (or any sibling) table.
+//
+// Discrimination: we wrap the cmock connection with countingConn that records every
+// driver.Batch.Append call by table name. With the fix in place the count for
+// "signoz_index_v3" stays at zero; without the fix the malformed span would be appended.
+func TestExporterPushTracesData_SkipsSpansWithEndBeforeStart(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	if err != nil {
+		log.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	mock.MatchExpectationsInOrder(false)
+
+	indexV3Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	errorIndexV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_error_index_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_span_attributes_keys")
+	tagAttributesV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_tag_attributes_v2")
+	resourceStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_traces_v3_resource")
+
+	indexV3Statement.ExpectSend()
+	errorIndexV2Statement.ExpectSend()
+	attributeKeysStmt.ExpectSend()
+	tagAttributesV2Statement.ExpectSend()
+	resourceStatement.ExpectSend()
+
+	mock.ExpectExec(".*insert into signoz_traces.distributed_usage.*").WithArgs()
+
+	counter := &countingConn{Conn: mock, appendsByTable: map[string]int{}}
+	exporter := setupTestExporter(t, counter)
+
+	traces := ptrace.NewTraces()
+	rs := traces.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "repro")
+	ss := rs.ScopeSpans().AppendEmpty()
+	now := pcommon.NewTimestampFromTime(time.Now())
+	span := ss.Spans().AppendEmpty()
+	span.SetName("end-before-start")
+	span.SetKind(ptrace.SpanKindInternal)
+	span.SetStartTimestamp(now)
+	span.SetEndTimestamp(now - 1) // 1 ns earlier than start - would underflow durationNano
+	span.SetTraceID(pcommon.TraceID([]byte("5B8EFFF798038103D269B633813FC60C")))
+	span.SetSpanID(pcommon.SpanID([]byte("EEE19B7EC3C1B174")))
+
+	err = exporter.pushTraceDataV3(context.Background(), traces)
+	assert.NoError(t, err)
+
+	err = exporter.Shutdown(context.Background())
+	assert.NoError(t, err)
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
+
+	// The malformed span must NOT have been appended to the index_v3 table. Without the
+	// fix the writer would append exactly one row here (durationNano = MAX_UINT64).
+	counter.mu.Lock()
+	defer counter.mu.Unlock()
+	for table, count := range counter.appendsByTable {
+		assert.Zero(t, count, "no row should be appended to %s for a malformed span; got %d", table, count)
 	}
 }

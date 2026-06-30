@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -415,6 +415,25 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 							"skipping span outside allowed time window",
 							zap.Uint64("start_ts", ts),
 							zap.Int64("oldest_allowed_ts", oldestAllowedTs),
+							zap.String("service_name", serviceName),
+							zap.String("span_name", span.Name()),
+							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),
+							zap.String("span_id", utils.SpanIDToHexOrEmptyString(span.SpanID())),
+							zap.String("parent_span_id", utils.SpanIDToHexOrEmptyString(span.ParentSpanID())),
+							zap.String("start_time", span.StartTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("end_time", span.EndTimestamp().AsTime().Format(time.RFC3339)),
+							zap.String("span_kind", span.Kind().String()),
+							zap.String("status_code", span.Status().Code().String()),
+							zap.String("status_message", span.Status().Message()),
+						)
+						continue
+					}
+					if span.EndTimestamp() < span.StartTimestamp() {
+						// pcommon.Timestamp is a uint64 alias; subtracting end-start when end<start
+						// underflows to a value near MAX_UINT64 (~213503 days) and pollutes
+						// durationNano downstream. Skip the malformed span instead of writing it.
+						s.logger.Debug(
+							"skipping span with end_time before start_time",
 							zap.String("service_name", serviceName),
 							zap.String("span_name", span.Name()),
 							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),
