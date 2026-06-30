@@ -839,3 +839,155 @@ func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 		})
 	}
 }
+
+func makeMap(fn func(m pcommon.Map)) pcommon.Map {
+	m := pcommon.NewMap()
+	fn(m)
+	return m
+}
+
+func Test_attributesForJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs pcommon.Map
+		want  map[string]any
+	}{
+		{
+			name: "scalars pass through AsRaw",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutStr("s", "hello")
+				m.PutInt("i", 42)
+				m.PutDouble("d", 3.14)
+				m.PutBool("b", true)
+			}),
+			want: map[string]any{
+				"s": "hello",
+				"i": int64(42),
+				"d": float64(3.14),
+				"b": true,
+			},
+		},
+		{
+			name: "string slice becomes []string",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("tags")
+				s.AppendEmpty().SetStr("stop")
+				s.AppendEmpty().SetStr("length")
+			}),
+			want: map[string]any{
+				"tags": []string{"stop", "length"},
+			},
+		},
+		{
+			name: "int slice becomes []int64",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("counts")
+				s.AppendEmpty().SetInt(1)
+				s.AppendEmpty().SetInt(2)
+				s.AppendEmpty().SetInt(3)
+			}),
+			want: map[string]any{
+				"counts": []int64{1, 2, 3},
+			},
+		},
+		{
+			name: "double slice becomes []float64",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("scores")
+				s.AppendEmpty().SetDouble(0.1)
+				s.AppendEmpty().SetDouble(0.9)
+			}),
+			want: map[string]any{
+				"scores": []float64{0.1, 0.9},
+			},
+		},
+		{
+			name: "bool slice becomes []bool",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("flags")
+				s.AppendEmpty().SetBool(true)
+				s.AppendEmpty().SetBool(false)
+			}),
+			want: map[string]any{
+				"flags": []bool{true, false},
+			},
+		},
+		{
+			name: "empty slice becomes []string",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutEmptySlice("empty")
+			}),
+			want: map[string]any{
+				"empty": []string{},
+			},
+		},
+		{
+			name: "nested map is recursed into",
+			attrs: makeMap(func(m pcommon.Map) {
+				nested := m.PutEmptyMap("meta")
+				nested.PutStr("env", "prod")
+				inner := nested.PutEmptySlice("codes")
+				inner.AppendEmpty().SetInt(200)
+				inner.AppendEmpty().SetInt(404)
+			}),
+			want: map[string]any{
+				"meta": map[string]any{
+					"env":   "prod",
+					"codes": []int64{200, 404},
+				},
+			},
+		},
+		{
+			// Bytes fall through to AsString() which base64-encodes them — safe for ClickHouse.
+			name: "bytes attribute falls back to base64 string",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutEmptyBytes("raw").FromRaw([]byte{0xde, 0xad, 0xbe, 0xef})
+			}),
+			want: map[string]any{
+				"raw": "3q2+7w==",
+			},
+		},
+		{
+			// Type is inferred from the first element; elements of a different type return the zero value of the inferred type.
+			name: "mixed-type slice: type inferred from first element",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("mixed")
+				s.AppendEmpty().SetStr("ok")
+				s.AppendEmpty().SetInt(42)
+			}),
+			want: map[string]any{
+				"mixed": []string{"ok", ""},
+			},
+		},
+		{
+			name: "slice of slices: inner slices preserved as []any of typed slices",
+			attrs: makeMap(func(m pcommon.Map) {
+				outer := m.PutEmptySlice("nested_slices")
+				inner := outer.AppendEmpty().SetEmptySlice()
+				inner.AppendEmpty().SetStr("a")
+				inner.AppendEmpty().SetStr("b")
+			}),
+			want: map[string]any{
+				"nested_slices": []any{[]string{"a", "b"}},
+			},
+		},
+		{
+			name: "slice of maps: inner maps preserved as []map[string]any",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("map_slice")
+				inner := s.AppendEmpty().SetEmptyMap()
+				inner.PutStr("k", "v")
+			}),
+			want: map[string]any{
+				"map_slice": []map[string]any{{"k": "v"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := attributesForJSON(tt.attrs)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -56,6 +56,7 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
 		resources_string,
 		resource,
 		scope,
@@ -72,6 +73,7 @@ const (
 		has_error,
 		is_remote
 		) VALUES (
+			?,
 			?,
 			?,
 			?,

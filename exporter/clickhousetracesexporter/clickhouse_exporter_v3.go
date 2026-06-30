@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -169,6 +169,69 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 		span.Events = append(span.Events, string(stringEvent))
 		span.ErrorEvents = append(span.ErrorEvents, errorEvent)
 	}
+}
+
+// attributesForJSON converts otel values to typed values since the ClickHouse driver cannot infer the type from []interface{}.
+func attributesForJSON(attrs pcommon.Map) map[string]any {
+	out := make(map[string]any, attrs.Len())
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		switch v.Type() {
+		case pcommon.ValueTypeStr:
+			out[k] = v.Str()
+		case pcommon.ValueTypeInt:
+			out[k] = v.Int()
+		case pcommon.ValueTypeDouble:
+			out[k] = v.Double()
+		case pcommon.ValueTypeBool:
+			out[k] = v.Bool()
+		case pcommon.ValueTypeSlice:
+			out[k] = toTypedSlice(v.Slice())
+		case pcommon.ValueTypeMap:
+			out[k] = attributesForJSON(v.Map())
+		default:
+			out[k] = v.AsString()
+		}
+		return true
+	})
+	return out
+}
+
+func toTypedSlice(s pcommon.Slice) any {
+	if s.Len() == 0 {
+		return []string{}
+	}
+	switch s.At(0).Type() {
+	case pcommon.ValueTypeStr:
+		return collectSlice(s, pcommon.Value.Str)
+	case pcommon.ValueTypeInt:
+		return collectSlice(s, pcommon.Value.Int)
+	case pcommon.ValueTypeDouble:
+		return collectSlice(s, pcommon.Value.Double)
+	case pcommon.ValueTypeBool:
+		return collectSlice(s, pcommon.Value.Bool)
+	case pcommon.ValueTypeMap:
+		out := make([]map[string]any, s.Len())
+		for i := range out {
+			out[i] = attributesForJSON(s.At(i).Map())
+		}
+		return out
+	case pcommon.ValueTypeSlice:
+		out := make([]any, s.Len())
+		for i := range out {
+			out[i] = toTypedSlice(s.At(i).Slice())
+		}
+		return out
+	default:
+		return collectSlice(s, pcommon.Value.AsString)
+	}
+}
+
+func collectSlice[T any](s pcommon.Slice, toNativeType func(pcommon.Value) T) []T {
+	out := make([]T, s.Len())
+	for i := range out {
+		out[i] = toNativeType(s.At(i))
+	}
+	return out
 }
 
 type attributesData struct {
@@ -336,6 +399,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributeString:  attrMap.StringMap,
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
+		Attributes:       attributesForJSON(otelSpan.Attributes()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
