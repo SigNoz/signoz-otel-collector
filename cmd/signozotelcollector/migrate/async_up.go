@@ -149,6 +149,11 @@ func (cmd *asyncUp) Up(ctx context.Context) error {
 		return err
 	}
 
+	err = cmd.run(ctx, schemamigrator.AuditMigrations, schemamigrator.SignozAuditDB)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
