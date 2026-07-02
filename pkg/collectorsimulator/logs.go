@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor"
 )
 
@@ -24,7 +25,7 @@ func SimulateLogsProcessing(
 ) {
 	// Construct and start a simulator (wraps a collector service)
 	simulator, simulatorInitCleanup, err := NewCollectorSimulator(
-		ctx, processorFactories, configGenerator,
+		ctx, pipeline.SignalLogs, processorFactories, configGenerator,
 	)
 	if simulatorInitCleanup != nil {
 		defer simulatorInitCleanup()

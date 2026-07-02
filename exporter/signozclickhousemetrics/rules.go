@@ -23,8 +23,8 @@ var protectedLabels = map[string]struct{}{
 
 const rulesPollTimeout = 30 * time.Second
 
-// reductionRule is one compiled label drop/keep rule, keyed by base metric
-// name; it covers every series derived from that metric.
+// reductionRule is one compiled label drop/keep rule, keyed by the flattened
+// metric name, e.g. http.server.duration.bucket.
 type reductionRule struct {
 	// keys is the configured label set; keep picks the mode. keep=false drops
 	// keys (rest kept); keep=true keeps only keys (rest dropped). protected
@@ -53,7 +53,7 @@ func (r *reductionRule) appliesAt(unixMilli int64) bool {
 
 type ruleSet map[string]*reductionRule
 
-// ruleFor returns the active rule for the base metric name, or nil.
+// ruleFor returns the active rule for the metric name, or nil.
 func (c *clickhouseMetricsExporter) ruleFor(metricName string) *reductionRule {
 	rules := c.reductionRules.Load()
 	if rules == nil {
@@ -216,7 +216,7 @@ type reducedSeries struct {
 	resource    *pkgfingerprint.Fingerprint
 }
 
-// newReducerFor returns a reducer for the metric, or nil when reduction is
+// newReducerFor returns a reducer for the metric name, or nil when reduction is
 // disabled or no rule matches.
 func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) *reducer {
 	if !c.cfg.Reduction.Enabled {
@@ -235,7 +235,7 @@ func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFin
 
 // reduce returns the reduced series for a datapoint fingerprint, or nil when the
 // rule does not apply at the datapoint's timestamp (pre-epoch data stays unreduced
-// and flows to the long-retention tables). nameWithSuffix is the stored series
+// and flows to the long-retention tables). nameWithSuffix is the stored metric
 // name, e.g. metric.bucket.
 func (r *reducer) reduce(pointFingerprint *pkgfingerprint.Fingerprint, nameWithSuffix string, unixMilli int64) *reducedSeries {
 	if r == nil || !r.rule.appliesAt(unixMilli) {

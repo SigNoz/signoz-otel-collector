@@ -43,12 +43,19 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	}
 
 	id := uuid.New()
+	usageOpts := usage.Options{
+		ReportingInterval: usage.DefaultCollectionInterval,
+	}
+	if chCfg.Reduction.Enabled {
+		usageOpts.ReducedUsageTables = []string{
+			"distributed_samples_v4_reduced_last_60s",
+			"distributed_samples_v4_reduced_sum_60s",
+		}
+	}
 	collector := usage.NewUsageCollector(
 		id,
 		conn,
-		usage.Options{
-			ReportingInterval: usage.DefaultCollectionInterval,
-		},
+		usageOpts,
 		"signoz_metrics",
 		UsageExporter,
 		set.Logger,
