@@ -7,6 +7,13 @@ import "os"
 var Version = "dev"
 var Desc = "SigNoz OpenTelemetry Collector"
 
+// Build info - set at build time
+var (
+	CommitSHA = "unknown"
+	BuildTime = "unknown"
+	GoVersion = "unknown"
+)
+
 // AllowLbExporterConfig enables lb exporter capability in the collector instance
 var SupportLbExporterConfig = GetOrDefaultEnv("SUPPORT_LB_EXPORTER_CONFIG", "1")
 
