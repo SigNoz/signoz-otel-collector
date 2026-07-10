@@ -1969,7 +1969,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								reduced_fingerprint,
 								bucket_unix_milli
 						)
-						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(35)) * 1000)`,
+						WHERE (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(35)) * 1000))
+							AND ((bucket_unix_milli + 300000) <= (toUnixTimestamp(now() - toIntervalMinute(12)) * 1000))`,
 			},
 			CreateRefreshableMaterializedViewOperation{
 				Database:     "signoz_metrics",
@@ -2025,7 +2026,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								reduced_fingerprint,
 								bucket_unix_milli
 						)
-						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(35)) * 1000)`,
+						WHERE (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(35)) * 1000))
+							AND ((bucket_unix_milli + 300000) <= (toUnixTimestamp(now() - toIntervalMinute(12)) * 1000))`,
 			},
 			CreateRefreshableMaterializedViewOperation{
 				Database:     "signoz_metrics",
@@ -2092,7 +2094,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								reduced_fingerprint,
 								bucket_unix_milli
 						)
-						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(150)) * 1000)`,
+						WHERE (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(150)) * 1000))
+							AND ((bucket_unix_milli + 1800000) <= (toUnixTimestamp(now() - toIntervalMinute(40)) * 1000))`,
 			},
 			CreateRefreshableMaterializedViewOperation{
 				Database:     "signoz_metrics",
@@ -2147,7 +2150,8 @@ var MetricsMigrations = []SchemaMigrationRecord{
 								reduced_fingerprint,
 								bucket_unix_milli
 						)
-						WHERE bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(150)) * 1000)`,
+						WHERE (bucket_unix_milli >= (toUnixTimestamp(now() - toIntervalMinute(150)) * 1000))
+							AND ((bucket_unix_milli + 1800000) <= (toUnixTimestamp(now() - toIntervalMinute(40)) * 1000))`,
 			},
 		},
 		DownItems: []Operation{
