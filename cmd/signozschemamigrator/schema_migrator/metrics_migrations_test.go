@@ -21,6 +21,10 @@ func TestMetricsMigrationsExactNature(t *testing.T) {
 			MetricsMigrations[3],
 			MetricsMigrations[4],
 			MetricsMigrations[7],
+			MetricsMigrations[8],  // 1008 (sync)
+			MetricsMigrations[9],  // 1009 (sync)
+			MetricsMigrations[10], // 1010 (sync)
+			MetricsMigrations[11], // 1011 (sync)
 		},
 		[]SchemaMigrationRecord{
 			MetricsMigrations[5], // 1005 (async)
