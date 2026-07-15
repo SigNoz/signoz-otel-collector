@@ -32,6 +32,11 @@ func NewLogsBuilder(settings receiver.Settings) *LogsBuilder {
 	return lb
 }
 
+// NewResourceBuilder returns a new resource builder that should be used to build a resource associated with for the emitted logs.
+func (lb *LogsBuilder) NewResourceBuilder() *ResourceBuilder {
+	return NewResourceBuilder(ResourceAttributesConfig{})
+}
+
 // ResourceLogsOption applies changes to provided resource logs.
 type ResourceLogsOption interface {
 	apply(plog.ResourceLogs)

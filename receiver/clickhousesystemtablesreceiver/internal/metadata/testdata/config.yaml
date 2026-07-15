@@ -1,0 +1,43 @@
+default:
+all_set:
+  metrics:
+    clickhouse.view_refresh.exception:
+      enabled: true
+    clickhouse.view_refresh.last_duration:
+      enabled: true
+    clickhouse.view_refresh.last_success_age:
+      enabled: true
+    clickhouse.view_refresh.progress:
+      enabled: true
+    clickhouse.view_refresh.retry:
+      enabled: true
+  resource_attributes:
+    clickhouse.hostname:
+      enabled: true
+none_set:
+  metrics:
+    clickhouse.view_refresh.exception:
+      enabled: false
+    clickhouse.view_refresh.last_duration:
+      enabled: false
+    clickhouse.view_refresh.last_success_age:
+      enabled: false
+    clickhouse.view_refresh.progress:
+      enabled: false
+    clickhouse.view_refresh.retry:
+      enabled: false
+  resource_attributes:
+    clickhouse.hostname:
+      enabled: false
+filter_set_include:
+  resource_attributes:
+    clickhouse.hostname:
+      enabled: true
+      metrics_include:
+        - regexp: ".*"
+filter_set_exclude:
+  resource_attributes:
+    clickhouse.hostname:
+      enabled: true
+      metrics_exclude:
+        - strict: "clickhouse.hostname-val"
