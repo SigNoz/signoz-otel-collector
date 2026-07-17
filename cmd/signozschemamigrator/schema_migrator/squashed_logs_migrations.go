@@ -115,7 +115,7 @@ var (
 						{Name: "datatype", Type: ColumnTypeString},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							OrderBy: "(name, datatype)",
 							Settings: TableSettings{
 								{Name: "index_granularity", Value: "8192"},
@@ -266,7 +266,7 @@ ORDER BY name ASC`,
 						{Name: "datatype", Type: ColumnTypeString},
 					},
 					Engine: ReplacingMergeTree{
-						MergeTree{
+						MergeTree: MergeTree{
 							OrderBy: "(name, datatype)",
 							Settings: TableSettings{
 								{Name: "index_granularity", Value: "8192"},

@@ -1,0 +1,5 @@
+type: signozspanmapper
+status:
+  class: processor
+  stability:
+    development: [traces]

@@ -3,3 +3,5 @@ clickhousesystemtablesreceiver:
   query_log_scrape_config:
     scrape_interval_seconds: 20
     min_scrape_delay_seconds: 8
+  system_tables_metrics:
+    collection_interval: 15s

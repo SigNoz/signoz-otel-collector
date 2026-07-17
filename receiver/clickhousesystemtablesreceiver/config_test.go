@@ -3,6 +3,7 @@ package clickhousesystemtablesreceiver
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
@@ -52,4 +53,25 @@ func TestLoadConfig(t *testing.T) {
 		}
 	}
 
+}
+
+func TestLoadMetricsConfig(t *testing.T) {
+	require := require.New(t)
+
+	factory := NewFactory()
+	cfg := factory.CreateDefaultConfig()
+
+	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
+	require.NoError(err)
+	sub, err := cm.Sub("clickhousesystemtablesreceiver")
+	require.NoError(err)
+	require.NoError(sub.Unmarshal(cfg))
+
+	c := cfg.(*Config)
+
+	m := c.SystemTablesMetrics
+	require.Equal(15*time.Second, m.CollectionInterval)
+
+	require.True(m.Metrics.ClickhouseViewRefreshLastSuccessAge.Enabled)
+	require.True(m.Metrics.ClickhouseViewRefreshException.Enabled)
 }

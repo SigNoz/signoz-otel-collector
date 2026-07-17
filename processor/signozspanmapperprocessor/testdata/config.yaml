@@ -1,0 +1,161 @@
+# Full valid config — llm + agent + tool groups matching the spec.
+signozspanmapper:
+  groups:
+    - id: llm
+      exists_any:
+        attributes:
+          - "model"
+        resource:
+          - "service.name"
+      attributes:
+        - target: gen_ai.request.model
+          context: resource
+          sources:
+            - key: gen_ai.llm.model
+            - key: llm.model
+            - key: resource.service.name
+        - target: gen_ai.request.tokens
+          sources:
+            - key: gen_ai.request_tokens
+            - key: llm.tokens
+        - target: gen_ai.request.input
+          sources:
+            - key: gen_ai.input
+              action: move
+            - key: llm.input
+              action: move
+
+    - id: agent
+      exists_any:
+        attributes:
+          - "agent."
+      attributes:
+        - target: gen_ai.agent.name
+          sources:
+            - key: agent.name
+            - key: llm.agent.name
+        - target: gen_ai.agent.id
+          sources:
+            - key: gen_ai.agent.id
+            - key: llm.agent.id
+
+    - id: tool
+      exists_any:
+        attributes:
+          - "agent."
+      attributes:
+        - target: gen_ai.tool.name
+          sources:
+            - key: ai.tool.name
+            - key: llm.tool.name
+
+# Only resource-based exists_any.
+signozspanmapper/resource_only:
+  groups:
+    - id: res
+      exists_any:
+        resource:
+          - "service"
+      attributes:
+        - target: gen_ai.service
+          sources:
+            - key: resource.service.name
+
+# Defaults: no action, no context — must accept as valid.
+signozspanmapper/defaults:
+  groups:
+    - id: defaults
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources:
+            - key: src
+
+# Per-source action overrides the rule-level default. The two sources have
+# different actions even within the same target.
+signozspanmapper/per_source_action:
+  groups:
+    - id: mixed
+      exists_any:
+        attributes:
+          - "input"
+      attributes:
+        - target: gen_ai.request.input
+          sources:
+            - key: gen_ai.input
+              action: move
+            - key: llm.input
+              action: copy
+
+# Invalid: exists_any has no patterns at all.
+signozspanmapper/no_patterns:
+  groups:
+    - id: bad
+      exists_any: {}
+      attributes:
+        - target: dst
+          sources:
+            - key: src
+
+# Invalid: empty target.
+signozspanmapper/empty_target:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: ""
+          sources:
+            - key: src
+
+# Invalid: no sources.
+signozspanmapper/no_sources:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources: []
+
+# Invalid: unknown context value.
+signozspanmapper/bad_context:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          context: span
+          sources:
+            - key: src
+
+# Invalid: unknown action value at source level.
+signozspanmapper/bad_source_action:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources:
+            - key: src
+              action: delete
+
+# Invalid: empty source key.
+signozspanmapper/empty_source_key:
+  groups:
+    - id: bad
+      exists_any:
+        attributes:
+          - "*"
+      attributes:
+        - target: dst
+          sources:
+            - key: ""
