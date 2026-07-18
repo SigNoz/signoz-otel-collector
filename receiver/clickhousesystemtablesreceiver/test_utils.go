@@ -12,6 +12,9 @@ type mockClickhouseQuerrier struct {
 	tsNow uint32
 
 	nextScrapeResult []QueryLog
+
+	viewRefreshes  []ViewRefreshRow
+	viewRefreshErr error
 }
 
 var _ clickhouseQuerier = (*mockClickhouseQuerrier)(nil)
@@ -28,6 +31,10 @@ func (t *mockClickhouseQuerrier) unixTsNow(ctx context.Context) (
 	return t.tsNow, nil
 }
 
+func (t *mockClickhouseQuerrier) scrapeViewRefreshes(ctx context.Context) ([]ViewRefreshRow, error) {
+	return t.viewRefreshes, t.viewRefreshErr
+}
+
 func newTestReceiver(
 	ch clickhouseQuerier,
 	scrapeIntervalSeconds uint32,
@@ -42,6 +49,7 @@ func newTestReceiver(
 	}
 
 	return &systemTablesReceiver{
+		config:                &Config{},
 		scrapeIntervalSeconds: scrapeIntervalSeconds,
 		scrapeDelaySeconds:    scrapeDelaySeconds,
 		clickhouse:            ch,

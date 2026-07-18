@@ -2,8 +2,11 @@ package clickhousesystemtablesreceiver
 
 import (
 	"errors"
+	"time"
 
 	"go.uber.org/multierr"
+
+	"github.com/SigNoz/signoz-otel-collector/receiver/clickhousesystemtablesreceiver/internal/metadata"
 )
 
 type QueryLogScrapeConfig struct {
@@ -14,6 +17,13 @@ type QueryLogScrapeConfig struct {
 	MinScrapeDelaySeconds uint32 `mapstructure:"min_scrape_delay_seconds"`
 }
 
+// SystemTablesMetricsConfig drives the system.view_refreshes metrics scrape.
+type SystemTablesMetricsConfig struct {
+	CollectionInterval time.Duration `mapstructure:"collection_interval"`
+
+	metadata.MetricsBuilderConfig `mapstructure:",squash"`
+}
+
 type Config struct {
 	DSN string `mapstructure:"dsn"`
 
@@ -22,6 +32,8 @@ type Config struct {
 	ClusterName string `mapstructure:"cluster_name"`
 
 	QueryLogScrapeConfig QueryLogScrapeConfig `mapstructure:"query_log_scrape_config"`
+
+	SystemTablesMetrics SystemTablesMetricsConfig `mapstructure:"system_tables_metrics"`
 }
 
 func (cfg *Config) Validate() (err error) {
@@ -31,6 +43,10 @@ func (cfg *Config) Validate() (err error) {
 
 	if cfg.QueryLogScrapeConfig.MinScrapeDelaySeconds == 0 {
 		err = multierr.Append(err, errors.New("query_log_scrape_config.scrape_delay_seconds must be set to a value greater than flush_interval_milliseconds setting for clickhouse query_log table"))
+	}
+
+	if cfg.SystemTablesMetrics.CollectionInterval < 0 {
+		err = multierr.Append(err, errors.New("system_tables_metrics.collection_interval must not be negative"))
 	}
 
 	return err
