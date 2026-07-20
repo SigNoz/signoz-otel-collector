@@ -77,6 +77,11 @@ func (mb *MetricsBuilder) ConvertSumToMetrics(ts *monitoringpb.TimeSeries, m pme
 	m.SetUnit(ts.GetUnit())
 	sum := m.SetEmptySum()
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	// GCP CUMULATIVE metrics are values that constantly increase until they reset to
+	// zero, which matches the OpenTelemetry definition of a monotonic counter (resets
+	// are handled downstream as counter resets). Marking the sum monotonic is what lets
+	// consumers offer rate/increase on these metrics.
+	sum.SetIsMonotonic(true)
 
 	metricAttributes := convertLabelsToMetricAttributes(ts.GetMetric().GetLabels())
 	for _, point := range ts.GetPoints() {
@@ -114,6 +119,12 @@ func (mb *MetricsBuilder) ConvertDeltaToMetrics(ts *monitoringpb.TimeSeries, m p
 	m.SetUnit(ts.GetUnit())
 	sum := m.SetEmptySum()
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	// GCP DELTA metrics are counts of discrete items over an interval, so each value is
+	// a non-negative count, i.e. a monotonic counter. Non-monotonic sums written to
+	// Cloud Monitoring via OTLP are stored as gauges, so anything GCP keeps as a delta
+	// was a genuine counter. Distributions with delta temporality never reach this path
+	// (they become histograms), so every sum produced here is safe to mark monotonic.
+	sum.SetIsMonotonic(true)
 
 	metricAttributes := convertLabelsToMetricAttributes(ts.GetMetric().GetLabels())
 	for _, point := range ts.GetPoints() {
