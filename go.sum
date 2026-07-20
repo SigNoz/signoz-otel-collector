@@ -2093,6 +2093,8 @@ github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding v0.
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding v0.144.0/go.mod h1:FTfq5M1/Ucj0MDTpJWkmLzjLCdngNdEG1Zw4Am/9QOY=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awscloudwatchmetricstreamsencodingextension v0.144.0 h1:GdkkfAxdv0+5np2hC2LcTXM0+b1Z9+gnBoBSmMEKuIA=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awscloudwatchmetricstreamsencodingextension v0.144.0/go.mod h1:pPJAzT9s9OOuJ2hoIrxAHKlORh+vTOwa6wscbYJ/y+c=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.144.0 h1:EzwfoJAR5B3g4i1eom9kmTflBKi/R/vO6a4tEbxuteY=
+github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.144.0/go.mod h1:Ca5Y/9ED+hAAVztXpbKYoILBjZlo3OI+6dq3jfqN5xA=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/otlpencodingextension v0.144.0 h1:08Qc2X6yac57/0OmkszEI6w1RYVW4Wfo9YYidHtQTbw=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/otlpencodingextension v0.144.0/go.mod h1:FosFhCxE0Gd6Yh73C5gDnUdeyFxt4XeagixV2Pb4gDk=
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.144.0 h1:4NoCstekcHgut9Jo8J+ePkq+kTZ0CczE6Jp2QebWJOE=
