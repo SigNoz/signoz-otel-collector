@@ -2284,4 +2284,376 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			DropTableOperation{Database: "signoz_metrics", Table: "samples_v4_reduced_last_5m_mv"},
 		},
 	},
+	{
+		// Counter-reset epochs. start_ts carries the normalized OTLP
+		// start_time_unix_nano (in ms) for cumulative monotonic series; 0 means
+		// "epoch unknown" (old data, gauges, delta, or sources without a start
+		// time). Within one epoch a cumulative counter is monotonic by
+		// definition, so per-(bucket, epoch) min/max of (unix_milli, value) are
+		// lossless summaries of first/last observations: the aggregation tables
+		// carry them as mergeable map states keyed by start_ts, which makes
+		// reset-exact rate/increase computable from the rollups at any step.
+		// The maps deliberately include key 0 so pre-rollout rows and epoch rows
+		// coexist inside one bucket during the transition; the querier treats
+		// key 0 with the legacy negative-diff semantics.
+		MigrationID: 1012,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4",
+				Column: Column{
+					Name:    "start_ts",
+					Type:    ColumnTypeInt64,
+					Codec:   "DoubleDelta, ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4",
+				Column: Column{
+					Name:    "start_ts",
+					Type:    ColumnTypeInt64,
+					Codec:   "DoubleDelta, ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_buffer",
+				Column: Column{
+					Name:    "start_ts",
+					Type:    ColumnTypeInt64,
+					Codec:   "DoubleDelta, ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_buffer",
+				Column: Column{
+					Name:    "start_ts",
+					Type:    ColumnTypeInt64,
+					Codec:   "DoubleDelta, ZSTD(1)",
+					Default: "0",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name:  "min_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name:  "min_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name:  "max_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_5m",
+				Column: Column{
+					Name:  "max_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name:  "min_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name:  "min_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name:  "max_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_5m",
+				Column: Column{
+					Name:  "max_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name:  "min_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name:  "min_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name:  "max_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "samples_v4_agg_30m",
+				Column: Column{
+					Name:  "max_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name:  "min_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name:  "min_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "minMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name:  "max_unix_milli_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeInt64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_samples_v4_agg_30m",
+				Column: Column{
+					Name:  "max_value_by_start_ts",
+					Type:  SimpleAggregateFunction{FunctionName: "maxMap", Arguments: []ColumnType{MapColumnType{KeyType: ColumnTypeInt64, ValueType: ColumnTypeFloat64}}},
+					Codec: "ZSTD(1)",
+				},
+			},
+			// The 5m rollup MV needs both the raw sample timestamp (map values)
+			// and the bucket timestamp (row key), so the bucket is computed in an
+			// inner subquery: aliasing intDiv(...) AS unix_milli in the same
+			// SELECT would shadow the source column inside the map expressions.
+			// The epoch maps are built only for cumulative rows (gauges and delta
+			// don't have counter resets) and include start_ts = 0 rows so
+			// pre-rollout data keeps flowing through the same columns.
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_5m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							bucket_unix_milli AS unix_milli,
+							anyLast(value) AS last,
+							min(value) AS min,
+							max(value) AS max,
+							sum(value) AS sum,
+							count(*) AS count,
+							minMapIf(map(start_ts, sample_unix_milli), temporality = 'Cumulative') AS min_unix_milli_by_start_ts,
+							minMapIf(map(start_ts, value), temporality = 'Cumulative') AS min_value_by_start_ts,
+							maxMapIf(map(start_ts, sample_unix_milli), temporality = 'Cumulative') AS max_unix_milli_by_start_ts,
+							maxMapIf(map(start_ts, value), temporality = 'Cumulative') AS max_value_by_start_ts
+						FROM (
+							SELECT
+								env,
+								temporality,
+								metric_name,
+								fingerprint,
+								start_ts,
+								unix_milli AS sample_unix_milli,
+								intDiv(unix_milli, 300000) * 300000 AS bucket_unix_milli,
+								value,
+								flags
+							FROM signoz_metrics.samples_v4
+						)
+						WHERE bitAnd(flags, 1) = 0
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							bucket_unix_milli;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_30m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 1800000) * 1800000 AS unix_milli,
+							anyLast(last) AS last,
+							min(min) AS min,
+							max(max) AS max,
+							sum(sum) AS sum,
+							sum(count) AS count,
+							minMap(min_unix_milli_by_start_ts) AS min_unix_milli_by_start_ts,
+							minMap(min_value_by_start_ts) AS min_value_by_start_ts,
+							maxMap(max_unix_milli_by_start_ts) AS max_unix_milli_by_start_ts,
+							maxMap(max_value_by_start_ts) AS max_value_by_start_ts
+						FROM signoz_metrics.samples_v4_agg_5m
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+			// The buffer -> samples_v4 copy MV (reduction deployments) forwards
+			// start_ts unchanged.
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli,
+							value,
+							flags,
+							inserted_at_unix_milli,
+							start_ts
+						FROM signoz_metrics.samples_v4_buffer
+						WHERE reduced_fingerprint = 0`,
+			},
+		},
+		DownItems: []Operation{
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli,
+							value,
+							flags,
+							inserted_at_unix_milli
+						FROM signoz_metrics.samples_v4_buffer
+						WHERE reduced_fingerprint = 0`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_30m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 1800000) * 1800000 AS unix_milli,
+							anyLast(last) AS last,
+							min(min) AS min,
+							max(max) AS max,
+							sum(sum) AS sum,
+							sum(count) AS count
+						FROM signoz_metrics.samples_v4_agg_5m
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+			ModifyQueryMaterializedViewOperation{
+				Database: "signoz_metrics",
+				ViewName: "samples_v4_agg_5m_mv",
+				Query: `SELECT
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							intDiv(unix_milli, 300000) * 300000 as unix_milli,
+							anyLast(value) as last,
+							min(value) as min,
+							max(value) as max,
+							sum(value) as sum,
+							count(*) as count
+						FROM signoz_metrics.samples_v4
+						WHERE bitAnd(flags, 1) = 0
+						GROUP BY
+							env,
+							temporality,
+							metric_name,
+							fingerprint,
+							unix_milli;`,
+			},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_30m", Column: Column{Name: "max_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_30m", Column: Column{Name: "max_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_30m", Column: Column{Name: "min_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_30m", Column: Column{Name: "min_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_30m", Column: Column{Name: "max_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_30m", Column: Column{Name: "max_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_30m", Column: Column{Name: "min_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_30m", Column: Column{Name: "min_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_5m", Column: Column{Name: "max_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_5m", Column: Column{Name: "max_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_5m", Column: Column{Name: "min_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_agg_5m", Column: Column{Name: "min_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_5m", Column: Column{Name: "max_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_5m", Column: Column{Name: "max_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_5m", Column: Column{Name: "min_value_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_agg_5m", Column: Column{Name: "min_unix_milli_by_start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4_buffer", Column: Column{Name: "start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4_buffer", Column: Column{Name: "start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "distributed_samples_v4", Column: Column{Name: "start_ts"}},
+			AlterTableDropColumn{Database: "signoz_metrics", Table: "samples_v4", Column: Column{Name: "start_ts"}},
+		},
+	},
 }

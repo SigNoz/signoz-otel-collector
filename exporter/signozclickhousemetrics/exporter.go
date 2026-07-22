@@ -51,6 +51,10 @@ var (
 	// buffer table variants used when reduction is enabled
 	bufferSamplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, reduced_fingerprint, is_monotonic, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	bufferTimeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, reduced_fingerprint, is_reduced, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	// start_ts variants used when enable_start_ts is set (schema migration 1012)
+	samplesWithStartTsSQLTmpl       = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli, start_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	bufferSamplesWithStartTsSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, reduced_fingerprint, is_monotonic, unix_milli, value, flags, inserted_at_unix_milli, start_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
@@ -64,6 +68,10 @@ type clickhouseMetricsExporter struct {
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
 	enableExpHist bool
+
+	// epochs is non-nil when cfg.EnableStartTs is set; it normalizes the OTLP
+	// start time of cumulative monotonic samples into the start_ts column
+	epochs *epochNormalizer
 
 	samplesSQL    string
 	timeSeriesSQL string
@@ -89,7 +97,8 @@ type clickhouseMetricsExporter struct {
 }
 
 // sample maps to the samples_v4 schema; reducedFingerprint and isMonotonic
-// are only written on the buffer-table path.
+// are only written on the buffer-table path, startTs only when enable_start_ts
+// is set.
 type sample struct {
 	env                string
 	temporality        pmetric.AggregationTemporality
@@ -100,6 +109,7 @@ type sample struct {
 	unixMilli          int64
 	value              float64
 	flags              uint32
+	startTs            int64
 }
 
 // exponentialHistogramSample maps to the exp_hist schema.
@@ -253,11 +263,22 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 	}
 
 	if chExporter.cfg.Reduction.Enabled {
-		chExporter.samplesSQL = fmt.Sprintf(bufferSamplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferSamplesTable)
+		if chExporter.cfg.EnableStartTs {
+			chExporter.samplesSQL = fmt.Sprintf(bufferSamplesWithStartTsSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferSamplesTable)
+		} else {
+			chExporter.samplesSQL = fmt.Sprintf(bufferSamplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferSamplesTable)
+		}
 		chExporter.timeSeriesSQL = fmt.Sprintf(bufferTimeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferTimeSeriesTable)
 	} else {
-		chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+		if chExporter.cfg.EnableStartTs {
+			chExporter.samplesSQL = fmt.Sprintf(samplesWithStartTsSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+		} else {
+			chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+		}
 		chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
+	}
+	if chExporter.cfg.EnableStartTs {
+		chExporter.epochs = newEpochNormalizer()
 	}
 	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
 	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
@@ -321,6 +342,22 @@ func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Ho
 		cancel()
 		c.startReductionRulesPoller()
 	}
+	if c.epochs != nil {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			ticker := time.NewTicker(epochSweepEvery)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-c.closeChan:
+					return
+				case <-ticker.C:
+					c.epochs.sweep()
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -337,6 +374,18 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	close(c.closeChan)
 	c.wg.Wait()
 	return c.conn.Close()
+}
+
+// epochFor returns the normalized start_ts for a cumulative monotonic sample,
+// or 0 when epochs are disabled or the sample is not a cumulative counter
+// (gauges, delta, and non-monotonic sums have no counter-reset semantics).
+// No-recorded-value markers carry a meaningless 0 value: they must not touch
+// the normalizer state or it would read them as counter resets.
+func (c *clickhouseMetricsExporter) epochFor(temporality pmetric.AggregationTemporality, isMonotonic bool, flags pmetric.DataPointFlags, fp uint64, unixMilli int64, value float64, startTs pcommon.Timestamp) int64 {
+	if c.epochs == nil || temporality != pmetric.AggregationTemporalityCumulative || !isMonotonic || flags.NoRecordedValue() {
+		return 0
+	}
+	return c.epochs.normalize(fp, unixMilli, value, startTs.AsTime().UnixMilli())
 }
 
 // processGauge processes gauge metrics
@@ -464,16 +513,18 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		reduced := reducer.reduce(fingerprint, name, unixMilli)
+		fpHash := fingerprint.HashWithName(name)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
 			value:              value,
 			flags:              uint32(dp.Flags()),
+			startTs:            c.epochFor(temporality, isMonotonic, dp.Flags(), fpHash, unixMilli, value, dp.StartTimestamp()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 		rawTs := &ts{
@@ -484,7 +535,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			unit:               unit,
 			typ:                typ,
 			isMonotonic:        isMonotonic,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
 			labels:             pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
@@ -555,16 +606,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
+		fpHash := fingerprint.HashWithName(name + suffix)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        sampleTemporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        sampleIsMonotonic,
 			unixMilli:          unixMilli,
 			value:              value,
 			flags:              uint32(dp.Flags()),
+			startTs:            c.epochFor(sampleTemporality, sampleIsMonotonic, dp.Flags(), fpHash, unixMilli, value, dp.StartTimestamp()),
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -576,7 +629,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			unit:               sampleUnit,
 			typ:                sampleTyp,
 			isMonotonic:        sampleIsMonotonic,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
 			labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
@@ -608,16 +661,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			fingerprintMap := fingerprint.AttributesAsMap()
 			reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 
+			fpHash := fingerprint.HashWithName(name + suffix)
 			batch.addSample(&sample{
 				env:                env,
 				temporality:        temporality,
 				metricName:         name + suffix,
-				fingerprint:        fingerprint.HashWithName(name + suffix),
+				fingerprint:        fpHash,
 				reducedFingerprint: reduced.fingerprintOrZero(),
 				isMonotonic:        isMonotonic,
 				unixMilli:          unixMilli,
 				value:              float64(cumulativeCount),
 				flags:              uint32(dp.Flags()),
+				startTs:            c.epochFor(temporality, isMonotonic, dp.Flags(), fpHash, unixMilli, float64(cumulativeCount), dp.StartTimestamp()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -651,16 +706,18 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
+		fpHash := fingerprint.HashWithName(name + suffix)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
 			value:              float64(dp.Count()),
 			flags:              uint32(dp.Flags()),
+			startTs:            c.epochFor(temporality, isMonotonic, dp.Flags(), fpHash, unixMilli, float64(dp.Count()), dp.StartTimestamp()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 		rawTs := &ts{
@@ -774,16 +831,18 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		})
 		fingerprintMap := fingerprint.AttributesAsMap()
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
+		fpHash := fingerprint.HashWithName(name + suffix)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
 			value:              value,
 			flags:              uint32(dp.Flags()),
+			startTs:            c.epochFor(temporality, isMonotonic, dp.Flags(), fpHash, unixMilli, value, dp.StartTimestamp()),
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
@@ -1280,7 +1339,22 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 
 		for i := range samples {
 			sample := &samples[i]
-			if c.cfg.Reduction.Enabled {
+			switch {
+			case c.cfg.Reduction.Enabled && c.cfg.EnableStartTs:
+				err = statement.Append(
+					sample.env,
+					sample.temporality.String(),
+					sample.metricName,
+					sample.fingerprint,
+					sample.reducedFingerprint,
+					sample.isMonotonic,
+					sample.unixMilli,
+					sample.value,
+					sample.flags,
+					time.Now().UnixMilli(),
+					sample.startTs,
+				)
+			case c.cfg.Reduction.Enabled:
 				err = statement.Append(
 					sample.env,
 					sample.temporality.String(),
@@ -1293,7 +1367,19 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 					sample.flags,
 					time.Now().UnixMilli(),
 				)
-			} else {
+			case c.cfg.EnableStartTs:
+				err = statement.Append(
+					sample.env,
+					sample.temporality.String(),
+					sample.metricName,
+					sample.fingerprint,
+					sample.unixMilli,
+					sample.value,
+					sample.flags,
+					time.Now().UnixMilli(),
+					sample.startTs,
+				)
+			default:
 				err = statement.Append(
 					sample.env,
 					sample.temporality.String(),

@@ -26,6 +26,12 @@ type Config struct {
 	ExpHistTable    string `mapstructure:"exp_hist_table"`
 	MetadataTable   string `mapstructure:"metadata_table"`
 
+	// EnableStartTs writes the normalized start_ts (counter-reset epoch) column
+	// for cumulative monotonic samples. Requires schema migration 1012 on the
+	// target database; keep false until the migration has run everywhere this
+	// exporter writes to.
+	EnableStartTs bool `mapstructure:"enable_start_ts"`
+
 	Reduction ReductionConfig `mapstructure:"reduction"`
 
 	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
