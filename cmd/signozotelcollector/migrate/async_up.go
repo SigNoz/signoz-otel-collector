@@ -8,7 +8,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	schemamigrator "github.com/SigNoz/signoz-otel-collector/cmd/signozschemamigrator/schema_migrator"
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -119,12 +118,7 @@ func (cmd *asyncUp) Up(ctx context.Context) error {
 		return err
 	}
 
-	logsMigrations := schemamigrator.LogsMigrations
-	if constants.EnableLogsMigrationsV2 {
-		logsMigrations = schemamigrator.LogsMigrationsV2
-	}
-
-	err = cmd.run(ctx, logsMigrations, schemamigrator.SignozLogsDB)
+	err = cmd.run(ctx, schemamigrator.LogsMigrations, schemamigrator.SignozLogsDB)
 	if err != nil {
 		return err
 	}
