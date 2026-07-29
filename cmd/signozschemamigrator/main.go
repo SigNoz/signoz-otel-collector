@@ -10,7 +10,6 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	schema_migrator "github.com/SigNoz/signoz-otel-collector/cmd/signozschemamigrator/schema_migrator"
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -89,7 +88,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName), zap.Bool("enable-logs-migrations-v2", constants.EnableLogsMigrationsV2))
+			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
@@ -187,7 +186,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName), zap.Bool("enable-logs-migrations-v2", constants.EnableLogsMigrationsV2))
+			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {

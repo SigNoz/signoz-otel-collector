@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/cenkalti/backoff/v4"
 	"go.uber.org/zap"
 )
@@ -762,12 +761,7 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
-	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsV2 {
-		logsMigrations = LogsMigrationsV2
-	}
-
-	for _, migration := range logsMigrations {
+	for _, migration := range LogsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
 			continue
 		}
@@ -829,12 +823,7 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 		}
 	}
 
-	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsV2 {
-		logsMigrations = LogsMigrationsV2
-	}
-
-	for _, migration := range logsMigrations {
+	for _, migration := range LogsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, downVersions) {
 			continue
 		}
@@ -923,12 +912,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 		}
 	}
 
-	logsMigrations := LogsMigrations
-	if constants.EnableLogsMigrationsV2 {
-		logsMigrations = LogsMigrationsV2
-	}
-
-	for _, migration := range logsMigrations {
+	for _, migration := range LogsMigrations {
 		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
 			continue
 		}
