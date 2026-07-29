@@ -51,6 +51,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/azureauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/jaegerremotesampling"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/oauth2clientauthextension"
@@ -475,6 +476,7 @@ func CoreComponents(
 		signozhealthcheckextension.NewFactory(),
 		zpagesextension.NewFactory(),
 		azureauthextension.NewFactory(),
+		googlecloudlogentryencodingextension.NewFactory(),
 	)
 	extensionsMap, err := otelcol.MakeFactoryMap(extensions...)
 	if err != nil {
