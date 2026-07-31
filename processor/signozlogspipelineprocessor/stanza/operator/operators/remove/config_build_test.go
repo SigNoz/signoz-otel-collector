@@ -56,7 +56,7 @@ func TestBuildAcceptsRootKeywords(t *testing.T) {
 			require.True(t, ok, "Build returned %T, want *Transformer", op)
 			require.Equal(t, tc.wantAllResource, transformer.Field.allResource)
 			require.Equal(t, tc.wantAllAttributes, transformer.Field.allAttributes)
-			require.Nil(t, transformer.Field.Field.FieldInterface)
+			require.Nil(t, transformer.Field.FieldInterface)
 		})
 	}
 }
@@ -77,7 +77,7 @@ func TestBuildAcceptsExplicitFields(t *testing.T) {
 
 			transformer, ok := op.(*Transformer)
 			require.True(t, ok, "Build returned %T, want *Transformer", op)
-			require.NotNil(t, transformer.Field.Field.FieldInterface)
+			require.NotNil(t, transformer.Field.FieldInterface)
 			require.False(t, transformer.Field.allResource)
 			require.False(t, transformer.Field.allAttributes)
 		})
@@ -99,7 +99,7 @@ func TestRootableFieldEmptiness(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			isEmpty := tc.field.Field.FieldInterface == nil &&
+			isEmpty := tc.field.FieldInterface == nil &&
 				!tc.field.allResource && !tc.field.allAttributes
 			require.Equal(t, tc.wantEmpty, isEmpty)
 		})
