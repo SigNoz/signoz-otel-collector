@@ -21,7 +21,7 @@ type costs struct {
 type compiledRule struct {
 	name       string
 	pattern    string
-	additive   bool // true → CacheModeAdditive, false → CacheModeSubtract
+	cacheMode  CacheMode // "", CacheModeSubtract, or CacheModeAdditive
 	in         float64
 	out        float64
 	cacheRead  float64
@@ -57,7 +57,7 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 			rules = append(rules, compiledRule{
 				name:       r.Name,
 				pattern:    p,
-				additive:   r.Cache.Mode == CacheModeAdditive,
+				cacheMode:  r.Cache.Mode,
 				in:         r.In,
 				out:        r.Out,
 				cacheRead:  r.Cache.Read,
@@ -159,21 +159,24 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 func (p *llmCostProcessor) compute(rule *compiledRule, in, out, cacheRead, cacheWrite float64) costs {
 	d := p.divisor
 	var c costs
+	c.output = out * rule.out / d
 
-	if rule.additive {
+	switch rule.cacheMode {
+	case CacheModeAdditive:
 		c.input = in * rule.in / d
 		c.cacheRead = cacheRead * rule.cacheRead / d
 		c.cacheWrite = cacheWrite * rule.cacheWrite / d
-		c.output = out * rule.out / d
-	} else {
+	case CacheModeSubtract:
 		billedInput := in - cacheRead
 		if billedInput < 0 {
 			billedInput = 0
 		}
 		c.input = billedInput * rule.in / d
 		c.cacheRead = cacheRead * rule.cacheRead / d
-		c.cacheWrite = 0 // not billed in subtract mode
-		c.output = out * rule.out / d
+	default:
+		// Unknown/absent mode: we don't know how cache_read relates to
+		// input_tokens, so bill input as-is and don't bill cache.
+		c.input = in * rule.in / d
 	}
 
 	c.total = c.input + c.cacheRead + c.cacheWrite + c.output

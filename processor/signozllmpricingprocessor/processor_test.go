@@ -301,3 +301,15 @@ func TestComputeAdditive(t *testing.T) {
 	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
 	assert.InDelta(t, c.input+c.cacheRead+c.cacheWrite+c.output, c.total, 1e-9)
 }
+
+func TestCacheEmpty(t *testing.T) {
+	p := newProcessor(testCfg)
+	rule := &compiledRule{name: "gpt-4o", pattern: "gpt-4o*", cacheMode: "", in: 5.0, out: 15.0}
+
+	c := p.compute(rule, 1000, 500, 200, 100)
+	assert.InDelta(t, 1000*5.0/1e6, c.input, 1e-9)
+	assert.InDelta(t, 0.0, c.cacheRead, 1e-9)
+	assert.InDelta(t, 0.0, c.cacheWrite, 1e-9)
+	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
+	assert.InDelta(t, c.input+c.output, c.total, 1e-9)
+}

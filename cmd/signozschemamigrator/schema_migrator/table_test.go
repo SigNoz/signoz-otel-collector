@@ -13,7 +13,7 @@ func TestTableEngine(t *testing.T) {
 		{
 			name: "create table",
 			op: ReplacingMergeTree{
-				MergeTree{
+				MergeTree: MergeTree{
 					OrderBy: "(timestamp, resource_id)",
 				},
 			},

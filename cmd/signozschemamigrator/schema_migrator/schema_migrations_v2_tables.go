@@ -25,7 +25,7 @@ var V2MigrationTablesLogs = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},
@@ -71,7 +71,7 @@ var V2MigrationTablesTraces = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},
@@ -117,7 +117,7 @@ var V2MigrationTablesMetrics = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},
@@ -163,7 +163,7 @@ var V2MigrationTablesMetadata = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},
@@ -209,7 +209,7 @@ var V2MigrationTablesAnalytics = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},
@@ -250,7 +250,7 @@ var V2MigrationTablesMeter = []SchemaMigrationRecord{
 					{Name: "updated_at", Type: DateTime64ColumnType{Precision: 9}},
 				},
 				Engine: ReplacingMergeTree{
-					MergeTree{
+					MergeTree: MergeTree{
 						OrderBy:    "migration_id",
 						PrimaryKey: "migration_id",
 					},

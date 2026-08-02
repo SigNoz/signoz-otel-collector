@@ -27,16 +27,26 @@ func createLogsReceiver(
 		return nil, errors.Wrap(err, "invalid inmemory receiver config")
 	}
 	return &InMemoryReceiver{
-		id:           config.(*Config).Id,
-		nextConsumer: consumer,
+		id:               config.(*Config).Id,
+		nextLogsConsumer: consumer,
 	}, nil
-
 }
 
-// NewFactory creates a new OTLP receiver factory.
+func createTracesReceiver(_ context.Context, _ receiver.Settings, config component.Config, consumer consumer.Traces) (receiver.Traces, error) {
+	if err := xconfmap.Validate(config); err != nil {
+		return nil, errors.Wrap(err, "invalid inmemory receiver config")
+	}
+	return &InMemoryReceiver{
+		id:                 config.(*Config).Id,
+		nextTracesConsumer: consumer,
+	}, nil
+}
+
+// NewFactory creates a new in-memory receiver factory supporting logs and traces.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		component.MustNewType("memory"),
 		createDefaultConfig,
-		receiver.WithLogs(createLogsReceiver, component.StabilityLevelBeta))
+		receiver.WithLogs(createLogsReceiver, component.StabilityLevelBeta),
+		receiver.WithTraces(createTracesReceiver, component.StabilityLevelBeta))
 }

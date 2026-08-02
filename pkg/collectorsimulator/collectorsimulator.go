@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/confmap/provider/envprovider"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 	"go.opentelemetry.io/collector/otelcol"
+	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/service"
 	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
@@ -42,6 +43,7 @@ type ConfigGenerator func(baseConfYaml []byte) ([]byte, error)
 
 func NewCollectorSimulator(
 	ctx context.Context,
+	signal pipeline.Signal,
 	processorFactories map[component.Type]processor.Factory,
 	configGenerator ConfigGenerator,
 ) (simulator *CollectorSimulator, cleanupFn func(), err error) {
@@ -79,6 +81,7 @@ func NewCollectorSimulator(
 	}
 
 	collectorConfYaml, err := generateSimulationConfig(
+		signal,
 		inMemoryReceiverId,
 		configGenerator,
 		inMemoryExporterId,
@@ -228,6 +231,7 @@ func (l *CollectorSimulator) Shutdown(ctx context.Context) (
 }
 
 func generateSimulationConfig(
+	pipelineSignal pipeline.Signal,
 	receiverId string,
 	configGenerator ConfigGenerator,
 	exporterId string,
@@ -242,7 +246,7 @@ func generateSimulationConfig(
         id: %s
     service:
       pipelines:
-        logs:
+        %s:
           receivers:
             - memory
           exporters:
@@ -253,7 +257,7 @@ func generateSimulationConfig(
         logs:
           level: warn
           output_paths: ["%s"]
-    `, receiverId, exporterId, collectorLogsOutputPath)
+    `, receiverId, exporterId, pipelineSignal, collectorLogsOutputPath)
 
 	return configGenerator([]byte(baseConf))
 }

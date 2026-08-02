@@ -27,9 +27,19 @@ func createLogsExporter(
 	}, nil
 }
 
+func createTracesExporter(_ context.Context, _ exporter.Settings, config component.Config) (exporter.Traces, error) {
+	if err := xconfmap.Validate(config); err != nil {
+		return nil, errors.Wrap(err, "invalid inmemory exporter config")
+	}
+	return &InMemoryExporter{
+		id: config.(*Config).Id,
+	}, nil
+}
+
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		component.MustNewType("memory"),
 		createDefaultConfig,
-		exporter.WithLogs(createLogsExporter, component.StabilityLevelBeta))
+		exporter.WithLogs(createLogsExporter, component.StabilityLevelBeta),
+		exporter.WithTraces(createTracesExporter, component.StabilityLevelBeta))
 }

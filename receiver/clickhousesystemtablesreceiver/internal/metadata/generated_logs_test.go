@@ -19,7 +19,9 @@ func TestLogsBuilderAppendLogRecord(t *testing.T) {
 	settings.Logger = zap.New(observedZapCore)
 	lb := NewLogsBuilder(settings)
 
-	res := pcommon.NewResource()
+	rb := lb.NewResourceBuilder()
+	rb.SetClickhouseHostname("clickhouse.hostname-val")
+	res := rb.Emit()
 
 	// append the first log record
 	lr := plog.NewLogRecord()
