@@ -30,6 +30,7 @@ signozllmpricing:
     cache_read: "_signoz.gen_ai.cost_cache_read"
     cache_write: "_signoz.gen_ai.cost_cache_write"
     total: "_signoz.gen_ai.total_cost"
+    rule_name: "_signoz.gen_ai.pricing_rule"
 
 # Minimal valid — only total output attr required.
 signozllmpricing/minimal:

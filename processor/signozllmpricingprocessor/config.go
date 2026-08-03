@@ -63,6 +63,12 @@ type OutputMapping struct {
 	CacheRead  string `mapstructure:"cache_read"`
 	CacheWrite string `mapstructure:"cache_write"`
 	Total      string `mapstructure:"total"`
+
+	// RuleName is the span attribute key where the name of the pricing rule
+	// that priced the span is written. Optional: when empty, no rule name is
+	// written. Useful for auditing which glob pattern actually matched a given
+	// model string when several rules overlap.
+	RuleName string `mapstructure:"rule_name"`
 }
 
 func (c *CacheMode) String() string {
