@@ -58,3 +58,12 @@ replace_body:
   type: move
   from: body.nested
   to: body
+
+missing_from:
+  type: move
+  to: body.new
+missing_to:
+  type: move
+  from: body.key
+missing_both:
+  type: move
