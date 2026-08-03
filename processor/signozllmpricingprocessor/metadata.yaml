@@ -6,3 +6,25 @@ status:
 tests:
   skip_lifecycle: true
   skip_shutdown: true
+
+telemetry:
+  metrics:
+    processor_signozllmpricing_priced_spans:
+      enabled: true
+      stability:
+        level: alpha
+      description: Number of spans the processor successfully attributed a cost to.
+      unit: "{spans}"
+      sum:
+        value_type: int
+        monotonic: true
+
+    processor_signozllmpricing_unpriced_spans:
+      enabled: true
+      stability:
+        level: alpha
+      description: Number of spans the processor left unpriced, by reason.
+      unit: "{spans}"
+      sum:
+        value_type: int
+        monotonic: true
