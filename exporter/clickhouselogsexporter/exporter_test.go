@@ -2,6 +2,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"errors"
 	"log"
 	"testing"
 	"time"
@@ -315,6 +316,42 @@ func TestExporterConcurrency(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestExporterConcurrencyStopsWhenConsumerFails(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+
+	tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+	resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+	logsStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+
+	tagStatementV2.ExpectAppend()
+	attributeKeysStmt.ExpectAppend()
+	resourceKeysStmt.ExpectAppend()
+	logsStatementV2.ExpectAppend().WillReturnError(errors.New("append failed"))
+	mock.ExpectClose()
+
+	exporter := setupTestExporterWithConcurrency(t, mock, 3)
+	logs := plogsgen.Generate(plogsgen.WithLogRecordCount(10000))
+
+	result := make(chan error, 1)
+	go func() {
+		result <- exporter.pushLogsData(context.Background(), logs)
+	}()
+
+	select {
+	case err := <-result:
+		require.ErrorContains(t, err, "StatementAppendLogsV2:append failed")
+	case <-time.After(time.Second):
+		t.Fatal("pushLogsData did not stop after the consumer failed")
+	}
+
+	require.NoError(t, exporter.Shutdown(context.Background()))
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }
 
 func TestProcessBody(t *testing.T) {
