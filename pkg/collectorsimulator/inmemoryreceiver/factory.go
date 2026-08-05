@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 )
@@ -23,7 +23,7 @@ func createLogsReceiver(
 	config component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
-	if err := xconfmap.Validate(config); err != nil {
+	if err := confmap.Validate(config); err != nil {
 		return nil, errors.Wrap(err, "invalid inmemory receiver config")
 	}
 	return &InMemoryReceiver{
@@ -33,7 +33,7 @@ func createLogsReceiver(
 }
 
 func createTracesReceiver(_ context.Context, _ receiver.Settings, config component.Config, consumer consumer.Traces) (receiver.Traces, error) {
-	if err := xconfmap.Validate(config); err != nil {
+	if err := confmap.Validate(config); err != nil {
 		return nil, errors.Wrap(err, "invalid inmemory receiver config")
 	}
 	return &InMemoryReceiver{

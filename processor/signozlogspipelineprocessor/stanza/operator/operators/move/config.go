@@ -3,8 +3,6 @@
 package move
 
 import (
-	"fmt"
-
 	"go.opentelemetry.io/collector/component"
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
@@ -45,8 +43,13 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
-	if c.To == entry.NewNilField() || c.From == entry.NewNilField() {
-		return nil, fmt.Errorf("move: missing to or from field")
+	// Upstream errors here; SigNoz warns to keep accepting configs that started before v0.157.0.
+	if c.From.IsEmpty() {
+		set.Logger.Warn("move: missing 'from' field; this operator is misconfigured. Set 'from' to silence this warning.")
+	}
+
+	if c.To.IsEmpty() {
+		set.Logger.Warn("move: missing 'to' field; this operator is misconfigured. Set 'to' to silence this warning.")
 	}
 
 	return &Transformer{
