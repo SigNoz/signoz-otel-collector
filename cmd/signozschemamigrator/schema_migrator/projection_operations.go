@@ -108,7 +108,7 @@ func (d DropProjectionOperation) ToSQL() string {
 	sql.WriteString(d.Table)
 	if d.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(d.cluster)
+		sql.WriteString(EscapeClusterName(d.cluster))
 	}
 	sql.WriteString(" DROP PROJECTION IF EXISTS ")
 	sql.WriteString(d.Projection.Name)
