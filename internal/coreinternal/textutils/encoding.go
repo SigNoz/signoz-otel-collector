@@ -7,12 +7,22 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 )
+
+const defaultBufSize = 4 * 1024 // 4KB
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, defaultBufSize)
+		return &buf
+	},
+}
 
 // NewBasicConfig creates a new Encoding config
 func NewEncodingConfig() EncodingConfig {
@@ -34,28 +44,33 @@ func (c EncodingConfig) Build() (Encoding, error) {
 	}
 
 	return Encoding{
-		Encoding:     enc,
-		decodeBuffer: make([]byte, 1<<12),
-		decoder:      enc.NewDecoder(),
+		Encoding: enc,
 	}, nil
 }
 
 type Encoding struct {
-	Encoding     encoding.Encoding
-	decoder      *encoding.Decoder
-	decodeBuffer []byte
+	Encoding encoding.Encoding
 }
 
-// Decode converts the bytes in msgBuf to utf-8 from the configured encoding
+// Decode converts the bytes in msgBuf to utf-8 from the configured encoding.
+// This method is goroutine-safe.
 func (e *Encoding) Decode(msgBuf []byte) ([]byte, error) {
+	decoder := e.Encoding.NewDecoder()
+
+	bufPtr := bufferPool.Get().(*[]byte)
+	buf := *bufPtr
+	defer bufferPool.Put(bufPtr)
+
 	for {
-		e.decoder.Reset()
-		nDst, _, err := e.decoder.Transform(e.decodeBuffer, msgBuf, true)
+		nDst, _, err := decoder.Transform(buf, msgBuf, true)
 		if err == nil {
-			return e.decodeBuffer[:nDst], nil
+			result := make([]byte, nDst)
+			copy(result, buf[:nDst])
+			return result, nil
 		}
 		if errors.Is(err, transform.ErrShortDst) {
-			e.decodeBuffer = make([]byte, len(e.decodeBuffer)*2)
+			buf = make([]byte, len(buf)*2)
+			*bufPtr = buf
 			continue
 		}
 		return nil, fmt.Errorf("transform encoding: %w", err)
