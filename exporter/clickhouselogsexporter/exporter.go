@@ -88,8 +88,10 @@ const (
 		resource,
 		scope_name,
 		scope_version,
-		scope_string
+		scope_string,
+		inserted_at
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -131,8 +133,10 @@ const (
 		resource,
 		scope_name,
 		scope_version,
-		scope_string
+		scope_string,
+		inserted_at
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -630,6 +634,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.scopeName,
 					rec.scopeVersion,
 					rec.scopeMap.StringData,
+					time.Now(),
 				)
 				if err := insertLogsStmtV2.Append(args...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
