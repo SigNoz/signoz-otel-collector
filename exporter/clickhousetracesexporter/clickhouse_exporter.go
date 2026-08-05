@@ -70,8 +70,10 @@ const (
 		db_name,
 		db_operation,
 		has_error,
-		is_remote
+		is_remote,
+		inserted_at
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
