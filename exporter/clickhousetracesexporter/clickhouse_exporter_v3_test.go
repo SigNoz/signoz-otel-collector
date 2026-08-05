@@ -832,7 +832,10 @@ func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 				attrs.PutStr(k, v)
 			}
 
-			populateCustomAttrsAndAttrs(attrs, span)
+			attrs.Range(func(k string, v pcommon.Value) bool {
+				applyCustomAttr(k, v, span)
+				return true
+			})
 
 			assert.Equal(t, tt.expectedHTTPHost, span.HttpHost)
 			assert.Equal(t, tt.expectedHTTPURL, span.HttpUrl)

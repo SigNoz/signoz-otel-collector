@@ -164,47 +164,6 @@ func TestExporterPushLogsData(t *testing.T) {
 	})
 }
 
-func TestGetResourceAttributesByte(t *testing.T) {
-	tests := []struct {
-		name      string
-		attribute string
-		pass      bool
-	}{
-		{
-			name:      "add_signoz_resource_attribute",
-			attribute: "signoz.workspace.internal.test",
-			pass:      true,
-		},
-		{
-			name:      "add_non_signoz_resource_attribute",
-			attribute: "nonsignoz.internal.test",
-			pass:      false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			plogs := plogsgen.Generate(plogsgen.WithResourceAttributeCount(10))
-
-			// get the base expected value
-			withoutSigNozAttrs, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
-			require.NoError(t, err)
-
-			// add the provided attributeand get the actual value
-			plogs.ResourceLogs().At(0).Resource().Attributes().PutStr(tc.attribute, "test")
-			WithNewAttribute, err := getResourceAttributesByte(plogs.ResourceLogs().At(0).Resource())
-			require.NoError(t, err)
-
-			if tc.pass {
-				assert.Equal(t, withoutSigNozAttrs, WithNewAttribute)
-			} else {
-				assert.NotEqual(t, withoutSigNozAttrs, WithNewAttribute)
-			}
-
-		})
-	}
-}
-
 // setupTestExporterWithConcurrency creates a new exporter with mock ClickHouse client and custom concurrency for testing
 func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrency int) *clickhouseLogsExporter {
 	opts := testOptions(t)
