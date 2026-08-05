@@ -54,7 +54,9 @@ func (c *baseClient) ensureRunning() {
 			c.logger.Info("Collector is stopped")
 			return
 		case <-time.After(c.coll.PollInterval):
-			if c.coll.GetState() == otelcol.StateClosed && !c.isReloading.Load() {
+			state := c.coll.GetState()
+			c.logger.Info("Collector state check", zap.String("state", state.String()))
+			if state == otelcol.StateClosed && !c.isReloading.Load() {
 				c.err <- fmt.Errorf("collector stopped unexpectedly")
 			}
 		}
