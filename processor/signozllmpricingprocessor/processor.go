@@ -42,6 +42,7 @@ type llmCostProcessor struct {
 	outCacheReadAttr  string
 	outCacheWriteAttr string
 	outTotalAttr      string
+	outRuleNameAttr   string
 
 	divisor float64 // 1e6 for per_million_tokens
 	rules   []compiledRule
@@ -79,6 +80,7 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 		outCacheReadAttr:  cfg.OutputAttrs.CacheRead,
 		outCacheWriteAttr: cfg.OutputAttrs.CacheWrite,
 		outTotalAttr:      cfg.OutputAttrs.Total,
+		outRuleNameAttr:   cfg.OutputAttrs.RuleName,
 		divisor:           divisor,
 		rules:             rules,
 	}
@@ -124,7 +126,7 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 	}
 
 	c := p.compute(rule, in, out, cacheRead, cacheWrite)
-	p.writeAttrs(attrs, c)
+	p.writeAttrs(attrs, c, rule.name)
 }
 
 // matchRule returns the first rule whose pattern matches model, or nil.
@@ -183,14 +185,16 @@ func (p *llmCostProcessor) compute(rule *compiledRule, in, out, cacheRead, cache
 	return c
 }
 
-// writeAttrs writes the computed costs to the span attribute map.
-// Fields with an empty destination key are skipped.
-func (p *llmCostProcessor) writeAttrs(attrs pcommon.Map, c costs) {
+// writeAttrs writes the computed costs to the span attribute map, along with
+// the name of the rule that produced them. Fields with an empty destination key
+// are skipped.
+func (p *llmCostProcessor) writeAttrs(attrs pcommon.Map, c costs, ruleName string) {
 	putIfKey(attrs, p.outInAttr, c.input)
 	putIfKey(attrs, p.outOutAttr, c.output)
 	putIfKey(attrs, p.outCacheReadAttr, c.cacheRead)
 	putIfKey(attrs, p.outCacheWriteAttr, c.cacheWrite)
 	putIfKey(attrs, p.outTotalAttr, c.total)
+	putStrIfKey(attrs, p.outRuleNameAttr, ruleName)
 }
 
 // getTokenCount reads a numeric attribute as float64. Returns 0 if absent or
@@ -216,5 +220,14 @@ func getTokenCount(attrs pcommon.Map, key string) float64 {
 func putIfKey(attrs pcommon.Map, key string, val float64) {
 	if key != "" {
 		attrs.PutDouble(key, val)
+	}
+}
+
+// putStrIfKey writes a string attribute only when both the key and the value
+// are non-empty. An unnamed rule writes nothing rather than an empty attribute,
+// since `name` is optional in the rule config.
+func putStrIfKey(attrs pcommon.Map, key, val string) {
+	if key != "" && val != "" {
+		attrs.PutStr(key, val)
 	}
 }
