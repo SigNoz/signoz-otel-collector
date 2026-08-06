@@ -528,7 +528,7 @@ ORDER BY
     countIf(statusCode = 2) AS error_count,
     count(*) AS total_count,
     toStartOfMinute(timestamp) AS timestamp,
-    resourceTagsMap['deployment.environment'] AS deployment_environment,
+    COALESCE(NULLIF(resourceTagsMap['deployment.environment.name'], ''), NULLIF(resourceTagsMap['deployment.environment'], '')) AS deployment_environment,
     resourceTagsMap['k8s.cluster.name'] AS k8s_cluster_name,
     resourceTagsMap['k8s.namespace.name'] AS k8s_namespace_name
 FROM signoz_traces.signoz_index_v2
@@ -574,7 +574,7 @@ GROUP BY
     countIf(statusCode = 2) AS error_count,
     count(*) AS total_count,
     toStartOfMinute(timestamp) AS timestamp,
-    resourceTagsMap['deployment.environment'] AS deployment_environment,
+    COALESCE(NULLIF(resourceTagsMap['deployment.environment.name'], ''), NULLIF(resourceTagsMap['deployment.environment'], '')) AS deployment_environment,
     resourceTagsMap['k8s.cluster.name'] AS k8s_cluster_name,
     resourceTagsMap['k8s.namespace.name'] AS k8s_namespace_name
 FROM signoz_traces.signoz_index_v2
@@ -620,7 +620,7 @@ GROUP BY
     countIf(B.statusCode = 2) AS error_count,
     count(*) AS total_count,
     toStartOfMinute(B.timestamp) AS timestamp,
-    B.resourceTagsMap['deployment.environment'] AS deployment_environment,
+    COALESCE(NULLIF(B.resourceTagsMap['deployment.environment.name'], ''), NULLIF(B.resourceTagsMap['deployment.environment'], '')) AS deployment_environment,
     B.resourceTagsMap['k8s.cluster.name'] AS k8s_cluster_name,
     B.resourceTagsMap['k8s.namespace.name'] AS k8s_namespace_name
 FROM signoz_traces.signoz_index_v2 AS A, signoz_traces.signoz_index_v2 AS B
