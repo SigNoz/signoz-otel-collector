@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -25,10 +25,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var possibleHostAttr = utils.ToLookUpMap([]string{
-	"http.host", "server.address", "client.address",
+var possibleHostAttrs = []string{
+	"server.address", "http.host", "client.address",
 	"http.request.header.host", "net.peer.name",
-})
+}
 
 func makeJaegerProtoReferences(
 	links ptrace.SpanLinkSlice,
@@ -90,39 +90,7 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == "http.status_code" || k == "http.response.status_code" {
-			// Handle both string/int http status codes.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
-			value := v.Str()
-			valueUrl, err := url.Parse(value)
-			if err == nil {
-				value = valueUrl.Hostname()
-			}
-			span.ExternalHttpUrl = value
-			span.HttpUrl = v.Str()
-			if span.HttpHost == "" { // skip override if already set using possibleHostAttr
-				span.HttpHost = value
-			}
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
-			span.ExternalHttpMethod = v.Str()
-			span.HttpMethod = v.Str()
-		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
-			span.HttpUrl = v.Str()
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
-			span.HttpMethod = v.Str()
-		} else if _, ok := possibleHostAttr[k]; ok {
-			span.HttpHost = v.Str()
-		} else if k == "db.name" || k == "db.namespace" {
-			span.DBName = v.Str()
-		} else if k == "db.operation" || k == "db.operation.name" {
-			span.DBOperation = v.Str()
-		} else if k == "rpc.grpc.status_code" {
+		if k == "rpc.grpc.status_code" {
 			// Handle both string/int status code in GRPC spans.
 			statusString, err := strconv.Atoi(v.Str())
 			statusInt := v.Int()
@@ -137,6 +105,58 @@ func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
 
 	})
 
+	if value, ok := firstAttribute(attributes, "http.response.status_code", "http.status_code"); ok {
+		// Handle both string/int HTTP status codes.
+		statusString, err := strconv.Atoi(value.Str())
+		statusInt := value.Int()
+		if err == nil && statusString != 0 {
+			statusInt = int64(statusString)
+		}
+		span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+	}
+
+	if value, ok := firstAttribute(attributes, possibleHostAttrs...); ok {
+		span.HttpHost = value.Str()
+	}
+	if value, ok := firstAttribute(attributes, "url.full", "http.url"); ok {
+		span.HttpUrl = value.Str()
+		if span.Kind == 3 {
+			host := value.Str()
+			parsedURL, err := url.Parse(host)
+			if err == nil {
+				host = parsedURL.Hostname()
+			}
+			span.ExternalHttpUrl = host
+			if span.HttpHost == "" {
+				span.HttpHost = host
+			}
+		}
+	}
+	if value, ok := firstAttribute(attributes, "http.request.method", "http.method"); ok {
+		span.HttpMethod = value.Str()
+		if span.Kind == 3 {
+			span.ExternalHttpMethod = value.Str()
+		}
+	}
+	if value, ok := firstAttribute(attributes, "db.namespace", "db.name"); ok {
+		span.DBName = value.Str()
+	}
+	if value, ok := firstAttribute(attributes, "db.operation.name", "db.operation"); ok {
+		span.DBOperation = value.Str()
+	}
+
+}
+
+func firstAttribute(attributes pcommon.Map, names ...string) (pcommon.Value, bool) {
+	for _, name := range names {
+		if value, ok := attributes.Get(name); ok {
+			if value.Type() == pcommon.ValueTypeStr && value.Str() == "" {
+				continue
+			}
+			return value, true
+		}
+	}
+	return pcommon.Value{}, false
 }
 
 func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExceptionGrouping bool) {

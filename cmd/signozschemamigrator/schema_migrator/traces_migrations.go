@@ -1448,4 +1448,9 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1016,
+		UpItems:     traceMaterializedSemconvOperations(true),
+		DownItems:   traceMaterializedSemconvOperations(false),
+	},
 }

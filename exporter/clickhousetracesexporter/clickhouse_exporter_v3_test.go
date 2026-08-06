@@ -839,3 +839,42 @@ func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 		})
 	}
 }
+
+func TestPopulateCustomAttrsAndAttrsPrefersCurrentSemconvNames(t *testing.T) {
+	span := &SpanV3{Kind: 3}
+	attrs := pcommon.NewMap()
+	attrs.PutStr("http.status_code", "400")
+	attrs.PutStr("http.response.status_code", "201")
+	attrs.PutStr("http.url", "https://legacy.example/path")
+	attrs.PutStr("url.full", "https://current.example/path")
+	attrs.PutStr("http.method", "POST")
+	attrs.PutStr("http.request.method", "GET")
+	attrs.PutStr("db.name", "legacy")
+	attrs.PutStr("db.namespace", "current")
+	attrs.PutStr("db.operation", "legacy-operation")
+	attrs.PutStr("db.operation.name", "current-operation")
+	attrs.PutStr("net.peer.name", "legacy-peer")
+	attrs.PutStr("server.address", "current-peer")
+
+	populateCustomAttrsAndAttrs(attrs, span)
+
+	assert.Equal(t, "201", span.ResponseStatusCode)
+	assert.Equal(t, "https://current.example/path", span.HttpUrl)
+	assert.Equal(t, "current.example", span.ExternalHttpUrl)
+	assert.Equal(t, "GET", span.HttpMethod)
+	assert.Equal(t, "GET", span.ExternalHttpMethod)
+	assert.Equal(t, "current", span.DBName)
+	assert.Equal(t, "current-operation", span.DBOperation)
+	assert.Equal(t, "current-peer", span.HttpHost)
+}
+
+func TestFirstAttributeFallsBackFromEmptyCurrentValue(t *testing.T) {
+	attrs := pcommon.NewMap()
+	attrs.PutStr("http.request.method", "")
+	attrs.PutStr("http.method", "GET")
+
+	value, ok := firstAttribute(attrs, "http.request.method", "http.method")
+
+	assert.True(t, ok)
+	assert.Equal(t, "GET", value.Str())
+}

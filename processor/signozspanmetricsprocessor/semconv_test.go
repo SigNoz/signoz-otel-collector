@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 )
 
 func TestDeploymentEnvironmentDimensionResolution(t *testing.T) {
@@ -178,4 +179,67 @@ func TestDBClassificationAcceptsCurrentName(t *testing.T) {
 	value, ok := getFirstAttribute(attributes, dbSystem, dbSystemOld)
 	require.True(t, ok)
 	assert.Equal(t, "postgresql", value.Str())
+}
+
+func TestPhase4DimensionFamiliesResolveCurrentFirst(t *testing.T) {
+	currents := []string{
+		"db.namespace",
+		"db.operation.name",
+		"db.query.text",
+		rpcSystem,
+		peerService,
+		"messaging.destination.name",
+		"messaging.operation.type",
+		"messaging.consumer.group.name",
+		"messaging.client.id",
+		"container.runtime.name",
+		"code.file.path",
+		"code.function.name",
+		"code.line.number",
+		"http.request.method",
+		"http.response.status_code",
+		"url.full",
+		"url.scheme",
+		"user_agent.original",
+	}
+
+	for _, current := range currents {
+		t.Run(current, func(t *testing.T) {
+			members := dimensionMemberNames(current)
+			require.GreaterOrEqual(t, len(members), 2)
+			assert.Equal(t, current, members[0])
+
+			attributes := pcommon.NewMap()
+			attributes.PutStr(members[1], "old")
+			value, ok := getDimensionValue(dimension{name: current}, attributes, pcommon.NewMap())
+			require.True(t, ok)
+			assert.Equal(t, "old", value.Str())
+
+			attributes.PutStr(current, "current")
+			value, ok = getDimensionValue(dimension{name: members[1]}, attributes, pcommon.NewMap())
+			require.True(t, ok)
+			assert.Equal(t, "current", value.Str())
+
+			for _, member := range members {
+				assert.Equal(t, members, dimensionMemberNames(member))
+			}
+		})
+	}
+}
+
+func TestRemoteAddressUsesCurrentRPCAndPeerService(t *testing.T) {
+	rpcSpan := ptrace.NewSpan()
+	rpcSpan.Attributes().PutStr(rpcSystem, "grpc")
+	rpcSpan.Attributes().PutStr(conventions.AttributeRPCService, "checkout.v1.Cart")
+	rpcSpan.Attributes().PutStr(conventions.AttributeRPCMethod, "Get")
+	address, ok := getRemoteAddress(rpcSpan)
+	require.True(t, ok)
+	assert.Equal(t, "checkout.v1.Cart/Get", address)
+
+	peerSpan := ptrace.NewSpan()
+	peerSpan.Attributes().PutStr(peerServiceOld, "legacy-checkout")
+	peerSpan.Attributes().PutStr(peerService, "checkout")
+	address, ok = getRemoteAddress(peerSpan)
+	require.True(t, ok)
+	assert.Equal(t, "checkout", address)
 }
