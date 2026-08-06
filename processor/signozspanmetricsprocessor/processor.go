@@ -51,6 +51,8 @@ const (
 	tagHTTPStatusCodeStable  = "http.response.status_code"
 	deploymentEnvironment    = "deployment.environment.name"
 	deploymentEnvironmentOld = "deployment.environment"
+	dbSystem                 = "db.system.name"
+	dbSystemOld              = "db.system"
 	metricKeySeparator       = string(byte(0))
 	traceIDKey               = "trace_id"
 
@@ -283,7 +285,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	callDimensions = append(callDimensions, pConfig.Dimensions...)
 
 	dbCallDimensions := []Dimension{
-		{Name: conventions.AttributeDBSystem},
+		{Name: dbSystem},
 		{Name: conventions.AttributeDBName},
 	}
 	dbCallDimensions = append(dbCallDimensions, pConfig.Dimensions...)
@@ -1019,7 +1021,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		p.updateExternalHistogram(externalCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
-	_, dbCallPresent := spanAttr.Get("db.system")
+	_, dbCallPresent := getFirstAttribute(spanAttr, dbSystem, dbSystemOld)
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
 		dbCallKey := p.buildCustomMetricKey(serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
@@ -1375,7 +1377,19 @@ func dimensionMemberNames(name string) []string {
 	if name == deploymentEnvironment || name == deploymentEnvironmentOld {
 		return []string{deploymentEnvironment, deploymentEnvironmentOld}
 	}
+	if name == dbSystem || name == dbSystemOld {
+		return []string{dbSystem, dbSystemOld}
+	}
 	return []string{name}
+}
+
+func getFirstAttribute(attributes pcommon.Map, names ...string) (pcommon.Value, bool) {
+	for _, name := range names {
+		if value, ok := attributes.Get(name); ok {
+			return value, true
+		}
+	}
+	return pcommon.Value{}, false
 }
 
 // cache the dimension key-value map for the metricKey if there is a cache miss.

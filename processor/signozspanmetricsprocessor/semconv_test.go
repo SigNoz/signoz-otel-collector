@@ -130,3 +130,52 @@ func TestSpanmetricsEmitsCurrentDeploymentEnvironmentLabel(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "production", resourceValue.Str())
 }
+
+func TestDBSystemDimensionResolution(t *testing.T) {
+	span := pcommon.NewMap()
+	span.PutStr(dbSystemOld, "mysql")
+	span.PutStr(dbSystem, "postgresql")
+
+	value, ok := getDimensionValue(dimension{name: dbSystem}, span, pcommon.NewMap())
+	require.True(t, ok)
+	assert.Equal(t, "postgresql", value.Str())
+
+	legacyOnly := pcommon.NewMap()
+	legacyOnly.PutStr(dbSystemOld, "redis")
+	value, ok = getDimensionValue(dimension{name: dbSystem}, legacyOnly, pcommon.NewMap())
+	require.True(t, ok)
+	assert.Equal(t, "redis", value.Str())
+}
+
+func TestSpanmetricsEmitsCurrentDBSystemLabel(t *testing.T) {
+	processor := &processorImp{
+		attrsCardinality:                       map[string]map[string]struct{}{},
+		serviceToOperations:                    map[string]map[string]struct{}{},
+		maxNumberOfServicesToTrack:             100,
+		maxNumberOfOperationsToTrackPerService: 100,
+	}
+	span := ptrace.NewSpan()
+	span.Attributes().PutStr(dbSystemOld, "postgresql")
+
+	dimensions := processor.buildCustomDimensionKVs(
+		"checkout",
+		span,
+		[]dimension{{name: dbSystem}},
+		pcommon.NewMap(),
+		nil,
+	)
+
+	value, ok := dimensions.Get(dbSystem)
+	require.True(t, ok)
+	assert.Equal(t, "postgresql", value.Str())
+	_, oldExists := dimensions.Get(dbSystemOld)
+	assert.False(t, oldExists)
+}
+
+func TestDBClassificationAcceptsCurrentName(t *testing.T) {
+	attributes := pcommon.NewMap()
+	attributes.PutStr(dbSystem, "postgresql")
+	value, ok := getFirstAttribute(attributes, dbSystem, dbSystemOld)
+	require.True(t, ok)
+	assert.Equal(t, "postgresql", value.Str())
+}
