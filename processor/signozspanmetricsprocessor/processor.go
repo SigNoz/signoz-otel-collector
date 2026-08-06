@@ -43,14 +43,16 @@ import (
 )
 
 const (
-	serviceNameKey          = conventions.AttributeServiceName
-	operationKey            = "operation"   // OpenTelemetry non-standard constant.
-	spanKindKey             = "span.kind"   // OpenTelemetry non-standard constant.
-	statusCodeKey           = "status.code" // OpenTelemetry non-standard constant.
-	tagHTTPStatusCode       = conventions.AttributeHTTPStatusCode
-	tagHTTPStatusCodeStable = "http.response.status_code"
-	metricKeySeparator      = string(byte(0))
-	traceIDKey              = "trace_id"
+	serviceNameKey           = conventions.AttributeServiceName
+	operationKey             = "operation"   // OpenTelemetry non-standard constant.
+	spanKindKey              = "span.kind"   // OpenTelemetry non-standard constant.
+	statusCodeKey            = "status.code" // OpenTelemetry non-standard constant.
+	tagHTTPStatusCode        = conventions.AttributeHTTPStatusCode
+	tagHTTPStatusCodeStable  = "http.response.status_code"
+	deploymentEnvironment    = "deployment.environment.name"
+	deploymentEnvironmentOld = "deployment.environment"
+	metricKeySeparator       = string(byte(0))
+	traceIDKey               = "trace_id"
 
 	signozID = "signoz.collector.id"
 
@@ -1319,16 +1321,20 @@ func buildCustomKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, op
 // The ok flag indicates if a dimension value was fetched in order to differentiate
 // an empty string value from a state where no value was found.
 func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool) {
-	// The more specific span attribute should take precedence.
-	if attr, exists := spanAttr.Get(d.name); exists {
-		return attr, true
-	} else if d.name == tagHTTPStatusCode {
-		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+	for _, name := range dimensionMemberNames(d.name) {
+		// Preserve span-over-resource precedence for the same semantic-convention
+		// member, while checking the current member before every old member.
+		if attr, exists := spanAttr.Get(name); exists {
 			return attr, true
 		}
-	}
-	if attr, exists := resourceAttr.Get(d.name); exists {
-		return attr, true
+		if name == tagHTTPStatusCode {
+			if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+				return attr, true
+			}
+		}
+		if attr, exists := resourceAttr.Get(name); exists {
+			return attr, true
+		}
 	}
 	// Set the default if configured, otherwise this metric will have no value set for the dimension.
 	if d.value != nil {
@@ -1338,24 +1344,38 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 }
 
 func getDimensionValueWithResource(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool, foundInResource bool) {
-	if attr, exists := spanAttr.Get(d.name); exists {
-		if _, exists := resourceAttr.Get(d.name); exists {
-			return attr, true, true
-		}
-		return attr, true, false
-	} else if d.name == tagHTTPStatusCode {
-		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
-			return attr, true, false
+	members := dimensionMemberNames(d.name)
+	for _, name := range members {
+		if _, exists := resourceAttr.Get(name); exists {
+			foundInResource = true
+			break
 		}
 	}
-	if attr, exists := resourceAttr.Get(d.name); exists {
-		return attr, true, true
+	for _, name := range members {
+		if attr, exists := spanAttr.Get(name); exists {
+			return attr, true, foundInResource
+		}
+		if name == tagHTTPStatusCode {
+			if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+				return attr, true, foundInResource
+			}
+		}
+		if attr, exists := resourceAttr.Get(name); exists {
+			return attr, true, true
+		}
 	}
 	// Set the default if configured, otherwise this metric will have no value set for the dimension.
 	if d.value != nil {
 		return *d.value, true, false
 	}
 	return v, ok, foundInResource
+}
+
+func dimensionMemberNames(name string) []string {
+	if name == deploymentEnvironment || name == deploymentEnvironmentOld {
+		return []string{deploymentEnvironment, deploymentEnvironmentOld}
+	}
+	return []string{name}
 }
 
 // cache the dimension key-value map for the metricKey if there is a cache miss.
