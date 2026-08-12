@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,102 @@ func TestNewTracesReceiver_initial_offset_err(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, r)
 	assert.EqualError(t, err, errInvalidInitialOffset.Error())
+}
+
+func TestNewTracesReceiver_local_address_err(t *testing.T) {
+	c := Config{
+		Encoding:     defaultEncoding,
+		LocalAddress: "not a valid address",
+	}
+	r, err := newTracesReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultTracesUnmarshalers(), consumertest.NewNop())
+	require.Error(t, err)
+	assert.Nil(t, r)
+	assert.ErrorIs(t, err, errInvalidLocalAddress)
+}
+
+func TestNewMetricsReceiver_local_address_err(t *testing.T) {
+	c := Config{
+		Encoding:     defaultEncoding,
+		LocalAddress: "not a valid address",
+	}
+	r, err := newMetricsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultMetricsUnmarshalers(), consumertest.NewNop())
+	require.Error(t, err)
+	assert.Nil(t, r)
+	assert.ErrorIs(t, err, errInvalidLocalAddress)
+}
+
+func TestNewLogsReceiver_local_address_err(t *testing.T) {
+	c := Config{
+		Encoding:     defaultEncoding,
+		LocalAddress: "not a valid address",
+	}
+	r, err := newLogsReceiver(c, receivertest.NewNopSettings(metadata.Type), defaultLogsUnmarshalers(), consumertest.NewNop())
+	require.Error(t, err)
+	assert.Nil(t, r)
+	assert.ErrorIs(t, err, errInvalidLocalAddress)
+}
+
+func TestSetSaramaLocalAddr(t *testing.T) {
+	tests := []struct {
+		name         string
+		localAddress string
+		wantErr      bool
+		wantSet      bool
+		wantIP       string
+		wantPort     int
+	}{
+		{
+			name:         "empty leaves LocalAddr unset",
+			localAddress: "",
+			wantErr:      false,
+			wantSet:      false,
+		},
+		{
+			name:         "bare IP defaults port to 0",
+			localAddress: "127.0.0.1",
+			wantErr:      false,
+			wantSet:      true,
+			wantIP:       "127.0.0.1",
+			wantPort:     0,
+		},
+		{
+			name:         "IP with explicit port",
+			localAddress: "127.0.0.1:12345",
+			wantErr:      false,
+			wantSet:      true,
+			wantIP:       "127.0.0.1",
+			wantPort:     12345,
+		},
+		{
+			name:         "invalid address returns error",
+			localAddress: "not a valid address",
+			wantErr:      true,
+			wantSet:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := sarama.NewConfig()
+			err := setSaramaLocalAddr(sc, tt.localAddress)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, errInvalidLocalAddress)
+				assert.Nil(t, sc.Net.LocalAddr)
+				return
+			}
+			require.NoError(t, err)
+			if !tt.wantSet {
+				assert.Nil(t, sc.Net.LocalAddr)
+				return
+			}
+			require.NotNil(t, sc.Net.LocalAddr)
+			tcpAddr, ok := sc.Net.LocalAddr.(*net.TCPAddr)
+			require.True(t, ok, "expected *net.TCPAddr, got %T", sc.Net.LocalAddr)
+			assert.Equal(t, tt.wantIP, tcpAddr.IP.String())
+			assert.Equal(t, tt.wantPort, tcpAddr.Port)
+		})
+	}
 }
 
 func TestTracesReceiverStart(t *testing.T) {

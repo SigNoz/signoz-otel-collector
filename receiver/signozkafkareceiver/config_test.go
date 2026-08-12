@@ -42,9 +42,10 @@ func TestLoadConfig(t *testing.T) {
 				Authentication: kafka.Authentication{
 					TLS: &configtls.ClientConfig{
 						Config: configtls.Config{
-							CAFile:   "ca.pem",
-							CertFile: "cert.pem",
-							KeyFile:  "key.pem",
+							CAFile:         "ca.pem",
+							CertFile:       "cert.pem",
+							KeyFile:        "key.pem",
+							ReloadInterval: 24 * time.Hour,
 						},
 					},
 				},

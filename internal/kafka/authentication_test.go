@@ -5,8 +5,19 @@ package kafka
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/stretchr/testify/assert"
@@ -153,4 +164,92 @@ func TestAuthentication(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTLSCertificateReload(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+
+	// Generate and write the initial certificate.
+	cert1 := generateSelfSignedCert(t, "initial")
+	writeCertAndKey(t, certFile, keyFile, cert1)
+
+	tlsConfig := configtls.ClientConfig{
+		Config: configtls.Config{
+			CertFile:       certFile,
+			KeyFile:        keyFile,
+			ReloadInterval: 100 * time.Millisecond,
+		},
+		InsecureSkipVerify: true,
+	}
+
+	saramaCfg := &sarama.Config{}
+	err := configureTLS(tlsConfig, saramaCfg)
+	require.NoError(t, err)
+	require.NotNil(t, saramaCfg.Net.TLS.Config)
+
+	// Verify the initial certificate is served.
+	getCert := saramaCfg.Net.TLS.Config.GetClientCertificate
+	require.NotNil(t, getCert, "GetClientCertificate should be set when ReloadInterval is configured")
+
+	initial, err := getCert(&tls.CertificateRequestInfo{})
+	require.NoError(t, err)
+	initialLeaf, err := x509.ParseCertificate(initial.Certificate[0])
+	require.NoError(t, err)
+	assert.Equal(t, "initial", initialLeaf.Subject.CommonName)
+
+	// Replace cert files with a new certificate.
+	cert2 := generateSelfSignedCert(t, "reloaded")
+	writeCertAndKey(t, certFile, keyFile, cert2)
+
+	// Wait for the reload interval to trigger.
+	assert.Eventually(t, func() bool {
+		reloaded, err := getCert(&tls.CertificateRequestInfo{})
+		if err != nil {
+			return false
+		}
+		leaf, err := x509.ParseCertificate(reloaded.Certificate[0])
+		if err != nil {
+			return false
+		}
+		return leaf.Subject.CommonName == "reloaded"
+	}, 2*time.Second, 50*time.Millisecond, "certificate should be reloaded from disk")
+}
+
+type selfSignedCert struct {
+	certPEM []byte
+	keyPEM  []byte
+}
+
+func generateSelfSignedCert(t *testing.T, cn string) selfSignedCert {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	return selfSignedCert{certPEM: certPEM, keyPEM: keyPEM}
+}
+
+func writeCertAndKey(t *testing.T, certFile, keyFile string, cert selfSignedCert) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(certFile, cert.certPEM, 0600))
+	require.NoError(t, os.WriteFile(keyFile, cert.keyPEM, 0600))
 }

@@ -56,6 +56,12 @@ type Config struct {
 	GroupID string `mapstructure:"group_id"`
 	// The consumer client ID that receiver will use (default "otel-collector")
 	ClientID string `mapstructure:"client_id"`
+	// LocalAddress is the local IP address (or IP:port) that the client should
+	// bind to (i.e. use as the source address) when connecting to the Kafka
+	// brokers. This is useful on multi-homed hosts where a specific interface
+	// must be used to reach the Kafka cluster. If empty, the OS selects the
+	// source address. Example: "10.0.0.5" or "10.0.0.5:0".
+	LocalAddress string `mapstructure:"local_address"`
 	// The initial offset to use if no offset was previously committed.
 	// Must be `latest` or `earliest` (default "latest").
 	InitialOffset string `mapstructure:"initial_offset"`

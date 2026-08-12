@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ const (
 
 var errUnrecognizedEncoding = fmt.Errorf("unrecognized encoding")
 var errInvalidInitialOffset = fmt.Errorf("invalid initial offset")
+var errInvalidLocalAddress = fmt.Errorf("invalid local_address")
 
 // errHighMemoryUsage is a sentinel error for high memory usage
 var errHighMemoryUsage = errors.New("data refused due to high memory usage")
@@ -101,6 +103,9 @@ func newTracesReceiver(config Config, set receiver.Settings, unmarshalers map[st
 	if initialOffset, err := toSaramaInitialOffset(config.InitialOffset); err == nil {
 		c.Consumer.Offsets.Initial = initialOffset
 	} else {
+		return nil, err
+	}
+	if err := setSaramaLocalAddr(c, config.LocalAddress); err != nil {
 		return nil, err
 	}
 	if config.ProtocolVersion != "" {
@@ -216,6 +221,9 @@ func newMetricsReceiver(config Config, set receiver.Settings, unmarshalers map[s
 	} else {
 		return nil, err
 	}
+	if err := setSaramaLocalAddr(c, config.LocalAddress); err != nil {
+		return nil, err
+	}
 	if config.ProtocolVersion != "" {
 		version, err := sarama.ParseKafkaVersion(config.ProtocolVersion)
 		if err != nil {
@@ -326,6 +334,9 @@ func newLogsReceiver(config Config, set receiver.Settings, unmarshalers map[stri
 	}
 	unmarshaler, err := getLogsUnmarshaler(config.Encoding, unmarshalers)
 	if err != nil {
+		return nil, err
+	}
+	if err = setSaramaLocalAddr(c, config.LocalAddress); err != nil {
 		return nil, err
 	}
 	if config.ProtocolVersion != "" {
@@ -893,4 +904,25 @@ func setSaramaConsumerConfig(sc *sarama.Config, c *SaramaConsumerConfig) *sarama
 		sc.ChannelBufferSize = c.MessagesChannelSize
 	}
 	return sc
+}
+
+// setSaramaLocalAddr configures the local (source) address that sarama will
+// bind to when dialing the Kafka brokers. The value may be a bare IP address
+// (e.g. "10.0.0.5") or an IP:port pair (e.g. "10.0.0.5:0"). When empty, the
+// sarama default is left untouched and the OS chooses the source address.
+func setSaramaLocalAddr(sc *sarama.Config, localAddress string) error {
+	if localAddress == "" {
+		return nil
+	}
+	host, port, err := net.SplitHostPort(localAddress)
+	if err != nil {
+		host = localAddress
+		port = "0"
+	}
+	addr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return fmt.Errorf("%w: %v", errInvalidLocalAddress, err)
+	}
+	sc.Net.LocalAddr = addr
+	return nil
 }
