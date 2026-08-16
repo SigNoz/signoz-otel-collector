@@ -202,6 +202,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.DBOperation,
 			span.HasError,
 			span.IsRemote,
+			time.Now(),
 		)
 		if err != nil {
 			return fmt.Errorf("could not append span to batch: %w", err)

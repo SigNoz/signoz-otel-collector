@@ -1,6 +1,11 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/utils"
+import (
+	"fmt"
+
+	"github.com/SigNoz/signoz-otel-collector/constants"
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 var LogsMigrations = []SchemaMigrationRecord{
 	{
@@ -201,7 +206,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -210,7 +215,7 @@ ORDER BY name ASC`,
 				Table:    "distributed_logs_v2",
 				Column: Column{
 					Name:  "resource",
-					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(100))},
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](100)},
 					Codec: "ZSTD(1)",
 				},
 			},
@@ -259,4 +264,289 @@ ORDER BY name ASC`,
 			},
 		},
 	},
+
+	// JSON migrations
+	{
+		MigrationID: 2001,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: SignozMetadataDB,
+				Table:    constants.LocalFieldKeysTable,
+				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy:     fmt.Sprintf("(signal, field_context, %s, %s)", constants.FieldKeysTableNameColumn, constants.FieldKeysTableDataTypeColumn),
+						PartitionBy: "toDate(last_seen / 1000000000)",
+						TTL:         "toDateTime(last_seen / 1000000000) + toIntervalSecond(1296000)",
+						Settings: TableSettings{
+							{Name: "index_granularity", Value: "8192"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: SignozMetadataDB,
+				Table:    constants.DistributedFieldKeysTable,
+				Columns: []Column{
+					{Name: "signal", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: "field_context", Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableNameColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableDataTypeColumn, Type: ColumnTypeString, Codec: "ZSTD(1)"},
+					{Name: constants.FieldKeysTableLastSeenColumn, Type: ColumnTypeUInt64, Codec: "DoubleDelta, LZ4"},
+				},
+				Engine: Distributed{
+					Database:    SignozMetadataDB,
+					Table:       constants.LocalFieldKeysTable,
+					ShardingKey: fmt.Sprintf("cityHash64(signal, field_context, %s)", constants.FieldKeysTableNameColumn),
+				},
+			},
+			AlterTableModifySettings{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Settings: TableSettings{
+					{Name: "object_serialization_version", Value: "'v3'"},
+					{Name: "object_shared_data_serialization_version", Value: "'advanced'"},
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name: constants.BodyV2Column,
+					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
+						MaxDynamicPaths: utils.ToPointer[uint](0),
+					},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name: constants.BodyV2Column,
+					Type: JSONColumnType{
+						Columns: []Column{
+							{
+								Name: "message",
+								Type: ColumnTypeString,
+							},
+						},
+						MaxDynamicPaths: utils.ToPointer[uint](0),
+					},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: "body",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  constants.BodyPromotedColumn,
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: constants.BodyV2Column,
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  constants.BodyPromotedColumn,
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{
+					Name: constants.BodyV2Column,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_string_ngram_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_string_token_idx",
+					Expression:  JSONFullTextIndexExpr(constants.BodyV2Column),
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_paths_ngram_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_paths_token_idx",
+					Expression:  JSONPathsIndexExpr(constants.BodyV2Column),
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_string_ngram_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_string_token_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_ngram_idx",
+				},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name: "body_v2_paths_token_idx",
+				},
+			},
+			// drop from the distributed table first, otherwise distributed_logs_v2 is
+			// left referencing columns that no longer exist on logs_v2
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: constants.BodyPromotedColumn},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: constants.BodyV2Column},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: constants.BodyPromotedColumn},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: constants.BodyV2Column},
+			},
+			DropTableOperation{
+				Database: SignozMetadataDB,
+				Table:    constants.DistributedFieldKeysTable,
+			},
+			DropTableOperation{
+				Database: SignozMetadataDB,
+				Table:    constants.LocalFieldKeysTable,
+			},
+		},
+	},
+	{
+		MigrationID: 2002,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			// drop from the distributed tables first, otherwise they are
+			// left referencing columns that no longer exist on the local tables
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "created_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "created_at"},
+			},
+		},
+	},
+	// Next migration id will be 2003
 }
