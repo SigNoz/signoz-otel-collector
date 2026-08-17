@@ -879,56 +879,41 @@ func Test_getAttributesJSON(t *testing.T) {
 			},
 		},
 		{
-			name: "string slice",
+			// Homogeneous slices of each primitive element type in one case.
+			name: "primitive slices of each type",
 			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("tags")
-				s.AppendEmpty().SetStr("stop")
-				s.AppendEmpty().SetStr("length")
+				strs := m.PutEmptySlice("tags")
+				strs.AppendEmpty().SetStr("stop")
+				strs.AppendEmpty().SetStr("length")
+				ints := m.PutEmptySlice("counts")
+				ints.AppendEmpty().SetInt(1)
+				ints.AppendEmpty().SetInt(2)
+				dbls := m.PutEmptySlice("scores")
+				dbls.AppendEmpty().SetDouble(0.1)
+				dbls.AppendEmpty().SetDouble(0.9)
+				bools := m.PutEmptySlice("flags")
+				bools.AppendEmpty().SetBool(true)
+				bools.AppendEmpty().SetBool(false)
 			}),
-			want: map[string]any{"tags": []any{"stop", "length"}},
+			want: map[string]any{
+				"tags":   []any{"stop", "length"},
+				"counts": []any{float64(1), float64(2)},
+				"scores": []any{0.1, 0.9},
+				"flags":  []any{true, false},
+			},
 		},
 		{
-			name: "int slice",
+			name: "empty slice, empty map, and null",
 			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("counts")
-				s.AppendEmpty().SetInt(1)
-				s.AppendEmpty().SetInt(2)
-				s.AppendEmpty().SetInt(3)
+				m.PutEmptySlice("empty_slice")
+				m.PutEmptyMap("empty_map")
+				m.PutEmpty("nothing")
 			}),
-			want: map[string]any{"counts": []any{float64(1), float64(2), float64(3)}},
-		},
-		{
-			name: "double slice",
-			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("scores")
-				s.AppendEmpty().SetDouble(0.1)
-				s.AppendEmpty().SetDouble(0.9)
-			}),
-			want: map[string]any{"scores": []any{0.1, 0.9}},
-		},
-		{
-			name: "bool slice",
-			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("flags")
-				s.AppendEmpty().SetBool(true)
-				s.AppendEmpty().SetBool(false)
-			}),
-			want: map[string]any{"flags": []any{true, false}},
-		},
-		{
-			name:  "empty slice",
-			attrs: makeMap(func(m pcommon.Map) { m.PutEmptySlice("empty") }),
-			want:  map[string]any{"empty": []any{}},
-		},
-		{
-			name:  "empty map",
-			attrs: makeMap(func(m pcommon.Map) { m.PutEmptyMap("empty") }),
-			want:  map[string]any{"empty": map[string]any{}},
-		},
-		{
-			name:  "empty value type becomes null",
-			attrs: makeMap(func(m pcommon.Map) { m.PutEmpty("nothing") }),
-			want:  map[string]any{"nothing": nil},
+			want: map[string]any{
+				"empty_slice": []any{},
+				"empty_map":   map[string]any{},
+				"nothing":     nil,
+			},
 		},
 		{
 			name: "nested map is recursed into",
@@ -947,8 +932,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			},
 		},
 		{
-			// A map's sibling keys can be of any type — unlike arrays, there's no "infer
-			// type from the first element" step to lose data.
+			// A map's sibling keys can be of any type — unlike arrays.
 			name: "scalar key alongside nested map key at the same level",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutStr("a", "value")
@@ -961,8 +945,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			},
 		},
 		{
-			// AsRaw() base64-encodes Bytes values, and json.Marshal of []byte does the same —
-			// lossless and standard for binary-in-JSON.
+			// AsRaw() base64-encodes Bytes values, and json.Marshal of []byte does the same.
 			name: "bytes attribute becomes base64 string",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutEmptyBytes("raw").FromRaw([]byte{0xde, 0xad, 0xbe, 0xef})
@@ -970,8 +953,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"raw": "3q2+7w=="},
 		},
 		{
-			// Heterogeneous arrays (invalid per the OTel spec but not prevented by the SDK
-			// types) are preserved as-is — no type-inference step exists to lose data or panic.
+			// Heterogeneous arrays (invalid per the OTel spec but not prevented by the SDK types) are preserved as-is.
 			name: "mixed-type slice: every value preserved with its own type",
 			attrs: makeMap(func(m pcommon.Map) {
 				s := m.PutEmptySlice("mixed")
@@ -1000,9 +982,6 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"map_slice": []any{map[string]any{"k": "v"}}},
 		},
 		{
-			// Regression guard: this shape used to panic under first-element-type inference
-			// (Value.Map() on a non-map element returns an invalid Map that panics on read).
-			// AsRaw() has no such step, so both values round-trip with their own types.
 			name: "mixed map/scalar slice preserved losslessly",
 			attrs: makeMap(func(m pcommon.Map) {
 				s := m.PutEmptySlice("mixed_map")
@@ -1024,51 +1003,13 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"mixed_slice": []any{[]any{"a"}, "oops"}},
 		},
 		{
-			// NaN/Inf make json.Marshal fail for the whole map; the lazy sanitize path
-			// replaces them with null and retries, preserving the sibling attributes.
+			// The exhaustive NaN/Inf/nesting matrix lives in Test_sanitizeJSONFloats.
 			name: "NaN double is sanitized to null, siblings preserved",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutDouble("nan", math.NaN())
 				m.PutStr("ok", "fine")
 			}),
 			want: map[string]any{"nan": nil, "ok": "fine"},
-		},
-		{
-			name:  "+Inf double is sanitized to null",
-			attrs: makeMap(func(m pcommon.Map) { m.PutDouble("inf", math.Inf(1)) }),
-			want:  map[string]any{"inf": nil},
-		},
-		{
-			name:  "-Inf double is sanitized to null",
-			attrs: makeMap(func(m pcommon.Map) { m.PutDouble("ninf", math.Inf(-1)) }),
-			want:  map[string]any{"ninf": nil},
-		},
-		{
-			name: "NaN nested inside a map is sanitized",
-			attrs: makeMap(func(m pcommon.Map) {
-				nested := m.PutEmptyMap("meta")
-				nested.PutDouble("bad", math.NaN())
-				nested.PutStr("ok", "fine")
-			}),
-			want: map[string]any{"meta": map[string]any{"bad": nil, "ok": "fine"}},
-		},
-		{
-			name: "NaN nested inside a slice is sanitized",
-			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("scores")
-				s.AppendEmpty().SetDouble(1.5)
-				s.AppendEmpty().SetDouble(math.NaN())
-			}),
-			want: map[string]any{"scores": []any{1.5, nil}},
-		},
-		{
-			name: "NaN nested inside a slice of maps is sanitized",
-			attrs: makeMap(func(m pcommon.Map) {
-				s := m.PutEmptySlice("items")
-				inner := s.AppendEmpty().SetEmptyMap()
-				inner.PutDouble("bad", math.Inf(1))
-			}),
-			want: map[string]any{"items": []any{map[string]any{"bad": nil}}},
 		},
 	}
 
