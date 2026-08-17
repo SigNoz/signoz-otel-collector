@@ -548,5 +548,68 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2003
+	{
+		// object_serialization_version / object_shared_data_serialization_version are already
+		// set on logs_v2 by migration 2001, so they are not re-applied here.
+		MigrationID: 2003,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  constants.AttributesColumn,
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  constants.AttributesColumn,
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+		},
+		DownItems: []Operation{
+			// drop from the distributed table first, otherwise distributed_logs_v2 is
+			// left referencing a column that no longer exists on logs_v2
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: constants.AttributesColumn},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: constants.AttributesColumn},
+			},
+		},
+	},
+	{
+		MigrationID: 2004,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "attributes_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr(constants.AttributesColumn),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "attributes_paths_tokenbf"},
+			},
+		},
+	},
+	// Next migration id will be 2005
 }
