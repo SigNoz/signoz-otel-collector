@@ -5,6 +5,7 @@ const (
 	BodyV2ColumnPrefix       = "body_v2."
 	BodyPromotedColumn       = "body_promoted"
 	BodyPromotedColumnPrefix = "body_promoted."
+	AttributesColumn         = "attributes"
 
 	SignozMetadataDB             = "signoz_metadata"
 	DistTableColumnEvolution     = SignozMetadataDB + ".distributed_column_evolution_metadata"
