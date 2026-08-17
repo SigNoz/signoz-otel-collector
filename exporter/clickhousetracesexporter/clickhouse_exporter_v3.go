@@ -192,10 +192,8 @@ func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommo
 	return string(b)
 }
 
-// sanitizeJSONFloats replaces NaN/Inf float64 values (in place, recursively through
-// nested maps/slices) with nil. encoding/json refuses to marshal NaN/Inf and errors out
-// for the entire value, not just the offending key, so a single malformed double
-// attribute could otherwise fail JSON-encoding for the whole span.
+// sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out
+// for these values, so a single malformed double attribute could not fail the whole span.
 func sanitizeJSONFloats(v any) any {
 	switch val := v.(type) {
 	case float64:

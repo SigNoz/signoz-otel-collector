@@ -13,6 +13,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
+	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
@@ -1073,5 +1074,14 @@ func Test_sanitizeJSONFloats(t *testing.T) {
 			got := sanitizeJSONFloats(tt.in)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+// Test_goccyErrorsOnNonFiniteFloats pins the assumption (goccy/go-json) returns
+// an error, rather than silently emitting invalid `NaN`/`Inf` tokens.
+func Test_goccyErrorsOnNonFiniteFloats(t *testing.T) {
+	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		_, err := goccyjson.Marshal(map[string]any{"x": f})
+		require.Error(t, err, "goccy must error on non-finite float %v", f)
 	}
 }
