@@ -171,67 +171,51 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
-// attributesForJSON converts otel values to typed values since the ClickHouse driver cannot infer the type from []interface{}.
-func attributesForJSON(attrs pcommon.Map) map[string]any {
-	out := make(map[string]any, attrs.Len())
-	attrs.Range(func(k string, v pcommon.Value) bool {
-		switch v.Type() {
-		case pcommon.ValueTypeStr:
-			out[k] = v.Str()
-		case pcommon.ValueTypeInt:
-			out[k] = v.Int()
-		case pcommon.ValueTypeDouble:
-			out[k] = v.Double()
-		case pcommon.ValueTypeBool:
-			out[k] = v.Bool()
-		case pcommon.ValueTypeSlice:
-			out[k] = toTypedSlice(v.Slice())
-		case pcommon.ValueTypeMap:
-			out[k] = attributesForJSON(v.Map())
-		default:
-			out[k] = v.AsString()
-		}
-		return true
-	})
-	return out
+// getAttributesJSON serializes span attributes, alternative is to typecast
+// each attribute since the slice of any can't be inserted.
+func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
+	raw := attrs.AsRaw()
+	b, err := json.Marshal(raw)
+	if err != nil {
+		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
+		sanitizeJSONFloats(raw)
+		b, err = json.Marshal(raw)
+	}
+	if err != nil {
+		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
+			zap.Error(err),
+			zap.String("event_trace_id", utils.TraceIDToHexOrEmptyString(traceID)),
+			zap.String("event_span_id", utils.SpanIDToHexOrEmptyString(spanID)),
+		)
+		return "{}"
+	}
+	return string(b)
 }
 
-func toTypedSlice(s pcommon.Slice) any {
-	if s.Len() == 0 {
-		return []string{}
-	}
-	switch s.At(0).Type() {
-	case pcommon.ValueTypeStr:
-		return collectSlice(s, pcommon.Value.Str)
-	case pcommon.ValueTypeInt:
-		return collectSlice(s, pcommon.Value.Int)
-	case pcommon.ValueTypeDouble:
-		return collectSlice(s, pcommon.Value.Double)
-	case pcommon.ValueTypeBool:
-		return collectSlice(s, pcommon.Value.Bool)
-	case pcommon.ValueTypeMap:
-		out := make([]map[string]any, s.Len())
-		for i := range out {
-			out[i] = attributesForJSON(s.At(i).Map())
+// sanitizeJSONFloats replaces NaN/Inf float64 values (in place, recursively through
+// nested maps/slices) with nil. encoding/json refuses to marshal NaN/Inf and errors out
+// for the entire value, not just the offending key, so a single malformed double
+// attribute could otherwise fail JSON-encoding for the whole span.
+func sanitizeJSONFloats(v any) any {
+	switch val := v.(type) {
+	case float64:
+		if utils.IsValidFloat(val) {
+			return val
 		}
-		return out
-	case pcommon.ValueTypeSlice:
-		out := make([]any, s.Len())
-		for i := range out {
-			out[i] = toTypedSlice(s.At(i).Slice())
+		return nil
+	case map[string]any:
+		for k, vv := range val {
+			val[k] = sanitizeJSONFloats(vv)
 		}
-		return out
+		return val
+	case []any:
+		for i, vv := range val {
+			val[i] = sanitizeJSONFloats(vv)
+		}
+		return val
 	default:
-		return collectSlice(s, pcommon.Value.AsString)
+		return v
 	}
-}
-
-func collectSlice[T any](s pcommon.Slice, toNativeType func(pcommon.Value) T) []T {
-	out := make([]T, s.Len())
-	for i := range out {
-		out[i] = toNativeType(s.At(i))
-	}
-	return out
 }
 
 type attributesData struct {
@@ -373,6 +357,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
+	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
+
 	span := &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
@@ -399,7 +385,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributeString:  attrMap.StringMap,
 		AttributesNumber: attrMap.NumberMap,
 		AttributesBool:   attrMap.BoolMap,
-		Attributes:       attributesForJSON(otelSpan.Attributes()),
+		Attributes:       attributesJSON,
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
