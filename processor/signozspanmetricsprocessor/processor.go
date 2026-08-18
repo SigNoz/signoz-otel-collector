@@ -43,14 +43,22 @@ import (
 )
 
 const (
-	serviceNameKey          = conventions.AttributeServiceName
-	operationKey            = "operation"   // OpenTelemetry non-standard constant.
-	spanKindKey             = "span.kind"   // OpenTelemetry non-standard constant.
-	statusCodeKey           = "status.code" // OpenTelemetry non-standard constant.
-	tagHTTPStatusCode       = conventions.AttributeHTTPStatusCode
-	tagHTTPStatusCodeStable = "http.response.status_code"
-	metricKeySeparator      = string(byte(0))
-	traceIDKey              = "trace_id"
+	serviceNameKey           = conventions.AttributeServiceName
+	operationKey             = "operation"   // OpenTelemetry non-standard constant.
+	spanKindKey              = "span.kind"   // OpenTelemetry non-standard constant.
+	statusCodeKey            = "status.code" // OpenTelemetry non-standard constant.
+	tagHTTPStatusCode        = conventions.AttributeHTTPStatusCode
+	tagHTTPStatusCodeStable  = "http.response.status_code"
+	deploymentEnvironment    = "deployment.environment.name"
+	deploymentEnvironmentOld = "deployment.environment"
+	dbSystem                 = "db.system.name"
+	dbSystemOld              = "db.system"
+	rpcSystem                = "rpc.system.name"
+	rpcSystemOld             = "rpc.system"
+	peerService              = "service.peer.name"
+	peerServiceOld           = "peer.service"
+	metricKeySeparator       = string(byte(0))
+	traceIDKey               = "trace_id"
 
 	signozID = "signoz.collector.id"
 
@@ -66,7 +74,40 @@ var (
 	defaultLatencyHistogramBucketsMs = []float64{
 		2, 4, 6, 8, 10, 50, 100, 200, 400, 800, 1000, 1400, 2000, 5000, 10_000, 15_000,
 	}
+	dimensionMemberIndex = buildDimensionMemberIndex()
 )
+
+func buildDimensionMemberIndex() map[string][]string {
+	families := [][]string{
+		{deploymentEnvironment, deploymentEnvironmentOld},
+		{dbSystem, dbSystemOld},
+		{"db.namespace", "db.elasticsearch.cluster.name", "db.name", "db.cassandra.keyspace", "db.hbase.namespace"},
+		{"db.operation.name", "db.operation"},
+		{"db.query.text", "db.statement"},
+		{rpcSystem, rpcSystemOld},
+		{peerService, peerServiceOld},
+		{"messaging.destination.name", "messaging.destination"},
+		{"messaging.operation.type", "messaging.operation"},
+		{"messaging.consumer.group.name", "messaging.eventhubs.consumer.group", "messaging.kafka.consumer.group", "messaging.rocketmq.client_group", "messaging.kafka.consumer_group"},
+		{"messaging.client.id", "messaging.client_id", "messaging.kafka.client_id", "messaging.rocketmq.client_id"},
+		{"container.runtime.name", "container.runtime"},
+		{"code.file.path", "code.filepath"},
+		{"code.function.name", "code.function"},
+		{"code.line.number", "code.lineno"},
+		{"http.request.method", "http.method"},
+		{"http.response.status_code", "http.status_code"},
+		{"url.full", "http.url"},
+		{"url.scheme", "http.scheme"},
+		{"user_agent.original", "browser.user_agent", "http.user_agent"},
+	}
+	index := make(map[string][]string)
+	for _, members := range families {
+		for _, member := range members {
+			index[member] = members
+		}
+	}
+	return index
+}
 
 // parseTimesFromKeyOrNow parses the time bucket prefix from a metric key and returns the StartTimeUnixNano and TimeUnixNano fields for metrics.
 // Ref: https://opentelemetry.io/docs/specs/otel/metrics/data-model/#temporality .
@@ -281,7 +322,7 @@ func newProcessor(logger *zap.Logger, instanceID string, config component.Config
 	callDimensions = append(callDimensions, pConfig.Dimensions...)
 
 	dbCallDimensions := []Dimension{
-		{Name: conventions.AttributeDBSystem},
+		{Name: dbSystem},
 		{Name: conventions.AttributeDBName},
 	}
 	dbCallDimensions = append(dbCallDimensions, pConfig.Dimensions...)
@@ -848,37 +889,37 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 
 	getPeerAddress := func(attrs pcommon.Map) (string, bool) {
 		var addr string
-		// Since net.peer.name is readable, it is preferred over net.peer.ip.
-		peerName, ok := attrs.Get(conventions.AttributeNetPeerName)
+		// net.peer.name|net.host.name was renamed to server.address. Prefer the
+		// current spelling when a mixed-generation SDK emits both.
+		peerName, ok := attrs.Get("server.address")
 		if ok {
 			addr = peerName.Str()
-			port, ok := attrs.Get(conventions.AttributeNetPeerPort)
-			if ok {
-				addr += ":" + port.Str()
-			}
-			return addr, true
-		}
-		// net.peer.name|net.host.name is renamed to server.address
-		peerAddress, ok := attrs.Get("server.address")
-		if ok {
-			addr = peerAddress.Str()
 			port, ok := attrs.Get("server.port")
 			if ok {
 				addr += ":" + port.Str()
 			}
 			return addr, true
 		}
-
-		peerIp, ok := attrs.Get(conventions.AttributeNetPeerIP)
+		peerAddress, ok := attrs.Get(conventions.AttributeNetPeerName)
 		if ok {
-			addr = peerIp.Str()
+			addr = peerAddress.Str()
 			port, ok := attrs.Get(conventions.AttributeNetPeerPort)
 			if ok {
 				addr += ":" + port.Str()
 			}
 			return addr, true
 		}
-		// net.peer.ip is renamed to net.sock.peer.addr
+
+		// Prefer the current network peer spelling before its historical forms.
+		peerIp, ok := attrs.Get("network.peer.address")
+		if ok {
+			addr = peerIp.Str()
+			port, ok := attrs.Get("network.peer.port")
+			if ok {
+				addr += ":" + port.Str()
+			}
+			return addr, true
+		}
 		peerAddress, ok = attrs.Get("net.sock.peer.addr")
 		if ok {
 			addr = peerAddress.Str()
@@ -889,11 +930,10 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 			return addr, true
 		}
 
-		// And later net.sock.peer.addr is renamed to network.peer.address
-		peerAddress, ok = attrs.Get("network.peer.address")
+		peerAddress, ok = attrs.Get(conventions.AttributeNetPeerIP)
 		if ok {
 			addr = peerAddress.Str()
-			port, ok := attrs.Get("network.peer.port")
+			port, ok := attrs.Get(conventions.AttributeNetPeerPort)
 			if ok {
 				addr += ":" + port.Str()
 			}
@@ -904,7 +944,7 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 	}
 
 	attrs := span.Attributes()
-	_, isRPC := attrs.Get(conventions.AttributeRPCSystem)
+	_, isRPC := getFirstAttribute(attrs, rpcSystem, rpcSystemOld)
 	// If the span is an RPC, the remote address is service/method.
 	if isRPC {
 		service, svcOK := attrs.Get(conventions.AttributeRPCService)
@@ -940,11 +980,7 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 	}
 
 	// If none of the above is set, check for full URL.
-	httpURL, ok := attrs.Get(conventions.AttributeHTTPURL)
-	if !ok {
-		// http.url is renamed to url.full
-		httpURL, ok = attrs.Get("url.full")
-	}
+	httpURL, ok := getFirstAttribute(attrs, "url.full", conventions.AttributeHTTPURL)
 	if ok {
 		urlValue := httpURL.Str()
 		// url pattern from godoc [scheme:][//[userinfo@]host][/]path[?query][#fragment]
@@ -958,9 +994,9 @@ func getRemoteAddress(span ptrace.Span) (string, bool) {
 		return parsedURL.Host, true
 	}
 
-	peerService, ok := attrs.Get(conventions.AttributePeerService)
+	peerValue, ok := getFirstAttribute(attrs, peerService, peerServiceOld)
 	if ok {
-		return peerService.Str(), true
+		return peerValue.Str(), true
 	}
 
 	return "", false
@@ -1017,7 +1053,7 @@ func (p *processorImp) aggregateMetricsForSpan(serviceName string, span ptrace.S
 		p.updateExternalHistogram(externalCallKey, latencyInMilliseconds, span.TraceID(), span.SpanID())
 	}
 
-	_, dbCallPresent := spanAttr.Get("db.system")
+	_, dbCallPresent := getFirstAttribute(spanAttr, dbSystem, dbSystemOld)
 	if span.Kind() != ptrace.SpanKindServer && dbCallPresent {
 		dbCallKey := p.buildCustomMetricKey(serviceName, span, p.dbCallDimensions, resourceAttr, nil)
 		p.dbCallCache(serviceName, span, dbCallKey, resourceAttr)
@@ -1319,16 +1355,15 @@ func buildCustomKey(dest *bytes.Buffer, serviceName string, span ptrace.Span, op
 // The ok flag indicates if a dimension value was fetched in order to differentiate
 // an empty string value from a state where no value was found.
 func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool) {
-	// The more specific span attribute should take precedence.
-	if attr, exists := spanAttr.Get(d.name); exists {
-		return attr, true
-	} else if d.name == tagHTTPStatusCode {
-		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
+	for _, name := range dimensionMemberNames(d.name) {
+		// Preserve span-over-resource precedence for the same semantic-convention
+		// member, while checking the current member before every old member.
+		if attr, exists := spanAttr.Get(name); exists {
 			return attr, true
 		}
-	}
-	if attr, exists := resourceAttr.Get(d.name); exists {
-		return attr, true
+		if attr, exists := resourceAttr.Get(name); exists {
+			return attr, true
+		}
 	}
 	// Set the default if configured, otherwise this metric will have no value set for the dimension.
 	if d.value != nil {
@@ -1338,24 +1373,42 @@ func getDimensionValue(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.M
 }
 
 func getDimensionValueWithResource(d dimension, spanAttr pcommon.Map, resourceAttr pcommon.Map) (v pcommon.Value, ok bool, foundInResource bool) {
-	if attr, exists := spanAttr.Get(d.name); exists {
-		if _, exists := resourceAttr.Get(d.name); exists {
-			return attr, true, true
-		}
-		return attr, true, false
-	} else if d.name == tagHTTPStatusCode {
-		if attr, exists := spanAttr.Get(tagHTTPStatusCodeStable); exists {
-			return attr, true, false
+	members := dimensionMemberNames(d.name)
+	for _, name := range members {
+		if _, exists := resourceAttr.Get(name); exists {
+			foundInResource = true
+			break
 		}
 	}
-	if attr, exists := resourceAttr.Get(d.name); exists {
-		return attr, true, true
+	for _, name := range members {
+		if attr, exists := spanAttr.Get(name); exists {
+			return attr, true, foundInResource
+		}
+		if attr, exists := resourceAttr.Get(name); exists {
+			return attr, true, true
+		}
 	}
 	// Set the default if configured, otherwise this metric will have no value set for the dimension.
 	if d.value != nil {
 		return *d.value, true, false
 	}
 	return v, ok, foundInResource
+}
+
+func dimensionMemberNames(name string) []string {
+	if members, ok := dimensionMemberIndex[name]; ok {
+		return members
+	}
+	return []string{name}
+}
+
+func getFirstAttribute(attributes pcommon.Map, names ...string) (pcommon.Value, bool) {
+	for _, name := range names {
+		if value, ok := attributes.Get(name); ok {
+			return value, true
+		}
+	}
+	return pcommon.Value{}, false
 }
 
 // cache the dimension key-value map for the metricKey if there is a cache miss.

@@ -31,7 +31,7 @@ processors:
     dimensions:
       - name: service.namespace
         default: default
-      - name: deployment.environment
+      - name: deployment.environment.name
         default: default
   # memory_limiter:
   #   # 80% of maximum memory up to 2G
