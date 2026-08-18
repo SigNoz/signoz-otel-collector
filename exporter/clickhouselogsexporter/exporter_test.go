@@ -15,6 +15,7 @@ import (
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -157,6 +158,11 @@ func TestExporterPushLogsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to push logs data: %v", err)
 	}
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozLogsCount)
+		return err == nil && len(rows) > 0
+	})
 
 	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
