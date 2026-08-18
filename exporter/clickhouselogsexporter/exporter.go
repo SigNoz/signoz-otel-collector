@@ -59,6 +59,7 @@ const (
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
+	bodyNonMapKey                    = "message"
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
 		labels,
@@ -299,6 +300,7 @@ type clickhouseLogsExporter struct {
 	closeChan chan struct{}
 
 	durationHistogram metric.Float64Histogram
+	nonMapBodyCounter metric.Int64Counter
 
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
@@ -718,10 +720,7 @@ producerIteration:
 					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
-					body, bodyJSON, promoted, err := e.processBody(record.Body())
-					if err != nil {
-						return err
-					}
+					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
 						resourceFP:       fp,
@@ -837,29 +836,29 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(body pcommon.Value) (string, string, string, error) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value) (string, string, string) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 	if e.bodyJSONEnabled {
 		if body.Type() == pcommon.ValueTypeMap {
-			// promoted paths extraction using cached set
-			promotedSet := e.promotedPaths.Load().(map[string]struct{})
-
-			// set values to promoted and bodyJSON
-			promoted = buildPromoted(body, promotedSet)
 			// switch the reference to bodyJSON
 			bodyJSON = body
-
-			if !e.bodyJSONOldBodyEnabled {
-				// set body to empty string
-				body = pcommon.NewValueEmpty()
-			}
 		} else {
-			return "", "", "", fmt.Errorf("body expected to be map, found %s", body.Type().String())
+			bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
+			e.nonMapBodyCounter.Add(ctx, 1)
+		}
+
+		// promoted paths extraction using cached set
+		promotedSet := e.promotedPaths.Load().(map[string]struct{})
+		promoted = buildPromoted(bodyJSON, promotedSet)
+
+		if !e.bodyJSONOldBodyEnabled {
+			// set body to empty string
+			body = pcommon.NewValueEmpty()
 		}
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted), nil
+	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
