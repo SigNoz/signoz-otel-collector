@@ -31,7 +31,7 @@ processors:
     dimensions:
       - name: service.namespace
         default: default
-      - name: deployment.environment
+      - name: deployment.environment.name
         default: default
   signozspanmetrics/delta:
     metrics_exporter: signozclickhousemetrics
@@ -44,7 +44,7 @@ processors:
     dimensions:
       - name: service.namespace
         default: default
-      - name: deployment.environment
+      - name: deployment.environment.name
         default: default
       # This is added to ensure the uniqueness of the timeseries
       # Otherwise, identical timeseries produced by multiple replicas of
