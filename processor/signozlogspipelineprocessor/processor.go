@@ -160,6 +160,7 @@ func (p *logsPipelineProcessor) startFromConverter() {
 
 func (p *logsPipelineProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	p.telemetryBuilder.ProcessorIncomingItems.Add(ctx, int64(ld.LogRecordCount()), p.otelAttrs)
+	stashUnmappedFields(ld)
 	return p.fromConverter.Batch(ld)
 }
 

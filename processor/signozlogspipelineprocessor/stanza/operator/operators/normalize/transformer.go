@@ -19,12 +19,11 @@ const (
 	MessageField = "message"
 )
 
-var msgCompatibleFields = []string{"log", "msg"}
-
 type Processor struct {
 	signozstanzahelper.TransformerOperator
 	sonic.Config
 	logsProcessed metric.Int64Counter
+	fields        fieldConfig
 }
 
 // Process will parse an entry for JSON.
@@ -58,6 +57,8 @@ func (p *Processor) transform(entry *entry.Entry) error {
 	entry.Body = parsedValue
 
 	p.normalize(entry)
+
+	p.fields.infer(entry)
 	return nil
 }
 
@@ -106,21 +107,7 @@ func (p *Processor) normalize(entry *entry.Entry) {
 	message := signozstanzaentry.NewBodyField("message")
 
 	if _, exists := getMessage(entry, message); !exists {
-		// add first found msg compatible field to body
-		for _, fieldName := range msgCompatibleFields {
-			field := signozstanzaentry.NewBodyField(fieldName)
-			val, ok := entry.Get(field)
-			if !ok {
-				continue
-			}
-			err := entry.Set(message, val)
-			if err != nil {
-				p.Logger().Error("Failed to set message field", zap.Error(err))
-			} else {
-				entry.Delete(field)
-			}
-			break
-		}
+		p.promoteMessage(entry, message)
 	}
 
 	if val, exists := getMessage(entry, message); exists {
@@ -139,4 +126,19 @@ func (p *Processor) normalize(entry *entry.Entry) {
 			}
 		}
 	}
+}
+
+func (p *Processor) promoteMessage(ent *entry.Entry, message signozstanzaentry.Field) {
+	var wanted wantedFields
+	wanted[targetMessage] = anyValue
+
+	results := p.fields.scan(searchOrder(ent), wanted)
+	if !results[targetMessage].found {
+		return
+	}
+	if err := ent.Set(message, results[targetMessage].value); err != nil {
+		p.Logger().Error("Failed to set message field", zap.Error(err))
+		return
+	}
+	results[targetMessage].source.remove()
 }
