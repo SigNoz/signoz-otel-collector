@@ -2284,4 +2284,49 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			DropTableOperation{Database: "signoz_metrics", Table: "samples_v4_reduced_last_5m_mv"},
 		},
 	},
+	{
+		MigrationID: 1012,
+		UpItems: []Operation{
+			// Registration rows are stamped at their bucket floor, so under a
+			// TTL equal to the samples' they expire up to a bucket width
+			// before the newest samples they index: a series that lived only
+			// in one week bucket becomes invisible to readers of the 1week
+			// table while its samples are still within retention. Each series
+			// table gets its bucket width added on top of the retention so a
+			// row always outlives the samples it indexes.
+			AlterTableModifyTTL{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4",
+				TTL:      "toDateTime(unix_milli / 1000) + toIntervalSecond(3600) + toIntervalSecond(2592000)",
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: false,
+				},
+			},
+			AlterTableModifyTTL{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_6hrs",
+				TTL:      "toDateTime(unix_milli / 1000) + toIntervalSecond(21600) + toIntervalSecond(2592000)",
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: false,
+				},
+			},
+			AlterTableModifyTTL{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1day",
+				TTL:      "toDateTime(unix_milli / 1000) + toIntervalSecond(86400) + toIntervalSecond(2592000)",
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: false,
+				},
+			},
+			AlterTableModifyTTL{
+				Database: "signoz_metrics",
+				Table:    "time_series_v4_1week",
+				TTL:      "toDateTime(unix_milli / 1000) + toIntervalSecond(604800) + toIntervalSecond(2592000)",
+				Settings: ModifyTTLSettings{
+					MaterializeTTLAfterModify: false,
+				},
+			},
+		},
+		DownItems: []Operation{},
+	},
 }
