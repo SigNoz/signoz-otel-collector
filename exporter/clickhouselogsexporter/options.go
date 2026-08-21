@@ -55,6 +55,15 @@ func WithMeter(meter metric.Meter) LogExporterOption {
 			panic(fmt.Errorf("error creating duration histogram: %w", err))
 		}
 		e.durationHistogram = durationHistogram
+
+		nonMapBodyCounter, err := meter.Int64Counter(
+			"exporter_non_map_body_records",
+			metric.WithDescription("Number of log records with a non-map body"),
+		)
+		if err != nil {
+			panic(fmt.Errorf("error creating non map body counter: %w", err))
+		}
+		e.nonMapBodyCounter = nonMapBodyCounter
 	}
 }
 

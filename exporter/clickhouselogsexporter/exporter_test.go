@@ -15,9 +15,12 @@ import (
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter/internal/metadata"
@@ -155,6 +158,11 @@ func TestExporterPushLogsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to push logs data: %v", err)
 	}
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozLogsCount)
+		return err == nil && len(rows) > 0
+	})
 
 	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
@@ -324,7 +332,6 @@ func TestProcessBody(t *testing.T) {
 		bodyJSONOldBodyEnabled bool
 		promotedPaths          map[string]struct{}
 		body                   func() pcommon.Value
-		expectedError          bool
 		expectedBody           string
 		expectedBodyJSON       string
 		expectedPromoted       string
@@ -357,7 +364,7 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                   "bodyJSONEnabled_true_non_map_body",
+			name:                   "bodyJSONEnabled_true_string_body",
 			bodyJSONEnabled:        true,
 			bodyJSONOldBodyEnabled: false,
 			promotedPaths:          map[string]struct{}{},
@@ -365,8 +372,80 @@ func TestProcessBody(t *testing.T) {
 				v := pcommon.NewValueStr("test log message")
 				return v
 			},
-			expectedBody:  "test log message",
-			expectedError: true,
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"test log message"}`,
+			expectedPromoted: "{}",
+		},
+		{
+			name:                   "bodyJSONEnabled_true_string_body_old_body_enabled",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: true,
+			promotedPaths: map[string]struct{}{
+				"message": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueStr("test log message")
+				return v
+			},
+			expectedBody:     "test log message",
+			expectedBodyJSON: `{"message":"test log message"}`,
+			expectedPromoted: `{"message":"test log message"}`,
+		},
+		{
+			name:                   "bodyJSONEnabled_true_int_body",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: true,
+			promotedPaths: map[string]struct{}{
+				"message": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueInt(42)
+				return v
+			},
+			expectedBody:     "42",
+			expectedBodyJSON: `{"message":"42"}`,
+			expectedPromoted: `{"message":"42"}`,
+		},
+		{
+			name:                   "bodyJSONEnabled_true_slice_body",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueSlice()
+				v.Slice().AppendEmpty().SetStr("a")
+				v.Slice().AppendEmpty().SetInt(1)
+				return v
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"[\"a\",1]"}`,
+			expectedPromoted: "{}",
+		},
+		{
+			name:                   "bodyJSONEnabled_true_bytes_body",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueBytes()
+				v.Bytes().Append([]byte("raw bytes")...)
+				return v
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"raw bytes"}`,
+			expectedPromoted: "{}",
+		},
+		{
+			name:                   "bodyJSONEnabled_true_empty_body",
+			bodyJSONEnabled:        true,
+			bodyJSONOldBodyEnabled: false,
+			promotedPaths:          map[string]struct{}{},
+			body: func() pcommon.Value {
+				return pcommon.NewValueEmpty()
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":""}`,
+			expectedPromoted: "{}",
 		},
 		{
 			name:                   "bodyJSONEnabled_true_map_body_with_promoted_paths",
@@ -487,12 +566,7 @@ func TestProcessBody(t *testing.T) {
 			body := tc.body()
 
 			// Process body
-			bodyStr, bodyJSONStr, promotedStr, err := exporter.processBody(body)
-			if tc.expectedError {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(context.Background(), body)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)
@@ -503,4 +577,64 @@ func TestProcessBody(t *testing.T) {
 			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
 		})
 	}
+}
+
+func TestProcessBodyNonMapCounter(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	opts := testOptions(t)
+	opts = append(opts,
+		WithClickHouseClient(nil),
+		WithNewUsageCollector(uuid.New(), nil),
+		WithMeter(provider.Meter(metadata.ScopeName)),
+	)
+
+	exp, err := newExporter(
+		exporter.Settings{},
+		&Config{
+			DSN:                       "clickhouse://localhost:9000/test",
+			BodyJSONEnabled:           true,
+			PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
+			LogLevelConcurrency:       utils.ToPointer(1),
+			AttributesLimits: AttributesLimits{
+				FetchKeysInterval: 2 * time.Second,
+				MaxDistinctValues: 25000,
+			},
+		},
+		opts...,
+	)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	mapBody := pcommon.NewValueMap()
+	mapBody.Map().PutStr("message", "already a map")
+
+	exp.processBody(ctx, pcommon.NewValueStr("first"))
+	exp.processBody(ctx, pcommon.NewValueStr("second"))
+	exp.processBody(ctx, pcommon.NewValueInt(42))
+	exp.processBody(ctx, mapBody)
+
+	require.NoError(t, exp.Shutdown(ctx))
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	var recorded int64
+	var found bool
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "exporter_non_map_body_records" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok, "expected an int64 sum")
+			require.Len(t, sum.DataPoints, 1)
+			recorded = sum.DataPoints[0].Value
+			found = true
+		}
+	}
+
+	require.True(t, found, "counter was not recorded")
+	assert.Equal(t, int64(3), recorded)
 }
