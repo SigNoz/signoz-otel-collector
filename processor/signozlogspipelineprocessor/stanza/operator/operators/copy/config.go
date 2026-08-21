@@ -3,8 +3,6 @@
 package copy
 
 import (
-	"fmt"
-
 	"go.opentelemetry.io/collector/component"
 
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
@@ -46,12 +44,13 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
-	if c.From == (signozstanzaentry.Field{FieldInterface: entry.NewNilField()}) {
-		return nil, fmt.Errorf("copy: missing from field")
+	// Upstream errors here; SigNoz warns to keep accepting configs that started before upstream changes.
+	if c.From == (signozstanzaentry.Field{}) {
+		set.Logger.Warn("copy: missing 'from' field; this operator is misconfigured. Set 'from' to silence this warning.")
 	}
 
-	if c.To == entry.NewNilField() {
-		return nil, fmt.Errorf("copy: missing to field")
+	if c.To.IsEmpty() {
+		set.Logger.Warn("copy: missing 'to' field; this operator is misconfigured. Set 'to' to silence this warning.")
 	}
 
 	return &Transformer{

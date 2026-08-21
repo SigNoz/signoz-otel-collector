@@ -1,5 +1,5 @@
 receivers:
-  filelog/containers:
+  file_log/containers:
     include: [  "/var/lib/docker/containers/*/*.log" ]
     start_at: end
     include_file_path: true
@@ -35,7 +35,7 @@ receivers:
         field: resource["source"]
         value: "docker"
 
-  filelog/syslog:
+  file_log/syslog:
     include: [  "/var/log/*log" ]
     start_at: end
     include_file_path: true
@@ -86,6 +86,6 @@ service:
   extensions: [pprof, zpages, health_check]
   pipelines:
     logs:
-      receivers: [ "filelog/containers", "filelog/syslog"]
+      receivers: [ "file_log/containers", "file_log/syslog"]
       processors: [  batch ]
       exporters: [ clickhouselogsexporter ]

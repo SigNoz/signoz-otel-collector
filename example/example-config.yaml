@@ -11,7 +11,7 @@ receivers:
     protocols:
       grpc:
       thrift_http:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -20,7 +20,7 @@ receivers:
       disk:
       filesystem:
       network:
-  filelog/containers:
+  file_log/containers:
     include: [  "/var/lib/docker/containers/*/*.log" ]
     start_at: end
     include_file_path: true
@@ -55,7 +55,7 @@ receivers:
         id: add_source
         field: resource["source"]
         value: "docker"
-  filelog/syslog:
+  file_log/syslog:
     include: [  "/var/log/*log" ]
     start_at: end
     include_file_path: true
@@ -132,7 +132,7 @@ service:
       processors: [signozspanmetrics/prometheus, batch]
       exporters: [clickhousetraces]
     metrics:
-      receivers: [otlp, hostmetrics]
+      receivers: [otlp, host_metrics]
       processors: [batch]
       exporters: [signozclickhousemetrics]
     metrics/spanmetrics:

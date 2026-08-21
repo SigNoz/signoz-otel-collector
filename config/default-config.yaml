@@ -11,7 +11,7 @@ receivers:
     protocols:
       grpc:
       thrift_http:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -110,7 +110,7 @@ service:
       processors: [signozspanmetrics/delta, batch]
       exporters: [clickhousetraces]
     metrics:
-      receivers: [otlp, hostmetrics]
+      receivers: [otlp, host_metrics]
       processors: [batch]
       exporters: [signozclickhousemetrics]
     logs:

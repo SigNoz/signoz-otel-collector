@@ -40,7 +40,7 @@ exporters:
     tls:
       insecure: true
 
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://myremotewriteendpoint:1234"
     headers:
       Authorization: "Bearer mybearertoken"
@@ -70,4 +70,4 @@ service:
     metrics:
       receivers: [prometheus]
       # The metrics_exporter must be present in this list.
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
