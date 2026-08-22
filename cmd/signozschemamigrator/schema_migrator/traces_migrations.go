@@ -1,7 +1,6 @@
 package schemamigrator
 
 import (
-	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
@@ -1311,7 +1310,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
 				Column: Column{
-					Name:  constants.TracesColumnAttributesPromoted,
+					Name:  "attributes_promoted",
 					Type:  JSONColumnType{},
 					Codec: "ZSTD(1)",
 				},
@@ -1321,7 +1320,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Database: "signoz_traces",
 				Table:    "distributed_signoz_index_v3",
 				Column: Column{
-					Name:  constants.TracesColumnAttributesPromoted,
+					Name:  "attributes_promoted",
 					Type:  JSONColumnType{},
 					Codec: "ZSTD(1)",
 				},
@@ -1332,12 +1331,12 @@ var TracesMigrations = []SchemaMigrationRecord{
 			AlterTableDropColumn{
 				Database: "signoz_traces",
 				Table:    "distributed_signoz_index_v3",
-				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+				Column:   Column{Name: "attributes_promoted"},
 			},
 			AlterTableDropColumn{
 				Database: "signoz_traces",
 				Table:    "signoz_index_v3",
-				Column:   Column{Name: constants.TracesColumnAttributesPromoted},
+				Column:   Column{Name: "attributes_promoted"},
 			},
 		},
 	},
@@ -1349,7 +1348,7 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Table:    "signoz_index_v3",
 				Index: Index{
 					Name:        "attributes_promoted_paths_tokenbf",
-					Expression:  JSONPathsIndexExpr(constants.TracesColumnAttributesPromoted),
+					Expression:  JSONPathsIndexExpr("attributes_promoted"),
 					Type:        "tokenbf_v1(1024, 2, 0)",
 					Granularity: 1,
 				},
