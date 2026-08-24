@@ -6,30 +6,24 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-// buildPromotedAndPruneBody extracts promoted paths from body and returns them as a separate map.
-// It retains the original body and extracted entries in place.
+// buildPromoted extracts promoted paths from source into a separate map, leaving
+// source untouched. It is shared by the body_promoted and attributes_promoted paths.
 //
 // Example:
 //
-//	Input body: {"message": "log", "user": {"id": "123", "name": "john"}}
+//	Input source: {"message": "log", "user": {"id": "123", "name": "john"}}
 //	Promoted paths: {"user.id"}
-//	Result:
-//	  - Promoted: {"user.id": "123"}
-//	  - Body: {"message": "log", "user": {"id": "123", "name": "john"}}
-//
-// If all entries in a nested map are extracted, the empty map is automatically removed.
-// Example: If "user.id" is the only key in "user", then "user" map is removed entirely.
-func buildPromoted(body pcommon.Value, promotedPaths map[string]struct{}) pcommon.Value {
+//	Result promoted: {"user.id": "123"}
+func buildPromoted(source pcommon.Map, promotedPaths map[string]struct{}) pcommon.Value {
 	promoted := pcommon.NewValueMap()
-	if body.Type() != pcommon.ValueTypeMap || len(promotedPaths) == 0 {
+	if len(promotedPaths) == 0 {
 		return promoted
 	}
 
-	bm := body.Map()
 	pm := promoted.Map()
 	for path := range promotedPaths {
 		// For each path, extract with literal preference at every level
-		handleSinglePath(bm, pm, path, path)
+		handleSinglePath(source, pm, path, path)
 	}
 
 	return promoted
