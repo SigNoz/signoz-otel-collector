@@ -609,4 +609,65 @@ ORDER BY name ASC`,
 			},
 		},
 	},
+	{
+		MigrationID: 2005,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+		},
+		DownItems: []Operation{
+			// drop from the distributed table first, otherwise distributed_logs_v2 is
+			// left referencing a column that no longer exists on logs_v2
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+		},
+	},
+	{
+		MigrationID: 2006,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "attributes_promoted_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes_promoted"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "attributes_promoted_paths_tokenbf"},
+			},
+		},
+	},
 }
