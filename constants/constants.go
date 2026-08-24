@@ -5,7 +5,7 @@ const (
 	BodyV2ColumnPrefix       = "body_v2."
 	BodyPromotedColumn       = "body_promoted"
 	BodyPromotedColumnPrefix = "body_promoted."
-	AttributesColumn         = "attributes"
+	LogsAttributesColumn     = "attributes"
 
 	OriginalBodyAttributeKey = "__signoz_original_body__"
 
