@@ -634,8 +634,6 @@ ORDER BY name ASC`,
 			},
 		},
 		DownItems: []Operation{
-			// drop from the distributed table first, otherwise distributed_logs_v2 is
-			// left referencing a column that no longer exists on logs_v2
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",

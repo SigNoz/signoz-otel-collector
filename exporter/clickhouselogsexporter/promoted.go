@@ -7,13 +7,7 @@ import (
 )
 
 // buildPromoted extracts promoted paths from source into a separate map, leaving
-// source untouched. It is shared by the body_promoted and attributes_promoted paths.
-//
-// Example:
-//
-//	Input source: {"message": "log", "user": {"id": "123", "name": "john"}}
-//	Promoted paths: {"user.id"}
-//	Result promoted: {"user.id": "123"}
+// source untouched. Shared by the body_promoted and attributes_promoted paths.
 func buildPromoted(source pcommon.Map, promotedPaths map[string]struct{}) pcommon.Value {
 	promoted := pcommon.NewValueMap()
 	if len(promotedPaths) == 0 {
@@ -22,7 +16,6 @@ func buildPromoted(source pcommon.Map, promotedPaths map[string]struct{}) pcommo
 
 	pm := promoted.Map()
 	for path := range promotedPaths {
-		// For each path, extract with literal preference at every level
 		handleSinglePath(source, pm, path, path)
 	}
 

@@ -447,8 +447,6 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
-	// On query error the previous set is preserved (not overwritten), so a
-	// transient failure never clears the promoted paths.
 	if paths, err := e.fetchPromotedPathsForColumn(constants.BodyPromotedColumn, "body"); err == nil {
 		e.promotedPaths.Store(paths)
 	}
@@ -748,7 +746,8 @@ producerIteration:
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
 					attributesJSON := e.getAttributesJSON(record.Attributes(), id.String())
-					attributesJSONPromoted := e.getAttributesPromotedJSON(record.Attributes(), id.String())
+					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
+					attributesJSONPromoted := e.getAttributesJSON(buildPromoted(record.Attributes(), promotedAttrPaths).Map(), id.String())
 
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
 					recordStream <- &Record{
@@ -934,14 +933,6 @@ func (e *clickhouseLogsExporter) getAttributesJSON(attrs pcommon.Map, logID stri
 		return "{}"
 	}
 	return string(b)
-}
-
-// getAttributesPromotedJSON extracts the promoted attribute paths and serializes them
-// for the attributes_promoted column, reusing the body_promoted extraction logic.
-func (e *clickhouseLogsExporter) getAttributesPromotedJSON(attrs pcommon.Map, logID string) string {
-	promotedSet := e.promotedAttributePaths.Load().(map[string]struct{})
-	promoted := buildPromoted(attrs, promotedSet)
-	return e.getAttributesJSON(promoted.Map(), logID)
 }
 
 // sanitizeJSONFloats replaces NaN/Inf float64 values (recursively, in place) with nil so
