@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -24,7 +25,8 @@ var msgCompatibleFields = []string{"log", "msg"}
 type Processor struct {
 	signozstanzahelper.TransformerOperator
 	sonic.Config
-	logsProcessed metric.Int64Counter
+	logsProcessed         metric.Int64Counter
+	jsonBodyDualIngestion bool
 }
 
 // Process will parse an entry for JSON.
@@ -44,20 +46,43 @@ func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) er
 // normalize log body
 func (p *Processor) transform(entry *entry.Entry) error {
 	var parsedValue map[string]any
+	var original any
+	haveOriginal := p.jsonBodyDualIngestion
 	switch v := entry.Body.(type) {
 	case string:
 		parsedValue = p.processTextLogs(v)
+		original = v
 	// no need to cover other map types; check comment https://github.com/SigNoz/signoz-otel-collector/pull/584#discussion_r2042020882
 	case map[string]any:
 		parsedValue = v
+		if p.jsonBodyDualIngestion {
+			serialized, err := p.Config.Froze().MarshalToString(v)
+			if err != nil {
+				p.Logger().Error("Failed to serialize original body", zap.Error(err))
+				haveOriginal = false
+			} else {
+				original = serialized
+			}
+		}
 	default:
 		parsedValue = map[string]any{MessageField: v} // set to message field regardless of type
+		original = v
+		if v == nil {
+			original = ""
+		}
 	}
 
 	// set parsed value to body
 	entry.Body = parsedValue
 
 	p.normalize(entry)
+
+	if haveOriginal {
+		if entry.Attributes == nil {
+			entry.Attributes = map[string]any{}
+		}
+		entry.Attributes[constants.OriginalBodyAttributeKey] = original
+	}
 	return nil
 }
 

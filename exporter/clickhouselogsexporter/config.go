@@ -50,7 +50,7 @@ type Config struct {
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
 	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
 	BodyJSONEnabled           bool             `mapstructure:"body_json_enabled"`
-	BodyJSONOldBodyEnabled    bool             `mapstructure:"body_json_old_body_enabled"`
+	JSONBodyDualIngestion     bool             `mapstructure:"json_body_dual_ingestion"`
 	// MaxAllowedDataAgeDays drops logs older than now minus this many days.
 	MaxAllowedDataAgeDays *int `mapstructure:"max_allowed_data_age_days"`
 }
