@@ -622,15 +622,13 @@ ORDER BY name ASC`,
 		},
 	},
 	{
-		// object_serialization_version / object_shared_data_serialization_version are already
-		// set on logs_v2 by migration 2001, so they are not re-applied here.
 		MigrationID: 2005,
 		UpItems: []Operation{
 			AlterTableAddColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
 				Column: Column{
-					Name:  constants.AttributesColumn,
+					Name:  "attributes",
 					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
 					Codec: "ZSTD(1)",
 				},
@@ -640,7 +638,7 @@ ORDER BY name ASC`,
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
 				Column: Column{
-					Name:  constants.AttributesColumn,
+					Name:  "attributes",
 					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
 					Codec: "ZSTD(1)",
 				},
@@ -653,12 +651,12 @@ ORDER BY name ASC`,
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "distributed_logs_v2",
-				Column:   Column{Name: constants.AttributesColumn},
+				Column:   Column{Name: "attributes"},
 			},
 			AlterTableDropColumn{
 				Database: "signoz_logs",
 				Table:    "logs_v2",
-				Column:   Column{Name: constants.AttributesColumn},
+				Column:   Column{Name: "attributes"},
 			},
 		},
 	},
@@ -670,7 +668,7 @@ ORDER BY name ASC`,
 				Table:    "logs_v2",
 				Index: Index{
 					Name:        "attributes_paths_tokenbf",
-					Expression:  JSONPathsIndexExpr(constants.AttributesColumn),
+					Expression:  JSONPathsIndexExpr("attributes"),
 					Type:        "tokenbf_v1(1024, 2, 0)",
 					Granularity: 1,
 				},
