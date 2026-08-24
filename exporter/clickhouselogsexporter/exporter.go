@@ -422,33 +422,34 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
-	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.bodyJSONEnabled {
-		ticker := time.NewTicker(e.promotedPathsSyncInterval)
-		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
-			ticker.Stop()
-			return nil
-		})
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
+		ticker.Stop()
+		return nil
+	})
 
-		e.doFetchPromotedPaths() // Immediate first fetch
-		e.wg.Add(1)
-		go func() {
-			defer e.wg.Done()
-			for {
-				select {
-				case <-e.closeChan:
-					return
-				case <-ticker.C:
-					e.doFetchPromotedPaths()
-				}
+	e.doFetchPromotedPaths() // Immediate first fetch
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchPromotedPaths()
 			}
-		}()
-	}
+		}
+	}()
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
-	if paths, err := e.fetchPromotedPathsForColumn(constants.BodyPromotedColumn, "body"); err == nil {
-		e.promotedPaths.Store(paths)
+	// body promoted paths are only relevant when the body JSON columns are enabled;
+	// attribute promoted paths are always fetched since the attributes column is always written.
+	if e.bodyJSONEnabled {
+		if paths, err := e.fetchPromotedPathsForColumn(constants.BodyPromotedColumn, "body"); err == nil {
+			e.promotedPaths.Store(paths)
+		}
 	}
 	if paths, err := e.fetchPromotedPathsForColumn(constants.LogsColumnAttributesPromoted, "attribute"); err == nil {
 		e.promotedAttributePaths.Store(paths)
