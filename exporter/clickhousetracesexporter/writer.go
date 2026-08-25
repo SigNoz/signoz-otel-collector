@@ -152,7 +152,7 @@ func (e *SpanWriter) fetchShouldSkipKeys() {
 
 func (e *SpanWriter) doFetchPromotedPaths() {
 	query := fmt.Sprintf(
-		`SELECT field_name FROM %s WHERE signal = 'traces' AND column_name = '%s' AND field_context = 'attribute' AND field_name != '__all__' SETTINGS max_threads = 1`,
+		`SELECT field_name FROM %s WHERE signal = 'traces' AND column_name = '%s' AND field_context = 'attribute' AND field_name != '__all__' GROUP BY field_name SETTINGS max_threads = 1`,
 		constants.DistTableColumnEvolution,
 		constants.TracesColumnAttributesPromoted,
 	)

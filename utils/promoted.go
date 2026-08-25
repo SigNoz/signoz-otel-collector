@@ -6,9 +6,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-// BuildPromotedPaths extracts the given promoted paths from source into a new map,
-// leaving source untouched. It is returned as a pcommon.Value so callers can either
-// stringify it or take its .Map(). Shared by the traces and logs exporters.
+// BuildPromotedPaths extracts the given promoted paths from source into a new map, leaving source untouched.
 func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) pcommon.Value {
 	promoted := pcommon.NewValueMap()
 	if len(promotedPaths) == 0 {
@@ -33,10 +31,10 @@ func extractPromotedPath(source pcommon.Map, promotedMap pcommon.Map, fullPath, 
 	}
 
 	head, tail, ok := strings.Cut(remainingPath, ".")
-	if !ok {
+	if !ok { // no nested path to check
 		return
 	}
-	if v, ok := source.Get(head); ok && v.Type() == pcommon.ValueTypeMap {
+	if v, ok := source.Get(head); ok && v.Type() == pcommon.ValueTypeMap { // if value is not map, that means full path doesn't exist
 		extractPromotedPath(v.Map(), promotedMap, fullPath, tail)
 	}
 }
