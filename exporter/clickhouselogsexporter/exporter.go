@@ -748,7 +748,7 @@ producerIteration:
 
 					attributesJSON := e.getAttributesJSON(record.Attributes(), id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
-					attributesJSONPromoted := e.getAttributesJSON(buildPromoted(record.Attributes(), promotedAttrPaths).Map(), id.String())
+					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(record.Attributes(), promotedAttrPaths).Map(), id.String())
 
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
 					recordStream <- &Record{
@@ -882,7 +882,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 
 		// promoted paths extraction using cached set
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
-		promoted = buildPromoted(bodyJSON.Map(), promotedSet)
+		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 
 		if !e.bodyJSONOldBodyEnabled {
 			// set body to empty string
