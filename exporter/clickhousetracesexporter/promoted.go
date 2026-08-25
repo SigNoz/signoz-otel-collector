@@ -22,8 +22,8 @@ func buildAttributesPromoted(attrs pcommon.Map, promotedPaths []string) pcommon.
 }
 
 // handleSingleAttributePath walks attrs according to remainingPath and extracts the value into promotedMap at fullPath.
-func handleSingleAttributePath(bodyMap pcommon.Map, promotedMap pcommon.Map, fullPath string, remainingPath string) {
-	if v, ok := bodyMap.Get(remainingPath); ok {
+func handleSingleAttributePath(attrMap pcommon.Map, promotedMap pcommon.Map, fullPath string, remainingPath string) {
+	if v, ok := attrMap.Get(remainingPath); ok {
 		if v.Type() != pcommon.ValueTypeMap { // ignore the map values for extraction
 			dst := promotedMap.PutEmpty(fullPath)
 			v.CopyTo(dst)
@@ -36,7 +36,7 @@ func handleSingleAttributePath(bodyMap pcommon.Map, promotedMap pcommon.Map, ful
 		return
 	}
 
-	if v, ok := bodyMap.Get(head); ok && v.Type() == pcommon.ValueTypeMap { // if value is not map, that means full path doesn't exist
+	if v, ok := attrMap.Get(head); ok && v.Type() == pcommon.ValueTypeMap { // if value is not map, that means full path doesn't exist
 		handleSingleAttributePath(v.Map(), promotedMap, fullPath, tail)
 	}
 }
