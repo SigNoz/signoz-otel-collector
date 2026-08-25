@@ -284,7 +284,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig, promotedPaths []string) (*SpanV3, error) {
+func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig, promotedPaths map[string]struct{}) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -384,7 +384,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributesNumber:   attrMap.NumberMap,
 		AttributesBool:     attrMap.BoolMap,
 		Attributes:         attributesJSON,
-		AttributesPromoted: getAttributesJSON(buildAttributesPromoted(otelSpan.Attributes(), promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributesPromoted: getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
@@ -430,7 +430,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	default:
 		rss := td.ResourceSpans()
 		var batchOfSpans []*SpanV3
-		promotedPaths := s.Writer.promotedAttributePaths.Load().([]string)
+		promotedPaths := s.Writer.promotedAttributePaths.Load().(map[string]struct{})
 
 		count := 0
 		size := 0
