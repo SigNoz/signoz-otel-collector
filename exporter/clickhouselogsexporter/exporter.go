@@ -722,7 +722,10 @@ producerIteration:
 					// record size calculation
 					attrsRaw := record.Attributes().AsRaw()
 					delete(attrsRaw, constants.OriginalBodyAttributeKey)
-					attrBytes, _ := json.Marshal(attrsRaw)
+					attrBytes, err := json.Marshal(attrsRaw)
+					if err != nil {
+						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
+					}
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
