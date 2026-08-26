@@ -900,7 +900,7 @@ func (e *clickhouseLogsExporter) getAttributesJSON(attrs pcommon.Map, logID stri
 	b, err := json.Marshal(raw)
 	if err != nil {
 		// NaN/Inf doubles break json.Marshal for the whole map; sanitize lazily and retry.
-		sanitizeJSONFloats(raw)
+		utils.SanitizeJSONFloats(raw)
 		b, err = json.Marshal(raw)
 	}
 	if err != nil {
@@ -911,30 +911,6 @@ func (e *clickhouseLogsExporter) getAttributesJSON(attrs pcommon.Map, logID stri
 		return "{}"
 	}
 	return string(b)
-}
-
-// sanitizeJSONFloats replaces NaN/Inf float64 values (recursively, in place) with nil so
-// json.Marshal does not reject the whole value.
-func sanitizeJSONFloats(v any) any {
-	switch val := v.(type) {
-	case float64:
-		if utils.IsValidFloat(val) {
-			return val
-		}
-		return nil
-	case map[string]any:
-		for k, vv := range val {
-			val[k] = sanitizeJSONFloats(vv)
-		}
-		return val
-	case []any:
-		for i, vv := range val {
-			val[i] = sanitizeJSONFloats(vv)
-		}
-		return val
-	default:
-		return v
-	}
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
