@@ -32,7 +32,10 @@ func createTracesProcessor(
 	cfg component.Config,
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
-	proc := newProcessor(cfg.(*Config))
+	proc, err := newProcessor(cfg.(*Config), set)
+	if err != nil {
+		return nil, err
+	}
 	return processorhelper.NewTraces(
 		ctx, set, cfg, nextConsumer,
 		proc.ProcessTraces,
