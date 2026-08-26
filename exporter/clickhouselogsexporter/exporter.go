@@ -845,7 +845,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 	if e.bodyJSONEnabled {
-		writeBodyJSON := !e.jsonBodyDualIngestion || hasOriginalBody
+		writeBodyJSON := e.cfg.BodyJSONEnabled || hasOriginalBody
 		if writeBodyJSON {
 			if body.Type() == pcommon.ValueTypeMap {
 				// switch the reference to bodyJSON

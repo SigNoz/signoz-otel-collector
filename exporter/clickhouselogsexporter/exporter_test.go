@@ -393,7 +393,7 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_true_string_body_old_body_enabled",
+			name:                  "explicit_body_json_with_dual_and_no_stash_still_writes_body_v2",
 			bodyJSONEnabled:       true,
 			jsonBodyDualIngestion: true,
 			promotedPaths: map[string]struct{}{
@@ -404,11 +404,11 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     "test log message",
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
+			expectedBodyJSON: `{"message":"test log message"}`,
+			expectedPromoted: `{"message":"test log message"}`,
 		},
 		{
-			name:                  "bodyJSONEnabled_true_int_body",
+			name:                  "explicit_body_json_with_dual_int_body_wrapped",
 			bodyJSONEnabled:       true,
 			jsonBodyDualIngestion: true,
 			promotedPaths: map[string]struct{}{
@@ -419,8 +419,8 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     "42",
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
+			expectedBodyJSON: `{"message":"42"}`,
+			expectedPromoted: `{"message":"42"}`,
 		},
 		{
 			name:                  "bodyJSONEnabled_true_slice_body",
@@ -623,8 +623,29 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
+			name:                  "dual_ingestion_without_body_json_enabled_writes_body_v2_from_stashed_records",
+			bodyJSONEnabled:       false,
+			jsonBodyDualIngestion: true,
+			promotedPaths: map[string]struct{}{
+				"user.id": {},
+			},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				userMap := v.Map().PutEmptyMap("user")
+				userMap.PutStr("id", "123")
+				return v
+			},
+			originalBody: func() pcommon.Value {
+				return pcommon.NewValueStr(`{"message": "test", "user": {"id": "123"}}`)
+			},
+			expectedBody:     `{"message": "test", "user": {"id": "123"}}`,
+			expectedBodyJSON: `{"message":"test","user":{"id":"123"}}`,
+			expectedPromoted: `{"user.id":"123"}`,
+		},
+		{
 			name:                  "dual_ingestion_map_body_without_stash_skips_body_v2",
-			bodyJSONEnabled:       true,
+			bodyJSONEnabled:       false,
 			jsonBodyDualIngestion: true,
 			promotedPaths:         map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
@@ -638,7 +659,7 @@ func TestProcessBody(t *testing.T) {
 		},
 		{
 			name:                  "dual_ingestion_string_body_with_stash_wrapped_into_body_v2",
-			bodyJSONEnabled:       true,
+			bodyJSONEnabled:       false,
 			jsonBodyDualIngestion: true,
 			promotedPaths:         map[string]struct{}{},
 			body: func() pcommon.Value {
