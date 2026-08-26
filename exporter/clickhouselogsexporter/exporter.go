@@ -85,6 +85,7 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
 		resources_string,
 		resource,
 		scope_name,
@@ -92,6 +93,7 @@ const (
 		scope_string,
 		inserted_at
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -130,6 +132,7 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
 		resources_string,
 		resource,
 		scope_name,
@@ -137,6 +140,7 @@ const (
 		scope_string,
 		inserted_at
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -192,6 +196,7 @@ type Record struct {
 	body             string
 	bodyJSON         string
 	bodyJSONPromoted string
+	attributesJSON   string
 	scopeName        string
 	scopeVersion     string
 	// attribute/tag maps to be appended by the single consumer
@@ -631,6 +636,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
+					rec.attributesJSON,
 					rec.resourceMap.StringData,
 					rec.resourceMap.StringData,
 					rec.scopeName,
@@ -720,6 +726,8 @@ producerIteration:
 					// record size calculation
 					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
 
+					attributesJSON := e.getAttributesJSON(record.Attributes(), id.String())
+
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
@@ -735,6 +743,7 @@ producerIteration:
 						body:             body,
 						bodyJSON:         bodyJSON,
 						bodyJSONPromoted: promoted,
+						attributesJSON:   attributesJSON,
 						scopeName:        scopeName,
 						scopeVersion:     scopeVersion,
 						resourceMap:      resourcesMap,
@@ -881,6 +890,27 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
+}
+
+// getAttributesJSON serializes log attributes to a JSON string for the native ClickHouse
+// JSON column, which parses it server-side. A marshal failure is logged and falls back to
+// an empty object rather than failing the batch.
+func (e *clickhouseLogsExporter) getAttributesJSON(attrs pcommon.Map, logID string) string {
+	raw := attrs.AsRaw()
+	b, err := json.Marshal(raw)
+	if err != nil {
+		// NaN/Inf doubles break json.Marshal for the whole map; sanitize lazily and retry.
+		utils.SanitizeJSONFloats(raw)
+		b, err = json.Marshal(raw)
+	}
+	if err != nil {
+		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
+			zap.Error(err),
+			zap.String("log_id", logID),
+		)
+		return "{}"
+	}
+	return string(b)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
