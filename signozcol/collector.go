@@ -34,6 +34,8 @@ type WrappedCollector struct {
 	svc          *otelcol.Collector
 	logger       *zap.Logger
 	PollInterval time.Duration
+	bgCtx        context.Context
+	bgCancel    context.CancelFunc
 }
 
 type WrappedCollectorSettings struct {
@@ -96,11 +98,16 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	// When we disable graceful shutdown, it doesn't respond to SIGTERM and
 	// SIGINT signals, it runs until the shutdown is invoked or some async error
 	// occurs.
+	
+	// Create a background context for the collector that won't be cancelled
+	// when the opamp client's context is cancelled
+	wCol.bgCtx, wCol.bgCancel = context.WithCancel(context.Background())
+	
 	wCol.wg.Add(1)
 	go func() {
 		defer wCol.wg.Done()
 		wCol.logger.Info("Starting collector service")
-		err := svc.Run(ctx)
+		err := svc.Run(wCol.bgCtx)
 		// https://github.com/open-telemetry/opentelemetry-collector/blob/release/v0.66.x/service/collector.go#L124
 		//
 		// The .Shutdown doesn't return an error, it just closes the channel
@@ -113,6 +120,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	}()
 
 	// wait until the collector server is in the Running state
+	// (uses bgCtx created above to avoid opamp context cancellation)
 	go func() {
 		for {
 			state := svc.GetState()
@@ -126,7 +134,7 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 
 			// Context may be cancelled
 			select {
-			case <-ctx.Done():
+			case <-wCol.bgCtx.Done():
 				svc.Shutdown()
 				return
 			default:
@@ -148,6 +156,9 @@ func (wCol *WrappedCollector) Shutdown() {
 		wCol.svc.Shutdown()
 		wCol.wg.Wait()
 		wCol.svc = nil
+		if wCol.bgCancel != nil {
+			wCol.bgCancel()
+		}
 		wCol.logger.Info("Collector service is shut down")
 	} else {
 		wCol.logger.Info("Collector service is not running")
