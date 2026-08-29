@@ -97,6 +97,10 @@ service:
 func (m *remoteControlledConfig) UpdateCurrentHash() error {
 	contents, err := os.ReadFile(m.path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			m.currentHash = fileHash([]byte{})
+			return nil
+		}
 		m.currentHash = fileHash([]byte{})
 		return fmt.Errorf("failed to read config file %s: %w", m.path, err)
 	}
@@ -168,39 +172,46 @@ func (a *agentConfigManager) Apply(remoteConfig *protobufs.AgentRemoteConfig) (b
 }
 
 // applyRemoteConfig applies the remote config to the agent.
-// It merges the remote config with the local base configs, where remote config
-// takes precedence in case of conflicts. A warning is logged for each conflict.
+// It merges the remote config with the local base configs, where local base configs
+// take precedence over the remote OpAMP config. This allows users to add custom
+// receivers/processors via --config flags that persist alongside OpAMP-managed config.
 func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledConfig, newContents []byte) (changed bool, err error) {
 	// If no base configs, fall back to old behavior (direct reload)
 	if len(currentConfig.baseConfigs) == 0 {
+		a.logger.Debug("No base configs, using legacy apply")
 		return a.applyRemoteConfigNoMerge(currentConfig, newContents)
 	}
 
-	// Build merged config: base configs + remote (remote overrides)
+	a.logger.Info("Merging remote config with local base configs", zap.Strings("baseConfigs", currentConfig.baseConfigs))
+
+	// Build merged config: remote first, then base configs on top (local overrides remote)
 	merged := koanf.New("::")
 
-	// Load each base config file
-	for _, basePath := range currentConfig.baseConfigs {
-		if err := merged.Load(file.Provider(basePath), yaml.Parser()); err != nil {
-			a.logger.Warn("Failed to load base config file, skipping", zap.String("path", basePath), zap.Error(err))
-		}
-	}
-
-	// Check for conflicts before loading remote (for logging warnings)
-	remoteK := koanf.New("::")
-	if err := remoteK.Load(rawbytes.Provider(newContents), yaml.Parser()); err != nil {
+	// Load remote config first (OpAMP-managed base)
+	if err := merged.Load(rawbytes.Provider(newContents), yaml.Parser()); err != nil {
 		return false, fmt.Errorf("failed to parse remote config: %w", err)
 	}
 
-	for _, key := range remoteK.Keys() {
-		if merged.Exists(key) {
-			a.logger.Warn("OpAMP remote config overrides local --config key", zap.String("key", key))
+	// Check for conflicts before loading base (for logging warnings)
+	baseLoaded := koanf.New("::")
+	for _, basePath := range currentConfig.baseConfigs {
+		if err := baseLoaded.Load(file.Provider(basePath), yaml.Parser()); err != nil {
+			a.logger.Warn("Failed to load base config file, skipping", zap.String("path", basePath), zap.Error(err))
+			continue
+		}
+		for _, key := range baseLoaded.Keys() {
+			if merged.Exists(key) {
+				a.logger.Warn("Local --config overrides OpAMP remote config key", zap.String("key", key))
+			}
 		}
 	}
 
-	// Load remote config on top of base (remote overrides base)
-	if err := merged.Load(rawbytes.Provider(newContents), yaml.Parser()); err != nil {
-		return false, fmt.Errorf("failed to merge remote config with base configs: %w", err)
+	// Load each base config file on top of remote (local overrides remote)
+	for _, basePath := range currentConfig.baseConfigs {
+		a.logger.Info("Loading base config", zap.String("path", basePath))
+		if err := merged.Load(file.Provider(basePath), yaml.Parser()); err != nil {
+			a.logger.Warn("Failed to load base config file, skipping", zap.String("path", basePath), zap.Error(err))
+		}
 	}
 
 	mergedBytes, err := merged.Marshal(yaml.Parser())
@@ -217,8 +228,9 @@ func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledCo
 
 	newConfigHash := fileHash(mergedBytes)
 
-	// Always reload the config if this is the first config received.
-	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) {
+	// Always reload the config if there are base configs (local files might have changed)
+	// Also always reload on first config received
+	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) && len(currentConfig.baseConfigs) == 0 {
 		a.logger.Info("Config has not changed")
 		return false, nil
 	}
