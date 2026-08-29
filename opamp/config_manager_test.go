@@ -25,8 +25,11 @@ func TestNewDynamicConfigInvalidPath(t *testing.T) {
 		return nil
 	}
 
-	_, err := NewDynamicConfig("./testdata/collector.yaml", nil, reloadFunc, nil)
-	assert.ErrorContains(t, err, "no such file or directory")
+	// When config file doesn't exist, NewDynamicConfig should succeed
+	// (it will create an empty hash and proceed)
+	cfg, err := NewDynamicConfig("./testdata/nonexistent.yaml", nil, reloadFunc, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
 }
 
 func TestNewDynamicConfig(t *testing.T) {
