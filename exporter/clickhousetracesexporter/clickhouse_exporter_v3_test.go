@@ -2,7 +2,9 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"encoding/json"
 	"log"
+	"math"
 	"reflect"
 	"sort"
 	"testing"
@@ -11,10 +13,13 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
+	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -591,7 +596,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config)
+			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newStructuredSpanV3() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -769,6 +774,11 @@ func TestExporterPushTracesData(t *testing.T) {
 		t.Fatalf("failed to push traces data: %v", err)
 	}
 
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozSpansCount)
+		return err == nil && len(rows) > 0
+	})
+
 	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
 
@@ -837,5 +847,247 @@ func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 			assert.Equal(t, tt.expectedHTTPHost, span.HttpHost)
 			assert.Equal(t, tt.expectedHTTPURL, span.HttpUrl)
 		})
+	}
+}
+
+func makeMap(fn func(m pcommon.Map)) pcommon.Map {
+	m := pcommon.NewMap()
+	fn(m)
+	return m
+}
+
+func Test_getAttributesJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs pcommon.Map
+		// want is compared against the round-tripped (json.Unmarshal) result, not the raw
+		// string, since map key ordering in the marshaled JSON is not guaranteed. Numbers
+		// decode back as float64 since that's how encoding/json unmarshals into any.
+		want map[string]any
+	}{
+		{
+			name:  "no attributes",
+			attrs: pcommon.NewMap(),
+			want:  map[string]any{},
+		},
+		{
+			name: "scalars",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutStr("s", "hello")
+				m.PutInt("i", 42)
+				m.PutDouble("d", 3.14)
+				m.PutBool("b", true)
+			}),
+			want: map[string]any{
+				"s": "hello",
+				"i": float64(42),
+				"d": 3.14,
+				"b": true,
+			},
+		},
+		{
+			// Homogeneous slices of each primitive element type in one case.
+			name: "primitive slices of each type",
+			attrs: makeMap(func(m pcommon.Map) {
+				strs := m.PutEmptySlice("tags")
+				strs.AppendEmpty().SetStr("stop")
+				strs.AppendEmpty().SetStr("length")
+				ints := m.PutEmptySlice("counts")
+				ints.AppendEmpty().SetInt(1)
+				ints.AppendEmpty().SetInt(2)
+				dbls := m.PutEmptySlice("scores")
+				dbls.AppendEmpty().SetDouble(0.1)
+				dbls.AppendEmpty().SetDouble(0.9)
+				bools := m.PutEmptySlice("flags")
+				bools.AppendEmpty().SetBool(true)
+				bools.AppendEmpty().SetBool(false)
+			}),
+			want: map[string]any{
+				"tags":   []any{"stop", "length"},
+				"counts": []any{float64(1), float64(2)},
+				"scores": []any{0.1, 0.9},
+				"flags":  []any{true, false},
+			},
+		},
+		{
+			name: "empty slice, empty map, and null",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutEmptySlice("empty_slice")
+				m.PutEmptyMap("empty_map")
+				m.PutEmpty("nothing")
+			}),
+			want: map[string]any{
+				"empty_slice": []any{},
+				"empty_map":   map[string]any{},
+				"nothing":     nil,
+			},
+		},
+		{
+			name: "nested map is recursed into",
+			attrs: makeMap(func(m pcommon.Map) {
+				nested := m.PutEmptyMap("meta")
+				nested.PutStr("env", "prod")
+				inner := nested.PutEmptySlice("codes")
+				inner.AppendEmpty().SetInt(200)
+				inner.AppendEmpty().SetInt(404)
+			}),
+			want: map[string]any{
+				"meta": map[string]any{
+					"env":   "prod",
+					"codes": []any{float64(200), float64(404)},
+				},
+			},
+		},
+		{
+			// A map's sibling keys can be of any type — unlike arrays.
+			name: "scalar key alongside nested map key at the same level",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutStr("a", "value")
+				nested := m.PutEmptyMap("b")
+				nested.PutStr("b1", "value-b1")
+			}),
+			want: map[string]any{
+				"a": "value",
+				"b": map[string]any{"b1": "value-b1"},
+			},
+		},
+		{
+			// AsRaw() base64-encodes Bytes values, and json.Marshal of []byte does the same.
+			name: "bytes attribute becomes base64 string",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutEmptyBytes("raw").FromRaw([]byte{0xde, 0xad, 0xbe, 0xef})
+			}),
+			want: map[string]any{"raw": "3q2+7w=="},
+		},
+		{
+			// Heterogeneous arrays (invalid per the OTel spec but not prevented by the SDK types) are preserved as-is.
+			name: "mixed-type slice: every value preserved with its own type",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("mixed")
+				s.AppendEmpty().SetStr("ok")
+				s.AppendEmpty().SetInt(42)
+			}),
+			want: map[string]any{"mixed": []any{"ok", float64(42)}},
+		},
+		{
+			name: "slice of slices",
+			attrs: makeMap(func(m pcommon.Map) {
+				outer := m.PutEmptySlice("nested_slices")
+				inner := outer.AppendEmpty().SetEmptySlice()
+				inner.AppendEmpty().SetStr("a")
+				inner.AppendEmpty().SetStr("b")
+			}),
+			want: map[string]any{"nested_slices": []any{[]any{"a", "b"}}},
+		},
+		{
+			name: "slice of maps",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("map_slice")
+				inner := s.AppendEmpty().SetEmptyMap()
+				inner.PutStr("k", "v")
+			}),
+			want: map[string]any{"map_slice": []any{map[string]any{"k": "v"}}},
+		},
+		{
+			name: "mixed map/scalar slice preserved losslessly",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("mixed_map")
+				inner := s.AppendEmpty().SetEmptyMap()
+				inner.PutStr("k", "v")
+				s.AppendEmpty().SetStr("oops")
+			}),
+			want: map[string]any{"mixed_map": []any{map[string]any{"k": "v"}, "oops"}},
+		},
+		{
+			// Regression guard: same panic risk for Value.Slice() on a mismatched element.
+			name: "mixed slice/scalar slice preserved losslessly",
+			attrs: makeMap(func(m pcommon.Map) {
+				s := m.PutEmptySlice("mixed_slice")
+				inner := s.AppendEmpty().SetEmptySlice()
+				inner.AppendEmpty().SetStr("a")
+				s.AppendEmpty().SetStr("oops")
+			}),
+			want: map[string]any{"mixed_slice": []any{[]any{"a"}, "oops"}},
+		},
+		{
+			// The exhaustive NaN/Inf/nesting matrix lives in Test_sanitizeJSONFloats.
+			name: "NaN double is sanitized to null, siblings preserved",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutDouble("nan", math.NaN())
+				m.PutStr("ok", "fine")
+			}),
+			want: map[string]any{"nan": nil, "ok": "fine"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotJSON := getAttributesJSON(tt.attrs, pcommon.TraceID{}, pcommon.SpanID{})
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal([]byte(gotJSON), &got))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_sanitizeJSONFloats(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want any
+	}{
+		{name: "valid float unchanged", in: 3.14, want: 3.14},
+		{name: "NaN becomes nil", in: math.NaN(), want: nil},
+		{name: "+Inf becomes nil", in: math.Inf(1), want: nil},
+		{name: "-Inf becomes nil", in: math.Inf(-1), want: nil},
+		{name: "non-float scalar untouched", in: "hello", want: "hello"},
+		{
+			name: "map with mixed valid/invalid floats",
+			in: map[string]any{
+				"good": 1.0,
+				"bad":  math.NaN(),
+				"str":  "x",
+			},
+			want: map[string]any{
+				"good": 1.0,
+				"bad":  nil,
+				"str":  "x",
+			},
+		},
+		{
+			name: "slice with mixed valid/invalid floats",
+			in:   []any{1.0, math.NaN(), "x"},
+			want: []any{1.0, nil, "x"},
+		},
+		{
+			name: "deeply nested slice-of-map-of-slice",
+			in: []any{
+				map[string]any{
+					"scores": []any{math.Inf(-1), 2.0},
+				},
+			},
+			want: []any{
+				map[string]any{
+					"scores": []any{nil, 2.0},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeJSONFloats(tt.in)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Test_goccyErrorsOnNonFiniteFloats pins the assumption (goccy/go-json) returns
+// an error, rather than silently emitting invalid `NaN`/`Inf` tokens.
+func Test_goccyErrorsOnNonFiniteFloats(t *testing.T) {
+	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		_, err := goccyjson.Marshal(map[string]any{"x": f})
+		require.Error(t, err, "goccy must error on non-finite float %v", f)
 	}
 }

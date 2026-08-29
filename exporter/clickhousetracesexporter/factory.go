@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
@@ -40,6 +41,7 @@ func createDefaultConfig() component.Config {
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
+		PromotedPathsSyncInterval: utils.ToPointer(defaultPromotedPathsSyncInterval),
 	}
 }
 
@@ -94,6 +96,7 @@ func createTracesExporter(
 		WithRFCache(rfCache),
 		WithAttributesLimits(c.AttributesLimits),
 		WithExporterID(id),
+		WithPromotedPathsSyncInterval(*c.PromotedPathsSyncInterval),
 	}
 
 	exporterOpts := []TraceExporterOption{

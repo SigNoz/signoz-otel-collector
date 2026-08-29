@@ -481,5 +481,72 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2002
+	{
+		MigrationID: 2002,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			// drop from the distributed tables first, otherwise they are
+			// left referencing columns that no longer exist on the local tables
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "created_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "created_at"},
+			},
+		},
+	},
+	// Next migration id will be 2003
 }

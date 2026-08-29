@@ -56,6 +56,8 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
+		attributes_promoted,
 		resources_string,
 		resource,
 		scope,
@@ -70,8 +72,12 @@ const (
 		db_name,
 		db_operation,
 		has_error,
-		is_remote
+		is_remote,
+		inserted_at
 		) VALUES (
+			?,
+			?,
+			?,
 			?,
 			?,
 			?,

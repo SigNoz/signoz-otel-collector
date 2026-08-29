@@ -1,6 +1,8 @@
 package schemamigrator
 
-import "github.com/SigNoz/signoz-otel-collector/utils"
+import (
+	"github.com/SigNoz/signoz-otel-collector/utils"
+)
 
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
@@ -1234,4 +1236,131 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1014,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "inserted_at",
+					Type:  DateTime64ColumnType{Precision: 3},
+					Codec: "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "created_at",
+					Type:    DateTime64ColumnType{Precision: 3},
+					Default: "now64(3)",
+					Codec:   "Delta(8), ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			// drop from the distributed tables first, otherwise they are
+			// left referencing columns that no longer exist on the local tables
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "inserted_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "created_at"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "created_at"},
+			},
+		},
+	},
+	{
+		MigrationID: 1015,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+		},
+	},
+	{
+		MigrationID: 1016,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "attributes_promoted_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes_promoted"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "attributes_promoted_paths_tokenbf"},
+			},
+		},
+	},
+	// add new new migration to test file for sync/async check as well
 }
