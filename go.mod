@@ -11,7 +11,7 @@ require (
 	github.com/Shopify/sarama v1.38.1
 	github.com/apache/thrift v0.23.0
 	github.com/aws/aws-sdk-go v1.55.8
-	github.com/bytedance/sonic v1.14.1
+	github.com/bytedance/sonic v1.15.3
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/expr-lang/expr v1.17.7
 	github.com/go-redis/redismock/v9 v9.2.0
@@ -423,7 +423,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cihub/seelog v0.0.0-20170130134532-f561c5e57575 // indirect
 	github.com/cilium/ebpf v0.22.0 // indirect
