@@ -12,15 +12,69 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
+type scopeID struct {
+	name           string
+	version        string
+	attributesHash uint64
+}
+
+func scopeIDOf(ent *entry.Entry) scopeID {
+	version, _ := ent.Attributes[signozstanzaentry.InternalTempScopeVersionAttribute].(string)
+	attributes, _ := ent.Attributes[signozstanzaentry.InternalTempScopeAttributesAttribute].(map[string]any)
+	return scopeID{
+		name:           ent.ScopeName,
+		version:        version,
+		attributesHash: adapter.HashResource(attributes),
+	}
+}
+
+func setScope(dest pcommon.InstrumentationScope, ent *entry.Entry) {
+	dest.SetName(ent.ScopeName)
+	if version, ok := ent.Attributes[signozstanzaentry.InternalTempScopeVersionAttribute].(string); ok {
+		dest.SetVersion(version)
+	}
+	if attributes, ok := ent.Attributes[signozstanzaentry.InternalTempScopeAttributesAttribute].(map[string]any); ok {
+		upsertToMap(attributes, dest.Attributes())
+	}
+}
+
+func stashUnmappedFields(ld plog.Logs) {
+	resourceLogs := ld.ResourceLogs()
+	for i := 0; i < resourceLogs.Len(); i++ {
+		scopeLogs := resourceLogs.At(i).ScopeLogs()
+		for j := 0; j < scopeLogs.Len(); j++ {
+			scope := scopeLogs.At(j).Scope()
+			scopeVersion, scopeAttributes := scope.Version(), scope.Attributes()
+
+			records := scopeLogs.At(j).LogRecords()
+			for k := 0; k < records.Len(); k++ {
+				record := records.At(k)
+				recordAttributes := record.Attributes()
+
+				if scopeVersion != "" {
+					recordAttributes.PutStr(signozstanzaentry.InternalTempScopeVersionAttribute, scopeVersion)
+				}
+				if scopeAttributes.Len() > 0 {
+					scopeAttributes.CopyTo(recordAttributes.PutEmptyMap(signozstanzaentry.InternalTempScopeAttributesAttribute))
+				}
+				if eventName := record.EventName(); eventName != "" {
+					recordAttributes.PutStr(signozstanzaentry.InternalTempEventNameAttribute, eventName)
+				}
+			}
+		}
+	}
+}
+
 func convertEntriesToPlogs(entries []*entry.Entry) plog.Logs {
 	resourceHashToIdx := make(map[uint64]int)
-	scopeIdxByResource := make(map[uint64]map[string]int)
+	scopeIdxByResource := make(map[uint64]map[scopeID]int)
 
 	pLogs := plog.NewLogs()
 	var sl plog.ScopeLogs
 
 	for _, e := range entries {
 		resourceID := adapter.HashResource(e.Resource)
+		scope := scopeIDOf(e)
 		var rl plog.ResourceLogs
 
 		resourceIdx, ok := resourceHashToIdx[resourceID]
@@ -30,16 +84,16 @@ func convertEntriesToPlogs(entries []*entry.Entry) plog.Logs {
 			rl = pLogs.ResourceLogs().AppendEmpty()
 			upsertToMap(e.Resource, rl.Resource().Attributes())
 
-			scopeIdxByResource[resourceID] = map[string]int{e.ScopeName: 0}
+			scopeIdxByResource[resourceID] = map[scopeID]int{scope: 0}
 			sl = rl.ScopeLogs().AppendEmpty()
-			sl.Scope().SetName(e.ScopeName)
+			setScope(sl.Scope(), e)
 		} else {
 			rl = pLogs.ResourceLogs().At(resourceIdx)
-			scopeIdxInResource, ok := scopeIdxByResource[resourceID][e.ScopeName]
+			scopeIdxInResource, ok := scopeIdxByResource[resourceID][scope]
 			if !ok {
-				scopeIdxByResource[resourceID][e.ScopeName] = rl.ScopeLogs().Len()
+				scopeIdxByResource[resourceID][scope] = rl.ScopeLogs().Len()
 				sl = rl.ScopeLogs().AppendEmpty()
-				sl.Scope().SetName(e.ScopeName)
+				setScope(sl.Scope(), e)
 			} else {
 				sl = pLogs.ResourceLogs().At(resourceIdx).ScopeLogs().At(scopeIdxInResource)
 			}
@@ -126,6 +180,10 @@ func convertInto(ent *entry.Entry, dest plog.LogRecord) {
 		dest.SetSeverityText(defaultSevTextMap[ent.Severity])
 	} else {
 		dest.SetSeverityText(ent.SeverityText)
+	}
+
+	if eventName, ok := ent.Attributes[signozstanzaentry.InternalTempEventNameAttribute].(string); ok {
+		dest.SetEventName(eventName)
 	}
 
 	upsertToMap(ent.Attributes, dest.Attributes())

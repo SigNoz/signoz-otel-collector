@@ -1,0 +1,34 @@
+default:
+  type: normalize
+on_error_drop:
+  type: normalize
+  on_error: drop
+configured_field_names:
+  type: normalize
+  message_fields: [event, msg]
+  severity_number_fields: [sev_num]
+  severity_text_fields: [sev, level]
+  trace_id_fields: [correlation.trace]
+  span_id_fields: [correlation.span]
+  trace_flags_fields: [correlation.flags]
+  scope_name_fields: [component]
+  scope_version_fields: [component_version]
+empty_field_names:
+  type: normalize
+  message_fields: []
+  severity_text_fields: []
+move_all_fields:
+  type: normalize
+  move_all_fields: true
+moved_fields:
+  type: normalize
+  move_severity_number_field: true
+  move_severity_text_field: true
+  move_trace_id_field: true
+  move_span_id_field: true
+  move_trace_flags_field: true
+  move_scope_name_field: true
+  move_scope_version_field: true
+move_severity_text_field_only:
+  type: normalize
+  move_severity_text_field: true
