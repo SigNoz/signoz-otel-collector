@@ -130,7 +130,7 @@ func (p *Processor) normalize(entry *entry.Entry) {
 
 func (p *Processor) promoteMessage(ent *entry.Entry, message signozstanzaentry.Field) {
 	var wanted wantedFields
-	wanted[targetMessage] = anyValue
+	wanted[targetMessage] = func(value any) (any, bool) { return value, value != nil }
 
 	results := p.fields.scan(searchOrder(ent), wanted)
 	if !results[targetMessage].found {
@@ -140,5 +140,5 @@ func (p *Processor) promoteMessage(ent *entry.Entry, message signozstanzaentry.F
 		p.Logger().Error("Failed to set message field", zap.Error(err))
 		return
 	}
-	results[targetMessage].source.remove()
+	results[targetMessage].remove()
 }

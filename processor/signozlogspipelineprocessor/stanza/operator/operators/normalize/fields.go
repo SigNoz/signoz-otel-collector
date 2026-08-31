@@ -91,27 +91,19 @@ func normalizeFieldName(name string) string {
 
 func searchOrder(ent *entry.Entry) [4]map[string]any {
 	body, _ := ent.Body.(map[string]any)
-	return [4]map[string]any{body, ent.Attributes, scopeAttributes(ent), ent.Resource}
-}
-
-func scopeAttributes(ent *entry.Entry) map[string]any {
-	attributes, _ := ent.Attributes[signozstanzaentry.InternalTempScopeAttributesAttribute].(map[string]any)
-	return attributes
-}
-
-type fieldSource struct {
-	container map[string]any
-	key       string
-}
-
-func (s fieldSource) remove() {
-	delete(s.container, s.key)
+	scopeAttributes, _ := ent.Attributes[signozstanzaentry.InternalTempScopeAttributesAttribute].(map[string]any)
+	return [4]map[string]any{body, ent.Attributes, scopeAttributes, ent.Resource}
 }
 
 type scanResult struct {
-	value  any
-	source fieldSource
-	found  bool
+	value     any
+	container map[string]any
+	key       string
+	found     bool
+}
+
+func (r scanResult) remove() {
+	delete(r.container, r.key)
 }
 
 type scanResults [targetCount]scanResult
@@ -124,7 +116,7 @@ func (f fieldConfig) take(results scanResults, target fieldTarget) (any, bool) {
 		return nil, false
 	}
 	if f.move[target] {
-		result.source.remove()
+		result.remove()
 	}
 	return result.value, true
 }
@@ -154,7 +146,7 @@ func (f fieldConfig) scan(containers [4]map[string]any, wanted wantedFields) sca
 		}
 
 		for key, value := range container {
-			for _, match := range f.names[strings.ToLower(key)] {
+			for _, match := range f.names[normalizeFieldName(key)] {
 				parse := wanted[match.target]
 				if parse == nil {
 					continue
@@ -168,9 +160,10 @@ func (f fieldConfig) scan(containers [4]map[string]any, wanted wantedFields) sca
 					continue
 				}
 				results[match.target] = scanResult{
-					value:  parsed,
-					source: fieldSource{container: container, key: key},
-					found:  true,
+					value:     parsed,
+					container: container,
+					key:       key,
+					found:     true,
 				}
 				bestRank[match.target], bestKey[match.target] = match.rank, key
 			}
@@ -220,20 +213,4 @@ func (f fieldConfig) infer(ent *entry.Entry) {
 	f.setSeverity(ent, results)
 	f.setTraceContext(ent, results)
 	f.setScope(ent, results)
-}
-
-func anyValue(value any) (any, bool) {
-	return value, value != nil
-}
-
-func parseNonEmptyString(value any) (any, bool) {
-	str, ok := value.(string)
-	if !ok {
-		return nil, false
-	}
-	str = strings.TrimSpace(str)
-	if str == "" {
-		return nil, false
-	}
-	return str, true
 }

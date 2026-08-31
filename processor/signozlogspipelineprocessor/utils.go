@@ -13,18 +13,18 @@ import (
 )
 
 type scopeID struct {
-	name       string
-	version    string
-	attributes uint64
+	name           string
+	version        string
+	attributesHash uint64
 }
 
 func scopeIDOf(ent *entry.Entry) scopeID {
 	version, _ := ent.Attributes[signozstanzaentry.InternalTempScopeVersionAttribute].(string)
 	attributes, _ := ent.Attributes[signozstanzaentry.InternalTempScopeAttributesAttribute].(map[string]any)
 	return scopeID{
-		name:       ent.ScopeName,
-		version:    version,
-		attributes: adapter.HashResource(attributes),
+		name:           ent.ScopeName,
+		version:        version,
+		attributesHash: adapter.HashResource(attributes),
 	}
 }
 
