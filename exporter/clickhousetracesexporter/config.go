@@ -18,10 +18,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+)
+
+const (
+	defaultPromotedPathsSyncInterval = 5 * time.Minute
 )
 
 type AttributesLimits struct {
@@ -40,7 +45,8 @@ type Config struct {
 	LowCardinalExceptionGrouping bool `mapstructure:"low_cardinal_exception_grouping"`
 	UseNewSchema                 bool `mapstructure:"use_new_schema"`
 
-	AttributesLimits AttributesLimits `mapstructure:"attributes_limits"`
+	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
+	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -55,6 +61,9 @@ func (cfg *Config) Validate() error {
 		if q.NumConsumers <= 0 {
 			return fmt.Errorf("num_consumers must be positive")
 		}
+	}
+	if cfg.PromotedPathsSyncInterval == nil {
+		cfg.PromotedPathsSyncInterval = utils.ToPointer(defaultPromotedPathsSyncInterval)
 	}
 	return nil
 }
