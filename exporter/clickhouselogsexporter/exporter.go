@@ -282,12 +282,12 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 }
 
 type clickhouseLogsExporter struct {
-	id                     uuid.UUID
-	db                     clickhouse.Conn
-	insertLogsSQLV2        string
-	insertLogsResourceSQL  string
-	bodyJSONEnabled        bool
-	bodyJSONOldBodyEnabled bool
+	id                    uuid.UUID
+	db                    clickhouse.Conn
+	insertLogsSQLV2       string
+	insertLogsResourceSQL string
+	bodyJSONEnabled       bool
+	jsonBodyDualIngestion bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -328,17 +328,19 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
 	}
 
+	bodyJSONEnabled := cfg.BodyJSONEnabled || cfg.JSONBodyDualIngestion
+
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(bodyJSONEnabled),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
-		bodyJSONEnabled:           cfg.BodyJSONEnabled,
+		bodyJSONEnabled:           bodyJSONEnabled,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
-		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
+		jsonBodyDualIngestion:     cfg.JSONBodyDualIngestion,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
@@ -718,9 +720,15 @@ producerIteration:
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
 					// record size calculation
-					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
+					attrsRaw := record.Attributes().AsRaw()
+					delete(attrsRaw, constants.OriginalBodyAttributeKey)
+					attrBytes, err := json.Marshal(attrsRaw)
+					if err != nil {
+						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
+					}
 
-					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
+					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
+					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
 						resourceFP:       fp,
@@ -836,26 +844,32 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 	if e.bodyJSONEnabled {
-		if body.Type() == pcommon.ValueTypeMap {
-			// switch the reference to bodyJSON
-			bodyJSON = body
-		} else {
-			bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
-			e.nonMapBodyCounter.Add(ctx, 1)
+		writeBodyJSON := e.cfg.BodyJSONEnabled || hasOriginalBody
+		if writeBodyJSON {
+			if body.Type() == pcommon.ValueTypeMap {
+				// switch the reference to bodyJSON
+				bodyJSON = body
+			} else {
+				bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
+				e.nonMapBodyCounter.Add(ctx, 1)
+			}
+
+			// promoted paths extraction using cached set
+			promotedSet := e.promotedPaths.Load().(map[string]struct{})
+			promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 		}
 
-		// promoted paths extraction using cached set
-		promotedSet := e.promotedPaths.Load().(map[string]struct{})
-		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
-
-		if !e.bodyJSONOldBodyEnabled {
+		if !e.jsonBodyDualIngestion {
 			// set body to empty string
 			body = pcommon.NewValueEmpty()
 		}
+	}
+	if e.jsonBodyDualIngestion && hasOriginalBody {
+		body = originalBody
 	}
 
 	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
@@ -1008,6 +1022,9 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 	response.StringData = map[string]string{}
 	response.NumberData = map[string]float64{}
 	attributes.Range(func(k string, v pcommon.Value) bool {
+		if k == constants.OriginalBodyAttributeKey {
+			return true
+		}
 		if forceStringValues {
 			// store everything as string
 			response.StringData[k] = v.AsString()

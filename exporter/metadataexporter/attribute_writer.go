@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -67,6 +68,9 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 				logRecordAttrs := make(map[string]any, logRecord.Attributes().Len())
 
 				logRecord.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
+					if attrKey == constants.OriginalBodyAttributeKey {
+						return true
+					}
 					if w.shouldSkipFromDB(ctx, attrKey, pipeline.SignalLogs.String()) {
 						return true
 					}
