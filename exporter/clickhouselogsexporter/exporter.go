@@ -866,10 +866,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		if !e.jsonBodyDualIngestion {
 			// set body to empty string
 			body = pcommon.NewValueEmpty()
-			hasOriginalBody = false
 		}
 	}
-	if hasOriginalBody {
+	if e.jsonBodyDualIngestion && hasOriginalBody {
 		body = originalBody
 	}
 

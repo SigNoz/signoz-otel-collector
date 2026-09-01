@@ -685,7 +685,7 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "original_body_restored_when_body_json_disabled",
+			name:                  "original_body_ignored_when_body_json_disabled",
 			bodyJSONEnabled:       false,
 			jsonBodyDualIngestion: false,
 			promotedPaths:         map[string]struct{}{},
@@ -695,9 +695,9 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			originalBody: func() pcommon.Value {
-				return pcommon.NewValueStr("raw text log")
+				return pcommon.NewValueStr("spoofed original body")
 			},
-			expectedBody:     "raw text log",
+			expectedBody:     `{"message":"raw text log"}`,
 			expectedBodyJSON: "{}",
 			expectedPromoted: "{}",
 		},
