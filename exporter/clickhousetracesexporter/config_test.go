@@ -65,5 +65,23 @@ func Test_loadConfig(t *testing.T) {
 			MaxDistinctValues: 25000,
 		},
 		PromotedPathsSyncInterval: utils.ToPointer(defaultPromotedPathsSyncInterval),
+		MaxAllowedDataAgeDays:     utils.ToPointer(uint64(60)),
 	}, actualCfg)
+}
+
+func TestConfigValidateSetsDefaultMaxAllowedDataAgeDays(t *testing.T) {
+	cfg := &Config{}
+
+	require.NoError(t, cfg.Validate())
+	require.NotNil(t, cfg.MaxAllowedDataAgeDays)
+	assert.Equal(t, uint64(defaultMaxAllowedDataAgeDays), *cfg.MaxAllowedDataAgeDays)
+}
+
+func TestConfiguredMaxAllowedDataAgeDays(t *testing.T) {
+	configuredDays := uint64(60)
+
+	assert.Equal(t, configuredDays, configuredMaxAllowedDataAgeDays(
+		&Config{MaxAllowedDataAgeDays: &configuredDays},
+	))
+	assert.Equal(t, uint64(defaultMaxAllowedDataAgeDays), configuredMaxAllowedDataAgeDays(&Config{}))
 }

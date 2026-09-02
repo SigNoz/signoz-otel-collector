@@ -27,6 +27,7 @@ import (
 
 const (
 	defaultPromotedPathsSyncInterval = 5 * time.Minute
+	defaultMaxAllowedDataAgeDays     = 15
 )
 
 type AttributesLimits struct {
@@ -47,6 +48,8 @@ type Config struct {
 
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
 	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
+	// MaxAllowedDataAgeDays drops spans older than now minus this many days.
+	MaxAllowedDataAgeDays *uint64 `mapstructure:"max_allowed_data_age_days"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -64,6 +67,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.PromotedPathsSyncInterval == nil {
 		cfg.PromotedPathsSyncInterval = utils.ToPointer(defaultPromotedPathsSyncInterval)
+	}
+	if cfg.MaxAllowedDataAgeDays == nil {
+		cfg.MaxAllowedDataAgeDays = utils.ToPointer(uint64(defaultMaxAllowedDataAgeDays))
 	}
 	return nil
 }
