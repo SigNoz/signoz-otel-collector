@@ -356,7 +356,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 	// create map of span attributes of key, tagType, dataType, isColumn and value to avoid duplicates in batch
 	mapOfSpanAttributeValues := make(map[string]struct{})
 
-	mapOfSpanFields := make(map[string]struct{})
+	mapOfSpanFields := make(map[spanFieldDedupeKey]struct{})
+	spanFields := make([]spanFieldRow, 0, 16)
 
 	for _, span := range batchSpans {
 		unixMilli := (int64(span.StartTimeUnixNano/1e6) / 3600000) * 3600000
@@ -449,7 +450,8 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 
 		// span fields: the top-level columns and the columns calculated from
 		// attributes, written as tag_type=spanfield
-		for _, row := range spanFieldRows(span) {
+		spanFields = spanFieldRows(span, spanFields[:0])
+		for _, row := range spanFields {
 			dedupeKey := row.dedupeKey()
 			if _, ok := mapOfSpanFields[dedupeKey]; ok {
 				continue

@@ -1,8 +1,6 @@
 package clickhousetracesexporter
 
 import (
-	"strconv"
-
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
@@ -21,37 +19,45 @@ type spanFieldRow struct {
 	calculated bool
 }
 
-// spanFieldRows omits string rows with an empty value. Numeric rows are always
-// returned since 0 is a valid kind and status code.
-func spanFieldRows(span *SpanV3) []spanFieldRow {
-	candidates := []spanFieldRow{
-		{key: "name", dataType: utils.FieldDataTypeString, stringValue: span.Name},
-		{key: "kind_string", dataType: utils.FieldDataTypeString, stringValue: span.SpanKind},
-		{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: float64(span.Kind)},
-		{key: "status_code_string", dataType: utils.FieldDataTypeString, stringValue: span.StatusCodeString},
-		{key: "status_code", dataType: utils.FieldDataTypeFloat64, numberValue: float64(span.StatusCode)},
-		{key: "http_method", dataType: utils.FieldDataTypeString, stringValue: span.HttpMethod, calculated: true},
-		{key: "http_host", dataType: utils.FieldDataTypeString, stringValue: span.HttpHost, calculated: true},
-		{key: "http_url", dataType: utils.FieldDataTypeString, stringValue: span.HttpUrl, calculated: true},
-		{key: "response_status_code", dataType: utils.FieldDataTypeString, stringValue: span.ResponseStatusCode, calculated: true},
-		{key: "db_name", dataType: utils.FieldDataTypeString, stringValue: span.DBName, calculated: true},
-		{key: "db_operation", dataType: utils.FieldDataTypeString, stringValue: span.DBOperation, calculated: true},
-		{key: "external_http_method", dataType: utils.FieldDataTypeString, stringValue: span.ExternalHttpMethod, calculated: true},
-		{key: "external_http_url", dataType: utils.FieldDataTypeString, stringValue: span.ExternalHttpUrl, calculated: true},
-		{key: "is_remote", dataType: utils.FieldDataTypeString, stringValue: span.IsRemote, calculated: true},
-		{key: "has_error", dataType: utils.FieldDataTypeBool, calculated: true},
-	}
+// spanFieldDedupeKey identifies a row within a write batch. It is a struct so
+// that map lookups do not allocate.
+type spanFieldDedupeKey struct {
+	key         string
+	dataType    utils.FieldDataType
+	stringValue string
+	numberValue float64
+}
 
-	rows := make([]spanFieldRow, 0, len(candidates))
-	for _, row := range candidates {
-		if row.dataType == utils.FieldDataTypeString && row.stringValue == "" {
-			continue
-		}
-		rows = append(rows, row)
-	}
+func (r spanFieldRow) dedupeKey() spanFieldDedupeKey {
+	return spanFieldDedupeKey{key: r.key, dataType: r.dataType, stringValue: r.stringValue, numberValue: r.numberValue}
+}
+
+// spanFieldRows appends the rows for one span's top-level columns to rows,
+// which the caller reuses across spans. String rows with an empty value are
+// omitted. Numeric rows are always returned since 0 is a valid kind and
+// status code.
+func spanFieldRows(span *SpanV3, rows []spanFieldRow) []spanFieldRow {
+	rows = appendSpanFieldString(rows, "name", span.Name, false)
+	rows = appendSpanFieldString(rows, "kind_string", span.SpanKind, false)
+	rows = append(rows, spanFieldRow{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: float64(span.Kind)})
+	rows = appendSpanFieldString(rows, "status_code_string", span.StatusCodeString, false)
+	rows = append(rows, spanFieldRow{key: "status_code", dataType: utils.FieldDataTypeFloat64, numberValue: float64(span.StatusCode)})
+	rows = appendSpanFieldString(rows, "http_method", span.HttpMethod, true)
+	rows = appendSpanFieldString(rows, "http_host", span.HttpHost, true)
+	rows = appendSpanFieldString(rows, "http_url", span.HttpUrl, true)
+	rows = appendSpanFieldString(rows, "response_status_code", span.ResponseStatusCode, true)
+	rows = appendSpanFieldString(rows, "db_name", span.DBName, true)
+	rows = appendSpanFieldString(rows, "db_operation", span.DBOperation, true)
+	rows = appendSpanFieldString(rows, "external_http_method", span.ExternalHttpMethod, true)
+	rows = appendSpanFieldString(rows, "external_http_url", span.ExternalHttpUrl, true)
+	rows = appendSpanFieldString(rows, "is_remote", span.IsRemote, true)
+	rows = append(rows, spanFieldRow{key: "has_error", dataType: utils.FieldDataTypeBool, calculated: true})
 	return rows
 }
 
-func (r spanFieldRow) dedupeKey() string {
-	return r.key + "\x00" + string(r.dataType) + "\x00" + r.stringValue + "\x00" + strconv.FormatFloat(r.numberValue, 'f', -1, 64)
+func appendSpanFieldString(rows []spanFieldRow, key, value string, calculated bool) []spanFieldRow {
+	if value == "" {
+		return rows
+	}
+	return append(rows, spanFieldRow{key: key, dataType: utils.FieldDataTypeString, stringValue: value, calculated: calculated})
 }

@@ -58,7 +58,7 @@ func TestSpanFieldRows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rows := spanFieldRows(tt.span)
+			rows := spanFieldRows(tt.span, nil)
 
 			for _, want := range tt.wantRows {
 				assert.Contains(t, rows, want, "expected a row for %s", want.key)
@@ -70,6 +70,17 @@ func TestSpanFieldRows(t *testing.T) {
 	}
 }
 
+func TestSpanFieldRowsReusesTheBuffer(t *testing.T) {
+	buffer := make([]spanFieldRow, 0, 16)
+
+	first := spanFieldRows(&SpanV3{Name: "first"}, buffer[:0])
+	second := spanFieldRows(&SpanV3{Name: "second"}, first[:0])
+
+	assert.Equal(t, cap(buffer), cap(second), "rows are written into the caller's buffer")
+	assert.Contains(t, second, spanFieldRow{key: "name", dataType: utils.FieldDataTypeString, stringValue: "second"})
+	assert.NotContains(t, second, spanFieldRow{key: "name", dataType: utils.FieldDataTypeString, stringValue: "first"}, "the previous span's rows are gone")
+}
+
 func TestSpanFieldRowDedupeKey(t *testing.T) {
 	sameValueDifferentColumns := []spanFieldRow{
 		{key: "name", dataType: utils.FieldDataTypeString, stringValue: "Server"},
@@ -79,7 +90,12 @@ func TestSpanFieldRowDedupeKey(t *testing.T) {
 		{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 1},
 		{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 2},
 	}
+	sameRowTwice := []spanFieldRow{
+		{key: "http_method", dataType: utils.FieldDataTypeString, stringValue: "GET", calculated: true},
+		{key: "http_method", dataType: utils.FieldDataTypeString, stringValue: "GET", calculated: true},
+	}
 
 	assert.NotEqual(t, sameValueDifferentColumns[0].dedupeKey(), sameValueDifferentColumns[1].dedupeKey(), "a value shared by two columns must yield two rows")
 	assert.NotEqual(t, sameColumnDifferentValues[0].dedupeKey(), sameColumnDifferentValues[1].dedupeKey(), "two values of one column must yield two rows")
+	assert.Equal(t, sameRowTwice[0].dedupeKey(), sameRowTwice[1].dedupeKey(), "the same row from two spans is written once per batch")
 }
