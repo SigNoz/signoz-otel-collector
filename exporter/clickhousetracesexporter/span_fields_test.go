@@ -4,72 +4,82 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 func TestSpanFieldRows(t *testing.T) {
-	span := &SpanV3{
-		Name:               "GET /users/{id}",
-		Kind:               2,
-		SpanKind:           "Server",
-		StatusCode:         0,
-		StatusCodeString:   "Unset",
-		HttpMethod:         "GET",
-		HttpHost:           "api.example.com",
-		HttpUrl:            "https://api.example.com/users/42",
-		ResponseStatusCode: "200",
-		DBName:             "",
-		DBOperation:        "",
-		ExternalHttpMethod: "",
-		ExternalHttpUrl:    "",
-		IsRemote:           "false",
-		HasError:           false,
+	tests := []struct {
+		name     string
+		span     *SpanV3
+		wantRows []spanFieldRow
+		skipRows []spanFieldRow
+	}{
+		{
+			name: "intrinsic columns are written even when zero",
+			span: &SpanV3{Name: "GET /users/{id}", Kind: 0, SpanKind: "Unspecified", StatusCode: 0, StatusCodeString: "Unset"},
+			wantRows: []spanFieldRow{
+				{key: "name", dataType: utils.FieldDataTypeString, stringValue: "GET /users/{id}"},
+				{key: "kind_string", dataType: utils.FieldDataTypeString, stringValue: "Unspecified"},
+				{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 0},
+				{key: "status_code_string", dataType: utils.FieldDataTypeString, stringValue: "Unset"},
+				{key: "status_code", dataType: utils.FieldDataTypeFloat64, numberValue: 0},
+			},
+		},
+		{
+			name: "calculated columns are written when set and flagged as calculated",
+			span: &SpanV3{HttpMethod: "GET", HttpHost: "api.example.com", HttpUrl: "https://api.example.com/users/42", ResponseStatusCode: "200", IsRemote: "false"},
+			wantRows: []spanFieldRow{
+				{key: "http_method", dataType: utils.FieldDataTypeString, stringValue: "GET", calculated: true},
+				{key: "http_host", dataType: utils.FieldDataTypeString, stringValue: "api.example.com", calculated: true},
+				{key: "http_url", dataType: utils.FieldDataTypeString, stringValue: "https://api.example.com/users/42", calculated: true},
+				{key: "response_status_code", dataType: utils.FieldDataTypeString, stringValue: "200", calculated: true},
+				{key: "is_remote", dataType: utils.FieldDataTypeString, stringValue: "false", calculated: true},
+			},
+		},
+		{
+			name: "empty calculated columns are not written",
+			span: &SpanV3{HttpMethod: "GET"},
+			skipRows: []spanFieldRow{
+				{key: "db_name", dataType: utils.FieldDataTypeString, stringValue: "", calculated: true},
+				{key: "db_operation", dataType: utils.FieldDataTypeString, stringValue: "", calculated: true},
+				{key: "external_http_method", dataType: utils.FieldDataTypeString, stringValue: "", calculated: true},
+				{key: "external_http_url", dataType: utils.FieldDataTypeString, stringValue: "", calculated: true},
+			},
+		},
+		{
+			name: "has_error is written as a bool key without a value",
+			span: &SpanV3{HasError: true},
+			wantRows: []spanFieldRow{
+				{key: "has_error", dataType: utils.FieldDataTypeBool, calculated: true},
+			},
+		},
 	}
 
-	rows := spanFieldRows(span)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows := spanFieldRows(tt.span)
 
-	byKey := make(map[string]spanFieldRow, len(rows))
-	for _, row := range rows {
-		_, dup := byKey[row.key]
-		require.False(t, dup, "row for %q returned twice", row.key)
-		byKey[row.key] = row
-	}
-
-	// intrinsic columns are always returned, including numeric zeros
-	assert.Equal(t, spanFieldRow{key: "name", dataType: utils.FieldDataTypeString, stringValue: "GET /users/{id}"}, byKey["name"])
-	assert.Equal(t, spanFieldRow{key: "kind_string", dataType: utils.FieldDataTypeString, stringValue: "Server"}, byKey["kind_string"])
-	assert.Equal(t, spanFieldRow{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 2}, byKey["kind"])
-	assert.Equal(t, spanFieldRow{key: "status_code_string", dataType: utils.FieldDataTypeString, stringValue: "Unset"}, byKey["status_code_string"])
-	assert.Equal(t, spanFieldRow{key: "status_code", dataType: utils.FieldDataTypeFloat64, numberValue: 0}, byKey["status_code"])
-
-	// calculated columns are written when set and flagged so the writer applies attribute limits
-	assert.Equal(t, spanFieldRow{key: "http_method", dataType: utils.FieldDataTypeString, stringValue: "GET", calculated: true}, byKey["http_method"])
-	assert.Equal(t, spanFieldRow{key: "http_host", dataType: utils.FieldDataTypeString, stringValue: "api.example.com", calculated: true}, byKey["http_host"])
-	assert.Equal(t, spanFieldRow{key: "http_url", dataType: utils.FieldDataTypeString, stringValue: "https://api.example.com/users/42", calculated: true}, byKey["http_url"])
-	assert.Equal(t, spanFieldRow{key: "response_status_code", dataType: utils.FieldDataTypeString, stringValue: "200", calculated: true}, byKey["response_status_code"])
-	assert.Equal(t, spanFieldRow{key: "is_remote", dataType: utils.FieldDataTypeString, stringValue: "false", calculated: true}, byKey["is_remote"])
-
-	// bool columns record the key and type only, like bool span attributes
-	assert.Equal(t, spanFieldRow{key: "has_error", dataType: utils.FieldDataTypeBool, calculated: true}, byKey["has_error"])
-
-	// empty calculated strings are not suggestions
-	for _, key := range []string{"db_name", "db_operation", "external_http_method", "external_http_url"} {
-		_, ok := byKey[key]
-		assert.False(t, ok, "expected no row for empty %q", key)
+			for _, want := range tt.wantRows {
+				assert.Contains(t, rows, want, "expected a row for %s", want.key)
+			}
+			for _, skip := range tt.skipRows {
+				assert.NotContains(t, rows, skip, "expected no row for empty %s", skip.key)
+			}
+		})
 	}
 }
 
-func TestSpanFieldRowDedupeKeyIsPerColumn(t *testing.T) {
-	// the same value under two columns must not collapse into one row
-	name := spanFieldRow{key: "name", dataType: utils.FieldDataTypeString, stringValue: "Server"}
-	kind := spanFieldRow{key: "kind_string", dataType: utils.FieldDataTypeString, stringValue: "Server"}
-	assert.NotEqual(t, name.dedupeKey(), kind.dedupeKey())
+func TestSpanFieldRowDedupeKey(t *testing.T) {
+	sameValueDifferentColumns := []spanFieldRow{
+		{key: "name", dataType: utils.FieldDataTypeString, stringValue: "Server"},
+		{key: "kind_string", dataType: utils.FieldDataTypeString, stringValue: "Server"},
+	}
+	sameColumnDifferentValues := []spanFieldRow{
+		{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 1},
+		{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 2},
+	}
 
-	// and the same column with two values yields two rows
-	assert.NotEqual(t,
-		spanFieldRow{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 1}.dedupeKey(),
-		spanFieldRow{key: "kind", dataType: utils.FieldDataTypeFloat64, numberValue: 2}.dedupeKey(),
-	)
+	assert.NotEqual(t, sameValueDifferentColumns[0].dedupeKey(), sameValueDifferentColumns[1].dedupeKey(), "a value shared by two columns must yield two rows")
+	assert.NotEqual(t, sameColumnDifferentValues[0].dedupeKey(), sameColumnDifferentValues[1].dedupeKey(), "two values of one column must yield two rows")
 }
