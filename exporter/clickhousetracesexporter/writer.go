@@ -447,24 +447,34 @@ func (w *SpanWriter) writeTagBatchV3(ctx context.Context, batchSpans []*SpanV3) 
 			}
 		}
 
-		// span fields
-		// name, kind, kind_string, status_code_string, status_code
-		if _, ok := mapOfSpanFields[span.Name]; !ok {
-			mapOfSpanFields[span.Name] = struct{}{}
+		// span fields: the top-level columns and the columns calculated from
+		// attributes, written as tag_type=spanfield
+		for _, row := range spanFieldRows(span) {
+			dedupeKey := row.dedupeKey()
+			if _, ok := mapOfSpanFields[dedupeKey]; ok {
+				continue
+			}
+			mapOfSpanFields[dedupeKey] = struct{}{}
+
+			if row.calculated {
+				if len(row.stringValue) > common.MaxAttributeValueLength {
+					w.logger.Debug("span field value length exceeds the limit", zap.String("key", row.key))
+					continue
+				}
+				if _, skip := shouldSkipKeys[utils.MakeKeyForAttributeKeys(row.key, utils.TagTypeSpanField, row.dataType)]; skip {
+					continue
+				}
+			}
+
+			var stringValue, numberValue any
+			switch row.dataType {
+			case utils.FieldDataTypeString:
+				stringValue = row.stringValue
+			case utils.FieldDataTypeFloat64:
+				numberValue = row.numberValue
+			}
 			// TODO: handle error
-			_ = tagStatementV2.Append(unixMilli, "name", utils.TagTypeSpanField, utils.FieldDataTypeString, span.Name, nil)
-		}
-		if _, ok := mapOfSpanFields[span.SpanKind]; !ok {
-			mapOfSpanFields[span.SpanKind] = struct{}{}
-			// TODO: handle error
-			_ = tagStatementV2.Append(unixMilli, "kind_string", utils.TagTypeSpanField, utils.FieldDataTypeString, span.SpanKind, nil)
-			_ = tagStatementV2.Append(unixMilli, "kind", utils.TagTypeSpanField, utils.FieldDataTypeFloat64, nil, float64(span.Kind))
-		}
-		if _, ok := mapOfSpanFields[span.StatusCodeString]; !ok {
-			mapOfSpanFields[span.StatusCodeString] = struct{}{}
-			// TODO: handle error
-			_ = tagStatementV2.Append(unixMilli, "status_code_string", utils.TagTypeSpanField, utils.FieldDataTypeString, span.StatusCodeString, nil)
-			_ = tagStatementV2.Append(unixMilli, "status_code", utils.TagTypeSpanField, utils.FieldDataTypeFloat64, nil, float64(span.StatusCode))
+			_ = tagStatementV2.Append(unixMilli, row.key, utils.TagTypeSpanField, row.dataType, stringValue, numberValue)
 		}
 	}
 
