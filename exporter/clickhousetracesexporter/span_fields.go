@@ -61,3 +61,33 @@ func appendSpanFieldString(rows []spanFieldRow, key, value string, calculated bo
 	}
 	return append(rows, spanFieldRow{key: key, dataType: utils.FieldDataTypeString, stringValue: value, calculated: calculated})
 }
+
+// calculatedSpanFieldColumns are the calculated columns and the data type they
+// are written with, which together form their entry in the skip list.
+var calculatedSpanFieldColumns = []struct {
+	key      string
+	dataType utils.FieldDataType
+}{
+	{key: "http_method", dataType: utils.FieldDataTypeString},
+	{key: "http_host", dataType: utils.FieldDataTypeString},
+	{key: "http_url", dataType: utils.FieldDataTypeString},
+	{key: "response_status_code", dataType: utils.FieldDataTypeString},
+	{key: "db_name", dataType: utils.FieldDataTypeString},
+	{key: "db_operation", dataType: utils.FieldDataTypeString},
+	{key: "external_http_method", dataType: utils.FieldDataTypeString},
+	{key: "external_http_url", dataType: utils.FieldDataTypeString},
+	{key: "is_remote", dataType: utils.FieldDataTypeString},
+	{key: "has_error", dataType: utils.FieldDataTypeBool},
+}
+
+// skippedSpanFieldColumns resolves the skip list for the calculated columns
+// once per batch, so the per-row check is a lookup by column name.
+func skippedSpanFieldColumns(shouldSkipKeys map[string]shouldSkipKey) map[string]struct{} {
+	skipped := make(map[string]struct{})
+	for _, column := range calculatedSpanFieldColumns {
+		if _, skip := shouldSkipKeys[utils.MakeKeyForAttributeKeys(column.key, utils.TagTypeSpanField, column.dataType)]; skip {
+			skipped[column.key] = struct{}{}
+		}
+	}
+	return skipped
+}

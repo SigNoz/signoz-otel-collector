@@ -81,6 +81,40 @@ func TestSpanFieldRowsReusesTheBuffer(t *testing.T) {
 	assert.NotContains(t, second, spanFieldRow{key: "name", dataType: utils.FieldDataTypeString, stringValue: "first"}, "the previous span's rows are gone")
 }
 
+func TestSkippedSpanFieldColumns(t *testing.T) {
+	shouldSkipKeys := map[string]shouldSkipKey{
+		utils.MakeKeyForAttributeKeys("http_url", utils.TagTypeSpanField, utils.FieldDataTypeString):          {},
+		utils.MakeKeyForAttributeKeys("external_http_url", utils.TagTypeSpanField, utils.FieldDataTypeString): {},
+		utils.MakeKeyForAttributeKeys("http_method", utils.TagTypeAttribute, utils.FieldDataTypeString):       {},
+	}
+
+	skipped := skippedSpanFieldColumns(shouldSkipKeys)
+
+	assert.Equal(t, map[string]struct{}{"http_url": {}, "external_http_url": {}}, skipped, "only spanfield entries of the skip list apply; the attribute entry for http_method does not")
+	assert.Empty(t, skippedSpanFieldColumns(nil), "no skip list means nothing is skipped")
+}
+
+func TestCalculatedSpanFieldColumnsMatchTheRows(t *testing.T) {
+	span := &SpanV3{
+		HttpMethod: "GET", HttpHost: "h", HttpUrl: "u", ResponseStatusCode: "200", DBName: "d", DBOperation: "o",
+		ExternalHttpMethod: "POST", ExternalHttpUrl: "eu", IsRemote: "true", HasError: true,
+	}
+
+	rows := spanFieldRows(span, nil)
+
+	calculatedRows := map[string]utils.FieldDataType{}
+	for _, row := range rows {
+		if row.calculated {
+			calculatedRows[row.key] = row.dataType
+		}
+	}
+	calculatedColumns := map[string]utils.FieldDataType{}
+	for _, column := range calculatedSpanFieldColumns {
+		calculatedColumns[column.key] = column.dataType
+	}
+	assert.Equal(t, calculatedColumns, calculatedRows, "the skip-list table and the rows must name the same calculated columns with the same types")
+}
+
 func TestSpanFieldRowDedupeKey(t *testing.T) {
 	sameValueDifferentColumns := []spanFieldRow{
 		{key: "name", dataType: utils.FieldDataTypeString, stringValue: "Server"},
