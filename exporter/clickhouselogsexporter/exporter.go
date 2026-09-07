@@ -82,49 +82,6 @@ const (
 		severity_text,
 		severity_number,
 		body,
-		attributes_string,
-		attributes_number,
-		attributes_bool,
-		resources_string,
-		resource,
-		scope_name,
-		scope_version,
-		scope_string,
-		inserted_at
-		) VALUES (
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?
-			)`
-	insertLogsSQLTemplateV2WithBodyJSON = `INSERT INTO %s.%s (
-		ts_bucket_start,
-		resource_fingerprint,
-		timestamp,
-		observed_timestamp,
-		id,
-		trace_id,
-		span_id,
-		trace_flags,
-		severity_text,
-		severity_number,
-		body,
 		body_v2,
 		body_promoted,
 		attributes_string,
@@ -286,7 +243,6 @@ type clickhouseLogsExporter struct {
 	db                    clickhouse.Conn
 	insertLogsSQLV2       string
 	insertLogsResourceSQL string
-	writesBodyV2          bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -327,13 +283,10 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
 	}
 
-	writesBodyV2 := cfg.BodyJSONEnabled || cfg.JSONBodyDualIngestion
-
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(writesBodyV2),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
-		writesBodyV2:              writesBodyV2,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
@@ -410,7 +363,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.writesBodyV2 {
+	if e.cfg.BodyJSONEnabled || e.cfg.JSONBodyDualIngestion {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
 		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 			ticker.Stop()
@@ -624,10 +577,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityNum,
 					rec.body,
 				}
-				if e.writesBodyV2 {
-					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
-				}
 				args = append(args,
+					rec.bodyJSON,
+					rec.bodyJSONPromoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -1078,12 +1030,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	return db, nil
 }
 
-func renderInsertLogsSQLV2(includeBodyJSON bool) string {
-	template := insertLogsSQLTemplateV2
-	if includeBodyJSON {
-		template = insertLogsSQLTemplateV2WithBodyJSON
-	}
-	return fmt.Sprintf(template, databaseName, distributedLogsTableV2)
+func renderInsertLogsSQLV2() string {
+	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
 }
 
 func renderInsertLogsResourceSQL(_ *Config) string {
