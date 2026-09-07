@@ -812,13 +812,13 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		// promoted paths extraction using cached set
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
 		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
-	}
 
-	if restoreOriginal {
-		body = originalBody
-	} else if e.cfg.BodyJSONEnabled && !e.cfg.JSONBodyDualIngestion {
-		// set body to empty string
-		body = pcommon.NewValueEmpty()
+		if restoreOriginal {
+			body = originalBody
+		} else if !e.cfg.JSONBodyDualIngestion {
+			// set body to empty string
+			body = pcommon.NewValueEmpty()
+		}
 	}
 
 	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
