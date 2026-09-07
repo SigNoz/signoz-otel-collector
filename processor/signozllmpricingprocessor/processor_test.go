@@ -6,9 +6,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor/internal/metadatatest"
 )
+
+// newTestProcessor builds a processor with a throwaway telemetry builder, for
+// tests that assert on span attributes rather than on the emitted metrics.
+func newTestProcessor(t *testing.T, cfg *Config) *llmCostProcessor {
+	t.Helper()
+	tt := componenttest.NewTelemetry()
+	t.Cleanup(func() { require.NoError(t, tt.Shutdown(context.Background())) })
+
+	p, err := newProcessor(cfg, metadatatest.NewSettings(tt))
+	require.NoError(t, err)
+	return p
+}
 
 var testCfg = &Config{
 	Attrs: AttrMapping{
@@ -92,7 +107,7 @@ func TestSubtractMode_NoCaching(t *testing.T) {
 		"gen_ai.usage.output_tokens": int64(500),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -117,7 +132,7 @@ func TestSubtractMode_WithCacheRead(t *testing.T) {
 		"gen_ai.usage.cache_read_tokens": int64(200),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -136,7 +151,7 @@ func TestSubtractMode_CacheReadExceedsInput(t *testing.T) {
 		"gen_ai.usage.cache_read_tokens": int64(500),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -160,7 +175,7 @@ func TestAdditiveMode(t *testing.T) {
 		"gen_ai.usage.cache_write_tokens": int64(100),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -178,7 +193,7 @@ func TestAdditiveMode_NoCaching(t *testing.T) {
 		"gen_ai.usage.output_tokens": int64(1000),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -195,7 +210,7 @@ func TestRuleFirstMatchWins(t *testing.T) {
 		"gen_ai.usage.input_tokens":  int64(1000),
 		"gen_ai.usage.output_tokens": int64(0),
 	})
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 	// gpt-4o rule price_in=5.0
 	assert.InDelta(t, 1000*5.0/1e6, getDouble(t, attrs(td), "_signoz.gen_ai.cost_input"), 1e-9)
@@ -208,7 +223,7 @@ func TestNoMatchingRule_SkipsSpan(t *testing.T) {
 		"gen_ai.usage.output_tokens": int64(500),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
@@ -221,7 +236,7 @@ func TestNoModelAttr_SkipsSpan(t *testing.T) {
 		"gen_ai.usage.output_tokens": int64(500),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
@@ -234,7 +249,7 @@ func TestAllTokensZero_SkipsSpan(t *testing.T) {
 		"gen_ai.request.model": "gpt-4o",
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
@@ -249,7 +264,7 @@ func TestTokenAsFloat(t *testing.T) {
 		"gen_ai.usage.output_tokens": float64(250),
 	})
 
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	assert.InDelta(t, 500*5.0/1e6, getDouble(t, attrs(td), "_signoz.gen_ai.cost_input"), 1e-9)
@@ -267,7 +282,7 @@ func TestOptionalOutputAttrs(t *testing.T) {
 		"gen_ai.usage.output_tokens": int64(500),
 	})
 
-	_, err := newProcessor(&cfg).ProcessTraces(context.Background(), td)
+	_, err := newTestProcessor(t, &cfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
 	a := attrs(td)
@@ -279,7 +294,7 @@ func TestOptionalOutputAttrs(t *testing.T) {
 }
 
 func TestComputeSubtract(t *testing.T) {
-	p := newProcessor(testCfg)
+	p := newTestProcessor(t, testCfg)
 	rule := &p.rules[0] // gpt-4o*: subtract
 
 	c := p.compute(rule, 1000, 500, 200, 0)
@@ -291,7 +306,7 @@ func TestComputeSubtract(t *testing.T) {
 }
 
 func TestComputeAdditive(t *testing.T) {
-	p := newProcessor(testCfg)
+	p := newTestProcessor(t, testCfg)
 	rule := &p.rules[1] // claude-*: additive
 
 	c := p.compute(rule, 1000, 500, 200, 100)
@@ -303,7 +318,7 @@ func TestComputeAdditive(t *testing.T) {
 }
 
 func TestCacheEmpty(t *testing.T) {
-	p := newProcessor(testCfg)
+	p := newTestProcessor(t, testCfg)
 	rule := &compiledRule{name: "gpt-4o", pattern: "gpt-4o*", cacheMode: "", in: 5.0, out: 15.0}
 
 	c := p.compute(rule, 1000, 500, 200, 100)
