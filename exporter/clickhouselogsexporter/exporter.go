@@ -286,8 +286,7 @@ type clickhouseLogsExporter struct {
 	db                    clickhouse.Conn
 	insertLogsSQLV2       string
 	insertLogsResourceSQL string
-	bodyJSONEnabled       bool
-	jsonBodyDualIngestion bool
+	writesBodyV2          bool
 
 	logger *zap.Logger
 	cfg    *Config
@@ -328,19 +327,18 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
 	}
 
-	bodyJSONEnabled := cfg.BodyJSONEnabled || cfg.JSONBodyDualIngestion
+	writesBodyV2 := cfg.BodyJSONEnabled || cfg.JSONBodyDualIngestion
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(bodyJSONEnabled),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(writesBodyV2),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
-		bodyJSONEnabled:           bodyJSONEnabled,
+		writesBodyV2:              writesBodyV2,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
-		jsonBodyDualIngestion:     cfg.JSONBodyDualIngestion,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
@@ -412,7 +410,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.bodyJSONEnabled {
+	if e.writesBodyV2 {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
 		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 			ticker.Stop()
@@ -626,7 +624,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityNum,
 					rec.body,
 				}
-				if e.bodyJSONEnabled {
+				if e.writesBodyV2 {
 					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
 				}
 				args = append(args,
@@ -847,29 +845,28 @@ producerIteration:
 func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
-	if e.bodyJSONEnabled {
-		writeBodyJSON := e.cfg.BodyJSONEnabled || hasOriginalBody
-		if writeBodyJSON {
-			if body.Type() == pcommon.ValueTypeMap {
-				// switch the reference to bodyJSON
-				bodyJSON = body
-			} else {
-				bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
-				e.nonMapBodyCounter.Add(ctx, 1)
-			}
 
-			// promoted paths extraction using cached set
-			promotedSet := e.promotedPaths.Load().(map[string]struct{})
-			promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
+	restoreOriginal := e.cfg.JSONBodyDualIngestion && hasOriginalBody
+	writeBodyJSON := e.cfg.BodyJSONEnabled || restoreOriginal
+	if writeBodyJSON {
+		if body.Type() == pcommon.ValueTypeMap {
+			// switch the reference to bodyJSON
+			bodyJSON = body
+		} else {
+			bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
+			e.nonMapBodyCounter.Add(ctx, 1)
 		}
 
-		if !e.jsonBodyDualIngestion {
-			// set body to empty string
-			body = pcommon.NewValueEmpty()
-		}
+		// promoted paths extraction using cached set
+		promotedSet := e.promotedPaths.Load().(map[string]struct{})
+		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 	}
-	if e.jsonBodyDualIngestion && hasOriginalBody {
+
+	if restoreOriginal {
 		body = originalBody
+	} else if e.cfg.BodyJSONEnabled && !e.cfg.JSONBodyDualIngestion {
+		// set body to empty string
+		body = pcommon.NewValueEmpty()
 	}
 
 	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
