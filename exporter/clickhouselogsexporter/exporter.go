@@ -82,49 +82,6 @@ const (
 		severity_text,
 		severity_number,
 		body,
-		attributes_string,
-		attributes_number,
-		attributes_bool,
-		resources_string,
-		resource,
-		scope_name,
-		scope_version,
-		scope_string,
-		inserted_at
-		) VALUES (
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?,
-			?
-			)`
-	insertLogsSQLTemplateV2WithBodyJSON = `INSERT INTO %s.%s (
-		ts_bucket_start,
-		resource_fingerprint,
-		timestamp,
-		observed_timestamp,
-		id,
-		trace_id,
-		span_id,
-		trace_flags,
-		severity_text,
-		severity_number,
-		body,
 		body_v2,
 		body_promoted,
 		attributes_string,
@@ -282,12 +239,10 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 }
 
 type clickhouseLogsExporter struct {
-	id                     uuid.UUID
-	db                     clickhouse.Conn
-	insertLogsSQLV2        string
-	insertLogsResourceSQL  string
-	bodyJSONEnabled        bool
-	bodyJSONOldBodyEnabled bool
+	id                    uuid.UUID
+	db                    clickhouse.Conn
+	insertLogsSQLV2       string
+	insertLogsResourceSQL string
 
 	logger *zap.Logger
 	cfg    *Config
@@ -329,16 +284,14 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
+		insertLogsSQLV2:           renderInsertLogsSQLV2(),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
-		bodyJSONEnabled:           cfg.BodyJSONEnabled,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
-		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
@@ -410,7 +363,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.bodyJSONEnabled {
+	if e.cfg.BodyJSONEnabled || e.cfg.JSONBodyDualIngestion {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
 		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 			ticker.Stop()
@@ -624,10 +577,9 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.severityNum,
 					rec.body,
 				}
-				if e.bodyJSONEnabled {
-					args = append(args, rec.bodyJSON, rec.bodyJSONPromoted)
-				}
 				args = append(args,
+					rec.bodyJSON,
+					rec.bodyJSONPromoted,
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
@@ -718,9 +670,15 @@ producerIteration:
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
 					// record size calculation
-					attrBytes, _ := json.Marshal(record.Attributes().AsRaw())
+					attrsRaw := record.Attributes().AsRaw()
+					delete(attrsRaw, constants.OriginalBodyAttributeKey)
+					attrBytes, err := json.Marshal(attrsRaw)
+					if err != nil {
+						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
+					}
 
-					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body())
+					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
+					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
 					recordStream <- &Record{
 						tsBucketStart:    uint64(lBucketStart),
 						resourceFP:       fp,
@@ -836,10 +794,13 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
-	if e.bodyJSONEnabled {
+
+	restoreOriginal := e.cfg.JSONBodyDualIngestion && hasOriginalBody
+	writeBodyJSON := e.cfg.BodyJSONEnabled || restoreOriginal
+	if writeBodyJSON {
 		if body.Type() == pcommon.ValueTypeMap {
 			// switch the reference to bodyJSON
 			bodyJSON = body
@@ -852,7 +813,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
 		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 
-		if !e.bodyJSONOldBodyEnabled {
+		if restoreOriginal {
+			body = originalBody
+		} else if !e.cfg.JSONBodyDualIngestion {
 			// set body to empty string
 			body = pcommon.NewValueEmpty()
 		}
@@ -1008,6 +971,9 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 	response.StringData = map[string]string{}
 	response.NumberData = map[string]float64{}
 	attributes.Range(func(k string, v pcommon.Value) bool {
+		if k == constants.OriginalBodyAttributeKey {
+			return true
+		}
 		if forceStringValues {
 			// store everything as string
 			response.StringData[k] = v.AsString()
@@ -1064,12 +1030,8 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 	return db, nil
 }
 
-func renderInsertLogsSQLV2(includeBodyJSON bool) string {
-	template := insertLogsSQLTemplateV2
-	if includeBodyJSON {
-		template = insertLogsSQLTemplateV2WithBodyJSON
-	}
-	return fmt.Sprintf(template, databaseName, distributedLogsTableV2)
+func renderInsertLogsSQLV2() string {
+	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
 }
 
 func renderInsertLogsResourceSQL(_ *Config) string {
