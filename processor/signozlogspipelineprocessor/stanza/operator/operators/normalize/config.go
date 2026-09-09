@@ -33,6 +33,8 @@ func NewConfigWithID(operatorID string) *Config {
 // Config is the configuration of a JSON parser operator.
 type Config struct {
 	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
+
+	JSONBodyDualIngestion bool `mapstructure:"json_body_dual_ingestion"`
 }
 
 // Build will build a JSON parser operator.
@@ -51,8 +53,9 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	}
 
 	return &Processor{
-		TransformerOperator: transformerOperator,
-		Config:              sonic.Config{UseInt64: true},
-		logsProcessed:       logsProcessed,
+		TransformerOperator:   transformerOperator,
+		Config:                sonic.Config{UseInt64: true},
+		logsProcessed:         logsProcessed,
+		jsonBodyDualIngestion: c.JSONBodyDualIngestion,
 	}, nil
 }

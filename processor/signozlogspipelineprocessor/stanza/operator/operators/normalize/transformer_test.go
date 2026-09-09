@@ -2,21 +2,24 @@ package json
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/testutil"
 )
 
-func newProcessor(t *testing.T) *Processor {
+func newProcessor(t *testing.T, jsonBodyDualIngestion bool) *Processor {
 	cfg := NewConfig()
 	cfg.OutputIDs = []string{"fake"}
 	cfg.OnError = "drop"
+	cfg.JSONBodyDualIngestion = jsonBodyDualIngestion
 	set := componenttest.NewNopTelemetrySettings()
 	op, err := cfg.Build(set)
 	require.NoError(t, err)
@@ -24,14 +27,16 @@ func newProcessor(t *testing.T) *Processor {
 }
 
 type testCase struct {
-	name      string
-	expectErr bool
-	input     func() *entry.Entry
-	output    func() *entry.Entry
+	name             string
+	expectErr        bool
+	input            func() *entry.Entry
+	output           func() *entry.Entry
+	expectedOriginal any
+	originalAsJSONOf map[string]any
 }
 
 func TestNormalize(t *testing.T) {
-	processor := newProcessor(t)
+	processor := newProcessor(t, false)
 
 	cases := []struct {
 		name     string
@@ -165,6 +170,11 @@ func TestTransform(t *testing.T) {
 				}
 				return e
 			},
+			originalAsJSONOf: map[string]any{
+				"msg":   "test message",
+				"level": "info",
+				"other": "data",
+			},
 		},
 		{
 			name:      "json_string_with_msg_field_parses_and_restructures",
@@ -182,6 +192,7 @@ func TestTransform(t *testing.T) {
 				}
 				return e
 			},
+			expectedOriginal: `{"msg": "test message", "level": "info"}`,
 		},
 		{
 			name:      "text_logs_transformed_to_json",
@@ -198,12 +209,13 @@ func TestTransform(t *testing.T) {
 				}
 				return e
 			},
+			expectedOriginal: "Hello World",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run("Transform/"+tc.name, func(t *testing.T) {
-			processor := newProcessor(t)
+			processor := newProcessor(t, true)
 			fake := testutil.NewFakeOutput(t)
 			require.NoError(t, processor.SetOutputs([]operator.Operator{fake}))
 
@@ -213,9 +225,116 @@ func TestTransform(t *testing.T) {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
+				requireStashedOriginal(t, val, tc.expectedOriginal, tc.originalAsJSONOf)
+				delete(val.Attributes, constants.OriginalBodyAttributeKey)
+				if len(val.Attributes) == 0 {
+					val.Attributes = nil
+				}
 				require.Equal(t, tc.output().Body, val.Body)
 				fake.ExpectEntry(t, tc.output())
 			}
 		})
+	}
+}
+
+func requireStashedOriginal(t *testing.T, e *entry.Entry, expectedOriginal any, originalAsJSONOf map[string]any) {
+	t.Helper()
+	original, exists := e.Attributes[constants.OriginalBodyAttributeKey]
+	if expectedOriginal == nil && originalAsJSONOf == nil {
+		require.False(t, exists)
+		return
+	}
+	require.True(t, exists)
+	if originalAsJSONOf != nil {
+		var parsed map[string]any
+		require.NoError(t, json.Unmarshal([]byte(original.(string)), &parsed))
+		require.Equal(t, originalAsJSONOf, parsed)
+	} else {
+		require.Equal(t, expectedOriginal, original)
+	}
+}
+
+func TestJSONBodyDualIngestionDefaultsToFalse(t *testing.T) {
+	require.False(t, NewConfig().JSONBodyDualIngestion)
+}
+
+func TestStashOriginalBodyWhenDualIngestion(t *testing.T) {
+	cases := []struct {
+		name             string
+		input            any
+		expectedBody     map[string]any
+		expectedOriginal any
+		originalAsJSONOf map[string]any
+	}{
+		{
+			name:             "text_body_stashed_as_is",
+			input:            "Hello World",
+			expectedBody:     map[string]any{"message": "Hello World"},
+			expectedOriginal: "Hello World",
+		},
+		{
+			name:             "json_string_body_stashed_byte_exact",
+			input:            `{"msg": "hi",   "level": "info"}`,
+			expectedBody:     map[string]any{"message": "hi", "level": "info"},
+			expectedOriginal: `{"msg": "hi",   "level": "info"}`,
+		},
+		{
+			name:             "scalar_body_stashed_as_is",
+			input:            int64(42),
+			expectedBody:     map[string]any{"message": int64(42)},
+			expectedOriginal: int64(42),
+		},
+		{
+			name:             "nil_body_stashed_as_empty_string",
+			input:            nil,
+			expectedBody:     map[string]any{},
+			expectedOriginal: "",
+		},
+		{
+			name:             "unmutated_map_body_stashed_as_serialized_original",
+			input:            map[string]any{"message": "x", "level": "info"},
+			expectedBody:     map[string]any{"message": "x", "level": "info"},
+			originalAsJSONOf: map[string]any{"message": "x", "level": "info"},
+		},
+		{
+			name:             "map_body_with_msg_promotion_stashed_as_serialized_original",
+			input:            map[string]any{"msg": "x", "level": "info"},
+			expectedBody:     map[string]any{"message": "x", "level": "info"},
+			originalAsJSONOf: map[string]any{"msg": "x", "level": "info"},
+		},
+		{
+			name:             "map_body_with_nil_message_stashed_as_serialized_original",
+			input:            map[string]any{"message": nil, "level": "info"},
+			expectedBody:     map[string]any{"level": "info"},
+			originalAsJSONOf: map[string]any{"message": nil, "level": "info"},
+		},
+		{
+			name:             "map_body_with_message_map_hoist_stashed_as_serialized_original",
+			input:            map[string]any{"message": map[string]any{"a": "b"}, "level": "info"},
+			expectedBody:     map[string]any{"a": "b", "level": "info"},
+			originalAsJSONOf: map[string]any{"message": map[string]any{"a": "b"}, "level": "info"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			processor := newProcessor(t, true)
+			e := newTestEntryWithTime(t, time.Now())
+			e.Body = tc.input
+			require.NoError(t, processor.transform(e))
+			require.Equal(t, tc.expectedBody, e.Body)
+			requireStashedOriginal(t, e, tc.expectedOriginal, tc.originalAsJSONOf)
+		})
+	}
+}
+
+func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
+	processor := newProcessor(t, false)
+	for _, body := range []any{"Hello World", map[string]any{"msg": "x"}, int64(7)} {
+		e := newTestEntryWithTime(t, time.Now())
+		e.Body = body
+		require.NoError(t, processor.transform(e))
+		_, exists := e.Attributes[constants.OriginalBodyAttributeKey]
+		require.False(t, exists)
 	}
 }
