@@ -147,7 +147,7 @@ func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOpt
 		wg:                    new(sync.WaitGroup),
 		closeChan:             make(chan struct{}),
 		logger:                settings.Logger,
-		maxAllowedDataAgeDays: 15,
+		maxAllowedDataAgeDays: configuredMaxAllowedDataAgeDays(cfg),
 	}
 
 	for _, opt := range exporterOpts {
@@ -155,6 +155,13 @@ func newExporter(cfg *Config, settings exporter.Settings, writerOpts []WriterOpt
 	}
 
 	return &exporter, nil
+}
+
+func configuredMaxAllowedDataAgeDays(cfg *Config) uint64 {
+	if cfg.MaxAllowedDataAgeDays != nil {
+		return *cfg.MaxAllowedDataAgeDays
+	}
+	return defaultMaxAllowedDataAgeDays
 }
 
 func (s *clickhouseTracesExporter) pushTraceData(ctx context.Context, td ptrace.Traces) error {

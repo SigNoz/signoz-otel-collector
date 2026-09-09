@@ -788,6 +788,17 @@ func TestExporterPushTracesData(t *testing.T) {
 	})
 }
 
+func TestOldestAllowedTimestamp(t *testing.T) {
+	now := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
+
+	assert.Equal(
+		t,
+		uint64(now.Add(-15*24*time.Hour).UnixNano()),
+		oldestAllowedTimestamp(now, 15),
+	)
+	assert.Equal(t, uint64(0), oldestAllowedTimestamp(now, math.MaxUint64))
+}
+
 func TestPopulateCustomAttrsAndAttrs(t *testing.T) {
 	tests := []struct {
 		name             string
