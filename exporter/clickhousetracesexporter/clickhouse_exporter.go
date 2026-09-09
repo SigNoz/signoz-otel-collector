@@ -56,6 +56,8 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
+		attributes_promoted,
 		resources_string,
 		resource,
 		scope,
@@ -73,6 +75,8 @@ const (
 		is_remote,
 		inserted_at
 		) VALUES (
+			?,
+			?,
 			?,
 			?,
 			?,

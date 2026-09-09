@@ -1,4 +1,4 @@
-package clickhouselogsexporter
+package utils
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 
 func TestInvalidBodyType(t *testing.T) {
 	body := pcommon.NewValueStr("test log")
-	promoted := buildPromoted(body, map[string]struct{}{})
+	promoted := BuildPromotedPaths(body.Map(), map[string]struct{}{})
 	assert.Equal(t, pcommon.NewValueMap(), promoted)
 }
 
@@ -305,7 +305,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			assert.NoError(t, err, "failed to convert map to pcommon.Map")
 
 			// Extract promoted paths
-			promoted := buildPromoted(body, tc.promotedPaths)
+			promoted := BuildPromotedPaths(body.Map(), tc.promotedPaths)
 
 			// Convert results back to interface{} for comparison
 			actualBody := body.Map().AsRaw()

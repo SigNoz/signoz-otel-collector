@@ -12,8 +12,8 @@ import (
 
 	"github.com/goccy/go-json"
 
-	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -171,6 +171,51 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
+// getAttributesJSON serializes span attributes, alternative is to typecast
+// each attribute since the slice of any can't be inserted.
+func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
+	raw := attrs.AsRaw()
+	b, err := json.Marshal(raw)
+	if err != nil {
+		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
+		sanitizeJSONFloats(raw)
+		b, err = json.Marshal(raw)
+	}
+	if err != nil {
+		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
+			zap.Error(err),
+			zap.String("event_trace_id", utils.TraceIDToHexOrEmptyString(traceID)),
+			zap.String("event_span_id", utils.SpanIDToHexOrEmptyString(spanID)),
+		)
+		return "{}"
+	}
+	return string(b)
+}
+
+// sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out
+// for these values, so a single malformed double attribute could not fail the whole span.
+func sanitizeJSONFloats(v any) any {
+	switch val := v.(type) {
+	case float64:
+		if utils.IsValidFloat(val) {
+			return val
+		}
+		return nil
+	case map[string]any:
+		for k, vv := range val {
+			val[k] = sanitizeJSONFloats(vv)
+		}
+		return val
+	case []any:
+		for i, vv := range val {
+			val[i] = sanitizeJSONFloats(vv)
+		}
+		return val
+	default:
+		return v
+	}
+}
+
 type attributesData struct {
 	StringMap      map[string]string
 	NumberMap      map[string]float64
@@ -239,7 +284,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig) (*SpanV3, error) {
+func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig, promotedPaths map[string]struct{}) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
 	isRemote := "unknown"
@@ -310,6 +355,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
+	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
+
 	span := &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
@@ -333,9 +380,11 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		StatusMessage:    otelSpan.Status().Message(),
 		StatusCodeString: otelSpan.Status().Code().String(),
 
-		AttributeString:  attrMap.StringMap,
-		AttributesNumber: attrMap.NumberMap,
-		AttributesBool:   attrMap.BoolMap,
+		AttributeString:    attrMap.StringMap,
+		AttributesNumber:   attrMap.NumberMap,
+		AttributesBool:     attrMap.BoolMap,
+		Attributes:         attributesJSON,
+		AttributesPromoted: getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
@@ -381,6 +430,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	default:
 		rss := td.ResourceSpans()
 		var batchOfSpans []*SpanV3
+		promotedPaths := s.Writer.promotedAttributePaths.Load().(map[string]struct{})
 
 		count := 0
 		size := 0
@@ -439,7 +489,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 						resourcesSeen[int64(lBucketStart)][resourceJson] = fp
 					}
 
-					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), scope, s.config)
+					structuredSpan, err := newStructuredSpanV3(uint64(lBucketStart), fp, span, serviceName, rs.Resource(), scope, s.config, promotedPaths)
 					if err != nil {
 						return fmt.Errorf("failed to create newStructuredSpanV3: %w", err)
 					}

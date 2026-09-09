@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
 // TestLoadConfig checks whether yaml configuration can be loaded correctly
@@ -63,5 +64,6 @@ func Test_loadConfig(t *testing.T) {
 			FetchKeysInterval: 10 * time.Minute,
 			MaxDistinctValues: 25000,
 		},
+		PromotedPathsSyncInterval: utils.ToPointer(defaultPromotedPathsSyncInterval),
 	}, actualCfg)
 }

@@ -36,6 +36,8 @@ func NewConfigWithID(operatorID string) *Config {
 type Config struct {
 	signozstanzahelper.TransformerConfig `mapstructure:",squash"`
 
+	JSONBodyDualIngestion bool `mapstructure:"json_body_dual_ingestion"`
+
 	MoveAllFields bool `mapstructure:"move_all_fields"`
 
 	MoveSeverityNumberField bool `mapstructure:"move_severity_number_field"`
@@ -72,9 +74,10 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 	}
 
 	return &Processor{
-		TransformerOperator: transformerOperator,
-		Config:              sonic.Config{UseInt64: true},
-		logsProcessed:       logsProcessed,
-		fields:              newFieldConfig(c),
+		TransformerOperator:   transformerOperator,
+		Config:                sonic.Config{UseInt64: true},
+		logsProcessed:         logsProcessed,
+		fields:                newFieldConfig(c),
+		jsonBodyDualIngestion: c.JSONBodyDualIngestion,
 	}, nil
 }
