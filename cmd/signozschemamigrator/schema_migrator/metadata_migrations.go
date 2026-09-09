@@ -2,8 +2,32 @@ package schemamigrator
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
+
+// defaultPromotedTraceAttributes are the span attributes promoted into the
+// attributes_promoted JSON column by default. They match the keys that were
+// materialized from the attributes map before traces moved to JSON storage.
+var defaultPromotedTraceAttributes = []string{
+	"http.route",
+	"messaging.system",
+	"messaging.operation",
+	"db.system",
+	"rpc.system",
+	"rpc.service",
+	"rpc.method",
+	"peer.service",
+}
+
+func promotedTraceAttributeSeedValues() string {
+	releaseTime := time.Now().UnixNano()
+	tuples := make([]string, 0, len(defaultPromotedTraceAttributes))
+	for _, name := range defaultPromotedTraceAttributes {
+		tuples = append(tuples, fmt.Sprintf("('traces', 'attributes_promoted', 'JSON', 'attribute', '%s', 0, %d)", name, releaseTime))
+	}
+	return strings.Join(tuples, ", ")
+}
 
 var MetadataMigrations = []SchemaMigrationRecord{
 	{
@@ -150,5 +174,19 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Table:    "column_evolution_metadata",
 			},
 		},
+	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			InsertIntoTable{
+				Database:    "signoz_metadata",
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
+				Values:      promotedTraceAttributeSeedValues(),
+			},
+		},
+		DownItems: []Operation{},
 	},
 }
