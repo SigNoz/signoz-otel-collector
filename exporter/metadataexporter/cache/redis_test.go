@@ -45,7 +45,7 @@ func buildMockRedisKeyCache(_ *testing.T, mockFn func(redismock.ClientMock)) (*R
 
 func TestRedisKeyCache_AddAttrsToResource_NewResource_Success(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:1000", epochWindow)
 	attrsHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:attrs:hll", epochWindow)
@@ -77,7 +77,7 @@ func TestRedisKeyCache_AddAttrsToResource_NewResource_Success(t *testing.T) {
 
 func TestRedisKeyCache_AddAttrsToResource_ResourceLimitExceeded(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:1000", epochWindow)
 
@@ -96,7 +96,7 @@ func TestRedisKeyCache_AddAttrsToResource_ResourceLimitExceeded(t *testing.T) {
 
 func TestRedisKeyCache_AddAttrsToResource_AttrCardinalityExceeded(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:3000", epochWindow)
 
@@ -133,7 +133,7 @@ func TestRedisKeyCache_AddAttrsToResource_EmptyList(t *testing.T) {
 
 func TestRedisKeyCache_AttrsExistForResource_Basic(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	attrsKey := fmt.Sprintf("testTenant:metadata:metrics:%d:resource:5555", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
@@ -165,7 +165,7 @@ func TestRedisKeyCache_AttrsExistForResource_Empty(t *testing.T) {
 func TestRedisKeyCache_ResourcesLimitExceeded(t *testing.T) {
 	ctx := context.Background()
 
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	resourceHLLKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources:hll", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
@@ -181,7 +181,7 @@ func TestRedisKeyCache_ResourcesLimitExceeded(t *testing.T) {
 
 func TestRedisKeyCache_CardinalityLimitExceeded(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:777", epochWindow)
 
 	cache, mock := buildMockRedisKeyCache(t, func(m redismock.ClientMock) {
@@ -197,7 +197,7 @@ func TestRedisKeyCache_CardinalityLimitExceeded(t *testing.T) {
 
 func TestRedisKeyCache_Debug(t *testing.T) {
 	ctx := context.Background()
-	epochWindow := getCurrentEpochWindowMillis()
+	epochWindow := getCurrentEpochWindowMillis(6 * time.Hour)
 	resourceSetKey := fmt.Sprintf("testTenant:metadata:traces:%d:resources", epochWindow)
 	attrsKey := fmt.Sprintf("testTenant:metadata:traces:%d:resource:1000", epochWindow)
 

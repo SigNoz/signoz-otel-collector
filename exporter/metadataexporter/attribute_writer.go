@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -19,8 +20,12 @@ type attributeMetadataWriter struct {
 	conn   driver.Conn
 	logger *zap.Logger
 
+	bucket time.Duration
+
 	shouldSkipFromDB      func(ctx context.Context, key, datasource string) bool
 	filterAttrs           func(ctx context.Context, attrs map[string]any, datasource string) map[string]any
+	filterIntrinsics      func(ctx context.Context, fields map[string]string, datasource string) map[string]string
+	filterResourceAttrs   func(ctx context.Context, attrs map[string]any, datasource string) map[string]any
 	writeToStatementBatch func(ctx context.Context, stmt driver.Batch, records []writeToStatementBatchRecord, ds pipeline.Signal) (int, error)
 }
 
@@ -28,8 +33,11 @@ func newAttributeMetadataWriter(e *metadataExporter) *attributeMetadataWriter {
 	return &attributeMetadataWriter{
 		conn:                  e.conn,
 		logger:                e.set.Logger,
+		bucket:                e.cfg.MaxDistinctValues.Logs.Bucket,
 		shouldSkipFromDB:      e.shouldSkipAttributeFromDB,
 		filterAttrs:           e.filterAttrs,
+		filterIntrinsics:      e.filterIntrinsics,
+		filterResourceAttrs:   e.filterResourceAttrs,
 		writeToStatementBatch: e.writeToStatementBatch,
 	}
 }
@@ -44,6 +52,7 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 
 	totalLogRecords := 0
 	records := make([]writeToStatementBatchRecord, 0)
+	now := time.Now()
 
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
@@ -56,7 +65,7 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 			resourceAttrs[k] = v.AsRaw()
 			return true
 		})
-		flattenedResourceAttrs := flatten.FlattenJSON(resourceAttrs, "")
+		flattenedResourceAttrs := w.filterResourceAttrs(ctx, flatten.FlattenJSON(resourceAttrs, ""), pipeline.SignalLogs.String())
 		resourceFingerprint := fingerprint.FingerprintHash(flattenedResourceAttrs)
 
 		sls := rl.ScopeLogs()
@@ -80,16 +89,21 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 
 				flattenedLogRecordAttrs := flatten.FlattenJSON(logRecordAttrs, "")
 				filteredLogRecordAttrs := w.filterAttrs(ctx, flattenedLogRecordAttrs, pipeline.SignalLogs.String())
-				logRecordFingerprint := fingerprint.FingerprintHash(filteredLogRecordAttrs)
+				intrinsics := w.filterIntrinsics(ctx, logIntrinsics(logRecord), pipeline.SignalLogs.String())
+				logRecordFingerprint := setFingerprint(filteredLogRecordAttrs, intrinsics)
 
-				unixMilli := logRecord.Timestamp().AsTime().UnixMilli()
-				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+				ts := logRecord.Timestamp()
+				if ts == 0 {
+					ts = logRecord.ObservedTimestamp()
+				}
+				roundedSixHrsUnixMilli := bucketStart(ts.AsTime(), now, w.bucket)
 
 				records = append(records, writeToStatementBatchRecord{
 					resourceFingerprint:    resourceFingerprint,
 					fprint:                 logRecordFingerprint,
 					rAttrs:                 flattenedResourceAttrs,
 					attrs:                  filteredLogRecordAttrs,
+					intrinsics:             intrinsics,
 					roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
 				})
 			}

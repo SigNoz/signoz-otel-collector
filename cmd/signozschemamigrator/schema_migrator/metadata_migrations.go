@@ -20,6 +20,16 @@ var MetadataMigrations = []SchemaMigrationRecord{
 					{Name: "resource_attributes", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}},
 					{Name: "attributes", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}},
 				},
+				// These skip indexes do not prune the related-values query. The
+				// condition builder wraps the map lookup in if(mapContains(...), ...,
+				// false), which ClickHouse does not analyse for skip indexes; with a
+				// bare mapContains(...) AND m[k] = v predicate only the resource-values
+				// index skips granules (attribute sets are hash-ordered inside a
+				// bucket, so any value common enough to filter on sits in every
+				// granule, and id-like keys saturate the ngram filter). Building them
+				// adds about 45% (ngrambf) and 20% (tokenbf) to insert CPU. See the
+				// "Skip-index probe" section of collector-v1-changes.md in the signoz
+				// repo's .local notes.
 				Indexes: []Index{
 					{Name: "idx_resource_attributes_map_keys", Expression: "mapKeys(resource_attributes)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
 					{Name: "idx_attributes_map_keys", Expression: "mapKeys(attributes)", Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1},
@@ -148,6 +158,33 @@ var MetadataMigrations = []SchemaMigrationRecord{
 			DropTableOperation{
 				Database: "signoz_metadata",
 				Table:    "column_evolution_metadata",
+			},
+		},
+	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_metadata",
+				Table:    "attributes_metadata",
+				Column:   Column{Name: "intrinsic_attributes", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_metadata",
+				Table:    "distributed_attributes_metadata",
+				Column:   Column{Name: "intrinsic_attributes", Type: MapColumnType{KeyType: LowCardinalityColumnType{ColumnTypeString}, ValueType: ColumnTypeString}},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_metadata",
+				Table:    "distributed_attributes_metadata",
+				Column:   Column{Name: "intrinsic_attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_metadata",
+				Table:    "attributes_metadata",
+				Column:   Column{Name: "intrinsic_attributes"},
 			},
 		},
 	},

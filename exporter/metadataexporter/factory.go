@@ -19,6 +19,18 @@ const (
 	DefaultMaxResources              = 8192
 	DefaultMaxCardinalityPerResource = 2048
 	DefaultMaxTotalCardinality       = 3_000_000
+
+	// DefaultTimeout bounds one INSERT into the metadata table; it is also
+	// applied as max_execution_time on the ClickHouse connection.
+	DefaultTimeout = 30 * time.Second
+
+	// DefaultBucket is the write window for traces and logs sets.
+	DefaultBucket = 6 * time.Hour
+	// DefaultMetricsBucket is the write window for metrics sets. It matches
+	// the six-hour floor the fields API applies to a request start; a longer
+	// bucket (metric sets are long-lived) needs the reader to floor the start
+	// to it first.
+	DefaultMetricsBucket = 6 * time.Hour
 )
 
 // NewFactory creates Metadata exporter factory.
@@ -35,7 +47,7 @@ func NewFactory() exporter.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		TimeoutConfig:    exporterhelper.TimeoutConfig{Timeout: DefaultTimeout},
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 		DSN:              "tcp://localhost:9000",
@@ -43,20 +55,26 @@ func createDefaultConfig() component.Config {
 			Traces: LimitsConfig{
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
+				MaxResourceStringLength: 64,
 				MaxStringDistinctValues: 2048,
 				FetchInterval:           15 * time.Minute,
+				Bucket:                  DefaultBucket,
 			},
 			Logs: LimitsConfig{
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
+				MaxResourceStringLength: 64,
 				MaxStringDistinctValues: 2048,
 				FetchInterval:           15 * time.Minute,
+				Bucket:                  DefaultBucket,
 			},
 			Metrics: LimitsConfig{
 				MaxKeys:                 4096,
 				MaxStringLength:         64,
+				MaxResourceStringLength: 64,
 				MaxStringDistinctValues: 2048,
 				FetchInterval:           15 * time.Minute,
+				Bucket:                  DefaultMetricsBucket,
 			},
 		},
 		Cache: CacheConfig{
@@ -108,6 +126,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 		&oCfg,
 		exp.PushTraces,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
@@ -130,6 +149,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 		&oCfg,
 		exp.PushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
@@ -152,6 +172,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 		&oCfg,
 		exp.PushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),

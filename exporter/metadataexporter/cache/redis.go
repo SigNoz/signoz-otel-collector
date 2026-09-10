@@ -20,6 +20,10 @@ type RedisKeyCache struct {
 	metricsTTL time.Duration
 	logsTTL    time.Duration
 
+	tracesWindow  time.Duration
+	metricsWindow time.Duration
+	logsWindow    time.Duration
+
 	// Max # of resource fingerprints in each pipeline
 	maxTracesResourceFp  uint64
 	maxMetricsResourceFp uint64
@@ -51,6 +55,11 @@ type RedisKeyCacheOptions struct {
 	MetricsTTL time.Duration
 	LogsTTL    time.Duration
 
+	// Write window per signal; keys embed the window they belong to.
+	TracesWindow  time.Duration
+	MetricsWindow time.Duration
+	LogsWindow    time.Duration
+
 	// Limits
 	MaxTracesResourceFp  uint64
 	MaxMetricsResourceFp uint64
@@ -69,11 +78,8 @@ type RedisKeyCacheOptions struct {
 
 var _ KeyCache = (*RedisKeyCache)(nil)
 
-// 6-hour rolling window
-const (
-	sixHours     = 6 * time.Hour
-	sixHoursInMs = int64(sixHours / time.Millisecond)
-)
+// defaultWindow is the write window used for a signal without a configured TTL.
+const defaultWindow = 6 * time.Hour
 
 func NewRedisKeyCache(opts RedisKeyCacheOptions) (*RedisKeyCache, error) {
 	client := redis.NewClient(&redis.Options{
@@ -95,6 +101,10 @@ func NewRedisKeyCache(opts RedisKeyCacheOptions) (*RedisKeyCache, error) {
 		tracesTTL:  opts.TracesTTL,
 		metricsTTL: opts.MetricsTTL,
 		logsTTL:    opts.LogsTTL,
+
+		tracesWindow:  opts.TracesWindow,
+		metricsWindow: opts.MetricsWindow,
+		logsWindow:    opts.LogsWindow,
 
 		maxTracesResourceFp:  opts.MaxTracesResourceFp,
 		maxMetricsResourceFp: opts.MaxMetricsResourceFp,
@@ -121,32 +131,56 @@ func (c *RedisKeyCache) getTTL(ds pipeline.Signal) time.Duration {
 	case pipeline.SignalLogs:
 		return c.logsTTL
 	default:
-		return sixHours
+		return defaultWindow
 	}
 }
 
-func getCurrentEpochWindowMillis() int64 {
-	return time.Now().UnixMilli() / sixHoursInMs * sixHoursInMs
+func (c *RedisKeyCache) getWindow(ds pipeline.Signal) time.Duration {
+	switch ds {
+	case pipeline.SignalTraces:
+		return c.tracesWindow
+	case pipeline.SignalMetrics:
+		return c.metricsWindow
+	case pipeline.SignalLogs:
+		return c.logsWindow
+	default:
+		return defaultWindow
+	}
+}
+
+// getCurrentEpochWindowMillis returns the start of the current write window.
+// Every key embeds the window it belongs to, so a new window starts with an
+// empty cache.
+func getCurrentEpochWindowMillis(window time.Duration) int64 {
+	if window <= 0 {
+		window = defaultWindow
+	}
+	windowMs := window.Milliseconds()
+	return time.Now().UnixMilli() / windowMs * windowMs
+}
+
+func (c *RedisKeyCache) windowStart(ds pipeline.Signal) int64 {
+	return getCurrentEpochWindowMillis(c.getWindow(ds))
 }
 
 func (c *RedisKeyCache) getAttrsKey(ds pipeline.Signal, resourceFpStr string) string {
-	// e.g. "tenantID:metadata:traces:<6hWindow>:resource:<resourceFpStr>"
+	// e.g. "tenantID:metadata:traces:<windowStart>:resource:<resourceFpStr>"
 	return fmt.Sprintf("%s:metadata:%s:%d:resource:%s",
-		c.tenantID, ds.String(), getCurrentEpochWindowMillis(), resourceFpStr)
+		c.tenantID, ds.String(), c.windowStart(ds), resourceFpStr)
 }
 
 // getResourcesHLLKey returns the HLL key for the set of resource fingerprints
-// for the current 6h window for the given signal (for total unique resources)
+// for the current window for the given signal (for total unique resources)
 func (c *RedisKeyCache) getResourcesHLLKey(ds pipeline.Signal) string {
 	return fmt.Sprintf("%s:metadata:%s:%d:resources:hll",
-		c.tenantID, ds.String(), getCurrentEpochWindowMillis())
+		c.tenantID, ds.String(), c.windowStart(ds))
 }
 
 // getAttrsHLLKey returns the HLL key for the set of attribute fingerprints
-// for the current 6h window for the given signal (for total unique attributes)
+// for the current window for the given signal (for total unique attributes)
 func (c *RedisKeyCache) getAttrsHLLKey(ds pipeline.Signal) string {
 	return fmt.Sprintf("%s:metadata:%s:%d:attrs:hll",
-		c.tenantID, ds.String(), getCurrentEpochWindowMillis())
+		c.tenantID, ds.String(), c.windowStart(ds))
 }
 
 func (c *RedisKeyCache) getMaxResourceFp(ds pipeline.Signal) uint64 {

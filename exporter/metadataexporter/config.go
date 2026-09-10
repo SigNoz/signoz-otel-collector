@@ -1,6 +1,8 @@
 package metadataexporter
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/collector/config/configoptional"
@@ -16,10 +18,32 @@ const (
 )
 
 type LimitsConfig struct {
-	MaxKeys                 uint64        `mapstructure:"max_keys"`
-	MaxStringDistinctValues uint64        `mapstructure:"max_string_distinct_values"`
-	MaxStringLength         uint64        `mapstructure:"max_string_length"`
+	MaxKeys                 uint64 `mapstructure:"max_keys"`
+	MaxStringDistinctValues uint64 `mapstructure:"max_string_distinct_values"`
+	// MaxStringLength is the longest attribute value that is written to the
+	// metadata table. A key whose value exceeds it is dropped from every
+	// subsequent row of the signal until the key has been absent for a while.
+	MaxStringLength uint64 `mapstructure:"max_string_length"`
+	// MaxResourceStringLength is the same limit applied to resource attribute
+	// values. Keys listed in always_include_attributes are exempt.
+	MaxResourceStringLength uint64        `mapstructure:"max_resource_string_length"`
 	FetchInterval           time.Duration `mapstructure:"fetch_interval"`
+	// Bucket is the time window a resource+attribute set is written once per.
+	// The query side must floor its window start to the largest bucket in use.
+	Bucket time.Duration `mapstructure:"bucket"`
+}
+
+func (c LimitsConfig) validate(signal string) error {
+	if c.Bucket < time.Millisecond {
+		return fmt.Errorf("max_distinct_values::%s::bucket must be at least 1ms", signal)
+	}
+	if c.MaxStringLength == 0 {
+		return fmt.Errorf("max_distinct_values::%s::max_string_length must be positive", signal)
+	}
+	if c.MaxResourceStringLength == 0 {
+		return fmt.Errorf("max_distinct_values::%s::max_resource_string_length must be positive", signal)
+	}
+	return nil
 }
 
 type MaxDistinctValuesConfig struct {
@@ -101,4 +125,13 @@ type Config struct {
 
 	// JSON configures JSON field processing for body (and attributes in future).
 	JSON JSONConfig `mapstructure:"json"`
+}
+
+// Validate checks the per-signal limits.
+func (cfg *Config) Validate() error {
+	return errors.Join(
+		cfg.MaxDistinctValues.Traces.validate("traces"),
+		cfg.MaxDistinctValues.Logs.validate("logs"),
+		cfg.MaxDistinctValues.Metrics.validate("metrics"),
+	)
 }
