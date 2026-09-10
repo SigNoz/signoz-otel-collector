@@ -3,6 +3,7 @@ metadataexporter:
     traces:
       max_keys: 100
       max_string_length: 128
+      max_resource_string_length: 256
       max_string_distinct_values: 420
       fetch_interval: 5m
     metrics:
@@ -10,6 +11,7 @@ metadataexporter:
       max_string_length: 16
       max_string_distinct_values: 1024
       fetch_interval: 5m
+      bucket: 12h
     logs:
       max_keys: 100
       max_string_length: 64

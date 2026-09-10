@@ -30,7 +30,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			id: component.NewIDWithName(metadata.Type, ""),
 			expected: &Config{
-				TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+				TimeoutConfig:    exporterhelper.TimeoutConfig{Timeout: DefaultTimeout},
 				BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 				QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 				DSN:              "tcp://localhost:9000",
@@ -38,20 +38,26 @@ func TestLoadConfig(t *testing.T) {
 					Traces: LimitsConfig{
 						MaxKeys:                 100,
 						MaxStringLength:         128,
+						MaxResourceStringLength: 256,
 						MaxStringDistinctValues: 420,
 						FetchInterval:           5 * time.Minute,
+						Bucket:                  DefaultBucket,
 					},
 					Logs: LimitsConfig{
 						MaxKeys:                 100,
 						MaxStringLength:         64,
+						MaxResourceStringLength: 64,
 						MaxStringDistinctValues: 512,
 						FetchInterval:           10 * time.Minute,
+						Bucket:                  DefaultBucket,
 					},
 					Metrics: LimitsConfig{
 						MaxKeys:                 100,
 						MaxStringLength:         16,
+						MaxResourceStringLength: 64,
 						MaxStringDistinctValues: 1024,
 						FetchInterval:           5 * time.Minute,
+						Bucket:                  12 * time.Hour,
 					},
 				},
 				Cache: CacheConfig{
