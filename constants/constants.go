@@ -16,4 +16,5 @@ const (
 	FieldKeysTableLastSeenColumn = "last_seen"
 
 	TracesColumnAttributesPromoted = "attributes_promoted"
+	LogsColumnAttributesPromoted   = "attributes_promoted"
 )
