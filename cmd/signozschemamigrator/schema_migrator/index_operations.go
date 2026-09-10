@@ -105,7 +105,7 @@ func (a AlterTableAddIndex) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" ADD INDEX IF NOT EXISTS ")
 	sql.WriteString(a.Index.Name)
@@ -170,7 +170,7 @@ func (a AlterTableDropIndex) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" DROP INDEX IF EXISTS ")
 	sql.WriteString(a.Index.Name)
@@ -230,7 +230,7 @@ func (a AlterTableMaterializeIndex) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MATERIALIZE INDEX IF EXISTS ")
 	sql.WriteString(a.Index.Name)
@@ -294,7 +294,7 @@ func (a AlterTableClearIndex) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" CLEAR INDEX IF EXISTS ")
 	sql.WriteString(a.Index.Name)

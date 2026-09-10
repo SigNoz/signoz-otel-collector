@@ -60,7 +60,7 @@ func (a AlterTableAddColumn) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" ADD COLUMN IF NOT EXISTS ")
 	sql.WriteString(a.Column.ToSQL())
@@ -124,7 +124,7 @@ func (a AlterTableDropColumn) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" DROP COLUMN IF EXISTS ")
 	sql.WriteString(a.Column.Name)
@@ -186,7 +186,7 @@ func (a AlterTableModifyColumn) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY COLUMN IF EXISTS ")
 	sql.WriteString(a.Column.Name)
@@ -269,7 +269,7 @@ func (a AlterTableModifyColumnRemove) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY COLUMN IF EXISTS ")
 	sql.WriteString(a.Column.Name)
@@ -332,7 +332,7 @@ func (a AlterTableModifyColumnModifySettings) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY COLUMN IF EXISTS ")
 	sql.WriteString(a.Column.Name)
@@ -395,7 +395,7 @@ func (a AlterTableModifyColumnResetSettings) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY COLUMN IF EXISTS ")
 	sql.WriteString(a.Column.Name)
@@ -459,7 +459,7 @@ func (a AlterTableMaterializeColumn) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MATERIALIZE COLUMN ")
 	sql.WriteString(a.Column.Name)

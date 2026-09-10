@@ -74,7 +74,7 @@ func (c CreateTableOperation) ToSQL() string {
 	sql.WriteString(c.Table)
 	if c.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(c.cluster)
+		sql.WriteString(EscapeClusterName(c.cluster))
 	}
 	columnParts := []string{}
 	for _, column := range c.Columns {
@@ -141,7 +141,7 @@ func (d DropTableOperation) ToSQL() string {
 	sql.WriteString(d.Table)
 	if d.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(d.cluster)
+		sql.WriteString(EscapeClusterName(d.cluster))
 	}
 	if len(d.Settings) > 0 {
 		sql.WriteString(" SETTINGS ")
@@ -199,7 +199,7 @@ func (c CreateMaterializedViewOperation) ToSQL() string {
 	sql.WriteString(c.ViewName)
 	if c.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(c.cluster)
+		sql.WriteString(EscapeClusterName(c.cluster))
 	}
 	sql.WriteString(" TO ")
 	sql.WriteString(c.Database)
@@ -374,7 +374,7 @@ func (c ModifyQueryMaterializedViewOperation) ToSQL() string {
 	sql.WriteString(c.ViewName)
 	if c.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(c.cluster)
+		sql.WriteString(EscapeClusterName(c.cluster))
 	}
 	sql.WriteString(" MODIFY QUERY ")
 	sql.WriteString(c.Query)
@@ -425,7 +425,7 @@ func (d TruncateTableOperation) ToSQL() string {
 	sql.WriteString(d.Table)
 	if d.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(d.cluster)
+		sql.WriteString(EscapeClusterName(d.cluster))
 	}
 	return sql.String()
 }
@@ -488,7 +488,7 @@ func (a AlterTableModifyTTL) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY TTL ")
 	sql.WriteString(a.TTL)
@@ -545,7 +545,7 @@ func (a AlterTableDropTTL) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" REMOVE TTL")
 	return sql.String()
@@ -604,7 +604,7 @@ func (a AlterTableModifySettings) ToSQL() string {
 	sql.WriteString(a.Table)
 	if a.cluster != "" {
 		sql.WriteString(" ON CLUSTER ")
-		sql.WriteString(a.cluster)
+		sql.WriteString(EscapeClusterName(a.cluster))
 	}
 	sql.WriteString(" MODIFY SETTING ")
 	sql.WriteString(a.Settings.ToSQL())
