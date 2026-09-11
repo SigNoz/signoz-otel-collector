@@ -109,9 +109,10 @@ func TestSetSeverity(t *testing.T) {
 			expectedSeverity: entry.Default,
 		},
 		{
-			name:             "fractional_severity_number_is_ignored",
+			name:             "fractional_severity_number_is_truncated",
 			body:             map[string]any{"severity_number": 2.5},
-			expectedSeverity: entry.Default,
+			expectedSeverity: entry.Trace2,
+			expectedText:     "TRACE",
 		},
 		{
 			name:             "huge_float_severity_number_is_ignored",
