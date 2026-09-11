@@ -1,4 +1,4 @@
-package clickhouselogsexporter
+package chjson
 
 import (
 	"encoding/base64"
@@ -7,11 +7,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-var bodyV2TypedStringPaths = map[string]struct{}{
-	bodyNonMapKey: {},
-}
-
-func pcommonMapToChJSON(m pcommon.Map, typedStringPaths map[string]struct{}) *chcol.JSON {
+func FromPcommonMap(m pcommon.Map, typedStringPaths map[string]struct{}) *chcol.JSON {
 	obj := chcol.NewJSON()
 	for k, v := range m.All() {
 		if _, ok := typedStringPaths[k]; ok {
@@ -21,6 +17,25 @@ func pcommonMapToChJSON(m pcommon.Map, typedStringPaths map[string]struct{}) *ch
 		setPathValue(obj, k, v)
 	}
 	return obj
+}
+
+func FromStringMap(m map[string]string) *chcol.JSON {
+	obj := chcol.NewJSON()
+	for k, v := range m {
+		obj.SetValueAtPath(k, v)
+	}
+	return obj
+}
+
+func FromPcommonValue(v pcommon.Value) any {
+	switch v.Type() {
+	case pcommon.ValueTypeMap:
+		return FromPcommonMap(v.Map(), nil)
+	case pcommon.ValueTypeSlice:
+		return sliceValue(v.Slice())
+	default:
+		return scalarValue(v)
+	}
 }
 
 func setPathValue(obj *chcol.JSON, path string, v pcommon.Value) {
@@ -68,7 +83,7 @@ func sliceValue(s pcommon.Slice) chcol.Dynamic {
 		case pcommon.ValueTypeMap:
 			elems := make([]any, 0, s.Len())
 			for _, el := range s.All() {
-				elems = append(elems, pcommonMapToChJSON(el.Map(), nil))
+				elems = append(elems, FromPcommonMap(el.Map(), nil))
 			}
 			return chcol.NewDynamicWithType(elems, "Array(JSON)")
 		}
@@ -78,7 +93,7 @@ func sliceValue(s pcommon.Slice) chcol.Dynamic {
 	for _, el := range s.All() {
 		switch el.Type() {
 		case pcommon.ValueTypeMap:
-			elems = append(elems, chcol.NewDynamicWithType(pcommonMapToChJSON(el.Map(), nil), "JSON"))
+			elems = append(elems, chcol.NewDynamicWithType(FromPcommonMap(el.Map(), nil), "JSON"))
 		case pcommon.ValueTypeSlice:
 			elems = append(elems, sliceValue(el.Slice()))
 		default:

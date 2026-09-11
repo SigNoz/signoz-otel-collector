@@ -1,4 +1,4 @@
-package clickhouselogsexporter
+package chjson
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-func TestPcommonMapToChJSONScalars(t *testing.T) {
+func TestFromPcommonMapScalars(t *testing.T) {
 	m := pcommon.NewMap()
 	m.PutStr("str", "hello")
 	m.PutInt("int", 42)
@@ -19,7 +19,7 @@ func TestPcommonMapToChJSONScalars(t *testing.T) {
 	m.PutEmpty("null")
 	m.PutEmptyBytes("bytes").Append([]byte("hi")...)
 
-	obj := pcommonMapToChJSON(m, nil)
+	obj := FromPcommonMap(m, nil)
 	paths := obj.ValuesByPath()
 
 	assert.Equal(t, "hello", paths["str"])
@@ -31,7 +31,7 @@ func TestPcommonMapToChJSONScalars(t *testing.T) {
 	assert.Equal(t, "aGk=", paths["bytes"])
 }
 
-func TestPcommonMapToChJSONNestedMaps(t *testing.T) {
+func TestFromPcommonMapNestedMaps(t *testing.T) {
 	m := pcommon.NewMap()
 	nested := m.PutEmptyMap("a")
 	nested.PutInt("b", 1)
@@ -40,7 +40,7 @@ func TestPcommonMapToChJSONNestedMaps(t *testing.T) {
 	m.PutEmptyMap("empty")
 	m.PutInt("a.b.dotted", 2)
 
-	obj := pcommonMapToChJSON(m, nil)
+	obj := FromPcommonMap(m, nil)
 	paths := obj.ValuesByPath()
 
 	assert.Equal(t, int64(1), paths["a.b"])
@@ -51,23 +51,23 @@ func TestPcommonMapToChJSONNestedMaps(t *testing.T) {
 	assert.Len(t, paths, 3)
 }
 
-func TestPcommonMapToChJSONTypedStringPaths(t *testing.T) {
+func TestFromPcommonMapTypedStringPaths(t *testing.T) {
 	m := pcommon.NewMap()
 	m.PutInt("message", 123)
-	obj := pcommonMapToChJSON(m, bodyV2TypedStringPaths)
+	obj := FromPcommonMap(m, map[string]struct{}{"message": {}})
 	assert.Equal(t, "123", obj.ValuesByPath()["message"])
 
 	m2 := pcommon.NewMap()
 	inner := m2.PutEmptyMap("message")
 	inner.PutInt("a", 1)
-	obj2 := pcommonMapToChJSON(m2, bodyV2TypedStringPaths)
+	obj2 := FromPcommonMap(m2, map[string]struct{}{"message": {}})
 	assert.Equal(t, `{"a":1}`, obj2.ValuesByPath()["message"])
 	_, hasNested := obj2.ValueAtPath("message.a")
 	assert.False(t, hasNested, "typed string path swallows the subtree, matching server coercion")
 
 	m3 := pcommon.NewMap()
 	m3.PutStr("message", "plain")
-	obj3 := pcommonMapToChJSON(m3, bodyV2TypedStringPaths)
+	obj3 := FromPcommonMap(m3, map[string]struct{}{"message": {}})
 	assert.Equal(t, "plain", obj3.ValuesByPath()["message"])
 }
 
@@ -80,7 +80,7 @@ func dynamicAt(t *testing.T, obj *chcol.JSON, path string) chcol.Dynamic {
 	return d
 }
 
-func TestPcommonMapToChJSONScalarArrays(t *testing.T) {
+func TestFromPcommonMapScalarArrays(t *testing.T) {
 	m := pcommon.NewMap()
 	ints := m.PutEmptySlice("ints")
 	ints.AppendEmpty().SetInt(1)
@@ -96,7 +96,7 @@ func TestPcommonMapToChJSONScalarArrays(t *testing.T) {
 	nulls := m.PutEmptySlice("nulls")
 	nulls.AppendEmpty()
 
-	obj := pcommonMapToChJSON(m, nil)
+	obj := FromPcommonMap(m, nil)
 
 	d := dynamicAt(t, obj, "ints")
 	assert.Equal(t, "Array(Nullable(Int64))", d.Type())
@@ -115,7 +115,7 @@ func TestPcommonMapToChJSONScalarArrays(t *testing.T) {
 	assert.Equal(t, []any{nil}, n.Any())
 }
 
-func TestPcommonMapToChJSONArrayOfObjects(t *testing.T) {
+func TestFromPcommonMapArrayOfObjects(t *testing.T) {
 	m := pcommon.NewMap()
 	objs := m.PutEmptySlice("objs")
 	first := objs.AppendEmpty().SetEmptyMap()
@@ -125,7 +125,7 @@ func TestPcommonMapToChJSONArrayOfObjects(t *testing.T) {
 	second := objs.AppendEmpty().SetEmptyMap()
 	second.PutInt("k", 2)
 
-	obj := pcommonMapToChJSON(m, nil)
+	obj := FromPcommonMap(m, nil)
 	d := dynamicAt(t, obj, "objs")
 	assert.Equal(t, "Array(JSON)", d.Type())
 
@@ -139,7 +139,7 @@ func TestPcommonMapToChJSONArrayOfObjects(t *testing.T) {
 	assert.Equal(t, "Array(Nullable(Int64))", inner.Type())
 }
 
-func TestPcommonMapToChJSONMixedArrays(t *testing.T) {
+func TestFromPcommonMapMixedArrays(t *testing.T) {
 	m := pcommon.NewMap()
 	mixed := m.PutEmptySlice("mixed")
 	mixed.AppendEmpty().SetInt(1)
@@ -157,7 +157,7 @@ func TestPcommonMapToChJSONMixedArrays(t *testing.T) {
 	intFloat.AppendEmpty().SetInt(1)
 	intFloat.AppendEmpty().SetDouble(2.5)
 
-	obj := pcommonMapToChJSON(m, nil)
+	obj := FromPcommonMap(m, nil)
 
 	d := dynamicAt(t, obj, "mixed")
 	require.Equal(t, "Array(Dynamic)", d.Type())

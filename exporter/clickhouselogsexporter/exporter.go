@@ -31,6 +31,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -119,6 +120,10 @@ const (
 			?
 			)`
 )
+
+var bodyV2TypedStringPaths = map[string]struct{}{
+	bodyNonMapKey: {},
+}
 
 type shouldSkipKey struct {
 	TagKey      string `ch:"tag_key"`
@@ -822,7 +827,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		}
 	}
 
-	return getStringifiedBody(body), pcommonMapToChJSON(bodyJSON.Map(), bodyV2TypedStringPaths), pcommonMapToChJSON(promoted.Map(), nil)
+	return getStringifiedBody(body), chjson.FromPcommonMap(bodyJSON.Map(), bodyV2TypedStringPaths), chjson.FromPcommonMap(promoted.Map(), nil)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {

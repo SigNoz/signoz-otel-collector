@@ -29,7 +29,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
@@ -209,11 +208,6 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
 		}
 
-		marshalledScope, err := json.Marshal(span.Scope)
-		if err != nil {
-			w.logger.Warn("error marshalling instrumentation scope", zap.String("span_id", span.SpanId))
-		}
-
 		err = statement.Append(
 			span.TsBucketStart,
 			span.FingerPrint,
@@ -237,7 +231,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesPromoted,
 			span.ResourcesString,
 			span.ResourcesString,
-			marshalledScope,
+			span.Scope.chJSON(),
 			span.Events,
 			span.References,
 

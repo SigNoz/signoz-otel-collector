@@ -12,6 +12,7 @@ import (
 
 	"github.com/goccy/go-json"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -171,51 +172,6 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
-// getAttributesJSON serializes span attributes, alternative is to typecast
-// each attribute since the slice of any can't be inserted.
-func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
-	raw := attrs.AsRaw()
-	b, err := json.Marshal(raw)
-	if err != nil {
-		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-		sanitizeJSONFloats(raw)
-		b, err = json.Marshal(raw)
-	}
-	if err != nil {
-		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
-			zap.Error(err),
-			zap.String("event_trace_id", utils.TraceIDToHexOrEmptyString(traceID)),
-			zap.String("event_span_id", utils.SpanIDToHexOrEmptyString(spanID)),
-		)
-		return "{}"
-	}
-	return string(b)
-}
-
-// sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out
-// for these values, so a single malformed double attribute could not fail the whole span.
-func sanitizeJSONFloats(v any) any {
-	switch val := v.(type) {
-	case float64:
-		if utils.IsValidFloat(val) {
-			return val
-		}
-		return nil
-	case map[string]any:
-		for k, vv := range val {
-			val[k] = sanitizeJSONFloats(vv)
-		}
-		return val
-	case []any:
-		for i, vv := range val {
-			val[i] = sanitizeJSONFloats(vv)
-		}
-		return val
-	default:
-		return v
-	}
-}
-
 type attributesData struct {
 	StringMap      map[string]string
 	NumberMap      map[string]float64
@@ -355,7 +311,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
-	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
+	attributesJSON := chjson.FromPcommonMap(otelSpan.Attributes(), nil)
 
 	span := &SpanV3{
 		TsBucketStart: bucketStart,
@@ -384,7 +340,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		AttributesNumber:   attrMap.NumberMap,
 		AttributesBool:     attrMap.BoolMap,
 		Attributes:         attributesJSON,
-		AttributesPromoted: getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributesPromoted: chjson.FromPcommonMap(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), nil),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
