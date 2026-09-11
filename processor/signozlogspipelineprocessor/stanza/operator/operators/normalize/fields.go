@@ -190,7 +190,7 @@ func (f fieldConfig) infer(ent *entry.Entry) {
 		wanted[targetSeverityNumber] = parseSeverityNumber
 	}
 	if ent.SeverityText == "" {
-		wanted[targetSeverityText] = parseNonEmptyString
+		wanted[targetSeverityText] = parseSeverityText
 	}
 	if len(ent.TraceID) == 0 {
 		wanted[targetTraceID] = parseTraceID

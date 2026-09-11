@@ -139,10 +139,16 @@ func TestSetSeverity(t *testing.T) {
 			expectedText:     "loud",
 		},
 		{
-			name:             "a_long_value_is_recorded_in_full",
+			name:             "a_long_value_is_truncated",
 			body:             map[string]any{"level": strings.Repeat("x", 200)},
 			expectedSeverity: entry.Default,
-			expectedText:     strings.Repeat("x", 200),
+			expectedText:     strings.Repeat("x", 32),
+		},
+		{
+			name:             "truncation_does_not_split_a_rune",
+			body:             map[string]any{"level": strings.Repeat("x", 31) + "ééé"},
+			expectedSeverity: entry.Default,
+			expectedText:     strings.Repeat("x", 31),
 		},
 		{
 			name:             "falls_back_to_next_field_when_value_is_not_a_string",

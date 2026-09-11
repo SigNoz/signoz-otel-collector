@@ -3,9 +3,12 @@ package json
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
+
+const maxSeverityTextLength = 32
 
 var severityByLevelName = func() map[string]entry.Severity {
 	levelNames := map[entry.Severity][]string{
@@ -78,6 +81,25 @@ func severityFromLevelName(value any) (entry.Severity, bool) {
 	}
 	severity, ok := severityByLevelName[strings.ToLower(strings.TrimSpace(name))]
 	return severity, ok
+}
+
+func parseSeverityText(value any) (any, bool) {
+	parsed, ok := parseNonEmptyString(value)
+	if !ok {
+		return nil, false
+	}
+	text := parsed.(string)
+	if len(text) > maxSeverityTextLength {
+		cut := maxSeverityTextLength
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		if cut == 0 {
+			return nil, false
+		}
+		text = text[:cut]
+	}
+	return text, true
 }
 
 func parseSeverityNumber(value any) (any, bool) {
