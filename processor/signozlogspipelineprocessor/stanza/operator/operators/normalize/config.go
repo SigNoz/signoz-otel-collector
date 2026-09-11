@@ -54,7 +54,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 
 	return &Processor{
 		TransformerOperator:   transformerOperator,
-		Config:                sonic.Config{UseInt64: true},
+		Config:                sonic.Config{UseNumber: true},
 		logsProcessed:         logsProcessed,
 		jsonBodyDualIngestion: c.JSONBodyDualIngestion,
 	}, nil

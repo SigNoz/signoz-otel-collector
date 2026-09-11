@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.uber.org/zap/zapcore"
@@ -169,9 +171,8 @@ type SpanV3 struct {
 	AttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
 	AttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
-	// Attributes is stringified JSON, clickhouse will parse it since the driver needs typed values and any is not allowed
-	Attributes         string `json:"-"`
-	AttributesPromoted string `json:"-"`
+	Attributes         *chcol.JSON `json:"-"`
+	AttributesPromoted *chcol.JSON `json:"-"`
 
 	ResourcesString map[string]string `json:"-"`
 	// billable resource contains filtered keys from resources string which needs to be billed
@@ -234,6 +235,14 @@ func NewInstrumentationScope(scope pcommon.InstrumentationScope) Instrumentation
 		Version:    scope.Version(),
 		Attributes: attrs,
 	}
+}
+
+func (s InstrumentationScope) chJSON() *chcol.JSON {
+	obj := chcol.NewJSON()
+	obj.SetValueAtPath("name", s.Name)
+	obj.SetValueAtPath("version", s.Version)
+	obj.SetValueAtPath("attributes", chjson.FromStringMap(s.Attributes))
+	return obj
 }
 
 func (s InstrumentationScope) GetSpanAttributes() []SpanAttribute {

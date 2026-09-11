@@ -2,10 +2,13 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -19,6 +22,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -340,6 +344,34 @@ func TestExporterConcurrency(t *testing.T) {
 	}
 }
 
+func chJSONFlatString(t *testing.T, obj *chcol.JSON) string {
+	t.Helper()
+	out, err := json.Marshal(resolveChValue(obj))
+	require.NoError(t, err)
+	return string(out)
+}
+
+func resolveChValue(v any) any {
+	switch tv := v.(type) {
+	case *chcol.JSON:
+		flat := make(map[string]any, len(tv.ValuesByPath()))
+		for path, pv := range tv.ValuesByPath() {
+			flat[path] = resolveChValue(pv)
+		}
+		return flat
+	case chcol.Dynamic:
+		return resolveChValue(tv.Any())
+	case []any:
+		resolved := make([]any, len(tv))
+		for i, el := range tv {
+			resolved[i] = resolveChValue(el)
+		}
+		return resolved
+	default:
+		return v
+	}
+}
+
 func TestProcessBody(t *testing.T) {
 	tests := []struct {
 		name                  string
@@ -503,7 +535,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"message":"test","user":{"id":"123","name":"john"}}`)
 			},
 			expectedBody:     `{"message":"test","user":{"id":"123","name":"john"}}`,
-			expectedBodyJSON: `{"message":"test","user":{"id":"123","name":"john"}}`,
+			expectedBodyJSON: `{"message":"test","user.id":"123","user.name":"john"}`,
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
@@ -550,7 +582,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`)
 			},
 			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
-			expectedBodyJSON: `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
+			expectedBodyJSON: `{"level":1,"message":"test","user.email":"john@example.com","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 		{
@@ -640,7 +672,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"message": "test", "user": {"id": "123"}}`)
 			},
 			expectedBody:     `{"message": "test", "user": {"id": "123"}}`,
-			expectedBodyJSON: `{"message":"test","user":{"id":"123"}}`,
+			expectedBodyJSON: `{"message":"test","user.id":"123"}`,
 			expectedPromoted: `{"user.id":"123"}`,
 		},
 		{
@@ -746,15 +778,15 @@ func TestProcessBody(t *testing.T) {
 			}
 
 			// Process body
-			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
+			bodyStr, bodyJSON, promoted := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)
 
 			// Verify results
 			assert.Equal(t, tc.expectedBody, bodyStr, "body string mismatch")
-			assert.Equal(t, tc.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
-			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
+			assert.JSONEq(t, tc.expectedBodyJSON, chJSONFlatString(t, bodyJSON), "bodyJSON mismatch")
+			assert.JSONEq(t, tc.expectedPromoted, chJSONFlatString(t, promoted), "promoted mismatch")
 		})
 	}
 }
@@ -817,4 +849,86 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 
 	require.True(t, found, "counter was not recorded")
 	assert.Equal(t, int64(3), recorded)
+}
+
+func TestPushLogsDataChunksOnPathBudget(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.MatchExpectationsInOrder(false)
+
+	tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+	resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+	logsChunk1 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+	logsChunk2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+	logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+
+	tagStatementV2.ExpectSend()
+	attributeKeysStmt.ExpectSend()
+	resourceKeysStmt.ExpectSend()
+	logsChunk1.ExpectAppend()
+	logsChunk1.ExpectSend()
+	logsChunk2.ExpectAppend()
+	logsChunk2.ExpectSend()
+	logsResourceStatementV2.ExpectAppend()
+	logsResourceStatementV2.ExpectSend()
+
+	mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+	mock.ExpectClose()
+
+	opts := testOptions(t)
+	id := uuid.New()
+	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock))
+	exp, err := newExporter(
+		exporter.Settings{},
+		&Config{
+			DSN:                       "clickhouse://localhost:9000/test",
+			BodyJSONEnabled:           true,
+			PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
+			LogLevelConcurrency:       utils.ToPointer(1),
+			AttributesLimits: AttributesLimits{
+				FetchKeysInterval: 2 * time.Second,
+				MaxDistinctValues: 25000,
+			},
+		},
+		opts...,
+	)
+	require.NoError(t, err)
+	exp.promotedPaths.Store(map[string]struct{}{})
+
+	ld := plog.NewLogs()
+	sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
+	now := pcommon.NewTimestampFromTime(time.Now())
+	for r := 0; r < 3; r++ {
+		rec := sl.LogRecords().AppendEmpty()
+		rec.SetTimestamp(now)
+		rec.SetObservedTimestamp(now)
+		body := rec.Body().SetEmptyMap()
+		for k := 0; k < 500; k++ {
+			body.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
+		}
+	}
+
+	require.NoError(t, exp.pushLogsData(context.Background(), ld))
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozLogsCount)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			for _, rowTag := range row.Tags {
+				if rowTag.Value == id.String() {
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	require.NoError(t, exp.Shutdown(context.Background()))
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }

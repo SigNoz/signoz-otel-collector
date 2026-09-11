@@ -27,9 +27,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
@@ -119,6 +121,10 @@ const (
 			)`
 )
 
+var bodyV2TypedStringPaths = map[string]struct{}{
+	bodyNonMapKey: {},
+}
+
 type shouldSkipKey struct {
 	TagKey      string `ch:"tag_key"`
 	TagType     string `ch:"tag_type"`
@@ -147,8 +153,8 @@ type Record struct {
 	severityText     string
 	severityNum      uint8
 	body             string
-	bodyJSON         string
-	bodyJSONPromoted string
+	bodyJSON         *chcol.JSON
+	bodyJSONPromoted *chcol.JSON
 	scopeName        string
 	scopeVersion     string
 	// attribute/tag maps to be appended by the single consumer
@@ -541,6 +547,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
+	batchBodyPaths := make(map[string]struct{})
 	group.Go(func() error {
 		for {
 			select {
@@ -550,6 +557,19 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				if !open {
 					return nil
 				}
+				if chjson.ExceedsPathBudget(rec.bodyJSON, batchBodyPaths, chjson.DefaultPathBudgetPerBatch) {
+					if err := insertLogsStmtV2.Send(); err != nil {
+						return fmt.Errorf("StatementSendLogsV2Chunk:%w", err)
+					}
+					_ = insertLogsStmtV2.Close()
+					stmt, prepErr := e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+					if prepErr != nil {
+						return fmt.Errorf("PrepareBatchV2Chunk:%w", prepErr)
+					}
+					insertLogsStmtV2 = stmt
+					clear(batchBodyPaths)
+				}
+				chjson.RecordPaths(rec.bodyJSON, batchBodyPaths)
 				// tags for resource/scope/attrs
 				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys); err != nil {
 					return err
@@ -794,7 +814,7 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, *chcol.JSON, *chcol.JSON) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 
@@ -821,7 +841,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		}
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+	return getStringifiedBody(body), chjson.FromPcommonMap(bodyJSON.Map(), bodyV2TypedStringPaths), chjson.FromPcommonMap(promoted.Map(), nil)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
