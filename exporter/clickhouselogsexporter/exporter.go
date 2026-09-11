@@ -547,6 +547,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
+	batchBodyPaths := make(map[string]struct{})
 	group.Go(func() error {
 		for {
 			select {
@@ -556,6 +557,19 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				if !open {
 					return nil
 				}
+				if chjson.ExceedsPathBudget(rec.bodyJSON, batchBodyPaths, chjson.DefaultPathBudgetPerBatch) {
+					if err := insertLogsStmtV2.Send(); err != nil {
+						return fmt.Errorf("StatementSendLogsV2Chunk:%w", err)
+					}
+					_ = insertLogsStmtV2.Close()
+					stmt, prepErr := e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+					if prepErr != nil {
+						return fmt.Errorf("PrepareBatchV2Chunk:%w", prepErr)
+					}
+					insertLogsStmtV2 = stmt
+					clear(batchBodyPaths)
+				}
+				chjson.RecordPaths(rec.bodyJSON, batchBodyPaths)
 				// tags for resource/scope/attrs
 				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys); err != nil {
 					return err

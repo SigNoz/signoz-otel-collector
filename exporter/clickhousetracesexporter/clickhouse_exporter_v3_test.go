@@ -2,6 +2,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
 	"reflect"
@@ -1065,4 +1066,75 @@ func Test_scopeChJSON(t *testing.T) {
 	require.Equal(t, "io.opentelemetry.contrib.mongodb", got["name"])
 	require.Equal(t, "1.2.3", got["version"])
 	require.Equal(t, map[string]any{"custom.key": "custom.value"}, got["attributes"])
+}
+
+func TestWriteIndexBatchChunksOnPathBudget(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.MatchExpectationsInOrder(false)
+
+	indexChunk1 := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	indexChunk2 := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	errorStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_error_index_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_span_attributes_keys")
+	tagAttributesV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_tag_attributes_v2")
+	resourceStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_traces_v3_resource")
+
+	indexChunk1.ExpectAppend()
+	indexChunk1.ExpectSend()
+	indexChunk2.ExpectAppend()
+	indexChunk2.ExpectSend()
+	errorStatement.ExpectSend()
+	attributeKeysStmt.ExpectSend()
+	tagAttributesV2Statement.ExpectSend()
+	resourceStatement.ExpectSend()
+
+	mock.ExpectExec(".*insert into signoz_traces.distributed_usage.*").WithArgs()
+
+	writerOpts := testWriterOptions()
+	writerOpts = append(writerOpts, WithClickHouseClient(mock))
+	id := uuid.New()
+	writerOpts = append(writerOpts, WithExporterID(id))
+	exporter, err := newExporter(&Config{}, exporter.Settings{TelemetrySettings: component.TelemetrySettings{Logger: zap.NewNop()}}, writerOpts, []TraceExporterOption{
+		WithNewUsageCollector(id, mock, zap.NewNop()),
+	})
+	require.NoError(t, err)
+
+	td := ptrace.NewTraces()
+	ss := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()
+	now := time.Now()
+	for s := 0; s < 3; s++ {
+		span := ss.Spans().AppendEmpty()
+		span.SetName(fmt.Sprintf("span-%d", s))
+		span.SetTraceID(pcommon.TraceID{byte(s + 1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+		span.SetSpanID(pcommon.SpanID{byte(s + 1), 2, 3, 4, 5, 6, 7, 8})
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(now))
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(time.Millisecond)))
+		for k := 0; k < 500; k++ {
+			span.Attributes().PutInt(fmt.Sprintf("s%d_k%d", s, k), int64(k))
+		}
+	}
+
+	require.NoError(t, exporter.pushTraceDataV3(context.Background(), td))
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozSpansCount)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			for _, rowTag := range row.Tags {
+				if rowTag.Value == id.String() {
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	require.NoError(t, exporter.Shutdown(context.Background()))
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }

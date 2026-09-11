@@ -2,6 +2,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -196,4 +197,31 @@ func TestExporterAttributesTypedInsertE2E(t *testing.T) {
 	}`, attrTypes)
 	assert.JSONEq(t, `{"name":"otel-lib","version":"1.2.3","attributes":{"lib":{"lang":"go"}}}`, scope)
 	assert.JSONEq(t, `{"user":{"id":"u1"}}`, promoted)
+
+	tdWide := ptrace.NewTraces()
+	ssWide := tdWide.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()
+	for s := 0; s < 3; s++ {
+		wideSpan := ssWide.Spans().AppendEmpty()
+		wideSpan.SetName(fmt.Sprintf("wide-%d", s))
+		wideSpan.SetTraceID(pcommon.TraceID{byte(s + 2), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+		wideSpan.SetSpanID(pcommon.SpanID{byte(s + 2), 2, 3, 4, 5, 6, 7, 8})
+		wideSpan.SetStartTimestamp(pcommon.NewTimestampFromTime(now))
+		wideSpan.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(time.Millisecond)))
+		for k := 0; k < 500; k++ {
+			wideSpan.Attributes().PutInt(fmt.Sprintf("s%d_k%d", s, k), int64(k))
+		}
+	}
+	require.NoError(t, exp.pushTraceDataV3(ctx, tdWide))
+
+	var wideCount uint64
+	require.NoError(t, admin.QueryRow(ctx,
+		`SELECT count() FROM signoz_traces.distributed_signoz_index_v3 WHERE name LIKE 'wide-%'`,
+	).Scan(&wideCount))
+	assert.Equal(t, uint64(3), wideCount, "chunked inserts must store every span")
+
+	var wideVal string
+	require.NoError(t, admin.QueryRow(ctx,
+		`SELECT toString(attributes.s2_k499) FROM signoz_traces.distributed_signoz_index_v3 WHERE name = 'wide-2'`,
+	).Scan(&wideVal))
+	assert.Equal(t, "499", wideVal)
 }

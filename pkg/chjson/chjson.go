@@ -7,6 +7,27 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
+const DefaultPathBudgetPerBatch = 1000
+
+func ExceedsPathBudget(obj *chcol.JSON, seen map[string]struct{}, budget int) bool {
+	if len(seen) == 0 {
+		return false
+	}
+	newPaths := 0
+	for path := range obj.ValuesByPath() {
+		if _, ok := seen[path]; !ok {
+			newPaths++
+		}
+	}
+	return len(seen)+newPaths > budget
+}
+
+func RecordPaths(obj *chcol.JSON, seen map[string]struct{}) {
+	for path := range obj.ValuesByPath() {
+		seen[path] = struct{}{}
+	}
+}
+
 func FromPcommonMap(m pcommon.Map, typedStringPaths map[string]struct{}) *chcol.JSON {
 	obj := chcol.NewJSON()
 	for k, v := range m.All() {

@@ -180,3 +180,22 @@ func TestFromPcommonMapMixedArrays(t *testing.T) {
 	assert.Equal(t, int64(1), ifElems[0])
 	assert.Equal(t, 2.5, ifElems[1])
 }
+
+func TestPathBudget(t *testing.T) {
+	obj1 := chcol.NewJSON()
+	obj1.SetValueAtPath("a", int64(1))
+	obj1.SetValueAtPath("b", int64(2))
+	obj2 := chcol.NewJSON()
+	obj2.SetValueAtPath("b", int64(3))
+	obj2.SetValueAtPath("c", int64(4))
+
+	seen := map[string]struct{}{}
+	assert.False(t, ExceedsPathBudget(obj1, seen, 1), "empty batch never exceeds, even over budget")
+	RecordPaths(obj1, seen)
+	assert.Len(t, seen, 2)
+
+	assert.False(t, ExceedsPathBudget(obj2, seen, 3), "one new path fits budget 3")
+	assert.True(t, ExceedsPathBudget(obj2, seen, 2), "one new path exceeds budget 2")
+	RecordPaths(obj2, seen)
+	assert.Len(t, seen, 3)
+}

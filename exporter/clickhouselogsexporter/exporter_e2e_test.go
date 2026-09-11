@@ -2,6 +2,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -250,4 +251,30 @@ func TestExporterBodyJSONTypedInsertE2E(t *testing.T) {
 	).Scan(&body, &bodyJSON))
 	assert.Equal(t, "flag off line", body)
 	assert.JSONEq(t, `{"message":""}`, bodyJSON)
+
+	ldWide := plog.NewLogs()
+	slWide := ldWide.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
+	for r := 0; r < 3; r++ {
+		rec := slWide.LogRecords().AppendEmpty()
+		rec.SetTimestamp(now)
+		rec.SetObservedTimestamp(now)
+		bodyMap := rec.Body().SetEmptyMap()
+		bodyMap.PutStr("message", fmt.Sprintf("wide-%d", r))
+		for k := 0; k < 500; k++ {
+			bodyMap.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
+		}
+	}
+	require.NoError(t, exp.pushLogsData(ctx, ldWide))
+
+	var wideCount uint64
+	require.NoError(t, admin.QueryRow(ctx,
+		`SELECT count() FROM signoz_logs.distributed_logs_v2 WHERE body_v2.message LIKE 'wide-%'`,
+	).Scan(&wideCount))
+	assert.Equal(t, uint64(3), wideCount, "chunked inserts must store every record")
+
+	var wideVal string
+	require.NoError(t, admin.QueryRow(ctx,
+		`SELECT toString(body_v2.r2_k499) FROM signoz_logs.distributed_logs_v2 WHERE body_v2.message = 'wide-2'`,
+	).Scan(&wideVal))
+	assert.Equal(t, "499", wideVal)
 }

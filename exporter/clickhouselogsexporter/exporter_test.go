@@ -3,6 +3,7 @@ package clickhouselogsexporter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -847,4 +849,86 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 
 	require.True(t, found, "counter was not recorded")
 	assert.Equal(t, int64(3), recorded)
+}
+
+func TestPushLogsDataChunksOnPathBudget(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.MatchExpectationsInOrder(false)
+
+	tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+	resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+	logsChunk1 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+	logsChunk2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+	logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+
+	tagStatementV2.ExpectSend()
+	attributeKeysStmt.ExpectSend()
+	resourceKeysStmt.ExpectSend()
+	logsChunk1.ExpectAppend()
+	logsChunk1.ExpectSend()
+	logsChunk2.ExpectAppend()
+	logsChunk2.ExpectSend()
+	logsResourceStatementV2.ExpectAppend()
+	logsResourceStatementV2.ExpectSend()
+
+	mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+	mock.ExpectClose()
+
+	opts := testOptions(t)
+	id := uuid.New()
+	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock))
+	exp, err := newExporter(
+		exporter.Settings{},
+		&Config{
+			DSN:                       "clickhouse://localhost:9000/test",
+			BodyJSONEnabled:           true,
+			PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
+			LogLevelConcurrency:       utils.ToPointer(1),
+			AttributesLimits: AttributesLimits{
+				FetchKeysInterval: 2 * time.Second,
+				MaxDistinctValues: 25000,
+			},
+		},
+		opts...,
+	)
+	require.NoError(t, err)
+	exp.promotedPaths.Store(map[string]struct{}{})
+
+	ld := plog.NewLogs()
+	sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
+	now := pcommon.NewTimestampFromTime(time.Now())
+	for r := 0; r < 3; r++ {
+		rec := sl.LogRecords().AppendEmpty()
+		rec.SetTimestamp(now)
+		rec.SetObservedTimestamp(now)
+		body := rec.Body().SetEmptyMap()
+		for k := 0; k < 500; k++ {
+			body.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
+		}
+	}
+
+	require.NoError(t, exp.pushLogsData(context.Background(), ld))
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozLogsCount)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			for _, rowTag := range row.Tags {
+				if rowTag.Value == id.String() {
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	require.NoError(t, exp.Shutdown(context.Background()))
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }
