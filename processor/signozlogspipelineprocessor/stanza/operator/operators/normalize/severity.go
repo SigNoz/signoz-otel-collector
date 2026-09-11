@@ -1,6 +1,7 @@
 package json
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -111,30 +112,27 @@ func parseSeverityNumber(value any) (any, bool) {
 }
 
 func severityFromNumber(value any) (entry.Severity, bool) {
-	var number int64
+	var number float64
 
 	switch v := value.(type) {
 	case int64:
-		number = v
+		number = float64(v)
 	case int:
-		number = int64(v)
+		number = float64(v)
 	case float64:
-		if v < float64(entry.Trace) || v > float64(entry.Fatal4) || v != float64(int64(v)) {
-			return entry.Default, false
-		}
-		number = int64(v)
+		number = v
 	case string:
 		text := strings.TrimSpace(v)
 		parsed, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
 			return severityFromLevelName(strings.TrimPrefix(strings.ToLower(text), "severity_number_"))
 		}
-		number = parsed
+		number = float64(parsed)
 	default:
 		return entry.Default, false
 	}
 
-	if number < int64(entry.Trace) || number > int64(entry.Fatal4) {
+	if number < float64(entry.Trace) || number > float64(entry.Fatal4) || number != math.Trunc(number) {
 		return entry.Default, false
 	}
 	return entry.Severity(number), true
