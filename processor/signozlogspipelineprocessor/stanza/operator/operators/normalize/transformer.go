@@ -24,7 +24,7 @@ type Processor struct {
 	signozstanzahelper.TransformerOperator
 	sonic.Config
 	logsProcessed         metric.Int64Counter
-	fields                fieldInferrer
+	fields                fieldNormalizer
 	jsonBodyDualIngestion bool
 }
 

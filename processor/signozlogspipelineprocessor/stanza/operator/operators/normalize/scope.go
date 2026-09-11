@@ -7,7 +7,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
-func (f fieldInferrer) setScope(ent *entry.Entry, results scanResults) {
+func (f fieldNormalizer) setScope(ent *entry.Entry, results scanResults) {
 	if name, ok := f.take(results, targetScopeName); ok {
 		ent.ScopeName = name.(string)
 	}

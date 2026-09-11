@@ -47,7 +47,7 @@ var severityByLevelName = func() map[string]entry.Severity {
 	return severities
 }()
 
-func (f fieldInferrer) setSeverity(ent *entry.Entry, results scanResults) {
+func (f fieldNormalizer) setSeverity(ent *entry.Entry, results scanResults) {
 	if severity, ok := f.take(results, targetSeverityNumber); ok {
 		ent.Severity = severity.(entry.Severity)
 	}

@@ -77,7 +77,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		TransformerOperator:   transformerOperator,
 		Config:                sonic.Config{UseInt64: true},
 		logsProcessed:         logsProcessed,
-		fields:                newFieldInferrer(c),
+		fields:                newFieldNormalizer(c),
 		jsonBodyDualIngestion: c.JSONBodyDualIngestion,
 	}, nil
 }

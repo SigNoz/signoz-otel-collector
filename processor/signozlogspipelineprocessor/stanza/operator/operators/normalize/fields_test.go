@@ -28,7 +28,7 @@ func newInferenceConfig() *Config {
 	return cfg
 }
 
-var defaultFields = newFieldInferrer(*newInferenceConfig())
+var defaultFields = newFieldNormalizer(*newInferenceConfig())
 
 func newProcessorWithConfig(t testing.TB, cfg *Config) *Processor {
 	t.Helper()
@@ -483,23 +483,23 @@ func TestFieldNamesAreRankedPerTarget(t *testing.T) {
 	cfg := newInferenceConfig()
 	cfg.MessageFields = []string{"message"}
 	cfg.SeverityTextFields = []string{" Level ", "level", "", "LOG.LEVEL"}
-	f := newFieldInferrer(*cfg)
+	f := newFieldNormalizer(*cfg)
 
-	require.Equal(t, []nameMatch{{target: targetMessage, rank: 0}}, f.names["message"])
-	require.Equal(t, []nameMatch{{target: targetSeverityText, rank: 0}}, f.names["level"])
-	require.Equal(t, []nameMatch{{target: targetSeverityText, rank: 1}}, f.names["log.level"])
-	require.NotContains(t, f.names, "")
-	require.NotContains(t, f.names, " level ")
+	require.Equal(t, []nameMatch{{target: targetMessage, rank: 0}}, f.config.names["message"])
+	require.Equal(t, []nameMatch{{target: targetSeverityText, rank: 0}}, f.config.names["level"])
+	require.Equal(t, []nameMatch{{target: targetSeverityText, rank: 1}}, f.config.names["log.level"])
+	require.NotContains(t, f.config.names, "")
+	require.NotContains(t, f.config.names, " level ")
 }
 
 func TestOneNameCanServeTwoTargets(t *testing.T) {
 	cfg := newInferenceConfig()
 	cfg.MessageFields = []string{"level"}
 	cfg.SeverityTextFields = []string{"severity", "level"}
-	f := newFieldInferrer(*cfg)
+	f := newFieldNormalizer(*cfg)
 
 	require.Equal(t, []nameMatch{
 		{target: targetMessage, rank: 0},
 		{target: targetSeverityText, rank: 1},
-	}, f.names["level"])
+	}, f.config.names["level"])
 }

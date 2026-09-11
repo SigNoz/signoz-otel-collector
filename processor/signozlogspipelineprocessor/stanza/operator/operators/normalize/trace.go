@@ -12,7 +12,7 @@ const (
 	traceFlagsSize = 1
 )
 
-func (f fieldInferrer) setTraceContext(ent *entry.Entry, results scanResults) {
+func (f fieldNormalizer) setTraceContext(ent *entry.Entry, results scanResults) {
 	if id, ok := f.take(results, targetTraceID); ok {
 		ent.TraceID = id.([]byte)
 	}
