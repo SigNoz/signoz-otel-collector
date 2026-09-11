@@ -142,13 +142,13 @@ func TestSetSeverity(t *testing.T) {
 			name:             "a_long_value_is_truncated",
 			body:             map[string]any{"level": strings.Repeat("x", 200)},
 			expectedSeverity: entry.Default,
-			expectedText:     strings.Repeat("x", 32),
+			expectedText:     strings.Repeat("x", 100),
 		},
 		{
 			name:             "truncation_does_not_split_a_rune",
-			body:             map[string]any{"level": strings.Repeat("x", 31) + "ééé"},
+			body:             map[string]any{"level": strings.Repeat("x", 99) + "ééé"},
 			expectedSeverity: entry.Default,
-			expectedText:     strings.Repeat("x", 31),
+			expectedText:     strings.Repeat("x", 99),
 		},
 		{
 			name:             "falls_back_to_next_field_when_value_is_not_a_string",

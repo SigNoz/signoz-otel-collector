@@ -8,7 +8,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/entry"
 )
 
-const maxSeverityTextLength = 32
+const maxSeverityTextLength = 100
 
 var severityByLevelName = func() map[string]entry.Severity {
 	levelNames := map[entry.Severity][]string{
