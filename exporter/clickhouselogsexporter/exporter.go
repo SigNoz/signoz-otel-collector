@@ -27,6 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
@@ -147,8 +148,8 @@ type Record struct {
 	severityText     string
 	severityNum      uint8
 	body             string
-	bodyJSON         string
-	bodyJSONPromoted string
+	bodyJSON         *chcol.JSON
+	bodyJSONPromoted *chcol.JSON
 	scopeName        string
 	scopeVersion     string
 	// attribute/tag maps to be appended by the single consumer
@@ -794,7 +795,7 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, *chcol.JSON, *chcol.JSON) {
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 
@@ -821,7 +822,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		}
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+	return getStringifiedBody(body), pcommonMapToChJSON(bodyJSON.Map(), bodyV2TypedStringPaths), pcommonMapToChJSON(promoted.Map(), nil)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {

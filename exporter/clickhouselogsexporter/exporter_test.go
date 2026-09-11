@@ -2,10 +2,12 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -340,6 +342,34 @@ func TestExporterConcurrency(t *testing.T) {
 	}
 }
 
+func chJSONFlatString(t *testing.T, obj *chcol.JSON) string {
+	t.Helper()
+	out, err := json.Marshal(resolveChValue(obj))
+	require.NoError(t, err)
+	return string(out)
+}
+
+func resolveChValue(v any) any {
+	switch tv := v.(type) {
+	case *chcol.JSON:
+		flat := make(map[string]any, len(tv.ValuesByPath()))
+		for path, pv := range tv.ValuesByPath() {
+			flat[path] = resolveChValue(pv)
+		}
+		return flat
+	case chcol.Dynamic:
+		return resolveChValue(tv.Any())
+	case []any:
+		resolved := make([]any, len(tv))
+		for i, el := range tv {
+			resolved[i] = resolveChValue(el)
+		}
+		return resolved
+	default:
+		return v
+	}
+}
+
 func TestProcessBody(t *testing.T) {
 	tests := []struct {
 		name                  string
@@ -503,7 +533,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"message":"test","user":{"id":"123","name":"john"}}`)
 			},
 			expectedBody:     `{"message":"test","user":{"id":"123","name":"john"}}`,
-			expectedBodyJSON: `{"message":"test","user":{"id":"123","name":"john"}}`,
+			expectedBodyJSON: `{"message":"test","user.id":"123","user.name":"john"}`,
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
@@ -550,7 +580,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`)
 			},
 			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
-			expectedBodyJSON: `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
+			expectedBodyJSON: `{"level":1,"message":"test","user.email":"john@example.com","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 		{
@@ -640,7 +670,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"message": "test", "user": {"id": "123"}}`)
 			},
 			expectedBody:     `{"message": "test", "user": {"id": "123"}}`,
-			expectedBodyJSON: `{"message":"test","user":{"id":"123"}}`,
+			expectedBodyJSON: `{"message":"test","user.id":"123"}`,
 			expectedPromoted: `{"user.id":"123"}`,
 		},
 		{
@@ -746,15 +776,15 @@ func TestProcessBody(t *testing.T) {
 			}
 
 			// Process body
-			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
+			bodyStr, bodyJSON, promoted := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)
 
 			// Verify results
 			assert.Equal(t, tc.expectedBody, bodyStr, "body string mismatch")
-			assert.Equal(t, tc.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
-			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
+			assert.JSONEq(t, tc.expectedBodyJSON, chJSONFlatString(t, bodyJSON), "bodyJSON mismatch")
+			assert.JSONEq(t, tc.expectedPromoted, chJSONFlatString(t, promoted), "promoted mismatch")
 		})
 	}
 }

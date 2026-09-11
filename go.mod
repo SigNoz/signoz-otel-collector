@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0
-	github.com/ClickHouse/ch-go v0.66.0
+	github.com/ClickHouse/ch-go v0.67.0
 	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/IBM/sarama v1.46.3
@@ -889,8 +889,8 @@ require (
 )
 
 replace (
-	github.com/ClickHouse/ch-go v0.66.0 => github.com/SigNoz/ch-go v0.66.0-dd-sketch
-	github.com/ClickHouse/clickhouse-go/v2 v2.36.0 => github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch
+	github.com/ClickHouse/ch-go => github.com/SigNoz/ch-go v0.67.0-dd-sketch
+	github.com/ClickHouse/clickhouse-go/v2 => github.com/SigNoz/clickhouse-go/v2 v2.40.1-dd-sketch
 	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
