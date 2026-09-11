@@ -28,7 +28,7 @@ func newInferenceConfig() *Config {
 	return cfg
 }
 
-var defaultFields = newFieldConfig(*newInferenceConfig())
+var defaultFields = newFieldInferrer(*newInferenceConfig())
 
 func newProcessorWithConfig(t testing.TB, cfg *Config) *Processor {
 	t.Helper()
@@ -483,7 +483,7 @@ func TestFieldNamesAreRankedPerTarget(t *testing.T) {
 	cfg := newInferenceConfig()
 	cfg.MessageFields = []string{"message"}
 	cfg.SeverityTextFields = []string{" Level ", "level", "", "LOG.LEVEL"}
-	f := newFieldConfig(*cfg)
+	f := newFieldInferrer(*cfg)
 
 	require.Equal(t, []nameMatch{{target: targetMessage, rank: 0}}, f.names["message"])
 	require.Equal(t, []nameMatch{{target: targetSeverityText, rank: 0}}, f.names["level"])
@@ -496,7 +496,7 @@ func TestOneNameCanServeTwoTargets(t *testing.T) {
 	cfg := newInferenceConfig()
 	cfg.MessageFields = []string{"level"}
 	cfg.SeverityTextFields = []string{"severity", "level"}
-	f := newFieldConfig(*cfg)
+	f := newFieldInferrer(*cfg)
 
 	require.Equal(t, []nameMatch{
 		{target: targetMessage, rank: 0},

@@ -34,13 +34,13 @@ type nameMatch struct {
 	rank   int
 }
 
-type fieldConfig struct {
+type fieldInferrer struct {
 	names map[string][]nameMatch
 	move  [targetCount]bool
 }
 
-func newFieldConfig(c Config) fieldConfig {
-	f := fieldConfig{names: map[string][]nameMatch{}}
+func newFieldInferrer(c Config) fieldInferrer {
+	f := fieldInferrer{names: map[string][]nameMatch{}}
 
 	f.addNames(targetMessage, c.MessageFields)
 	f.addNames(targetSeverityNumber, c.SeverityNumberFields)
@@ -64,7 +64,7 @@ func newFieldConfig(c Config) fieldConfig {
 	return f
 }
 
-func (f *fieldConfig) addNames(target fieldTarget, names []string) {
+func (f *fieldInferrer) addNames(target fieldTarget, names []string) {
 	rank := 0
 	for _, name := range names {
 		field := normalizeFieldName(name)
@@ -76,7 +76,7 @@ func (f *fieldConfig) addNames(target fieldTarget, names []string) {
 	}
 }
 
-func (f fieldConfig) knows(target fieldTarget, field string) bool {
+func (f fieldInferrer) knows(target fieldTarget, field string) bool {
 	for _, match := range f.names[field] {
 		if match.target == target {
 			return true
@@ -110,7 +110,7 @@ type scanResults [targetCount]scanResult
 
 // take applies the move setting for a target that was found, and reports the value so the
 // caller can record it.
-func (f fieldConfig) take(results scanResults, target fieldTarget) (any, bool) {
+func (f fieldInferrer) take(results scanResults, target fieldTarget) (any, bool) {
 	result := results[target]
 	if !result.found {
 		return nil, false
@@ -127,7 +127,7 @@ func (f fieldConfig) take(results scanResults, target fieldTarget) (any, bool) {
 // container that yields a usable value for it. Within a container the lowest ranked name
 // wins, ties going to the lexicographically smaller key so the result never depends on map
 // order, and a value the target can't use is passed over in favour of the next candidate.
-func (f fieldConfig) scan(containers [4]map[string]any, wanted wantedFields) scanResults {
+func (f fieldInferrer) scan(containers [4]map[string]any, wanted wantedFields) scanResults {
 	var results scanResults
 	var bestRank [targetCount]int
 	var bestKey [targetCount]string
@@ -183,7 +183,7 @@ func (f fieldConfig) scan(containers [4]map[string]any, wanted wantedFields) sca
 // infer fills in the top level fields the log carries inside itself. Every target is looked
 // for in the same pass, so a record costs one walk of its containers rather than one per
 // target, and what each container holds is read before any of it is moved out.
-func (f fieldConfig) infer(ent *entry.Entry) {
+func (f fieldInferrer) infer(ent *entry.Entry) {
 	var wanted wantedFields
 
 	if ent.Severity == entry.Default {
