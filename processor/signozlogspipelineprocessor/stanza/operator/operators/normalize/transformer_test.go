@@ -274,7 +274,7 @@ func TestTransform(t *testing.T) {
 					"message": "test message",
 				}
 				e.Severity = entry.Info
-				e.SeverityText = "INFO"
+				e.SeverityText = "info"
 				return e
 			},
 			originalAsJSONOf: map[string]any{
@@ -298,7 +298,7 @@ func TestTransform(t *testing.T) {
 					"level":   "info",
 				}
 				e.Severity = entry.Info
-				e.SeverityText = "INFO"
+				e.SeverityText = "info"
 				return e
 			},
 			expectedOriginal: `{"msg": "test message", "level": "info"}`,
@@ -323,7 +323,7 @@ func TestTransform(t *testing.T) {
 					"scope.version": "1.4.0",
 				}
 				e.Severity = entry.Warn
-				e.SeverityText = "WARN"
+				e.SeverityText = "warning"
 				e.TraceID = decodeHexOrPanic(testTraceID)
 				e.SpanID = decodeHexOrPanic(testSpanID)
 				e.ScopeName = "checkout"
@@ -353,7 +353,7 @@ func TestTransform(t *testing.T) {
 					"scope_name": "cart",
 				}
 				e.Severity = entry.Error
-				e.SeverityText = "ERROR"
+				e.SeverityText = "error"
 				e.ScopeName = "cart"
 				return e
 			},
@@ -375,7 +375,7 @@ func TestTransform(t *testing.T) {
 				e.Body = map[string]any{"message": "something failed"}
 				e.Attributes = map[string]any{"level": "error", "trace_id": testTraceID}
 				e.Severity = entry.Error
-				e.SeverityText = "ERROR"
+				e.SeverityText = "error"
 				e.TraceID = decodeHexOrPanic(testTraceID)
 				return e
 			},

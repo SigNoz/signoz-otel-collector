@@ -23,13 +23,13 @@ func TestSetSeverity(t *testing.T) {
 			name:             "level_in_body",
 			body:             map[string]any{"message": "boom", "level": "error"},
 			expectedSeverity: entry.Error,
-			expectedText:     "ERROR",
+			expectedText:     "error",
 		},
 		{
-			name:             "level_name_is_canonicalized",
+			name:             "level_name_case_is_preserved",
 			body:             map[string]any{"level": "Warning"},
 			expectedSeverity: entry.Warn,
-			expectedText:     "WARN",
+			expectedText:     "Warning",
 		},
 		{
 			name:             "level_name_is_trimmed",
@@ -41,31 +41,31 @@ func TestSetSeverity(t *testing.T) {
 			name:             "level_field_name_is_case_insensitive",
 			body:             map[string]any{"LEVEL": "debug"},
 			expectedSeverity: entry.Debug,
-			expectedText:     "DEBUG",
+			expectedText:     "debug",
 		},
 		{
 			name:             "syslog_level_name",
 			body:             map[string]any{"severity": "critical"},
 			expectedSeverity: entry.Error2,
-			expectedText:     "ERROR",
+			expectedText:     "critical",
 		},
 		{
 			name:             "syslog_notice",
 			body:             map[string]any{"severity": "notice"},
 			expectedSeverity: entry.Info2,
-			expectedText:     "INFO",
+			expectedText:     "notice",
 		},
 		{
 			name:             "otel_severity_text_with_a_group_suffix",
 			body:             map[string]any{"severity_text": "WARN3"},
 			expectedSeverity: entry.Warn3,
-			expectedText:     "WARN",
+			expectedText:     "WARN3",
 		},
 		{
 			name:             "java_util_logging_level_name",
 			body:             map[string]any{"level": "SEVERE"},
 			expectedSeverity: entry.Error,
-			expectedText:     "ERROR",
+			expectedText:     "SEVERE",
 		},
 		{
 			name:             "python_levelname",
@@ -77,7 +77,7 @@ func TestSetSeverity(t *testing.T) {
 			name:             "flattened_ecs_log_level",
 			body:             map[string]any{"log.level": "warn"},
 			expectedSeverity: entry.Warn,
-			expectedText:     "WARN",
+			expectedText:     "warn",
 		},
 		{
 			name:             "severity_number",
@@ -112,13 +112,13 @@ func TestSetSeverity(t *testing.T) {
 			name:             "number_and_text_are_read_independently",
 			body:             map[string]any{"severity_number": int64(13), "level": "info"},
 			expectedSeverity: entry.Warn,
-			expectedText:     "INFO",
+			expectedText:     "info",
 		},
 		{
 			name:             "text_fills_in_the_number_when_there_is_no_number_field",
 			body:             map[string]any{"level": "warn"},
 			expectedSeverity: entry.Warn,
-			expectedText:     "WARN",
+			expectedText:     "warn",
 		},
 		{
 			name:             "number_fills_in_the_text_when_there_is_no_text_field",
@@ -130,7 +130,7 @@ func TestSetSeverity(t *testing.T) {
 			name:             "more_specific_field_wins",
 			body:             map[string]any{"severity_text": "error", "level": "info"},
 			expectedSeverity: entry.Error,
-			expectedText:     "ERROR",
+			expectedText:     "error",
 		},
 		{
 			name:             "unknown_level_name_is_recorded_as_the_log_wrote_it",
@@ -148,7 +148,7 @@ func TestSetSeverity(t *testing.T) {
 			name:             "falls_back_to_next_field_when_value_is_not_a_string",
 			body:             map[string]any{"severity": map[string]any{"code": 3}, "level": "error"},
 			expectedSeverity: entry.Error,
-			expectedText:     "ERROR",
+			expectedText:     "error",
 		},
 		{
 			name:             "numeric_level_is_ignored",
@@ -177,14 +177,14 @@ func TestSetSeverity(t *testing.T) {
 			body:             map[string]any{"message": "boom"},
 			attributes:       map[string]any{"level": "fatal"},
 			expectedSeverity: entry.Fatal,
-			expectedText:     "FATAL",
+			expectedText:     "fatal",
 		},
 		{
 			name:             "level_in_resource",
 			body:             map[string]any{"message": "boom"},
 			resource:         map[string]any{"level": "trace"},
 			expectedSeverity: entry.Trace,
-			expectedText:     "TRACE",
+			expectedText:     "trace",
 		},
 		{
 			name:             "body_wins_over_attributes_and_resource",
@@ -192,14 +192,14 @@ func TestSetSeverity(t *testing.T) {
 			attributes:       map[string]any{"level": "error"},
 			resource:         map[string]any{"level": "fatal"},
 			expectedSeverity: entry.Info,
-			expectedText:     "INFO",
+			expectedText:     "info",
 		},
 		{
 			name:             "each_half_is_read_from_wherever_it_is_found",
 			body:             map[string]any{"level": "info"},
 			attributes:       map[string]any{"severity_number": int64(17)},
 			expectedSeverity: entry.Error,
-			expectedText:     "INFO",
+			expectedText:     "info",
 		},
 		{
 			name:             "attributes_win_over_resource",
@@ -207,7 +207,7 @@ func TestSetSeverity(t *testing.T) {
 			attributes:       map[string]any{"level": "warn"},
 			resource:         map[string]any{"level": "error"},
 			expectedSeverity: entry.Warn,
-			expectedText:     "WARN",
+			expectedText:     "warn",
 		},
 		{
 			name:             "existing_severity_text_is_kept",
@@ -235,7 +235,7 @@ func TestSetSeverity(t *testing.T) {
 			body:             map[string]any{"level": "error"},
 			severity:         entry.Info,
 			expectedSeverity: entry.Info,
-			expectedText:     "ERROR",
+			expectedText:     "error",
 		},
 		{
 			name:             "existing_severity_number_names_its_own_text_when_the_log_has_none",
@@ -297,6 +297,6 @@ func TestSetSeverityIsDeterministicForCaseCollisions(t *testing.T) {
 		defaultFields.infer(e)
 
 		require.Equal(t, entry.Warn, e.Severity)
-		require.Equal(t, "WARN", e.SeverityText)
+		require.Equal(t, "warn", e.SeverityText)
 	}
 }

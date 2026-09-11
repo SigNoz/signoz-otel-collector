@@ -50,15 +50,7 @@ func (f fieldConfig) setSeverity(ent *entry.Entry, results scanResults) {
 	}
 
 	if text, ok := f.take(results, targetSeverityText); ok {
-		name := text.(string)
-		if severity, known := severityByLevelName[strings.ToLower(name)]; known {
-			ent.SeverityText = severityText(severity)
-			if ent.Severity == entry.Default {
-				ent.Severity = severity
-			}
-		} else {
-			ent.SeverityText = name
-		}
+		ent.SeverityText = text.(string)
 	}
 
 	if ent.Severity == entry.Default {

@@ -87,7 +87,7 @@ func TestConfiguredFieldNames(t *testing.T) {
 		"logger":      "cart",
 	}, e.Body)
 	require.Equal(t, entry.Warn, e.Severity)
-	require.Equal(t, "WARN", e.SeverityText)
+	require.Equal(t, "warning", e.SeverityText)
 	require.Equal(t, decodeHexOrPanic(testTraceID), e.TraceID)
 	require.Equal(t, decodeHexOrPanic(testSpanID), e.SpanID)
 	require.Equal(t, []byte{1}, e.TraceFlags)
@@ -106,7 +106,7 @@ func TestConfiguredSeverityNumberField(t *testing.T) {
 	require.NoError(t, processor.Process(context.Background(), e))
 
 	require.Equal(t, entry.Error, e.Severity)
-	require.Equal(t, "INFO", e.SeverityText)
+	require.Equal(t, "info", e.SeverityText)
 }
 
 func TestMessageFieldNamesIncludeMessageItself(t *testing.T) {
@@ -261,7 +261,7 @@ func TestOnlyTheMessageFieldIsMovedByDefault(t *testing.T) {
 	}, e.Body)
 
 	require.Equal(t, entry.Error, e.Severity)
-	require.Equal(t, "ERROR", e.SeverityText)
+	require.Equal(t, "error", e.SeverityText)
 	require.Equal(t, decodeHexOrPanic(testTraceID), e.TraceID)
 	require.Equal(t, decodeHexOrPanic(testSpanID), e.SpanID)
 	require.Equal(t, []byte{1}, e.TraceFlags)
@@ -290,7 +290,7 @@ func TestMoveAllFieldsOverridesTheIndividualSettings(t *testing.T) {
 
 	require.Equal(t, map[string]any{"message": "boom", "kept": "value"}, e.Body)
 	require.Equal(t, entry.Error, e.Severity)
-	require.Equal(t, "ERROR", e.SeverityText)
+	require.Equal(t, "error", e.SeverityText)
 	require.Equal(t, decodeHexOrPanic(testTraceID), e.TraceID)
 	require.Equal(t, decodeHexOrPanic(testSpanID), e.SpanID)
 	require.Equal(t, []byte{1}, e.TraceFlags)
@@ -383,7 +383,7 @@ func TestMoveAppliesToTheSeverityFieldThatWasUsed(t *testing.T) {
 
 			require.Equal(t, tc.expectedBody, e.Body)
 			require.Equal(t, entry.Error, e.Severity)
-			require.Equal(t, "ERROR", e.SeverityText)
+			require.Equal(t, "error", e.SeverityText)
 		})
 	}
 }
@@ -410,7 +410,7 @@ func TestInferenceFromScopeAttributes(t *testing.T) {
 	require.NoError(t, processor.Process(context.Background(), e))
 
 	require.Equal(t, entry.Error, e.Severity)
-	require.Equal(t, "ERROR", e.SeverityText)
+	require.Equal(t, "error", e.SeverityText)
 	require.Equal(t, decodeHexOrPanic(testTraceID), e.TraceID)
 	require.Equal(t, "1.4.0", e.Attributes[signozstanzaentry.InternalTempScopeVersionAttribute])
 	require.Equal(t, map[string]any{
