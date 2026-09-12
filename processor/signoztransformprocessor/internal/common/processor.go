@@ -89,8 +89,8 @@ func (s scopeStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces) er
 		rspans := td.ResourceSpans().At(i)
 		for j := 0; j < rspans.ScopeSpans().Len(); j++ {
 			sspans := rspans.ScopeSpans().At(j)
-				tCtx := ottlscope.NewTransformContextPtr(sspans.Scope(), rspans.Resource(), rspans)
-				err := s.Execute(ctx, tCtx)
+			tCtx := ottlscope.NewTransformContextPtr(sspans.Scope(), rspans.Resource(), rspans)
+			err := s.Execute(ctx, tCtx)
 			if err != nil {
 				return err
 			}
@@ -104,8 +104,8 @@ func (s scopeStatements) ConsumeMetrics(ctx context.Context, md pmetric.Metrics)
 		rmetrics := md.ResourceMetrics().At(i)
 		for j := 0; j < rmetrics.ScopeMetrics().Len(); j++ {
 			smetrics := rmetrics.ScopeMetrics().At(j)
-				tCtx := ottlscope.NewTransformContextPtr(smetrics.Scope(), rmetrics.Resource(), rmetrics)
-				err := s.Execute(ctx, tCtx)
+			tCtx := ottlscope.NewTransformContextPtr(smetrics.Scope(), rmetrics.Resource(), rmetrics)
+			err := s.Execute(ctx, tCtx)
 			if err != nil {
 				return err
 			}

@@ -128,7 +128,6 @@ func containsNonAlpha(s string) bool {
 	return false
 }
 
-
 // isULID checks if string matches ULID pattern
 func isULID(s string) bool {
 	// ULID is 26 characters, base32 encoded
