@@ -106,7 +106,7 @@ func makeTestOttlLogContext(
 	resourceLogs := plog.NewResourceLogs()
 	scopeLogs := resourceLogs.ScopeLogs().AppendEmpty()
 	logRecord := scopeLogs.LogRecords().AppendEmpty()
-	
+
 	logRecord.Body().SetStr(body)
 	_ = logRecord.Attributes().FromRaw(attributes)
 	_ = resourceLogs.Resource().Attributes().FromRaw(resource)
