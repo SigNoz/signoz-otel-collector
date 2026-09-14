@@ -9,4 +9,4 @@ Applies to everything in the repo — code, config, workflows.
 - **Never talk to the reviewer.** No comments about where a change came from, what was changed, or why the change is correct — that belongs in the PR description and is noise the moment it merges.
 - **Less is more.** When writing something intended for human consumption, (comment, commit message, reply to prompt) use as few words as possible. Pick every word meticulously to reduce the volume to a strict minimum. Be down to the point. Less is more.
 
-Language rules build on this one: [`go-comments`](go-comments.md), [`py-comments`](py-comments.md).
+Language rules build on this one: [`go-comments`](go-comments.md).
