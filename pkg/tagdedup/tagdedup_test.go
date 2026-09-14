@@ -4,126 +4,100 @@ import (
 	"testing"
 
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestKeyIDDistinct(t *testing.T) {
+func TestKeyIDDistinguishesComponents(t *testing.T) {
 	base := KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, false)
 
-	ids := map[string]string{
-		"base":        base,
-		"key":         KeyID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, false),
-		"tagType":     KeyID("http.status_code", utils.TagTypeResource, utils.FieldDataTypeFloat64, false),
-		"dataType":    KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeString, false),
-		"isColumn":    KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, true),
-		"determinism": KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, false),
+	testCases := []struct {
+		name     string
+		key      string
+		tagType  utils.TagType
+		dataType utils.FieldDataType
+		isColumn bool
+	}{
+		{name: "Key", key: "http.method", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeFloat64, isColumn: false},
+		{name: "TagType", key: "http.status_code", tagType: utils.TagTypeResource, dataType: utils.FieldDataTypeFloat64, isColumn: false},
+		{name: "DataType", key: "http.status_code", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeString, isColumn: false},
+		{name: "IsColumn", key: "http.status_code", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeFloat64, isColumn: true},
 	}
-
-	seen := map[string]string{}
-	for name, id := range ids {
-		if name == "determinism" {
-			if id != base {
-				t.Fatalf("KeyID is not deterministic: %q != %q", id, base)
-			}
-			continue
-		}
-		if prev, ok := seen[id]; ok {
-			t.Fatalf("KeyID collision between %q and %q: %q", prev, name, id)
-		}
-		seen[id] = name
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			id := KeyID(testCase.key, testCase.tagType, testCase.dataType, testCase.isColumn)
+			assert.NotEqual(t, base, id)
+		})
 	}
 }
 
-func TestKeyIDNoCollisionFromConcatenation(t *testing.T) {
-	// Components containing the separator-adjacent characters must not collide.
+func TestKeyIDIsDeterministic(t *testing.T) {
+	a := KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, false)
+	b := KeyID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, false)
+	assert.Equal(t, a, b)
+}
+
+func TestKeyIDDoesNotCollideOnConcatenation(t *testing.T) {
 	a := KeyID("ab", utils.TagType("c"), utils.FieldDataType("d"), false)
 	b := KeyID("a", utils.TagType("bc"), utils.FieldDataType("d"), false)
-	if a == b {
-		t.Fatalf("expected distinct IDs, got %q", a)
-	}
+	assert.NotEqual(t, a, b)
 }
 
-func TestValueIDDistinct(t *testing.T) {
+func TestValueIDDistinguishesComponents(t *testing.T) {
 	base := ValueID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200)
 
-	ids := map[string]string{
-		"base":        base,
-		"key":         ValueID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200),
-		"tagType":     ValueID("http.status_code", utils.TagTypeResource, utils.FieldDataTypeFloat64, "", 200),
-		"dataType":    ValueID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeString, "", 200),
-		"stringValue": ValueID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "OK", 200),
-		"numberValue": ValueID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 404),
-		"determinism": ValueID("http.status_code", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200),
+	testCases := []struct {
+		name        string
+		key         string
+		tagType     utils.TagType
+		dataType    utils.FieldDataType
+		stringValue string
+		numberValue float64
+	}{
+		{name: "Key", key: "http.method", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeFloat64, stringValue: "", numberValue: 200},
+		{name: "TagType", key: "http.status_code", tagType: utils.TagTypeResource, dataType: utils.FieldDataTypeFloat64, stringValue: "", numberValue: 200},
+		{name: "DataType", key: "http.status_code", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeString, stringValue: "", numberValue: 200},
+		{name: "StringValue", key: "http.status_code", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeFloat64, stringValue: "OK", numberValue: 200},
+		{name: "NumberValue", key: "http.status_code", tagType: utils.TagTypeAttribute, dataType: utils.FieldDataTypeFloat64, stringValue: "", numberValue: 404},
 	}
-
-	seen := map[string]string{}
-	for name, id := range ids {
-		if name == "determinism" {
-			if id != base {
-				t.Fatalf("ValueID is not deterministic: %q != %q", id, base)
-			}
-			continue
-		}
-		if prev, ok := seen[id]; ok {
-			t.Fatalf("ValueID collision between %q and %q: %q", prev, name, id)
-		}
-		seen[id] = name
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			id := ValueID(testCase.key, testCase.tagType, testCase.dataType, testCase.stringValue, testCase.numberValue)
+			assert.NotEqual(t, base, id)
+		})
 	}
 }
 
-func TestValueIDNumberFormatting(t *testing.T) {
-	// Integer-valued floats must not have a trailing ".0" so that values
-	// written by different code paths compare equal.
-	a := ValueID("k", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200)
-	b := ValueID("k", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200.0)
-	if a != b {
-		t.Fatalf("expected equal IDs, got %q and %q", a, b)
-	}
-	c := ValueID("k", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200.5)
-	if a == c {
-		t.Fatalf("expected distinct IDs for 200 and 200.5, got %q", a)
-	}
+func TestValueIDFormatsNumbersConsistently(t *testing.T) {
+	integer := ValueID("latency", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200)
+	integerFloat := ValueID("latency", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200.0)
+	assert.Equal(t, integer, integerFloat)
+
+	fraction := ValueID("latency", utils.TagTypeAttribute, utils.FieldDataTypeFloat64, "", 200.5)
+	assert.NotEqual(t, integer, fraction)
 }
 
 func TestDeduperSeenKeyID(t *testing.T) {
 	d := New()
 	id := KeyID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, false)
 
-	if d.SeenKeyID(id) {
-		t.Fatal("first SeenKeyID call should return false")
-	}
-	if !d.SeenKeyID(id) {
-		t.Fatal("second SeenKeyID call should return true")
-	}
-
-	other := KeyID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, true)
-	if d.SeenKeyID(other) {
-		t.Fatal("SeenKeyID for a different ID should return false")
-	}
+	assert.False(t, d.SeenKeyID(id))
+	assert.True(t, d.SeenKeyID(id))
+	assert.False(t, d.SeenKeyID(KeyID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, true)))
 }
 
 func TestDeduperSeenValueID(t *testing.T) {
 	d := New()
 	id := ValueID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, "GET", 0)
 
-	if d.SeenValueID(id) {
-		t.Fatal("first SeenValueID call should return false")
-	}
-	if !d.SeenValueID(id) {
-		t.Fatal("second SeenValueID call should return true")
-	}
-
-	other := ValueID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, "POST", 0)
-	if d.SeenValueID(other) {
-		t.Fatal("SeenValueID for a different ID should return false")
-	}
+	assert.False(t, d.SeenValueID(id))
+	assert.True(t, d.SeenValueID(id))
+	assert.False(t, d.SeenValueID(ValueID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, "POST", 0)))
 }
 
-func TestDeduperKeysAndValuesAreIndependent(t *testing.T) {
+func TestDeduperKeyAndValueSpacesAreIndependent(t *testing.T) {
 	d := New()
 	id := KeyID("http.method", utils.TagTypeAttribute, utils.FieldDataTypeString, false)
 
 	d.SeenKeyID(id)
-	if d.SeenValueID(id) {
-		t.Fatal("key and value dedup spaces must be independent")
-	}
+	assert.False(t, d.SeenValueID(id))
 }
