@@ -593,18 +593,18 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				if !open {
 					return nil
 				}
-			// tags for resource/scope/attrs
-			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper); err != nil {
-				return err
-			}
-			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys, deduper); err != nil {
-				return err
-			}
-			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys, deduper); err != nil {
-				return err
-			}
-			// log fields
-			_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper)
+				// tags for resource/scope/attrs
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper); err != nil {
+					return err
+				}
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys, deduper); err != nil {
+					return err
+				}
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys, deduper); err != nil {
+					return err
+				}
+				// log fields
+				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper)
 
 				// append main log row
 				args := []any{
