@@ -31,6 +31,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
+	"github.com/SigNoz/signoz-otel-collector/pkg/tagdedup"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
@@ -558,6 +559,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	// resource fingerprints aggregated by consumer
 	resourcesSeen := newResourcesSeenMap()
 	metrics := map[string]usage.Metric{}
+	deduper := tagdedup.New()
 
 	// records channel and limiter
 	recordStream := make(chan *Record, cap(e.limiter))
@@ -591,18 +593,18 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				if !open {
 					return nil
 				}
-				// tags for resource/scope/attrs
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys); err != nil {
-					return err
-				}
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys); err != nil {
-					return err
-				}
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys); err != nil {
-					return err
-				}
-				// log fields
-				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys)
+			// tags for resource/scope/attrs
+			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper); err != nil {
+				return err
+			}
+			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys, deduper); err != nil {
+				return err
+			}
+			if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys, deduper); err != nil {
+				return err
+			}
+			// log fields
+			_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper)
 
 				// append main log row
 				args := []any{
@@ -885,8 +887,12 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	key string,
 	tagType utils.TagType,
 	datatype utils.FieldDataType,
+	deduper *tagdedup.Deduper,
 ) {
 	if keycheck.IsRandomKey(key) {
+		return
+	}
+	if deduper.SeenKeyID(tagdedup.KeyID(key, tagType, datatype, false)) {
 		return
 	}
 	cacheKey := utils.MakeKeyForAttributeKeys(key, tagType, datatype)
@@ -920,13 +926,17 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	tagType utils.TagType,
 	attrs attributeMap,
 	shouldSkipKeys map[string]shouldSkipKey,
+	deduper *tagdedup.Deduper,
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for attrKey, attrVal := range attrs.StringData {
 		if keycheck.IsRandomKey(attrKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString)
+		if deduper.SeenValueID(tagdedup.ValueID(attrKey, tagType, utils.FieldDataTypeString, attrVal, 0)) {
+			continue
+		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString, deduper)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -954,7 +964,10 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(numKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64)
+		if deduper.SeenValueID(tagdedup.ValueID(numKey, tagType, utils.FieldDataTypeFloat64, "", numVal)) {
+			continue
+		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64, deduper)
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.FieldDataTypeFloat64)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
@@ -976,7 +989,10 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if keycheck.IsRandomKey(boolKey) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool)
+		if deduper.SeenValueID(tagdedup.ValueID(boolKey, tagType, utils.FieldDataTypeBool, "", 0)) {
+			continue
+		}
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool, deduper)
 
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.FieldDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
