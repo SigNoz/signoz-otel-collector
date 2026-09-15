@@ -2,12 +2,13 @@ package metadataexporter
 
 import (
 	"context"
-	"strings"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/SigNoz/signoz-otel-collector/internal/common/spanfields"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 	"github.com/SigNoz/signoz-otel-collector/utils/flatten"
@@ -19,6 +20,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
@@ -26,16 +29,51 @@ import (
 )
 
 const (
-	sixHours           = 6 * time.Hour                      // window size for attributes aggregation
-	sixHoursInMs       = int64(sixHours / time.Millisecond) // window size in ms
-	valuTrackerKeysTTL = 45 * time.Minute                   // ttl for keys in value tracker
-	insertStmtQuery    = "INSERT INTO signoz_metadata.distributed_attributes_metadata"
+	valuTrackerKeysTTL = 45 * time.Minute // ttl for keys in value tracker
+	// skipDecisionTTL is how long a key stays skipped after the periodic
+	// tag_attributes_v2 count last found it over the limit.
+	skipDecisionTTL = 24 * time.Hour
+	// metadataRetention matches the TTL of attributes_metadata.
+	metadataRetention = 30 * 24 * time.Hour
+	// maxFutureSkew is how far ahead of the collector clock a record timestamp
+	// may be before the current time is used instead.
+	maxFutureSkew = time.Hour
+	// maxExecutionTimeSetting is the ClickHouse setting that bounds an INSERT
+	// server-side; it is set from the exporter timeout unless the DSN sets it.
+	maxExecutionTimeSetting = "max_execution_time"
+	insertStmtQuery         = "INSERT INTO signoz_metadata.distributed_attributes_metadata (unix_milli, data_source, resource_fingerprint, attrs_fingerprint, resource_attributes, attributes, intrinsic_attributes)"
+	// intrinsicTrackerPrefix keeps intrinsic field names apart from attribute
+	// keys of the same name in the value tracker.
+	intrinsicTrackerPrefix = "intrinsic:"
+	meterName              = "github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
+)
+
+// drop reasons recorded on the values_dropped counter.
+const (
+	dropReasonEmpty             = "empty"
+	dropReasonOversized         = "oversized"
+	dropReasonResourceOversized = "resource_oversized"
+	dropReasonCardinality       = "cardinality"
 )
 
 type tagValueCountFromDB struct {
 	tagDataType         string
 	stringTagValueCount uint64
 	numberValueCount    uint64
+	// skippedUntil is set when the count was found over the limit; the key
+	// stays skipped until then even if a later count falls under the limit.
+	skippedUntil time.Time
+}
+
+// exceeds reports whether the DB-derived count puts the key over the limit.
+func (c tagValueCountFromDB) exceeds(limits LimitsConfig) bool {
+	switch c.tagDataType {
+	case "string":
+		return c.stringTagValueCount > limits.MaxStringDistinctValues
+	case "float64", "int64":
+		return true
+	}
+	return false
 }
 
 type metadataExporter struct {
@@ -68,6 +106,10 @@ type metadataExporter struct {
 	// logsMetadataWriters is the ordered list of writers dispatched in parallel on
 	// every PushLogs call.
 	logsMetadataWriters []LogsMetadataWriter
+
+	valuesDropped metric.Int64Counter
+	rowsWritten   metric.Int64Counter
+	insertErrors  metric.Int64Counter
 }
 
 type writeToStatementBatchRecord struct {
@@ -75,7 +117,88 @@ type writeToStatementBatchRecord struct {
 	fprint                 uint64
 	rAttrs                 map[string]any
 	attrs                  map[string]any
+	intrinsics             map[string]string
 	roundedSixHrsUnixMilli int64
+}
+
+// setFingerprint identifies an attribute set by its attributes and its
+// intrinsic fields together. The two hashes are combined in order, so equal
+// maps do not cancel out and swapped maps give a different set.
+func setFingerprint(attrs map[string]any, intrinsics map[string]string) uint64 {
+	fp := fingerprint.FingerprintHash(attrs)
+	if len(intrinsics) == 0 {
+		return fp
+	}
+	return fp ^ (fingerprint.FingerprintHashStrings(intrinsics) + 0x9e3779b97f4a7c15 + (fp << 6) + (fp >> 2))
+}
+
+// intrinsicFieldNames are the keys written to the intrinsic map; their
+// tracker keys are built once.
+var intrinsicFieldNames = []string{
+	"name", "kind_string", "status_code_string", "has_error", "is_remote",
+	"http_method", "http_host", "http_url", "response_status_code", "db_name", "db_operation",
+	"external_http_method", "external_http_url",
+	"severity_text", "severity_number",
+}
+
+var intrinsicTrackerKeys = func() map[string]string {
+	keys := make(map[string]string, len(intrinsicFieldNames))
+	for _, name := range intrinsicFieldNames {
+		keys[name] = intrinsicTrackerPrefix + name
+	}
+	return keys
+}()
+
+func intrinsicTrackerKey(name string) string {
+	if key, ok := intrinsicTrackerKeys[name]; ok {
+		return key
+	}
+	return intrinsicTrackerPrefix + name
+}
+
+// spanIntrinsics returns the span's intrinsic and calculated fields under the
+// names the fields API uses for the span context. Empty calculated fields are
+// left out.
+func spanIntrinsics(span ptrace.Span) map[string]string {
+	c := spanfields.CalculatedFrom(span.Attributes(), span.Kind())
+	hasError := "false"
+	if span.Status().Code() == ptrace.StatusCodeError {
+		hasError = "true"
+	}
+	m := make(map[string]string, 13)
+	m["name"] = span.Name()
+	m["kind_string"] = span.Kind().String()
+	m["status_code_string"] = span.Status().Code().String()
+	m["has_error"] = hasError
+	m["is_remote"] = spanfields.IsRemote(span.Flags())
+	putNonEmpty(m, "http_method", c.HttpMethod)
+	putNonEmpty(m, "http_host", c.HttpHost)
+	putNonEmpty(m, "http_url", c.HttpUrl)
+	putNonEmpty(m, "response_status_code", c.ResponseStatusCode)
+	putNonEmpty(m, "db_name", c.DBName)
+	putNonEmpty(m, "db_operation", c.DBOperation)
+	putNonEmpty(m, "external_http_method", c.ExternalHttpMethod)
+	putNonEmpty(m, "external_http_url", c.ExternalHttpUrl)
+	return m
+}
+
+func putNonEmpty(m map[string]string, key, value string) {
+	if value != "" {
+		m[key] = value
+	}
+}
+
+// logIntrinsics returns the log record's severity fields under the names the
+// fields API uses for the log context.
+func logIntrinsics(lr plog.LogRecord) map[string]string {
+	m := make(map[string]string, 2)
+	if lr.SeverityText() != "" {
+		m["severity_text"] = lr.SeverityText()
+	}
+	if lr.SeverityNumber() != plog.SeverityNumberUnspecified {
+		m["severity_number"] = strconv.Itoa(int(lr.SeverityNumber()))
+	}
+	return m
 }
 
 func flattenJSONToStringMap(data map[string]any) map[string]string {
@@ -94,11 +217,20 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	if err != nil {
 		return nil, err
 	}
+	if opts.Settings == nil {
+		opts.Settings = clickhouse.Settings{}
+	}
+	if _, ok := opts.Settings[maxExecutionTimeSetting]; !ok && cfg.Timeout > 0 {
+		opts.Settings[maxExecutionTimeSetting] = int(cfg.Timeout.Seconds())
+	}
 	conn, err := clickhouse.Open(opts)
 	if err != nil {
 		return nil, err
 	}
+	return newMetadataExporterWithConn(ctx, cfg, set, conn)
+}
 
+func newMetadataExporterWithConn(ctx context.Context, cfg Config, set exporter.Settings, conn driver.Conn) (*metadataExporter, error) {
 	set.Logger.Info("cache provider", zap.String("provider", string(cfg.Cache.Provider)))
 	var keyCache kash.KeyCache
 	var cacheErr error
@@ -112,9 +244,13 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 			TenantID: cfg.TenantID,
 			Logger:   set.Logger,
 
-			TracesTTL:  sixHours,
-			MetricsTTL: sixHours,
-			LogsTTL:    sixHours,
+			TracesTTL:  cfg.MaxDistinctValues.Traces.Bucket,
+			MetricsTTL: cfg.MaxDistinctValues.Metrics.Bucket,
+			LogsTTL:    cfg.MaxDistinctValues.Logs.Bucket,
+
+			TracesWindow:  cfg.MaxDistinctValues.Traces.Bucket,
+			MetricsWindow: cfg.MaxDistinctValues.Metrics.Bucket,
+			LogsWindow:    cfg.MaxDistinctValues.Logs.Bucket,
 
 			MaxTracesResourceFp:              cfg.Cache.Traces.MaxResources,
 			MaxMetricsResourceFp:             cfg.Cache.Metrics.MaxResources,
@@ -135,9 +271,9 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 			MaxTracesCardinalityPerResource:  cfg.Cache.Traces.MaxCardinalityPerResource,
 			MaxMetricsCardinalityPerResource: cfg.Cache.Metrics.MaxCardinalityPerResource,
 			MaxLogsCardinalityPerResource:    cfg.Cache.Logs.MaxCardinalityPerResource,
-			TracesFingerprintCacheTTL:        sixHours,
-			MetricsFingerprintCacheTTL:       sixHours,
-			LogsFingerprintCacheTTL:          sixHours,
+			TracesFingerprintCacheTTL:        cfg.MaxDistinctValues.Traces.Bucket,
+			MetricsFingerprintCacheTTL:       cfg.MaxDistinctValues.Metrics.Bucket,
+			LogsFingerprintCacheTTL:          cfg.MaxDistinctValues.Logs.Bucket,
 			TenantID:                         cfg.TenantID,
 			Logger:                           set.Logger,
 			TracesMaxTotalCardinality:        cfg.Cache.Traces.MaxTotalCardinality,
@@ -166,6 +302,29 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 		int(cfg.MaxDistinctValues.Logs.MaxStringDistinctValues),
 		valuTrackerKeysTTL,
 	)
+
+	meter := set.MeterProvider.Meter(meterName)
+	valuesDropped, err := meter.Int64Counter(
+		"signoz_metadata_exporter_values_dropped",
+		metric.WithDescription("Attribute values left out of the metadata table, by signal and reason"),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create exporter metrics")
+	}
+	rowsWritten, err := meter.Int64Counter(
+		"signoz_metadata_exporter_rows_written",
+		metric.WithDescription("Rows appended to the metadata table insert, by signal"),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create exporter metrics")
+	}
+	insertErrors, err := meter.Int64Counter(
+		"signoz_metadata_exporter_insert_errors",
+		metric.WithDescription("Failed inserts into the metadata table, by signal"),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create exporter metrics")
+	}
 
 	logTagValueCountCtx, logTagValueCountCtxCancel := context.WithCancel(context.Background())
 	tracesTagValueCountCtx, tracesTagValueCountCtxCancel := context.WithCancel(context.Background())
@@ -211,6 +370,10 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 		alwaysIncludeTracesAttributes:  alwaysIncludeTraces,
 		alwaysIncludeLogsAttributes:    alwaysIncludeLogs,
 		alwaysIncludeMetricsAttributes: alwaysIncludeMetrics,
+
+		valuesDropped: valuesDropped,
+		rowsWritten:   rowsWritten,
+		insertErrors:  insertErrors,
 	}
 
 	e.logTagValueCountFromDB.Store(initMap())
@@ -365,14 +528,36 @@ func (e *metadataExporter) updateTagValueCountFromDB(ctx context.Context, p *upd
 }
 
 func (e *metadataExporter) storeLogTagValues(newValues map[string]tagValueCountFromDB) {
-	e.storeTagValuesAtomic(&e.logTagValueCountFromDB, newValues)
+	e.storeTagValuesAtomic(&e.logTagValueCountFromDB, newValues, e.cfg.MaxDistinctValues.Logs, time.Now())
 }
 
 func (e *metadataExporter) storeTracesTagValues(newValues map[string]tagValueCountFromDB) {
-	e.storeTagValuesAtomic(&e.tracesTagValueCountFromDB, newValues)
+	e.storeTagValuesAtomic(&e.tracesTagValueCountFromDB, newValues, e.cfg.MaxDistinctValues.Traces, time.Now())
 }
 
-func (e *metadataExporter) storeTagValuesAtomic(target *atomic.Pointer[map[string]tagValueCountFromDB], newValues map[string]tagValueCountFromDB) {
+// storeTagValuesAtomic replaces the DB-derived counts. A key found over the
+// limit is marked skipped for skipDecisionTTL, and a previously marked key is
+// carried over while its mark lasts if the new counts no longer put it over
+// the limit; the other exporters stop writing such keys to tag_attributes_v2,
+// which would otherwise re-admit them here on the next refresh.
+func (e *metadataExporter) storeTagValuesAtomic(target *atomic.Pointer[map[string]tagValueCountFromDB], newValues map[string]tagValueCountFromDB, limits LimitsConfig, now time.Time) {
+	for key, val := range newValues {
+		if val.exceeds(limits) {
+			val.skippedUntil = now.Add(skipDecisionTTL)
+			newValues[key] = val
+		}
+	}
+	if prev := target.Load(); prev != nil {
+		for key, val := range *prev {
+			if !val.skippedUntil.After(now) {
+				continue
+			}
+			if cur, ok := newValues[key]; ok && cur.exceeds(limits) {
+				continue
+			}
+			newValues[key] = val
+		}
+	}
 	target.Store(&newValues)
 }
 
@@ -427,80 +612,43 @@ func (e *metadataExporter) shouldSkipAttributeFromDB(_ context.Context, key, dat
 	if !ok {
 		return false
 	}
-
-	switch val.tagDataType {
-	case "string":
-		return val.stringTagValueCount > cfgMax.MaxStringDistinctValues
-	case "float64", "int64":
-		return true
-	}
-	return false
+	return val.exceeds(cfgMax)
 }
 
-func makeUVTKey(key, datasource string) string {
-	builder := strings.Builder{}
-	builder.Grow(len(key) + 1 + len(datasource))
-	builder.WriteString(key)
-	builder.WriteByte(':')
-	builder.WriteString(datasource)
-	return builder.String()
-}
-
-// addToUVT adds a value to the unique value tracker
-func (e *metadataExporter) addToUVT(_ context.Context, key string, value any, datasource string) {
+// signalGuards returns the value tracker, the always-include set and the
+// limits for the signal. ok is false for an unknown signal.
+func (e *metadataExporter) signalGuards(datasource string) (tracker *ValueTracker, alwaysInclude map[string]struct{}, limits LimitsConfig, ok bool) {
 	switch datasource {
 	case pipeline.SignalTraces.String():
-		e.tracesTracker.AddValue(key, value)
+		return e.tracesTracker, e.alwaysIncludeTracesAttributes, e.cfg.MaxDistinctValues.Traces, true
 	case pipeline.SignalMetrics.String():
-		e.metricsTracker.AddValue(key, value)
+		return e.metricsTracker, e.alwaysIncludeMetricsAttributes, e.cfg.MaxDistinctValues.Metrics, true
 	case pipeline.SignalLogs.String():
-		e.logsTracker.AddValue(key, value)
+		return e.logsTracker, e.alwaysIncludeLogsAttributes, e.cfg.MaxDistinctValues.Logs, true
 	}
+	return nil, nil, LimitsConfig{}, false
 }
 
 // shouldSkipAttributeUVT checks if an attribute should be skipped based on the unique value tracker
 func (e *metadataExporter) shouldSkipAttributeUVT(_ context.Context, key, datasource string) bool {
-	typ := e.getType(key, datasource)
-	var cnt int
-
-	switch datasource {
-	case pipeline.SignalTraces.String():
-		if _, ok := e.alwaysIncludeTracesAttributes[key]; ok {
-			return false
-		}
-		cnt = e.tracesTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Traces.MaxStringDistinctValues) {
-			return true
-		}
-		if typ == utils.FieldDataTypeFloat64.String() {
-			return true
-		}
-
-	case pipeline.SignalMetrics.String():
-		if _, ok := e.alwaysIncludeMetricsAttributes[key]; ok {
-			return false
-		}
-		cnt = e.metricsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Metrics.MaxStringDistinctValues) {
-			return true
-		}
-		if typ == utils.FieldDataTypeFloat64.String() {
-			return true
-		}
-
-	case pipeline.SignalLogs.String():
-		if _, ok := e.alwaysIncludeLogsAttributes[key]; ok {
-			return false
-		}
-		cnt = e.logsTracker.GetUniqueValueCount(makeUVTKey(key, datasource))
-		if typ == utils.FieldDataTypeString.String() && e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues > 0 && cnt > int(e.cfg.MaxDistinctValues.Logs.MaxStringDistinctValues) {
-			return true
-		}
-		if typ == utils.FieldDataTypeFloat64.String() {
-			return true
-		}
+	tracker, alwaysInclude, _, ok := e.signalGuards(datasource)
+	if !ok {
+		return false
 	}
-	return false
+	if _, ok := alwaysInclude[key]; ok {
+		return false
+	}
+	if e.getType(key, datasource) == utils.FieldDataTypeFloat64.String() {
+		return true
+	}
+	return tracker.IsOverLimit(key)
+}
+
+func (e *metadataExporter) recordDrop(ctx context.Context, datasource, reason string) {
+	e.valuesDropped.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("signal", datasource),
+		attribute.String("reason", reason),
+	))
 }
 
 func removeDuplicateRecords(records []writeToStatementBatchRecord) []writeToStatementBatchRecord {
@@ -608,15 +756,17 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		}
 
 		for _, nr := range newRecords {
-			// TODO: handle error
-			_ = stmt.Append(
+			if err := stmt.Append(
 				nr.roundedSixHrsUnixMilli,
 				ds,
 				nr.resourceFingerprint,
 				nr.fprint,
 				flattenJSONToStringMap(nr.rAttrs),
 				flattenJSONToStringMap(nr.attrs),
-			)
+				nr.intrinsics,
+			); err != nil {
+				e.set.Logger.Debug("failed to append record", zap.Error(err), zap.String("datasource", ds.String()))
+			}
 		}
 
 		// We'll accumulate how many new records we wrote
@@ -638,8 +788,10 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 
 	stmtStart := time.Now()
 	if err := stmt.Send(); err != nil {
+		e.insertErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("signal", ds.String())))
 		return totalWrites, err
 	}
+	e.rowsWritten.Add(ctx, int64(totalWrites), metric.WithAttributes(attribute.String("signal", ds.String())))
 	stmtDuration := time.Since(stmtStart)
 	e.set.Logger.Debug("stmtDuration",
 		zap.Int64("duration", stmtDuration.Milliseconds()),
@@ -650,37 +802,127 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	return totalWrites, nil
 }
 
-// filterAttrs filters attributes based on the unique value tracker
+// filterAttrs removes the attributes that must not reach the metadata table:
+// keys the value tracker has flagged, empty strings, strings over
+// max_string_length (the key is then flagged so its shorter values are dropped
+// too), keys whose DB-derived type is float64, and string or numeric values
+// that take a key past max_string_distinct_values. Bools are passed through.
 func (e *metadataExporter) filterAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
+	return e.filterValues(ctx, attrs, datasource)
+}
 
-	var maxLen int
-	switch datasource {
-	case pipeline.SignalTraces.String():
-		maxLen = int(e.cfg.MaxDistinctValues.Traces.MaxStringLength)
-	case pipeline.SignalLogs.String():
-		maxLen = int(e.cfg.MaxDistinctValues.Logs.MaxStringLength)
-	case pipeline.SignalMetrics.String():
-		maxLen = int(e.cfg.MaxDistinctValues.Metrics.MaxStringLength)
+// filterIntrinsics applies the attribute rules to the intrinsic field map. An
+// oversized value is dropped from its row only: one long span name must not
+// take the name field out of every other span.
+func (e *metadataExporter) filterIntrinsics(ctx context.Context, fields map[string]string, datasource string) map[string]string {
+	tracker, alwaysInclude, limits, ok := e.signalGuards(datasource)
+	if !ok {
+		return fields
 	}
+	maxLen := int(limits.MaxStringLength)
+
+	for k, v := range fields {
+		if _, ok := alwaysInclude[k]; ok {
+			continue
+		}
+		trackerKey := intrinsicTrackerKey(k)
+		if tracker.IsOverLimit(trackerKey) {
+			delete(fields, k)
+			e.recordDrop(ctx, datasource, dropReasonCardinality)
+			continue
+		}
+		if len(v) == 0 {
+			delete(fields, k)
+			continue
+		}
+		if len(v) > maxLen {
+			delete(fields, k)
+			e.recordDrop(ctx, datasource, dropReasonOversized)
+			continue
+		}
+		if tracker.AddString(trackerKey, v) {
+			delete(fields, k)
+			e.recordDrop(ctx, datasource, dropReasonCardinality)
+		}
+	}
+	return fields
+}
+
+func (e *metadataExporter) filterValues(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
+	tracker, alwaysInclude, limits, ok := e.signalGuards(datasource)
+	if !ok {
+		return attrs
+	}
+	maxLen := int(limits.MaxStringLength)
 
 	for k, v := range attrs {
-		// if the attribute should be skipped, remove it
-		if e.shouldSkipAttributeUVT(ctx, k, datasource) {
+		if _, ok := alwaysInclude[k]; ok {
+			continue
+		}
+		if e.getType(k, datasource) == utils.FieldDataTypeFloat64.String() || tracker.IsOverLimit(k) {
 			delete(attrs, k)
+			e.recordDrop(ctx, datasource, dropReasonCardinality)
 			continue
 		}
 		switch v := v.(type) {
 		case string:
-			if len(v) == 0 || len(v) > maxLen {
+			if len(v) == 0 {
+				delete(attrs, k)
+				e.recordDrop(ctx, datasource, dropReasonEmpty)
 				continue
 			}
-			e.addToUVT(ctx, makeUVTKey(k, datasource), v, datasource)
-		default:
-			// boolean, numbers would be skipped by the shouldSkipAttributeUVT
-			continue
+			if len(v) > maxLen {
+				tracker.MarkOverLimit(k)
+				delete(attrs, k)
+				e.recordDrop(ctx, datasource, dropReasonOversized)
+				continue
+			}
+			if tracker.AddString(k, v) {
+				delete(attrs, k)
+				e.recordDrop(ctx, datasource, dropReasonCardinality)
+			}
+		case int64, float64:
+			if tracker.AddValue(k, v) {
+				delete(attrs, k)
+				e.recordDrop(ctx, datasource, dropReasonCardinality)
+			}
 		}
 	}
 	return attrs
+}
+
+// filterResourceAttrs removes resource attribute values longer than
+// max_resource_string_length unless the key is in always_include_attributes.
+func (e *metadataExporter) filterResourceAttrs(ctx context.Context, attrs map[string]any, datasource string) map[string]any {
+	_, alwaysInclude, limits, ok := e.signalGuards(datasource)
+	if !ok {
+		return attrs
+	}
+	maxLen := int(limits.MaxResourceStringLength)
+
+	for k, v := range attrs {
+		s, isString := v.(string)
+		if !isString || len(s) <= maxLen {
+			continue
+		}
+		if _, ok := alwaysInclude[k]; ok {
+			continue
+		}
+		delete(attrs, k)
+		e.recordDrop(ctx, datasource, dropReasonResourceOversized)
+	}
+	return attrs
+}
+
+// bucketStart returns the start of the write bucket that holds ts. A zero
+// timestamp, one older than the metadata retention or one more than
+// maxFutureSkew ahead of now is replaced by now.
+func bucketStart(ts, now time.Time, bucket time.Duration) int64 {
+	if ts.IsZero() || ts.Unix() == 0 || ts.Before(now.Add(-metadataRetention)) || ts.After(now.Add(maxFutureSkew)) {
+		ts = now
+	}
+	bucketMs := bucket.Milliseconds()
+	return (ts.UnixMilli() / bucketMs) * bucketMs
 }
 
 func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) error {
@@ -696,6 +938,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 
 	totalSpans := 0
 	records := make([]writeToStatementBatchRecord, 0)
+	now := time.Now()
 
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
@@ -708,7 +951,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 			resourceAttrs[k] = v.AsRaw()
 			return true
 		})
-		flattenedResourceAttrs := flatten.FlattenJSON(resourceAttrs, "")
+		flattenedResourceAttrs := e.filterResourceAttrs(ctx, flatten.FlattenJSON(resourceAttrs, ""), pipeline.SignalTraces.String())
 		resourceFingerprint := fingerprint.FingerprintHash(flattenedResourceAttrs)
 
 		scopeSpans := rs.ScopeSpans()
@@ -726,20 +969,25 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 					spanAttrs[attrKey] = v.AsRaw()
 					return true
 				})
-				spanAttrs["name"] = span.Name()
+				intrinsics := e.filterIntrinsics(ctx, spanIntrinsics(span), pipeline.SignalTraces.String())
 
 				flattenedSpanAttrs := flatten.FlattenJSON(spanAttrs, "")
 				filteredSpanAttrs := e.filterAttrs(ctx, flattenedSpanAttrs, pipeline.SignalTraces.String())
-				spanFingerprint := fingerprint.FingerprintHash(filteredSpanAttrs)
+				// The span name stays in attributes until the query side reads
+				// intrinsic_attributes.
+				if name, ok := intrinsics["name"]; ok {
+					filteredSpanAttrs["name"] = name
+				}
+				spanFingerprint := setFingerprint(filteredSpanAttrs, intrinsics)
 
-				unixMilli := span.StartTimestamp().AsTime().UnixMilli()
-				roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+				roundedSixHrsUnixMilli := bucketStart(span.StartTimestamp().AsTime(), now, e.cfg.MaxDistinctValues.Traces.Bucket)
 
 				records = append(records, writeToStatementBatchRecord{
 					resourceFingerprint:    resourceFingerprint,
 					fprint:                 spanFingerprint,
 					rAttrs:                 flattenedResourceAttrs,
 					attrs:                  filteredSpanAttrs,
+					intrinsics:             intrinsics,
 					roundedSixHrsUnixMilli: roundedSixHrsUnixMilli,
 				})
 			}
@@ -768,6 +1016,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 
 	totalDps := 0
 	records := make([]writeToStatementBatchRecord, 0)
+	now := time.Now()
 
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
@@ -777,7 +1026,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 			resourceAttrs[k] = v.AsRaw()
 			return true
 		})
-		flattenedResourceAttrs := flatten.FlattenJSON(resourceAttrs, "")
+		flattenedResourceAttrs := e.filterResourceAttrs(ctx, flatten.FlattenJSON(resourceAttrs, ""), pipeline.SignalMetrics.String())
 		resourceFingerprint := fingerprint.FingerprintHash(flattenedResourceAttrs)
 
 		scopeMetrics := rm.ScopeMetrics()
@@ -826,10 +1075,9 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 						return true
 					})
 
-					flattenedMetricAttrs := flatten.FlattenJSON(metricAttrs, "")
+					flattenedMetricAttrs := e.filterAttrs(ctx, flatten.FlattenJSON(metricAttrs, ""), pipeline.SignalMetrics.String())
 					metricFingerprint := fingerprint.FingerprintHash(flattenedMetricAttrs)
-					unixMilli := time.Now().UnixMilli()
-					roundedSixHrsUnixMilli := (unixMilli / sixHoursInMs) * sixHoursInMs
+					roundedSixHrsUnixMilli := bucketStart(now, now, e.cfg.MaxDistinctValues.Metrics.Bucket)
 
 					records = append(records, writeToStatementBatchRecord{
 						resourceFingerprint:    resourceFingerprint,

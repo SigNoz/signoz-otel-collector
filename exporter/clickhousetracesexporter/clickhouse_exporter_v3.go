@@ -5,8 +5,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"net/url"
-	"strconv"
+	"github.com/SigNoz/signoz-otel-collector/internal/common/spanfields"
 	"strings"
 	"time"
 
@@ -24,11 +23,6 @@ import (
 	conventions "go.opentelemetry.io/otel/semconv/v1.27.0"
 	"go.uber.org/zap"
 )
-
-var possibleHostAttr = utils.ToLookUpMap([]string{
-	"http.host", "server.address", "client.address",
-	"http.request.header.host", "net.peer.name",
-})
 
 func makeJaegerProtoReferences(
 	links ptrace.SpanLinkSlice,
@@ -89,54 +83,15 @@ func ServiceNameForResource(resource pcommon.Resource) string {
 }
 
 func populateCustomAttrsAndAttrs(attributes pcommon.Map, span *SpanV3) {
-	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == "http.status_code" || k == "http.response.status_code" {
-			// Handle both string/int http status codes.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if (k == "http.url" || k == "url.full") && span.Kind == 3 {
-			value := v.Str()
-			valueUrl, err := url.Parse(value)
-			if err == nil {
-				value = valueUrl.Hostname()
-			}
-			span.ExternalHttpUrl = value
-			span.HttpUrl = v.Str()
-			if span.HttpHost == "" { // skip override if already set using possibleHostAttr
-				span.HttpHost = value
-			}
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind == 3 {
-			span.ExternalHttpMethod = v.Str()
-			span.HttpMethod = v.Str()
-		} else if (k == "http.url" || k == "url.full") && span.Kind != 3 {
-			span.HttpUrl = v.Str()
-		} else if (k == "http.method" || k == "http.request.method") && span.Kind != 3 {
-			span.HttpMethod = v.Str()
-		} else if _, ok := possibleHostAttr[k]; ok {
-			span.HttpHost = v.Str()
-		} else if k == "db.name" || k == "db.namespace" {
-			span.DBName = v.Str()
-		} else if k == "db.operation" || k == "db.operation.name" {
-			span.DBOperation = v.Str()
-		} else if k == "rpc.grpc.status_code" {
-			// Handle both string/int status code in GRPC spans.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			span.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
-		} else if k == "rpc.jsonrpc.error_code" {
-			span.ResponseStatusCode = v.Str()
-		}
-		return true
-
-	})
-
+	c := spanfields.CalculatedFrom(attributes, ptrace.SpanKind(span.Kind))
+	span.HttpMethod = c.HttpMethod
+	span.HttpHost = c.HttpHost
+	span.HttpUrl = c.HttpUrl
+	span.ResponseStatusCode = c.ResponseStatusCode
+	span.DBName = c.DBName
+	span.DBOperation = c.DBOperation
+	span.ExternalHttpMethod = c.ExternalHttpMethod
+	span.ExternalHttpUrl = c.ExternalHttpUrl
 }
 
 func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExceptionGrouping bool) {
@@ -287,14 +242,7 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig, promotedPaths map[string]struct{}) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
-	isRemote := "unknown"
-	flags := otelSpan.Flags()
-	if flags&hasIsRemoteMask != 0 {
-		isRemote = "no"
-		if flags&isRemoteMask != 0 {
-			isRemote = "yes"
-		}
-	}
+	isRemote := spanfields.IsRemote(otelSpan.Flags())
 
 	attrMap := attributesData{
 		StringMap:      make(map[string]string),

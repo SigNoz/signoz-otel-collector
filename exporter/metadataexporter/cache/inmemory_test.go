@@ -288,3 +288,44 @@ func TestInMemoryKeyCache_Debug(t *testing.T) {
 	// Just verify we don't panic or error
 	cache.Debug(ctx)
 }
+
+func TestInMemoryKeyCache_LimitsArePerSignal(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := NewInMemoryKeyCache(InMemoryKeyCacheOptions{
+		MaxTracesResourceFp:              1,
+		MaxTracesCardinalityPerResource:  1,
+		TracesMaxTotalCardinality:        1,
+		TracesFingerprintCacheTTL:        time.Minute,
+		MaxMetricsResourceFp:             10,
+		MaxMetricsCardinalityPerResource: 10,
+		MetricsMaxTotalCardinality:       10,
+		MetricsFingerprintCacheTTL:       time.Minute,
+		MaxLogsResourceFp:                10,
+		MaxLogsCardinalityPerResource:    3,
+		LogsMaxTotalCardinality:          5,
+		LogsFingerprintCacheTTL:          time.Minute,
+		TenantID:                         "tenant1",
+		Logger:                           zap.NewNop(),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, cache.AddAttrsToResource(ctx, 1, []uint64{1}, pipeline.SignalTraces))
+	assert.True(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalTraces))
+	assert.True(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalTraces))
+	assert.True(t, cache.CardinalityLimitExceeded(ctx, 1, pipeline.SignalTraces))
+
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalLogs), "a full traces cache does not block logs")
+	assert.False(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalLogs))
+	assert.False(t, cache.CardinalityLimitExceeded(ctx, 1, pipeline.SignalLogs))
+
+	require.NoError(t, cache.AddAttrsToResource(ctx, 1, []uint64{1, 2, 3}, pipeline.SignalLogs))
+	require.NoError(t, cache.AddAttrsToResource(ctx, 2, []uint64{4, 5}, pipeline.SignalLogs))
+	assert.True(t, cache.CardinalityLimitExceeded(ctx, 1, pipeline.SignalLogs), "the logs per-resource limit applies to logs")
+	exceeds, err := cache.CardinalityLimitExceededMulti(ctx, []uint64{1, 2, 3}, pipeline.SignalLogs)
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true, false, false}, exceeds)
+	assert.True(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalLogs), "the logs total is compared with the logs total limit")
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalLogs))
+	assert.False(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalMetrics))
+}
