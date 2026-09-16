@@ -197,6 +197,13 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			_ = statement.Abort()
 		}
 	}()
+	// A dot inside an OTel attribute key is part of the key name, but ClickHouse's JSON type
+	// splits it into a nested path by default, so a scalar key and a deeper key sharing a prefix
+	// (e.g. `db.function` and `db.function.arg_count`) collide on one path. Escaping keeps each
+	// key an atomic path; genuine nested object values are unaffected.
+	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+		constants.SettingJSONEscapeDotsInKeys: 1,
+	}))
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for index table: %w", err)

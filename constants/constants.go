@@ -17,4 +17,6 @@ const (
 	FieldKeysTableLastSeenColumn = "last_seen"
 
 	TracesColumnAttributesPromoted = "attributes_promoted"
+
+	SettingJSONEscapeDotsInKeys = "json_type_escape_dots_in_keys"
 )
