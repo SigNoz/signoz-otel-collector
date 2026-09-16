@@ -978,10 +978,10 @@ github.com/Shopify/toxiproxy/v2 v2.5.0 h1:i4LPT+qrSlKNtQf5QliVjdP08GyAH8+BUIc9gT
 github.com/Shopify/toxiproxy/v2 v2.5.0/go.mod h1:yhM2epWtAmel9CB8r2+L+PCmhH6yH2pITaPAo7jxJl0=
 github.com/Showmax/go-fqdn v1.0.0 h1:0rG5IbmVliNT5O19Mfuvna9LL7zlHyRfsSvBPZmF9tM=
 github.com/Showmax/go-fqdn v1.0.0/go.mod h1:SfrFBzmDCtCGrnHhoDjuvFnKsWjEQX/Q9ARZvOrJAko=
-github.com/SigNoz/ch-go v0.66.0-dd-sketch h1:ldPYh5kapdBON4kgHIZFDyqA7rwj2EDwLDP0MsUu45g=
-github.com/SigNoz/ch-go v0.66.0-dd-sketch/go.mod h1:9qEsfQdutst6hqv9kmbNrbhhedvdoyz2pI0Rtj2eYug=
-github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch h1:1Vpv9gvyTduWRvc7Y+qeX5sikp/fvm6NThIBwPMNfsQ=
-github.com/SigNoz/clickhouse-go/v2 v2.36.0-dd-sketch/go.mod h1:0WM6XxA9hmylH1EUPpHabfky0quPUZj6DpRiSSEq+RQ=
+github.com/SigNoz/ch-go v0.67.0-dd-sketch h1:Hy0B2oOzCYR0LdFXzlxeQoih77TtX29ujPspAEXd6To=
+github.com/SigNoz/ch-go v0.67.0-dd-sketch/go.mod h1:2MSAeyVmgt+9a2k2SQPPG1b4qbTPzdGDpf1+bcHh+18=
+github.com/SigNoz/clickhouse-go/v2 v2.40.1-dd-sketch h1:J43PkEy5g0CCZPCOtUV1kK4Uuzgt9LXhqXnQd2Gh3eQ=
+github.com/SigNoz/clickhouse-go/v2 v2.40.1-dd-sketch/go.mod h1:1EDS1eoIoBsW+k9bkygJfpUbADdvvMPlMTuefVkeJcg=
 github.com/aerospike/aerospike-client-go/v8 v8.5.1 h1:wItG15M1ZpWxU5JxJ+HYXYM9m29kwk8jkG5b/eLwDoI=
 github.com/aerospike/aerospike-client-go/v8 v8.5.1/go.mod h1:F3qwGJUMWOtqZha7O2VglfIDatH3Rj8wYhmI7bkHOfU=
 github.com/ajstarks/deck v0.0.0-20200831202436-30c9fc6549a9/go.mod h1:JynElWSGnm/4RlzPXRlREEwqTHAN3T56Bv2ITsFT3gY=

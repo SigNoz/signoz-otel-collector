@@ -211,6 +211,52 @@ func TestTransform(t *testing.T) {
 			},
 			expectedOriginal: "Hello World",
 		},
+		{
+			name:      "integers_beyond_int64_kept_as_exact_strings",
+			expectErr: false,
+			input: func() *entry.Entry {
+				e := newTestEntryWithTime(t, now)
+				e.Body = `{"message":"m","small":1,"above_2_53":9007199254740993,"uint64_max":18446744073709551615,"beyond_uint64":184467440737095516150,"neg_beyond_int64":-18446744073709551616,"pi":3.14,"exp":1e3,"float_overflow":1e999}`
+				return e
+			},
+			output: func() *entry.Entry {
+				e := newTestEntryWithTime(t, now)
+				e.Body = map[string]any{
+					"message":          "m",
+					"small":            int64(1),
+					"above_2_53":       int64(9007199254740993),
+					"uint64_max":       "18446744073709551615",
+					"beyond_uint64":    "184467440737095516150",
+					"neg_beyond_int64": "-18446744073709551616",
+					"pi":               3.14,
+					"exp":              float64(1000),
+					"float_overflow":   "1e999",
+				}
+				return e
+			},
+			expectedOriginal: `{"message":"m","small":1,"above_2_53":9007199254740993,"uint64_max":18446744073709551615,"beyond_uint64":184467440737095516150,"neg_beyond_int64":-18446744073709551616,"pi":3.14,"exp":1e3,"float_overflow":1e999}`,
+		},
+		{
+			name:      "number_materialization_recurses_into_maps_and_arrays",
+			expectErr: false,
+			input: func() *entry.Entry {
+				e := newTestEntryWithTime(t, now)
+				e.Body = `{"message":"n","metrics":{"cgroup_memory_limit_bytes":18446744073709551615},"arr":[1,18446744073709551615,2.5,{"v":18446744073709551615}]}`
+				return e
+			},
+			output: func() *entry.Entry {
+				e := newTestEntryWithTime(t, now)
+				e.Body = map[string]any{
+					"message": "n",
+					"metrics": map[string]any{
+						"cgroup_memory_limit_bytes": "18446744073709551615",
+					},
+					"arr": []any{int64(1), "18446744073709551615", 2.5, map[string]any{"v": "18446744073709551615"}},
+				}
+				return e
+			},
+			expectedOriginal: `{"message":"n","metrics":{"cgroup_memory_limit_bytes":18446744073709551615},"arr":[1,18446744073709551615,2.5,{"v":18446744073709551615}]}`,
+		},
 	}
 
 	for _, tc := range cases {

@@ -2,7 +2,7 @@ package clickhousetracesexporter
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"reflect"
@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
-	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
@@ -856,14 +857,41 @@ func makeMap(fn func(m pcommon.Map)) pcommon.Map {
 	return m
 }
 
-func Test_getAttributesJSON(t *testing.T) {
+func chJSONFlat(t *testing.T, obj *chcol.JSON) map[string]any {
+	t.Helper()
+	flat := make(map[string]any, len(obj.ValuesByPath()))
+	for path, v := range obj.ValuesByPath() {
+		flat[path] = resolveChValue(v)
+	}
+	return flat
+}
+
+func resolveChValue(v any) any {
+	switch tv := v.(type) {
+	case *chcol.JSON:
+		flat := make(map[string]any, len(tv.ValuesByPath()))
+		for path, pv := range tv.ValuesByPath() {
+			flat[path] = resolveChValue(pv)
+		}
+		return flat
+	case chcol.Dynamic:
+		return resolveChValue(tv.Any())
+	case []any:
+		resolved := make([]any, len(tv))
+		for i, el := range tv {
+			resolved[i] = resolveChValue(el)
+		}
+		return resolved
+	default:
+		return v
+	}
+}
+
+func Test_spanAttributesChJSON(t *testing.T) {
 	tests := []struct {
 		name  string
 		attrs pcommon.Map
-		// want is compared against the round-tripped (json.Unmarshal) result, not the raw
-		// string, since map key ordering in the marshaled JSON is not guaranteed. Numbers
-		// decode back as float64 since that's how encoding/json unmarshals into any.
-		want map[string]any
+		want  map[string]any
 	}{
 		{
 			name:  "no attributes",
@@ -880,13 +908,12 @@ func Test_getAttributesJSON(t *testing.T) {
 			}),
 			want: map[string]any{
 				"s": "hello",
-				"i": float64(42),
+				"i": int64(42),
 				"d": 3.14,
 				"b": true,
 			},
 		},
 		{
-			// Homogeneous slices of each primitive element type in one case.
 			name: "primitive slices of each type",
 			attrs: makeMap(func(m pcommon.Map) {
 				strs := m.PutEmptySlice("tags")
@@ -904,7 +931,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			}),
 			want: map[string]any{
 				"tags":   []any{"stop", "length"},
-				"counts": []any{float64(1), float64(2)},
+				"counts": []any{int64(1), int64(2)},
 				"scores": []any{0.1, 0.9},
 				"flags":  []any{true, false},
 			},
@@ -918,12 +945,11 @@ func Test_getAttributesJSON(t *testing.T) {
 			}),
 			want: map[string]any{
 				"empty_slice": []any{},
-				"empty_map":   map[string]any{},
 				"nothing":     nil,
 			},
 		},
 		{
-			name: "nested map is recursed into",
+			name: "nested map is flattened into dot paths",
 			attrs: makeMap(func(m pcommon.Map) {
 				nested := m.PutEmptyMap("meta")
 				nested.PutStr("env", "prod")
@@ -932,14 +958,11 @@ func Test_getAttributesJSON(t *testing.T) {
 				inner.AppendEmpty().SetInt(404)
 			}),
 			want: map[string]any{
-				"meta": map[string]any{
-					"env":   "prod",
-					"codes": []any{float64(200), float64(404)},
-				},
+				"meta.env":   "prod",
+				"meta.codes": []any{int64(200), int64(404)},
 			},
 		},
 		{
-			// A map's sibling keys can be of any type — unlike arrays.
 			name: "scalar key alongside nested map key at the same level",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutStr("a", "value")
@@ -947,12 +970,11 @@ func Test_getAttributesJSON(t *testing.T) {
 				nested.PutStr("b1", "value-b1")
 			}),
 			want: map[string]any{
-				"a": "value",
-				"b": map[string]any{"b1": "value-b1"},
+				"a":    "value",
+				"b.b1": "value-b1",
 			},
 		},
 		{
-			// AsRaw() base64-encodes Bytes values, and json.Marshal of []byte does the same.
 			name: "bytes attribute becomes base64 string",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutEmptyBytes("raw").FromRaw([]byte{0xde, 0xad, 0xbe, 0xef})
@@ -960,14 +982,13 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"raw": "3q2+7w=="},
 		},
 		{
-			// Heterogeneous arrays (invalid per the OTel spec but not prevented by the SDK types) are preserved as-is.
 			name: "mixed-type slice: every value preserved with its own type",
 			attrs: makeMap(func(m pcommon.Map) {
 				s := m.PutEmptySlice("mixed")
 				s.AppendEmpty().SetStr("ok")
 				s.AppendEmpty().SetInt(42)
 			}),
-			want: map[string]any{"mixed": []any{"ok", float64(42)}},
+			want: map[string]any{"mixed": []any{"ok", int64(42)}},
 		},
 		{
 			name: "slice of slices",
@@ -999,7 +1020,6 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"mixed_map": []any{map[string]any{"k": "v"}, "oops"}},
 		},
 		{
-			// Regression guard: same panic risk for Value.Slice() on a mismatched element.
 			name: "mixed slice/scalar slice preserved losslessly",
 			attrs: makeMap(func(m pcommon.Map) {
 				s := m.PutEmptySlice("mixed_slice")
@@ -1009,85 +1029,112 @@ func Test_getAttributesJSON(t *testing.T) {
 			}),
 			want: map[string]any{"mixed_slice": []any{[]any{"a"}, "oops"}},
 		},
-		{
-			// The exhaustive NaN/Inf/nesting matrix lives in Test_sanitizeJSONFloats.
-			name: "NaN double is sanitized to null, siblings preserved",
-			attrs: makeMap(func(m pcommon.Map) {
-				m.PutDouble("nan", math.NaN())
-				m.PutStr("ok", "fine")
-			}),
-			want: map[string]any{"nan": nil, "ok": "fine"},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotJSON := getAttributesJSON(tt.attrs, pcommon.TraceID{}, pcommon.SpanID{})
-
-			var got map[string]any
-			require.NoError(t, json.Unmarshal([]byte(gotJSON), &got))
+			got := chJSONFlat(t, chjson.FromPcommonMap(tt.attrs, nil))
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func Test_sanitizeJSONFloats(t *testing.T) {
-	tests := []struct {
-		name string
-		in   any
-		want any
-	}{
-		{name: "valid float unchanged", in: 3.14, want: 3.14},
-		{name: "NaN becomes nil", in: math.NaN(), want: nil},
-		{name: "+Inf becomes nil", in: math.Inf(1), want: nil},
-		{name: "-Inf becomes nil", in: math.Inf(-1), want: nil},
-		{name: "non-float scalar untouched", in: "hello", want: "hello"},
-		{
-			name: "map with mixed valid/invalid floats",
-			in: map[string]any{
-				"good": 1.0,
-				"bad":  math.NaN(),
-				"str":  "x",
-			},
-			want: map[string]any{
-				"good": 1.0,
-				"bad":  nil,
-				"str":  "x",
-			},
-		},
-		{
-			name: "slice with mixed valid/invalid floats",
-			in:   []any{1.0, math.NaN(), "x"},
-			want: []any{1.0, nil, "x"},
-		},
-		{
-			name: "deeply nested slice-of-map-of-slice",
-			in: []any{
-				map[string]any{
-					"scores": []any{math.Inf(-1), 2.0},
-				},
-			},
-			want: []any{
-				map[string]any{
-					"scores": []any{nil, 2.0},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeJSONFloats(tt.in)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+func Test_spanAttributesChJSONNonFiniteFloats(t *testing.T) {
+	attrs := makeMap(func(m pcommon.Map) {
+		m.PutDouble("nan", math.NaN())
+		m.PutDouble("inf", math.Inf(1))
+		m.PutStr("ok", "fine")
+	})
+	obj := chjson.FromPcommonMap(attrs, nil)
+	nan, _ := obj.ValueAtPath("nan")
+	require.True(t, math.IsNaN(nan.(float64)))
+	inf, _ := obj.ValueAtPath("inf")
+	require.True(t, math.IsInf(inf.(float64), 1))
+	ok, _ := obj.ValueAtPath("ok")
+	require.Equal(t, "fine", ok)
 }
 
-// Test_goccyErrorsOnNonFiniteFloats pins the assumption (goccy/go-json) returns
-// an error, rather than silently emitting invalid `NaN`/`Inf` tokens.
-func Test_goccyErrorsOnNonFiniteFloats(t *testing.T) {
-	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
-		_, err := goccyjson.Marshal(map[string]any{"x": f})
-		require.Error(t, err, "goccy must error on non-finite float %v", f)
+func Test_scopeChJSON(t *testing.T) {
+	scope := InstrumentationScope{
+		Name:    "io.opentelemetry.contrib.mongodb",
+		Version: "1.2.3",
+		Attributes: map[string]string{
+			"custom.key": "custom.value",
+		},
 	}
+	got := chJSONFlat(t, scope.chJSON())
+	require.Equal(t, "io.opentelemetry.contrib.mongodb", got["name"])
+	require.Equal(t, "1.2.3", got["version"])
+	require.Equal(t, map[string]any{"custom.key": "custom.value"}, got["attributes"])
+}
+
+func TestWriteIndexBatchChunksOnPathBudget(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.MatchExpectationsInOrder(false)
+
+	indexChunk1 := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	indexChunk2 := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_index_v3")
+	errorStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_signoz_error_index_v2")
+	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_span_attributes_keys")
+	tagAttributesV2Statement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_tag_attributes_v2")
+	resourceStatement := mock.ExpectPrepareBatch("INSERT INTO signoz_traces.distributed_traces_v3_resource")
+
+	indexChunk1.ExpectAppend()
+	indexChunk1.ExpectSend()
+	indexChunk2.ExpectAppend()
+	indexChunk2.ExpectSend()
+	errorStatement.ExpectSend()
+	attributeKeysStmt.ExpectSend()
+	tagAttributesV2Statement.ExpectSend()
+	resourceStatement.ExpectSend()
+
+	mock.ExpectExec(".*insert into signoz_traces.distributed_usage.*").WithArgs()
+
+	writerOpts := testWriterOptions()
+	writerOpts = append(writerOpts, WithClickHouseClient(mock))
+	id := uuid.New()
+	writerOpts = append(writerOpts, WithExporterID(id))
+	exporter, err := newExporter(&Config{}, exporter.Settings{TelemetrySettings: component.TelemetrySettings{Logger: zap.NewNop()}}, writerOpts, []TraceExporterOption{
+		WithNewUsageCollector(id, mock, zap.NewNop()),
+	})
+	require.NoError(t, err)
+
+	td := ptrace.NewTraces()
+	ss := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()
+	now := time.Now()
+	for s := 0; s < 3; s++ {
+		span := ss.Spans().AppendEmpty()
+		span.SetName(fmt.Sprintf("span-%d", s))
+		span.SetTraceID(pcommon.TraceID{byte(s + 1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+		span.SetSpanID(pcommon.SpanID{byte(s + 1), 2, 3, 4, 5, 6, 7, 8})
+		span.SetStartTimestamp(pcommon.NewTimestampFromTime(now))
+		span.SetEndTimestamp(pcommon.NewTimestampFromTime(now.Add(time.Millisecond)))
+		for k := 0; k < 500; k++ {
+			span.Attributes().PutInt(fmt.Sprintf("s%d_k%d", s, k), int64(k))
+		}
+	}
+
+	require.NoError(t, exporter.pushTraceDataV3(context.Background(), td))
+
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozSpansCount)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			for _, rowTag := range row.Tags {
+				if rowTag.Value == id.String() {
+					return true
+				}
+			}
+		}
+		return false
+	})
+
+	require.NoError(t, exporter.Shutdown(context.Background()))
+
+	eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	})
 }

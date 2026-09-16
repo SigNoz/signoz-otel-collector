@@ -2,6 +2,7 @@ package json
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -95,11 +96,45 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 		dec := p.Config.Froze().NewDecoder(strings.NewReader(unquoted))
 		err := dec.Decode(&output)
 		if err == nil { // successfully decoded as JSON; return as is
-			return output
+			return materializeNumbers(output)
 		}
 	}
 	output[MessageField] = str
 	return output
+}
+
+func materializeNumbers(m map[string]any) map[string]any {
+	for k, v := range m {
+		m[k] = materializeValue(v)
+	}
+	return m
+}
+
+func materializeValue(v any) any {
+	switch t := v.(type) {
+	case json.Number:
+		return materializeNumber(t)
+	case map[string]any:
+		return materializeNumbers(t)
+	case []any:
+		for i, el := range t {
+			t[i] = materializeValue(el)
+		}
+		return t
+	}
+	return v
+}
+
+func materializeNumber(n json.Number) any {
+	if i, err := n.Int64(); err == nil {
+		return i
+	}
+	if strings.ContainsAny(n.String(), ".eE") {
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
+	}
+	return n.String()
 }
 
 // getMessage returns the "message" field value, treating nil as missing and
