@@ -124,7 +124,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("failed to parse dsn: %w", err)
 			}
-			logger.Info("Parsed DSN", zap.Any("opts", opts))
+			logger.Info("Parsed DSN", zap.Strings("addr", opts.Addr), zap.String("database", opts.Auth.Database), zap.String("username", opts.Auth.Username))
 
 			conn, err := clickhouse.Open(opts)
 			if err != nil {
@@ -222,7 +222,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("failed to parse dsn: %w", err)
 			}
-			logger.Info("Parsed DSN", zap.Any("opts", opts))
+			logger.Info("Parsed DSN", zap.Strings("addr", opts.Addr), zap.String("database", opts.Auth.Database), zap.String("username", opts.Auth.Username))
 
 			conn, err := clickhouse.Open(opts)
 			if err != nil {
