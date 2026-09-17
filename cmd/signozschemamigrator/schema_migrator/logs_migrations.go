@@ -548,5 +548,42 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2003
+	{
+		MigrationID: 2003,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_token_idx",
+					Expression:  "body",
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_ngram_idx",
+					Expression:  "body",
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "body_token_idx"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "body_ngram_idx"},
+			},
+		},
+	},
+	// Next migration id will be 2004
 }
