@@ -63,11 +63,11 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, 0.30, claude.Cache.Read)
 		assert.Equal(t, 3.75, claude.Cache.Write)
 
-		assert.Equal(t, "_signoz.gen_ai.cost_input", cfg.OutputAttrs.In)
-		assert.Equal(t, "_signoz.gen_ai.cost_output", cfg.OutputAttrs.Out)
-		assert.Equal(t, "_signoz.gen_ai.cost_cache_read", cfg.OutputAttrs.CacheRead)
-		assert.Equal(t, "_signoz.gen_ai.cost_cache_write", cfg.OutputAttrs.CacheWrite)
-		assert.Equal(t, "_signoz.gen_ai.total_cost", cfg.OutputAttrs.Total)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.input", cfg.OutputAttrs.In)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.output", cfg.OutputAttrs.Out)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.cache_read", cfg.OutputAttrs.CacheRead)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.cache_write", cfg.OutputAttrs.CacheWrite)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.amount", cfg.OutputAttrs.Total)
 	})
 
 	t.Run("minimal", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestLoadConfig(t *testing.T) {
 		// Optional output attrs are empty — only total is required.
 		assert.Empty(t, cfg.OutputAttrs.In)
 		assert.Empty(t, cfg.OutputAttrs.CacheRead)
-		assert.Equal(t, "_signoz.gen_ai.total_cost", cfg.OutputAttrs.Total)
+		assert.Equal(t, "signoz.gen_ai.usage.cost.amount", cfg.OutputAttrs.Total)
 	})
 }
 

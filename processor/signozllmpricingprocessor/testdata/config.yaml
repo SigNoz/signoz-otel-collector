@@ -25,11 +25,11 @@ signozllmpricing:
         in: 3.0
         out: 15.0
   output_attrs:
-    in: "_signoz.gen_ai.cost_input"
-    out: "_signoz.gen_ai.cost_output"
-    cache_read: "_signoz.gen_ai.cost_cache_read"
-    cache_write: "_signoz.gen_ai.cost_cache_write"
-    total: "_signoz.gen_ai.total_cost"
+    in: "signoz.gen_ai.usage.cost.input"
+    out: "signoz.gen_ai.usage.cost.output"
+    cache_read: "signoz.gen_ai.usage.cost.cache_read"
+    cache_write: "signoz.gen_ai.usage.cost.cache_write"
+    total: "signoz.gen_ai.usage.cost.amount"
 
 # Minimal valid — only total output attr required.
 signozllmpricing/minimal:
@@ -47,7 +47,7 @@ signozllmpricing/minimal:
         in: 1.0
         out: 2.0
   output_attrs:
-    total: "_signoz.gen_ai.total_cost"
+    total: "signoz.gen_ai.usage.cost.amount"
 
 # Invalid: missing attrs.model.
 signozllmpricing/no_model_attr:
@@ -65,7 +65,7 @@ signozllmpricing/no_model_attr:
         in: 1.0
         out: 2.0
   output_attrs:
-    total: "_signoz.gen_ai.total_cost"
+    total: "signoz.gen_ai.usage.cost.amount"
 
 # Invalid: missing pattern (empty list).
 signozllmpricing/no_pattern:
@@ -81,7 +81,7 @@ signozllmpricing/no_pattern:
         in: 1.0
         out: 2.0
   output_attrs:
-    total: "_signoz.gen_ai.total_cost"
+    total: "signoz.gen_ai.usage.cost.amount"
 
 # Invalid: unknown cache.mode.
 signozllmpricing/bad_cache_mode:
@@ -97,7 +97,7 @@ signozllmpricing/bad_cache_mode:
         in: 1.0
         out: 2.0
   output_attrs:
-    total: "_signoz.gen_ai.total_cost"
+    total: "signoz.gen_ai.usage.cost.amount"
 
 # Invalid: missing output_attrs.total.
 signozllmpricing/no_total_output:

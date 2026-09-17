@@ -16,19 +16,20 @@ import (
 )
 
 type jsonSizer struct {
-	Logger         *zap.Logger
-	ExcludePattern *regexp.Regexp
+	Logger          *zap.Logger
+	ExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOptions struct {
-	ExcludePattern *regexp.Regexp
+	ExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOption func(*jsonSizerOptions)
 
+// WithExcludePattern drops keys matching pattern from every sized map; may be given more than once.
 func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
 	return func(opts *jsonSizerOptions) {
-		opts.ExcludePattern = pattern
+		opts.ExcludePatterns = append(opts.ExcludePatterns, pattern)
 	}
 }
 
@@ -38,17 +39,26 @@ func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
 		opt(opts)
 	}
 	return &jsonSizer{
-		Logger:         logger,
-		ExcludePattern: opts.ExcludePattern,
+		Logger:          logger,
+		ExcludePatterns: opts.ExcludePatterns,
 	}
+}
+
+func (sizer *jsonSizer) excluded(key string) bool {
+	for _, pattern := range sizer.ExcludePatterns {
+		if pattern.MatchString(key) {
+			return true
+		}
+	}
+	return false
 }
 
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
 	output := map[string]any{}
 
-	if sizer.ExcludePattern != nil {
+	if len(sizer.ExcludePatterns) > 0 {
 		for key, value := range input {
-			if sizer.ExcludePattern.MatchString(key) {
+			if sizer.excluded(key) {
 				continue
 			}
 			output[key] = value
@@ -71,7 +81,7 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInMapStringString(input pcommon.Map)
 	output := map[string]string{}
 
 	input.Range(func(k string, v pcommon.Value) bool {
-		if sizer.ExcludePattern != nil && sizer.ExcludePattern.MatchString(k) {
+		if sizer.excluded(k) {
 			return true
 		}
 		switch v.Type() {
@@ -101,6 +111,9 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 	b := map[string]bool{}
 
 	input.Range(func(k string, v pcommon.Value) bool {
+		if sizer.excluded(k) {
+			return true
+		}
 		switch v.Type() {
 		case pcommon.ValueTypeDouble:
 			if utils.IsValidFloat(v.Double()) {

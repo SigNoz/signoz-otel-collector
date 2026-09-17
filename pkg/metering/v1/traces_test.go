@@ -41,6 +41,24 @@ func TestTracesSizeWithNoEventAndSigNozResource(t *testing.T) {
 	assert.Equal(t, 406, size)
 }
 
+func TestTracesSizeWithNoEventAndSigNozLLMPricingSpanAttributes(t *testing.T) {
+	traces := ptracesgen.Generate(
+		ptracesgen.WithSpanCount(1),
+		ptracesgen.WithResourceAttributeCount(1),
+		ptracesgen.WithSpanKind(ptrace.SpanKindProducer),
+		ptracesgen.WithResourceAttributeStringValue("test"),
+	)
+	// costs written by the pricing processor shouldn't affect the calculation
+	attrs := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Attributes()
+	attrs.PutDouble("signoz.gen_ai.usage.cost.input", 0.0042)
+	attrs.PutDouble("signoz.gen_ai.usage.cost.amount", 0.0113)
+
+	meter := NewTraces(zap.NewNop())
+	size := meter.Size(traces)
+
+	assert.Equal(t, 406, size)
+}
+
 func TestTracesSizeWithEvents(t *testing.T) {
 	traces := ptracesgen.Generate(
 		ptracesgen.WithSpanCount(1),
