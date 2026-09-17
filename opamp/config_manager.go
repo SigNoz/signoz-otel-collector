@@ -32,26 +32,30 @@ type agentConfigManager struct {
 type reloadFunc func([]byte) error
 
 type remoteControlledConfig struct {
-	path        string     // path to the agent config file
+	path        string     // path to the agent config file (copyPath / managed file)
+	baseConfigs []string  // local --config files provided by user
 	reloader    reloadFunc // function to reload the agent config
 	currentHash []byte     // hash of the current agent config, used to determine if the config has changed
 	logger      *zap.Logger
 }
 
-func NewDynamicConfig(configPath string, reloader reloadFunc, logger *zap.Logger) (*remoteControlledConfig, error) {
+func NewDynamicConfig(configPath string, baseConfigs []string, reloader reloadFunc, logger *zap.Logger) (*remoteControlledConfig, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	remoteControlledConfig := &remoteControlledConfig{
-		path:     configPath,
-		reloader: reloader,
-		logger:   logger.Named("dynamic-config"),
+		path:        configPath,
+		baseConfigs:  baseConfigs,
+		reloader:    reloader,
+		logger:      logger.Named("dynamic-config"),
 	}
 
-	err := remoteControlledConfig.UpsertInstanceID()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to upsert instance id %w", err)
+	// Only upsert instance ID if the config file exists (i.e., copyPath was already created)
+	if _, err := os.Stat(configPath); err == nil {
+		err := remoteControlledConfig.UpsertInstanceID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to upsert instance id %w", err)
+		}
 	}
 
 	if err := remoteControlledConfig.UpdateCurrentHash(); err != nil {
@@ -93,6 +97,10 @@ service:
 func (m *remoteControlledConfig) UpdateCurrentHash() error {
 	contents, err := os.ReadFile(m.path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			m.currentHash = fileHash([]byte{})
+			return nil
+		}
 		m.currentHash = fileHash([]byte{})
 		return fmt.Errorf("failed to read config file %s: %w", m.path, err)
 	}
@@ -164,7 +172,90 @@ func (a *agentConfigManager) Apply(remoteConfig *protobufs.AgentRemoteConfig) (b
 }
 
 // applyRemoteConfig applies the remote config to the agent.
+// It merges the remote config with the local base configs, where local base configs
+// take precedence over the remote OpAMP config. This allows users to add custom
+// receivers/processors via --config flags that persist alongside OpAMP-managed config.
 func (a *agentConfigManager) applyRemoteConfig(currentConfig *remoteControlledConfig, newContents []byte) (changed bool, err error) {
+	// If no base configs, fall back to old behavior (direct reload)
+	if len(currentConfig.baseConfigs) == 0 {
+		a.logger.Debug("No base configs, using legacy apply")
+		return a.applyRemoteConfigNoMerge(currentConfig, newContents)
+	}
+
+	a.logger.Info("Merging remote config with local base configs", zap.Strings("baseConfigs", currentConfig.baseConfigs))
+
+	// Build merged config: remote first, then base configs on top (local overrides remote)
+	merged := koanf.New("::")
+
+	// Load remote config first (OpAMP-managed base)
+	if err := merged.Load(rawbytes.Provider(newContents), yaml.Parser()); err != nil {
+		return false, fmt.Errorf("failed to parse remote config: %w", err)
+	}
+
+	// Check for conflicts before loading base (for logging warnings)
+	baseLoaded := koanf.New("::")
+	for _, basePath := range currentConfig.baseConfigs {
+		if err := baseLoaded.Load(file.Provider(basePath), yaml.Parser()); err != nil {
+			a.logger.Warn("Failed to load base config file, skipping", zap.String("path", basePath), zap.Error(err))
+			continue
+		}
+		for _, key := range baseLoaded.Keys() {
+			if merged.Exists(key) {
+				a.logger.Warn("Local --config overrides OpAMP remote config key", zap.String("key", key))
+			}
+		}
+	}
+
+	// Load each base config file on top of remote (local overrides remote)
+	for _, basePath := range currentConfig.baseConfigs {
+		a.logger.Info("Loading base config", zap.String("path", basePath))
+		if err := merged.Load(file.Provider(basePath), yaml.Parser()); err != nil {
+			a.logger.Warn("Failed to load base config file, skipping", zap.String("path", basePath), zap.Error(err))
+		}
+	}
+
+	mergedBytes, err := merged.Marshal(yaml.Parser())
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal merged config: %w", err)
+	}
+
+	// Write merged config to the managed path so GetEffectiveConfig reports the merged state
+	if currentConfig.path != "" {
+		if err := os.WriteFile(currentConfig.path, mergedBytes, 0644); err != nil {
+			a.logger.Warn("Failed to write merged config to file, continuing", zap.String("path", currentConfig.path), zap.Error(err))
+		}
+	}
+
+	newConfigHash := fileHash(mergedBytes)
+
+	// Always reload the config if there are base configs (local files might have changed)
+	// Also always reload on first config received
+	if a.initialConfigReceived && bytes.Equal(currentConfig.currentHash, newConfigHash) && len(currentConfig.baseConfigs) == 0 {
+		a.logger.Info("Config has not changed")
+		return false, nil
+	}
+
+	a.logger.Info("Config has changed, reloading merged config", zap.String("path", currentConfig.path))
+	err = currentConfig.reloader(mergedBytes)
+	if err != nil {
+		return false, fmt.Errorf("failed to reload merged config: %s: %w", currentConfig.path, err)
+	}
+
+	err = currentConfig.UpdateCurrentHash()
+	if err != nil {
+		err = fmt.Errorf("failed hash compute for config %s: %w", currentConfig.path, err)
+		return true, err
+	}
+
+	if !a.initialConfigReceived {
+		a.initialConfigReceived = true
+	}
+
+	return true, nil
+}
+
+// applyRemoteConfigNoMerge applies remote config directly without merging (legacy behavior)
+func (a *agentConfigManager) applyRemoteConfigNoMerge(currentConfig *remoteControlledConfig, newContents []byte) (changed bool, err error) {
 	newConfigHash := fileHash(newContents)
 
 	// Always reload the config if this is the first config received.
