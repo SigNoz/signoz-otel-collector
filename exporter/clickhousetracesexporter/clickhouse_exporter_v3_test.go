@@ -1110,18 +1110,18 @@ func Test_billableNumberAttributes(t *testing.T) {
 		{
 			name: "PricingAttrs_Dropped",
 			attrs: map[string]float64{
-				"gen_ai.usage.output_tokens":           340,
-				"signoz.gen_ai.usage.cost.input":       0.006,
-				"signoz.gen_ai.usage.cost.output":      0.0051,
-				"signoz.gen_ai.usage.cost.cache_read":  0,
-				"signoz.gen_ai.usage.cost.cache_write": 0,
-				"signoz.gen_ai.usage.cost.amount":      0.0111,
+				"gen_ai.usage.output_tokens":                        340,
+				"signoz.gen_ai.usage.input_tokens.cost":             0.006,
+				"signoz.gen_ai.usage.output_tokens.cost":            0.0051,
+				"signoz.gen_ai.usage.cache_read.input_tokens.cost":  0,
+				"signoz.gen_ai.usage.cache_write.input_tokens.cost": 0,
+				"signoz.gen_ai.usage.tokens.cost":                   0.0111,
 			},
 			want: map[string]float64{"gen_ai.usage.output_tokens": 340},
 		},
 		{
 			name:  "OnlyPricingAttrs_Empty",
-			attrs: map[string]float64{"signoz.gen_ai.usage.cost.amount": 0.25},
+			attrs: map[string]float64{"signoz.gen_ai.usage.tokens.cost": 0.25},
 			want:  map[string]float64{},
 		},
 	}

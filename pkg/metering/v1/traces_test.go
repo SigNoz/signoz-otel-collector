@@ -50,8 +50,8 @@ func TestTracesSizeWithNoEventAndSigNozLLMPricingSpanAttributes(t *testing.T) {
 	)
 	// costs written by the pricing processor shouldn't affect the calculation
 	attrs := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Attributes()
-	attrs.PutDouble("signoz.gen_ai.usage.cost.input", 0.0042)
-	attrs.PutDouble("signoz.gen_ai.usage.cost.amount", 0.0113)
+	attrs.PutDouble("signoz.gen_ai.usage.input_tokens.cost", 0.0042)
+	attrs.PutDouble("signoz.gen_ai.usage.tokens.cost", 0.0113)
 
 	meter := NewTraces(zap.NewNop())
 	size := meter.Size(traces)
