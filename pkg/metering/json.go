@@ -43,16 +43,6 @@ func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
 		ExcludePatterns: opts.ExcludePatterns,
 	}
 }
-
-func (sizer *jsonSizer) excluded(key string) bool {
-	for _, pattern := range sizer.ExcludePatterns {
-		if pattern.MatchString(key) {
-			return true
-		}
-	}
-	return false
-}
-
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
 	output := map[string]any{}
 
@@ -228,4 +218,13 @@ func (size *jsonSizer) TotalSizeIfKeyExistsAndValueIsMapOrSlice(key int, value i
 	}
 
 	return key + value + extra
+}
+
+func (sizer *jsonSizer) excluded(key string) bool {
+	for _, pattern := range sizer.ExcludePatterns {
+		if pattern.MatchString(key) {
+			return true
+		}
+	}
+	return false
 }
