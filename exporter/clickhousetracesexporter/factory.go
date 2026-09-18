@@ -42,6 +42,7 @@ func createDefaultConfig() component.Config {
 			MaxDistinctValues: 25000,
 		},
 		PromotedPathsSyncInterval: utils.ToPointer(defaultPromotedPathsSyncInterval),
+		MaxAllowedDataAgeDays:     utils.ToPointer(uint64(defaultMaxAllowedDataAgeDays)),
 	}
 }
 
