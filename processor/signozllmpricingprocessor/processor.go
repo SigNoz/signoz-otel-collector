@@ -4,6 +4,7 @@ import (
 	"context"
 	"path"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
@@ -85,15 +86,19 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 }
 
 // ProcessTraces computes LLM costs for every span that carries a model attribute
-// matching a configured pricing rule.
+// matching a configured pricing rule. Cost attributes sent by the user are dropped
+// first: the prefix is excluded from billing, so nothing user-supplied may live under it.
 func (p *llmCostProcessor) ProcessTraces(_ context.Context, td ptrace.Traces) (ptrace.Traces, error) {
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
+		rss.At(i).Resource().Attributes().RemoveIf(isReservedCostAttr)
 		ilss := rss.At(i).ScopeSpans()
 		for j := 0; j < ilss.Len(); j++ {
 			spans := ilss.At(j).Spans()
 			for k := 0; k < spans.Len(); k++ {
-				p.processSpan(spans.At(k).Attributes())
+				attrs := spans.At(k).Attributes()
+				attrs.RemoveIf(isReservedCostAttr)
+				p.processSpan(attrs)
 			}
 		}
 	}
@@ -217,4 +222,8 @@ func putIfKey(attrs pcommon.Map, key string, val float64) {
 	if key != "" {
 		attrs.PutDouble(key, val)
 	}
+}
+
+func isReservedCostAttr(key string, _ pcommon.Value) bool {
+	return metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(key)
 }
