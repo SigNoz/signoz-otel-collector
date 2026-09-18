@@ -284,6 +284,28 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
+// billableNumberAttributes returns attrs without LLM pricing costs. Most spans
+// carry none, so the input map is returned as is and only copied when a cost key is present.
+func billableNumberAttributes(attrs map[string]float64) map[string]float64 {
+	hasExcluded := false
+	for k := range attrs {
+		if metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(k) {
+			hasExcluded = true
+			break
+		}
+	}
+	if !hasExcluded {
+		return attrs
+	}
+	billable := make(map[string]float64, len(attrs))
+	for k, v := range attrs {
+		if !metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(k) {
+			billable[k] = v
+		}
+	}
+	return billable
+}
+
 func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace.Span, ServiceName string, resource pcommon.Resource, scope pcommon.InstrumentationScope, config storageConfig, promotedPaths map[string]struct{}) (*SpanV3, error) {
 	durationNano := uint64(otelSpan.EndTimestamp() - otelSpan.StartTimestamp())
 
@@ -357,6 +379,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
 
+	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
+
 	span := &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
@@ -380,11 +404,12 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		StatusMessage:    otelSpan.Status().Message(),
 		StatusCodeString: otelSpan.Status().Code().String(),
 
-		AttributeString:    attrMap.StringMap,
-		AttributesNumber:   attrMap.NumberMap,
-		AttributesBool:     attrMap.BoolMap,
-		Attributes:         attributesJSON,
-		AttributesPromoted: getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributeString:          attrMap.StringMap,
+		AttributesNumber:         attrMap.NumberMap,
+		BillableAttributesNumber: billableNumberAttrs,
+		AttributesBool:           attrMap.BoolMap,
+		Attributes:               attributesJSON,
+		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
