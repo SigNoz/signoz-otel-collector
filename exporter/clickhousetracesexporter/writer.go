@@ -197,13 +197,6 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			_ = statement.Abort()
 		}
 	}()
-	// A span can carry the same JSON path twice: a flat dotted key and a nested object
-	// resolving to it (e.g. attribute `db.function` and attribute `db` = {function: ...}).
-	// The JSON column rejects that as a duplicate path and fails the whole batch; skip the
-	// duplicate instead of dropping every span in the batch.
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
-		constants.SettingJSONSkipDuplicatedPaths: 1,
-	}))
 	statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("could not prepare batch for index table: %w", err)

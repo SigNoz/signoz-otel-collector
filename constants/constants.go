@@ -17,6 +17,4 @@ const (
 	FieldKeysTableLastSeenColumn = "last_seen"
 
 	TracesColumnAttributesPromoted = "attributes_promoted"
-
-	SettingJSONSkipDuplicatedPaths = "type_json_skip_duplicated_paths"
 )
