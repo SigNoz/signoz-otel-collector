@@ -171,10 +171,16 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 	}
 }
 
-// getAttributesJSON serializes span attributes, alternative is to typecast
-// each attribute since the slice of any can't be inserted.
+// getAttributesJSON serializes span attributes to a JSON string. Map values are
+// flattened into dotted keys so an attribute present as both a scalar and an object
+// survives as distinct paths instead of being collapsed by attrs.AsRaw(); arrays,
+// bytes and scalars are kept as-is.
 func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
-	raw := attrs.AsRaw()
+	raw := make(map[string]any, attrs.Len())
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		flattenMapValue(raw, k, v)
+		return true
+	})
 	b, err := json.Marshal(raw)
 	if err != nil {
 		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
@@ -190,6 +196,24 @@ func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommo
 		return "{}"
 	}
 	return string(b)
+}
+
+// flattenMapValue writes v into out under key, recursing map values into dotted
+// keys while leaving arrays, bytes and scalars intact. Empty maps are kept as {}.
+func flattenMapValue(out map[string]any, key string, v pcommon.Value) {
+	if v.Type() != pcommon.ValueTypeMap {
+		out[key] = v.AsRaw()
+		return
+	}
+	m := v.Map()
+	if m.Len() == 0 {
+		out[key] = map[string]any{}
+		return
+	}
+	m.Range(func(k string, cv pcommon.Value) bool {
+		flattenMapValue(out, key+"."+k, cv)
+		return true
+	})
 }
 
 // sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out

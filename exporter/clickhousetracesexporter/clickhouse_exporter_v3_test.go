@@ -927,7 +927,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			},
 		},
 		{
-			name: "nested map is recursed into",
+			name: "nested map is flattened into dotted keys, arrays kept",
 			attrs: makeMap(func(m pcommon.Map) {
 				nested := m.PutEmptyMap("meta")
 				nested.PutStr("env", "prod")
@@ -936,23 +936,47 @@ func Test_getAttributesJSON(t *testing.T) {
 				inner.AppendEmpty().SetInt(404)
 			}),
 			want: map[string]any{
-				"meta": map[string]any{
-					"env":   "prod",
-					"codes": []any{float64(200), float64(404)},
-				},
+				"meta.env":   "prod",
+				"meta.codes": []any{float64(200), float64(404)},
 			},
 		},
 		{
 			// A map's sibling keys can be of any type — unlike arrays.
-			name: "scalar key alongside nested map key at the same level",
+			name: "scalar key alongside nested map key is flattened",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutStr("a", "value")
 				nested := m.PutEmptyMap("b")
 				nested.PutStr("b1", "value-b1")
 			}),
 			want: map[string]any{
-				"a": "value",
-				"b": map[string]any{"b1": "value-b1"},
+				"a":    "value",
+				"b.b1": "value-b1",
+			},
+		},
+		{
+			// A scalar and an object under the same parent keep distinct paths.
+			name: "scalar and object under same parent kept as distinct paths",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutStr("db.system", "postgresql")
+				db := m.PutEmptyMap("db")
+				fn := db.PutEmptyMap("function")
+				fn.PutInt("arg_count", 2)
+			}),
+			want: map[string]any{
+				"db.system":             "postgresql",
+				"db.function.arg_count": float64(2),
+			},
+		},
+		{
+			// A flat scalar and a nested object resolving to the same leaf collapse; last write wins.
+			name: "flat scalar and nested object on same leaf collapses last-wins",
+			attrs: makeMap(func(m pcommon.Map) {
+				m.PutStr("db.function", "flatVAL")
+				db := m.PutEmptyMap("db")
+				db.PutStr("function", "nestedVAL")
+			}),
+			want: map[string]any{
+				"db.function": "nestedVAL",
 			},
 		},
 		{
