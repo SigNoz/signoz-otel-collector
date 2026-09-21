@@ -129,8 +129,16 @@ func matchesAny(m pcommon.Map, patterns []string) bool {
 // applyRule finds the first existing source and writes its value to the target.
 // The source-level move flag controls whether the source key is deleted after
 // the copy. The target is written to resource attributes when writeToResource
-// is true, otherwise to span/log attributes.
+// is true, otherwise to span/log attributes. A target already present is left
+// untouched: the standard key written by the SDK wins over any vendor source.
 func applyRule(rule *parsedRule, attrs, resourceAttrs pcommon.Map) {
+	dest := attrs
+	if rule.writeToResource {
+		dest = resourceAttrs
+	}
+	if _, exists := dest.Get(rule.target); exists {
+		return
+	}
 	for i := range rule.sources {
 		src := &rule.sources[i]
 
@@ -147,14 +155,7 @@ func applyRule(rule *parsedRule, attrs, resourceAttrs pcommon.Map) {
 			continue
 		}
 
-		// Write to the target context.
-		var dest pcommon.Value
-		if rule.writeToResource {
-			dest = resourceAttrs.PutEmpty(rule.target)
-		} else {
-			dest = attrs.PutEmpty(rule.target)
-		}
-		val.CopyTo(dest)
+		val.CopyTo(dest.PutEmpty(rule.target))
 
 		if src.move {
 			if src.isResource {
