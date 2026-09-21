@@ -16,7 +16,17 @@ type batch struct {
 	metadata []metadata
 	// per-batch dedup of metadata rows by identity (metaKey)
 	metaIdx map[metaKey]int
-	logger  *zap.Logger
+	// per-batch dedup of registration rows: the bucket set is only marked after
+	// a successful send, so repeats within one batch must be caught here
+	tsSeen   map[tsKey]struct{}
+	nowMilli int64
+	logger   *zap.Logger
+}
+
+type tsKey struct {
+	fingerprint uint64
+	reduced     bool
+	bucketStart int64
 }
 
 // newBatch pre-sizes each slice from a per-table hint (the previous batch's length).
@@ -27,8 +37,18 @@ func newBatch(logger *zap.Logger, samplesHint, tsHint, metadataHint int) *batch 
 		ts:       make([]ts, 0, max(tsHint, 0)),
 		metadata: make([]metadata, 0, max(metadataHint, 0)),
 		metaIdx:  make(map[metaKey]int, max(metadataHint, 0)),
+		tsSeen:   make(map[tsKey]struct{}, max(tsHint, 0)),
 		logger:   logger,
 	}
+}
+
+// seenTs records key and reports whether it was already recorded.
+func (b *batch) seenTs(key tsKey) bool {
+	if _, ok := b.tsSeen[key]; ok {
+		return true
+	}
+	b.tsSeen[key] = struct{}{}
+	return false
 }
 
 func (b *batch) addMetadata(name, desc, unit string, typ pmetric.MetricType, temporality pmetric.AggregationTemporality, isMonotonic bool, fingerprint *pkgfingerprint.Fingerprint, firstSeenUnixMilli, lastSeenUnixMilli int64) {

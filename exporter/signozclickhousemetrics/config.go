@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/bucketsetcache"
 )
 
 // Config defines configuration for ClickHouse Metrics exporter.
@@ -27,6 +29,8 @@ type Config struct {
 	MetadataTable   string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
+
+	BucketSetCache bucketsetcache.Config `mapstructure:"bucket_set_cache"`
 
 	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
 	// written per batch; 1.0 (default) writes all. Opt-in; lowering it trades
@@ -71,6 +75,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.MetadataWriteSampleRatio <= 0 || cfg.MetadataWriteSampleRatio > 1 {
 		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
+	}
+
+	if err := cfg.BucketSetCache.Validate(timeSeriesBucket); err != nil {
+		return err
 	}
 
 	if cfg.Reduction.Enabled {

@@ -22,7 +22,6 @@ import (
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -34,6 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/pkg/bucketsetcache"
 )
 
 var (
@@ -55,12 +55,13 @@ var (
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
+const timeSeriesBucket = time.Hour
+
 type clickhouseMetricsExporter struct {
 	cfg           *Config
 	logger        *zap.Logger
 	meter         metricapi.Meter
-	cache         *ttlcache.Cache[string, bool]
-	cacheRunning  bool
+	seen          *bucketsetcache.Set
 	conn          clickhouse.Conn
 	wg            sync.WaitGroup
 	enableExpHist bool
@@ -77,9 +78,16 @@ type clickhouseMetricsExporter struct {
 	usageCollector *usage.UsageCollector
 	exporterID     uuid.UUID
 
-	reductionRules       atomic.Pointer[ruleSet]
-	reductionActiveRules metricapi.Int64Gauge
-	reductionPollErrors  metricapi.Int64Counter
+	reductionRules        atomic.Pointer[ruleSet]
+	reductionActiveRules  metricapi.Int64Gauge
+	reductionPollErrors   metricapi.Int64Counter
+	registrationRows      metricapi.Int64Counter
+	bucketSetEntries      metricapi.Int64Gauge
+	bucketSetBytes        metricapi.Int64Gauge
+	bucketSetBuckets      metricapi.Int64Gauge
+	bucketSetEvictions    metricapi.Int64Gauge
+	bucketSetCollisions   metricapi.Int64Gauge
+	bucketSetDroppedMarks metricapi.Int64Gauge
 
 	lastSamplesLen  atomic.Int64
 	lastTsLen       atomic.Int64
@@ -132,6 +140,9 @@ type ts struct {
 	reducedFingerprint uint64
 	isReduced          bool
 	unixMilli          int64
+	bucketStart        int64
+	writeCur           bool
+	writeNext          bool
 	labels             string
 	attrs              map[string]string
 	scopeAttrs         map[string]string
@@ -185,9 +196,9 @@ func WithEnableExpHist(enableExpHist bool) ExporterOption {
 	}
 }
 
-func WithCache(cache *ttlcache.Cache[string, bool]) ExporterOption {
+func WithBucketSetCache(set *bucketsetcache.Set) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
-		e.cache = cache
+		e.seen = set
 		return nil
 	}
 }
@@ -228,13 +239,7 @@ func WithExporterID(exporterID uuid.UUID) ExporterOption {
 }
 
 func defaultOptions() []ExporterOption {
-	cache := ttlcache.New(
-		ttlcache.WithTTL[string, bool](45*time.Minute),
-		ttlcache.WithDisableTouchOnHit[string, bool](),
-	)
-
 	return []ExporterOption{
-		WithCache(cache),
 		WithLogger(zap.NewNop()),
 		WithEnableExpHist(false),
 		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
@@ -250,6 +255,14 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		if err := opt(chExporter); err != nil {
 			return nil, err
 		}
+	}
+
+	if chExporter.seen == nil {
+		set, err := bucketsetcache.New(timeSeriesBucket, chExporter.cfg.BucketSetCache)
+		if err != nil {
+			return nil, err
+		}
+		chExporter.seen = set
 	}
 
 	if chExporter.cfg.Reduction.Enabled {
@@ -297,6 +310,10 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		return nil, err
 	}
 
+	if err := chExporter.initBucketSetCacheInstruments(); err != nil {
+		return nil, err
+	}
+
 	if chExporter.usageCollector != nil {
 		err = chExporter.usageCollector.Start()
 		if err != nil {
@@ -312,8 +329,6 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
-	go c.cache.Start()
-	c.cacheRunning = true
 	if c.cfg.Reduction.Enabled {
 		// fail open: with no rules loaded everything is written unreduced, which is always correct
 		pollCtx, cancel := context.WithTimeout(ctx, rulesPollTimeout)
@@ -325,9 +340,6 @@ func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Ho
 }
 
 func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
-	if c.cacheRunning {
-		c.cache.Stop()
-	}
 	if c.usageCollector != nil {
 		err := c.usageCollector.Stop()
 		if err != nil {
@@ -380,13 +392,13 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name)
 		reduced := reducer.reduce(fingerprint, name, unixMilli)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
@@ -394,7 +406,7 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		rawTs := &ts{
+		c.planTimeSeries(batch, ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
@@ -402,19 +414,10 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			unit:               unit,
 			typ:                typ,
 			isMonotonic:        isMonotonic,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
-			labels:             pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:              fingerprintMap,
-			scopeAttrs:         scopeFingerprintMap,
-			resourceAttrs:      resourceFingerprintMap,
-		}
-		batch.addTs(rawTs)
-		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			reducedTs := reducedTsFrom(rawTs, reduced)
-			batch.addTs(&reducedTs)
-		}
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 	}
 
 	// Add resource/scope metadata AFTER loop with tracked timestamps
@@ -462,13 +465,13 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name)
 		reduced := reducer.reduce(fingerprint, name, unixMilli)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
@@ -476,7 +479,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		rawTs := &ts{
+		c.planTimeSeries(batch, ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
@@ -484,19 +487,10 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			unit:               unit,
 			typ:                typ,
 			isMonotonic:        isMonotonic,
-			fingerprint:        fingerprint.HashWithName(name),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
-			labels:             pkgfingerprint.NewLabelsAsJSONString(name, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:              fingerprintMap,
-			scopeAttrs:         scopeFingerprintMap,
-			resourceAttrs:      resourceFingerprintMap,
-		}
-		batch.addTs(rawTs)
-		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			reducedTs := reducedTsFrom(rawTs, reduced)
-			batch.addTs(&reducedTs)
-		}
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 	}
 
 	// Add resource/scope metadata AFTER loop with tracked timestamps
@@ -549,13 +543,13 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": sampleTemporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name + suffix)
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        sampleTemporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        sampleIsMonotonic,
 			unixMilli:          unixMilli,
@@ -563,8 +557,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
-
-		rawTs := &ts{
+		c.planTimeSeries(batch, ts{
 			env:                env,
 			temporality:        sampleTemporality,
 			metricName:         name + suffix,
@@ -572,19 +565,10 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			unit:               sampleUnit,
 			typ:                sampleTyp,
 			isMonotonic:        sampleIsMonotonic,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
-			labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:              fingerprintMap,
-			scopeAttrs:         scopeFingerprintMap,
-			resourceAttrs:      resourceFingerprintMap,
-		}
-		batch.addTs(rawTs)
-		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			reducedTs := reducedTsFrom(rawTs, reduced)
-			batch.addTs(&reducedTs)
-		}
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 	}
 
 	addBucketSample := func(batch *batch, dp pmetric.HistogramDataPoint, suffix string) {
@@ -601,14 +585,14 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 				"le":              boundStr,
 				"__temporality__": temporality.String(),
 			})
-			fingerprintMap := fingerprint.AttributesAsMap()
+			fpHash := fingerprint.HashWithName(name + suffix)
 			reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 
 			batch.addSample(&sample{
 				env:                env,
 				temporality:        temporality,
 				metricName:         name + suffix,
-				fingerprint:        fingerprint.HashWithName(name + suffix),
+				fingerprint:        fpHash,
 				reducedFingerprint: reduced.fingerprintOrZero(),
 				isMonotonic:        isMonotonic,
 				unixMilli:          unixMilli,
@@ -616,8 +600,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 				flags:              uint32(dp.Flags()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-
-			rawTs := &ts{
+			c.planTimeSeries(batch, ts{
 				env:                env,
 				temporality:        temporality,
 				metricName:         name + suffix,
@@ -625,19 +608,10 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 				unit:               unit,
 				typ:                typ,
 				isMonotonic:        isMonotonic,
-				fingerprint:        fingerprint.HashWithName(name + suffix),
+				fingerprint:        fpHash,
 				reducedFingerprint: reduced.fingerprintOrZero(),
 				unixMilli:          unixMilli,
-				labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-				attrs:              fingerprintMap,
-				scopeAttrs:         scopeFingerprintMap,
-				resourceAttrs:      resourceFingerprintMap,
-			}
-			batch.addTs(rawTs)
-			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				reducedTs := reducedTsFrom(rawTs, reduced)
-				batch.addTs(&reducedTs)
-			}
+			}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 		}
 
 		// add le=+Inf sample
@@ -645,13 +619,13 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			"le":              "+Inf",
 			"__temporality__": temporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name + suffix)
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
@@ -659,7 +633,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		rawTs := &ts{
+		c.planTimeSeries(batch, ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
@@ -667,19 +641,10 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			unit:               unit,
 			typ:                typ,
 			isMonotonic:        isMonotonic,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
-			labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:              fingerprintMap,
-			scopeAttrs:         scopeFingerprintMap,
-			resourceAttrs:      resourceFingerprintMap,
-		}
-		batch.addTs(rawTs)
-		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			reducedTs := reducedTsFrom(rawTs, reduced)
-			batch.addTs(&reducedTs)
-		}
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 	}
 
 	firstSeenUnixMilli := int64(math.MaxInt64)
@@ -766,13 +731,13 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": temporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name + suffix)
 		reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 		batch.addSample(&sample{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			isMonotonic:        isMonotonic,
 			unixMilli:          unixMilli,
@@ -780,8 +745,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-
-		rawTs := &ts{
+		c.planTimeSeries(batch, ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
@@ -789,19 +753,10 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 			unit:               sampleUnit,
 			typ:                sampleTyp,
 			isMonotonic:        isMonotonic,
-			fingerprint:        fingerprint.HashWithName(name + suffix),
+			fingerprint:        fpHash,
 			reducedFingerprint: reduced.fingerprintOrZero(),
 			unixMilli:          unixMilli,
-			labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:              fingerprintMap,
-			scopeAttrs:         scopeFingerprintMap,
-			resourceAttrs:      resourceFingerprintMap,
-		}
-		batch.addTs(rawTs)
-		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-			reducedTs := reducedTsFrom(rawTs, reduced)
-			batch.addTs(&reducedTs)
-		}
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 	}
 
 	addQuantileSample := func(batch *batch, dp pmetric.SummaryDataPoint, suffix string) {
@@ -818,13 +773,13 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 				"quantile":        quantileStr,
 				"__temporality__": quantileTemporality.String(),
 			})
-			fingerprintMap := fingerprint.AttributesAsMap()
+			fpHash := fingerprint.HashWithName(name + suffix)
 			reduced := reducer.reduce(fingerprint, name+suffix, unixMilli)
 			batch.addSample(&sample{
 				env:                env,
 				temporality:        quantileTemporality,
 				metricName:         name + suffix,
-				fingerprint:        fingerprint.HashWithName(name + suffix),
+				fingerprint:        fpHash,
 				reducedFingerprint: reduced.fingerprintOrZero(),
 				isMonotonic:        quantileIsMonotonic,
 				unixMilli:          unixMilli,
@@ -832,7 +787,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 				flags:              uint32(dp.Flags()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, quantileTemporality, quantileIsMonotonic, fingerprint, unixMilli, unixMilli)
-			rawTs := &ts{
+			c.planTimeSeries(batch, ts{
 				env:                env,
 				temporality:        quantileTemporality,
 				metricName:         name + suffix,
@@ -840,19 +795,10 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 				unit:               unit,
 				typ:                typ,
 				isMonotonic:        quantileIsMonotonic,
-				fingerprint:        fingerprint.HashWithName(name + suffix),
+				fingerprint:        fpHash,
 				reducedFingerprint: reduced.fingerprintOrZero(),
 				unixMilli:          unixMilli,
-				labels:             pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-				attrs:              fingerprintMap,
-				scopeAttrs:         scopeFingerprintMap,
-				resourceAttrs:      resourceFingerprintMap,
-			}
-			batch.addTs(rawTs)
-			if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
-				reducedTs := reducedTsFrom(rawTs, reduced)
-				batch.addTs(&reducedTs)
-			}
+			}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, reduced)
 		}
 	}
 
@@ -956,35 +902,30 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
 			"__temporality__": sampleTemporality.String(),
 		})
-		fingerprintMap := fingerprint.AttributesAsMap()
+		fpHash := fingerprint.HashWithName(name + suffix)
 		// exp histograms are excluded from reduction: sketches aren't reduced in v1
 		batch.addSample(&sample{
 			env:         env,
 			temporality: sampleTemporality,
 			metricName:  name + suffix,
-			fingerprint: fingerprint.HashWithName(name + suffix),
+			fingerprint: fpHash,
 			isMonotonic: sampleIsMonotonic,
 			unixMilli:   unixMilli,
 			value:       value,
 			flags:       uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
-
-		batch.addTs(&ts{
-			env:           env,
-			temporality:   sampleTemporality,
-			metricName:    name + suffix,
-			description:   desc,
-			unit:          sampleUnit,
-			typ:           sampleTyp,
-			isMonotonic:   sampleIsMonotonic,
-			fingerprint:   fingerprint.HashWithName(name + suffix),
-			unixMilli:     unixMilli,
-			labels:        pkgfingerprint.NewLabelsAsJSONString(name+suffix, fingerprintMap, scopeFingerprintMap, resourceFingerprintMap),
-			attrs:         fingerprintMap,
-			scopeAttrs:    scopeFingerprintMap,
-			resourceAttrs: resourceFingerprintMap,
-		})
+		c.planTimeSeries(batch, ts{
+			env:         env,
+			temporality: sampleTemporality,
+			metricName:  name + suffix,
+			description: desc,
+			unit:        sampleUnit,
+			typ:         sampleTyp,
+			isMonotonic: sampleIsMonotonic,
+			fingerprint: fpHash,
+			unixMilli:   unixMilli,
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, nil)
 	}
 
 	toStore := func(buckets pmetric.ExponentialHistogramDataPointBuckets) *chproto.Store {
@@ -1029,22 +970,17 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			flags:       uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-
-		batch.addTs(&ts{
-			env:           env,
-			temporality:   temporality,
-			metricName:    name,
-			description:   desc,
-			unit:          unit,
-			typ:           typ,
-			isMonotonic:   isMonotonic,
-			fingerprint:   fingerprint.HashWithName(name),
-			unixMilli:     unixMilli,
-			labels:        pkgfingerprint.NewLabelsAsJSONString(name, fingerprint.AttributesAsMap(), scopeFingerprintMap, resourceFingerprintMap),
-			attrs:         fingerprint.AttributesAsMap(),
-			scopeAttrs:    scopeFingerprintMap,
-			resourceAttrs: resourceFingerprintMap,
-		})
+		c.planTimeSeries(batch, ts{
+			env:         env,
+			temporality: temporality,
+			metricName:  name,
+			description: desc,
+			unit:        unit,
+			typ:         typ,
+			isMonotonic: isMonotonic,
+			fingerprint: fingerprint.HashWithName(name),
+			unixMilli:   unixMilli,
+		}, fingerprint, scopeFingerprintMap, resourceFingerprintMap, nil)
 	}
 
 	firstSeenUnixMilli := int64(math.MaxInt64)
@@ -1101,6 +1037,7 @@ func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric
 		int(c.lastTsLen.Load()),
 		int(c.lastMetadataLen.Load()))
 	start := time.Now()
+	batch.nowMilli = start.UnixMilli()
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
 		resourceFingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.ResourceFingerprintType, pkgfingerprint.InitialOffset, rm.Resource().Attributes(), map[string]string{})
@@ -1188,64 +1125,34 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
+		var pending bucketsetcache.Pending
+		var key [9]byte
+		var cur, next int64
 		for i := range timeSeries {
 			ts := &timeSeries[i]
-			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
-			cacheKey := makeCacheKey(ts.fingerprint, uint64(roundedUnixMilli))
-			if ts.isReduced {
-				// a series whose rule drops nothing is its own reduction: keep raw+reduced rows distinct
-				cacheKey += ":reduced"
-			}
-			if item := c.cache.Get(cacheKey); item != nil {
-				if value := item.Value(); value {
-					continue
+			id := bucketsetcache.SeriesID(&key, ts.fingerprint, ts.isReduced)
+			if ts.writeCur {
+				if err := c.appendTimeSeriesRow(statement, ts, ts.bucketStart); err != nil {
+					return err
 				}
+				pending.Add(id, ts.bucketStart)
+				cur++
 			}
-			if c.cfg.Reduction.Enabled {
-				err = statement.Append(
-					ts.env,
-					ts.temporality.String(),
-					ts.metricName,
-					ts.description,
-					ts.unit,
-					ts.typ.String(),
-					ts.isMonotonic,
-					ts.fingerprint,
-					ts.reducedFingerprint,
-					ts.isReduced,
-					roundedUnixMilli,
-					ts.labels,
-					ts.attrs,
-					ts.scopeAttrs,
-					ts.resourceAttrs,
-					false,
-					time.Now().UnixMilli(),
-				)
-			} else {
-				err = statement.Append(
-					ts.env,
-					ts.temporality.String(),
-					ts.metricName,
-					ts.description,
-					ts.unit,
-					ts.typ.String(),
-					ts.isMonotonic,
-					ts.fingerprint,
-					roundedUnixMilli,
-					ts.labels,
-					ts.attrs,
-					ts.scopeAttrs,
-					ts.resourceAttrs,
-					false,
-					time.Now().UnixMilli(),
-				)
+			if ts.writeNext {
+				nextBucket := ts.bucketStart + timeSeriesBucket.Milliseconds()
+				if err := c.appendTimeSeriesRow(statement, ts, nextBucket); err != nil {
+					return err
+				}
+				pending.Add(id, nextBucket)
+				next++
 			}
-			if err != nil {
-				return err
-			}
-			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
 		}
-		return statement.Send()
+		if err := statement.Send(); err != nil {
+			return err
+		}
+		c.seen.Commit(&pending)
+		c.recordRegistration(ctx, cur, next)
+		return nil
 	}
 
 	writeSamples := func(ctx context.Context, samples []sample) error {
@@ -1452,20 +1359,4 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	}
 
 	return errors.Join(errs...)
-}
-
-func makeCacheKey(a, b uint64) string {
-	var builder strings.Builder
-	builder.Grow(40) // Max length: 20 digits for each uint64 + 1 for the colon
-
-	// Convert and write the first uint64
-	builder.WriteString(strconv.FormatUint(a, 10))
-
-	// Write the separator
-	builder.WriteByte(':')
-
-	// Convert and write the second uint64
-	builder.WriteString(strconv.FormatUint(b, 10))
-
-	return builder.String()
 }

@@ -188,24 +188,10 @@ type reducer struct {
 
 	reducedResource *pkgfingerprint.Fingerprint
 	reducedScope    *pkgfingerprint.Fingerprint
-	seen            map[uint64]struct{}
 
 	// scratch backs the *reducedSeries handed to each call site, reused to avoid a
 	// per-datapoint heap allocation.
 	scratch reducedSeries
-}
-
-// firstSeen reports whether this reduced fingerprint is new within the batch.
-// Many datapoints map to the same reduced series, so one row per batch is enough.
-func (r *reducer) firstSeen(fingerprint uint64) bool {
-	if r.seen == nil {
-		r.seen = make(map[uint64]struct{})
-	}
-	if _, ok := r.seen[fingerprint]; ok {
-		return false
-	}
-	r.seen[fingerprint] = struct{}{}
-	return true
 }
 
 // reducedSeries carries what a call site needs to write the reduced sample and row.

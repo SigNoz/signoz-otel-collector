@@ -7,6 +7,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/pkg/bucketsetcache"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
@@ -107,5 +108,6 @@ func createDefaultConfig() component.Config {
 			BufferTimeSeriesTable: "distributed_time_series_v4_buffer",
 		},
 		MetadataWriteSampleRatio: 1.0,
+		BucketSetCache:           bucketsetcache.DefaultConfig(),
 	}
 }

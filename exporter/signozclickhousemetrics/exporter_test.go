@@ -2,6 +2,7 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -1225,5 +1226,54 @@ func Test_shutdown(t *testing.T) {
 	close(errChan)
 	for ok := range errChan {
 		assert.Error(t, ok)
+	}
+}
+
+func Test_writeBatchMarksSeriesOnlyAfterSend(t *testing.T) {
+	testCases := []struct {
+		name                string
+		sendErr             error
+		wantTsOnSecondBatch int
+	}{
+		{name: "SendSucceeds_SecondBatchSkipsRegisteredSeries", wantTsOnSecondBatch: 0},
+		{name: "SendFails_SecondBatchReplansSeries", sendErr: errors.New("send failed"), wantTsOnSecondBatch: 1},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			conn, err := cmock.NewClickHouseNative(nil)
+			require.NoError(t, err)
+			conn.MatchExpectationsInOrder(false)
+			conn.ExpectPrepareBatch(fmt.Sprintf(samplesSQLTmpl, "", ""))
+			timeSeriesBatch := conn.ExpectPrepareBatch(fmt.Sprintf(timeSeriesSQLTmpl, "", ""))
+			if testCase.sendErr != nil {
+				timeSeriesBatch.ExpectSend().WillReturnError(testCase.sendErr)
+			}
+			conn.ExpectPrepareBatch(fmt.Sprintf(expHistSQLTmpl, "", ""))
+			conn.ExpectPrepareBatch(fmt.Sprintf(metadataSQLTmpl, "", ""))
+
+			exp, err := NewClickHouseExporter(
+				WithConn(conn),
+				WithLogger(zap.NewNop()),
+				WithConfig(&Config{MetadataWriteSampleRatio: 1}),
+				WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+			)
+			require.NoError(t, err)
+
+			metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+			first := exp.prepareBatch(context.Background(), metrics)
+			require.Equal(t, 1, len(first.ts))
+			assert.True(t, first.ts[0].writeCur)
+
+			err = exp.writeBatch(context.Background(), first)
+			if testCase.sendErr != nil {
+				require.ErrorIs(t, err, testCase.sendErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			second := exp.prepareBatch(context.Background(), metrics)
+			assert.Equal(t, 1, len(second.samples))
+			assert.Equal(t, testCase.wantTsOnSecondBatch, len(second.ts))
+		})
 	}
 }
