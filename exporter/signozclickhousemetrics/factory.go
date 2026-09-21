@@ -89,6 +89,8 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 }
 
 func createDefaultConfig() component.Config {
+	bucketSetCache := bucketsetcache.DefaultConfig()
+	bucketSetCache.PreWriteWindow = defaultPreWriteWindow
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
@@ -108,6 +110,6 @@ func createDefaultConfig() component.Config {
 			BufferTimeSeriesTable: "distributed_time_series_v4_buffer",
 		},
 		MetadataWriteSampleRatio: 1.0,
-		BucketSetCache:           bucketsetcache.DefaultConfig(),
+		BucketSetCache:           bucketSetCache,
 	}
 }

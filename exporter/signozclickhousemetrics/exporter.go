@@ -55,7 +55,10 @@ var (
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
-const timeSeriesBucket = time.Hour
+const (
+	timeSeriesBucket      = time.Hour
+	defaultPreWriteWindow = 10 * time.Minute
+)
 
 type clickhouseMetricsExporter struct {
 	cfg           *Config
