@@ -29,16 +29,15 @@ Optional:
   within a batch; lowering the ratio additionally samples them, trading
   attribute-catalog completeness for fewer writes on extreme-ingest systems
   where the same attribute keys repeat across thousands of metrics.
-- `time_bucketed_set`: how series registration rows (one per series per hour
-  in the time-series table) are deduplicated. Off by default, which keeps the
-  in-memory TTL cache: every datapoint builds its row and the cache decides at
-  write time. When enabled, a per-hour set backed by
-  [`pkg/timebucketedset`](../../pkg/timebucketedset) decides per datapoint
-  before labels are built, marks a series only after its batch is sent, and
-  pre-writes the next hour's row during the last `pre_write_window` of the
-  hour, staggered by series, so the hourly re-registration burst is spread out.
-  The set reports `otelcol.timebucketedset.*` internal metrics with an
-  `exporter` attribute.
+- `time_bucketed_set`: how time series rows (one per series per hour) are
+  deduplicated. Off by default, which keeps the in-memory TTL cache: every
+  datapoint builds its row and the cache decides at write time. When enabled,
+  a per-hour set backed by [`pkg/timebucketedset`](../../pkg/timebucketedset)
+  decides per datapoint before labels are built, marks a series only after its
+  batch is sent, and pre-writes the next hour's row during the last
+  `pre_write_window` of the hour, staggered by series, so the hourly burst of
+  rewriting every series is spread out. The set reports
+  `otelcol.timebucketedset.*` internal metrics with an `exporter` attribute.
   - `enabled` (default `false`)
   - `max_buckets` (default `3`, min `2`): live hour buckets; a newer hour
     evicts the oldest when full.

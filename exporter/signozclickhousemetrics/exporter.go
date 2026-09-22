@@ -2,8 +2,10 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"math/rand/v2"
 	"strconv"
@@ -55,6 +57,9 @@ var (
 )
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
+
+// timeSeriesBucket is the width unix_milli is floored to in the time series table.
+const timeSeriesBucket = time.Hour
 
 type clickhouseMetricsExporter struct {
 	cfg                       *Config
@@ -141,6 +146,18 @@ type ts struct {
 	attrs              map[string]string
 	scopeAttrs         map[string]string
 	resourceAttrs      map[string]string
+}
+
+// timeSeriesID packs a fingerprint and its reduced flag into key. A series whose
+// rule drops nothing is its own reduction, so raw and reduced rows need
+// distinct ids.
+func timeSeriesID(key *[9]byte, fingerprint uint64, reduced bool) []byte {
+	binary.LittleEndian.PutUint64(key[:8], fingerprint)
+	key[8] = 0
+	if reduced {
+		key[8] = 1
+	}
+	return key[:]
 }
 
 // metadata maps to the metadata schema.
@@ -1175,7 +1192,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err := statement.Send(); err != nil {
 			return err
 		}
-		c.timeSeriesTimeBucketedSet.Apply(registeredRows(timeSeries))
+		c.timeSeriesTimeBucketedSet.Apply(writtenTimeSeriesIDs(timeSeries))
 		return nil
 	}
 
@@ -1378,6 +1395,66 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 	}
 
 	return errors.Join(errs...)
+}
+
+// writtenTimeSeriesIDs yields the id and bucket of every row written from
+// timeSeries, reusing one key buffer across yields.
+func writtenTimeSeriesIDs(timeSeries []ts) iter.Seq2[[]byte, int64] {
+	return func(yield func([]byte, int64) bool) {
+		var key [9]byte
+		for i := range timeSeries {
+			row := &timeSeries[i]
+			id := timeSeriesID(&key, row.fingerprint, row.isReduced)
+			if row.writeCurrent && !yield(id, row.bucketStart) {
+				return
+			}
+			if row.writeNext && !yield(id, row.bucketStart+timeSeriesBucket.Milliseconds()) {
+				return
+			}
+		}
+	}
+}
+
+func (c *clickhouseMetricsExporter) appendTimeSeriesRow(statement driver.Batch, row *ts, unixMilli int64) error {
+	insertedAt := time.Now().UnixMilli()
+	if c.cfg.Reduction.Enabled {
+		return statement.Append(
+			row.env,
+			row.temporality.String(),
+			row.metricName,
+			row.description,
+			row.unit,
+			row.typ.String(),
+			row.isMonotonic,
+			row.fingerprint,
+			row.reducedFingerprint,
+			row.isReduced,
+			unixMilli,
+			row.labels,
+			row.attrs,
+			row.scopeAttrs,
+			row.resourceAttrs,
+			false,
+			insertedAt,
+		)
+	}
+	return statement.Append(
+		row.env,
+		row.temporality.String(),
+		row.metricName,
+		row.description,
+		row.unit,
+		row.typ.String(),
+		row.isMonotonic,
+		row.fingerprint,
+		unixMilli,
+		row.labels,
+		row.attrs,
+		row.scopeAttrs,
+		row.resourceAttrs,
+		false,
+		insertedAt,
+	)
 }
 
 func (c *clickhouseMetricsExporter) collectUsageForSample(s *sample) bool {

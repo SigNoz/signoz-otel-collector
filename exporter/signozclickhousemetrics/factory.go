@@ -97,7 +97,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 
 func createDefaultConfig() component.Config {
 	timeBucketedSet := timebucketedset.DefaultConfig()
-	timeBucketedSet.PreWriteWindow = defaultPreWriteWindow
+	timeBucketedSet.PreWriteWindow = 15 * time.Minute
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),

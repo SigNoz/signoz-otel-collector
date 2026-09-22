@@ -17,7 +17,7 @@ type batch struct {
 	metadata []metadata
 	// per-batch dedup of metadata rows by identity (metaKey)
 	metaIdx map[metaKey]int
-	// per-batch dedup of registration rows: the time bucketed set is only marked
+	// per-batch dedup of time series rows: the time bucketed set is only marked
 	// after a successful send, so repeats within one batch must be caught here
 	tsSeen   map[tsKey]struct{}
 	nowMilli int64
@@ -26,7 +26,7 @@ type batch struct {
 	logger                    *zap.Logger
 }
 
-// tsKey identifies a registration row within one batch.
+// tsKey identifies a time series row within one batch.
 type tsKey struct {
 	fingerprint uint64
 	reduced     bool
@@ -126,7 +126,7 @@ func (row *ts) setLabels(fingerprint *pkgfingerprint.Fingerprint, scopeAttrs, re
 	row.resourceAttrs = resourceAttrs
 }
 
-// planTimeSeries adds the registration rows one datapoint needs. row carries
+// planTimeSeries adds the time series rows one datapoint needs. row carries
 // only scalar fields. Without the time bucketed set every row is built and the
 // TTL cache decides at write time; with it, labels are built solely for rows
 // that will be written, which in steady state is none.
@@ -145,11 +145,11 @@ func (b *batch) planTimeSeries(row ts, fingerprint *pkgfingerprint.Fingerprint, 
 
 	var key [9]byte
 	if !b.seenTs(tsKey{fingerprint: row.fingerprint, bucketStart: row.bucketStart}) {
-		row.writeCurrent, row.writeNext = b.timeSeriesTimeBucketedSet.Plan(seriesID(&key, row.fingerprint, false), row.bucketStart, b.nowMilli)
+		row.writeCurrent, row.writeNext = b.timeSeriesTimeBucketedSet.Plan(timeSeriesID(&key, row.fingerprint, false), row.bucketStart, b.nowMilli)
 	}
 	var reducedCurrent, reducedNext bool
 	if reduced != nil && !b.seenTs(tsKey{fingerprint: reduced.fingerprint, reduced: true, bucketStart: row.bucketStart}) {
-		reducedCurrent, reducedNext = b.timeSeriesTimeBucketedSet.Plan(seriesID(&key, reduced.fingerprint, true), row.bucketStart, b.nowMilli)
+		reducedCurrent, reducedNext = b.timeSeriesTimeBucketedSet.Plan(timeSeriesID(&key, reduced.fingerprint, true), row.bucketStart, b.nowMilli)
 	}
 
 	if row.writeCurrent || row.writeNext {

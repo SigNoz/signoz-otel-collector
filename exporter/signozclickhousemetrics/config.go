@@ -12,7 +12,6 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 )
 
-// Config defines configuration for ClickHouse Metrics exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`                                 // squash ensures fields are correctly decoded in embedded struct.
 	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
@@ -53,8 +52,8 @@ type ReductionConfig struct {
 }
 
 // TimeBucketedSetConfig, when enabled, replaces the TTL cache that deduplicates
-// time series registration rows with pkg/timebucketedset: one row per series
-// per hour, pre-written for the next hour over pre_write_window.
+// time series rows with pkg/timebucketedset: one row per series per hour,
+// pre-written for the next hour over pre_write_window.
 type TimeBucketedSetConfig struct {
 	Enabled                bool `mapstructure:"enabled"`
 	timebucketedset.Config `mapstructure:",squash"`
