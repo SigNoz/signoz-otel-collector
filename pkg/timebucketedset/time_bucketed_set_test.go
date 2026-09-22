@@ -149,7 +149,7 @@ func TestBuckets_Lifecycle(t *testing.T) {
 	width := time.Hour
 
 	nthBucket := func(n int64) int64 { return baseUnixMilliseconds + n*(width.Milliseconds()) }
-	a, b, c, d := []byte{0xaa}, []byte{0xbb}, []byte{0xcc}, []byte{0xdd}
+	a, b, c := []byte{0xaa}, []byte{0xbb}, []byte{0xcc}
 
 	testCases := []struct {
 		name            string
@@ -175,12 +175,11 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "EvictedBucket_ForgetsItsIds",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // a added to 0th bucket
 				ApplyStep(a, nthBucket(0)),
-				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(c, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(d, nthBucket(3), nthBucket(3)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(a, nthBucket(3), nthBucket(3)+2, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)), // b added to 1st bucket, set is full
+				PlanStep(c, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)), // 0th bucket evicted, its cache now serves the 2nd bucket
+				PlanStep(a, nthBucket(2), nthBucket(2)+2, ExpectedBool(true), ExpectedBool(false)), // a must not leak from the reused cache
 			},
 			expectedBuckets: 2,
 		},
@@ -188,11 +187,11 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "OlderThanAllLive_WhenFull_Uncacheable",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(c, nthBucket(0), nthBucket(2)+2, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(c, nthBucket(0)),
-				PlanStep(c, nthBucket(0), nthBucket(2)+3, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)), // a added to 1st bucket
+				PlanStep(b, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)), // b added to 2nd bucket, set is full
+				PlanStep(c, nthBucket(0), nthBucket(2)+2, ExpectedBool(true), ExpectedBool(false)), // 0th bucket is older than every live bucket, so none is created
+				ApplyStep(c, nthBucket(0)), // dropped, there is no 0th bucket
+				PlanStep(c, nthBucket(0), nthBucket(2)+3, ExpectedBool(true), ExpectedBool(false)), // c is still unregistered
 			},
 			expectedBuckets: 2,
 		},
@@ -200,10 +199,10 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "OlderThanAllLive_WhenNotFull_Cacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, nthBucket(0), nthBucket(1)+2, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)), // a added to 1st bucket
+				PlanStep(b, nthBucket(0), nthBucket(1)+2, ExpectedBool(true), ExpectedBool(false)), // set is not full, so the older 0th bucket is created
 				ApplyStep(b, nthBucket(0)),
-				PlanStep(b, nthBucket(0), nthBucket(1)+3, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(b, nthBucket(0), nthBucket(1)+3, ExpectedBool(false), ExpectedBool(false)), // b is registered in the 0th bucket
 			},
 			expectedBuckets: 2,
 		},
@@ -211,9 +210,9 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "FutureBeyondOneWidth_Uncacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, nthBucket(2), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(a, nthBucket(2)),
-				PlanStep(a, nthBucket(2), nthBucket(0)+2, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(2), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // 2nd bucket is more than one width ahead of now, so none is created
+				ApplyStep(a, nthBucket(2)), // dropped, there is no 2nd bucket
+				PlanStep(a, nthBucket(2), nthBucket(0)+2, ExpectedBool(true), ExpectedBool(false)), // a is still unregistered
 			},
 			expectedBuckets: 0,
 		},
@@ -221,9 +220,9 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "FutureWithinOneWidth_Cacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, nthBucket(1), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // 1st bucket is exactly one width ahead of now, so it is created
 				ApplyStep(a, nthBucket(1)),
-				PlanStep(a, nthBucket(1), nthBucket(0)+2, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(0)+2, ExpectedBool(false), ExpectedBool(false)), // a is registered in the 1st bucket
 			},
 			expectedBuckets: 1,
 		},
@@ -231,12 +230,12 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "JumpAhead_EvictsOnePerNewBucket",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // a added to 0th bucket
+				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)), // b added to 1st bucket, set is full
 				ApplyStep(b, nthBucket(1)),
-				PlanStep(c, nthBucket(5), nthBucket(5)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, nthBucket(1), nthBucket(5)+2, ExpectedBool(false), ExpectedBool(false)),
-				PlanStep(a, nthBucket(0), nthBucket(5)+3, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(c, nthBucket(5), nthBucket(5)+1, ExpectedBool(true), ExpectedBool(false)),  // 5th bucket evicts only the 0th bucket
+				PlanStep(b, nthBucket(1), nthBucket(5)+2, ExpectedBool(false), ExpectedBool(false)), // 1st bucket survived, so b is still registered
+				PlanStep(a, nthBucket(0), nthBucket(5)+3, ExpectedBool(true), ExpectedBool(false)),  // 0th bucket was evicted, so current is true
 			},
 			expectedBuckets: 2,
 		},
@@ -244,12 +243,13 @@ func TestBuckets_Lifecycle(t *testing.T) {
 			name:       "Apply_ForBucketNeverCreated_Dropped",
 			maxBuckets: 3,
 			steps: []Step{
-				ApplyStep(a, nthBucket(0)),
-				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(a, nthBucket(0)), // dropped, there is no 0th bucket yet
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // 0th bucket created, a is unregistered
 			},
 			expectedBuckets: 1,
 		},
 	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			set := newSet(t, time.Hour, testCase.maxBuckets, 0)
@@ -259,8 +259,6 @@ func TestBuckets_Lifecycle(t *testing.T) {
 	}
 }
 
-// Eviction hands the old bucket's cache to the new bucket instead of
-// allocating another 32 MiB instance.
 func TestBuckets_EvictedCacheIsReused(t *testing.T) {
 	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
 	hour := time.Hour.Milliseconds()
@@ -278,16 +276,20 @@ func TestBuckets_EvictedCacheIsReused(t *testing.T) {
 }
 
 func TestPreWrite(t *testing.T) {
-	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
-	hour := time.Hour.Milliseconds()
+	baseUnixMilliseconds := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+	width := time.Hour.Milliseconds()
+
 	window := 10 * time.Minute
-	windowStart := base + hour - window.Milliseconds()
+	windowStart := baseUnixMilliseconds + width - window.Milliseconds()
 	id := []byte{0x51, 0x6e, 0x30, 0x7a}
+
 	// slots are deterministic in the id, so pick one id early and one late in the window
 	slot := func(id []byte) int64 { return int64(xxhash.Sum64(id) % uint64(window.Milliseconds())) }
 	var early, late []byte
+
 	for i := 0; i < 256 && (early == nil || late == nil); i++ {
 		candidate := []byte{byte(i), 0x99}
+
 		switch {
 		case early == nil && slot(candidate) < 2*time.Minute.Milliseconds():
 			early = candidate
@@ -309,25 +311,27 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: 0,
 			steps: []Step{
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, base+hour-1, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(false)), // last millisecond of the bucket, pre-write is off so next is false
 			},
 		},
 		{
 			name:           "UnregisteredId_NoNext",
 			maxBuckets:     3,
 			preWriteWindow: window,
-			steps:          []Step{PlanStep(id, base, base+hour-1, ExpectedBool(true), ExpectedBool(false))},
+			steps: []Step{
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(true), ExpectedBool(false)), // id is unregistered, so current wins and next is never considered
+			},
 		},
 		{
 			name:           "BeforeWindowStart_NoNext",
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, windowStart-1, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, windowStart-1, ExpectedBool(false), ExpectedBool(false)), // one millisecond before the window opens
 			},
 		},
 		{
@@ -335,9 +339,9 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(late, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(late, base),
-				PlanStep(late, base, base+hour-1, ExpectedBool(false), ExpectedBool(true)),
+				PlanStep(late, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // late added to 0th bucket
+				ApplyStep(late, baseUnixMilliseconds),
+				PlanStep(late, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(true)), // last millisecond of the bucket, even the latest slot is eligible
 			},
 		},
 		{
@@ -345,12 +349,12 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(early, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(early, base),
-				PlanStep(late, base, base+2, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(late, base),
-				PlanStep(early, base, windowStart+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(true)),
-				PlanStep(late, base, windowStart+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(early, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // early added to 0th bucket
+				ApplyStep(early, baseUnixMilliseconds),
+				PlanStep(late, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(true), ExpectedBool(false)), // late added to 0th bucket
+				ApplyStep(late, baseUnixMilliseconds),
+				PlanStep(early, baseUnixMilliseconds, windowStart+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(true)), // 5 minutes into the window, early's slot has passed
+				PlanStep(late, baseUnixMilliseconds, windowStart+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(false)), // late's slot has not come yet
 			},
 		},
 		{
@@ -358,11 +362,11 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, base+hour-1, ExpectedBool(false), ExpectedBool(true)),
-				ApplyStep(id, base+hour),
-				PlanStep(id, base, base+hour-1, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(true)), // eligible, so next is true
+				ApplyStep(id, baseUnixMilliseconds+width), // pre-write applied to the 1st bucket
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(false)), // already in the 1st bucket, so next is false
 			},
 		},
 		{
@@ -370,11 +374,11 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, base+hour-1, ExpectedBool(false), ExpectedBool(true)),
-				ApplyStep(id, base+hour),
-				PlanStep(id, base+hour, base+hour+1, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(true)), // eligible, so next is true
+				ApplyStep(id, baseUnixMilliseconds+width), // pre-write applied to the 1st bucket
+				PlanStep(id, baseUnixMilliseconds+width, baseUnixMilliseconds+width+1, ExpectedBool(false), ExpectedBool(false)), // id arrives in the 1st bucket already registered
 			},
 		},
 		{
@@ -382,9 +386,9 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     3,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, base+hour+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width+5*time.Minute.Milliseconds(), ExpectedBool(false), ExpectedBool(false)), // 0th bucket already ended, so there is nothing to pre-write
 			},
 		},
 		{
@@ -392,15 +396,16 @@ func TestPreWrite(t *testing.T) {
 			maxBuckets:     2,
 			preWriteWindow: window,
 			steps: []Step{
-				PlanStep(early, base-hour, base-hour+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(early, base-hour),
-				PlanStep(id, base, base+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(id, base),
-				PlanStep(id, base, base+hour-1, ExpectedBool(false), ExpectedBool(true)),
-				PlanStep(early, base-hour, base+hour-1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(early, baseUnixMilliseconds-width, baseUnixMilliseconds-width+1, ExpectedBool(true), ExpectedBool(false)), // early added to the previous bucket
+				ApplyStep(early, baseUnixMilliseconds-width),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1, ExpectedBool(true), ExpectedBool(false)), // id added to 0th bucket, set is full
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+width-1, ExpectedBool(false), ExpectedBool(true)),          // pre-write creates the 1st bucket, evicting the previous bucket
+				PlanStep(early, baseUnixMilliseconds-width, baseUnixMilliseconds+width-1, ExpectedBool(true), ExpectedBool(false)), // its bucket is gone and older than every live bucket, so current is true
 			},
 		},
 	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			require.NoError(t, RunSteps(newSet(t, time.Hour, testCase.maxBuckets, testCase.preWriteWindow), testCase.steps))
@@ -411,7 +416,7 @@ func TestPreWrite(t *testing.T) {
 // A Plan for an id in a bucket it was never applied to must be true even while
 // buckets are evicted and their caches reused underneath it; this is what the
 // read lock spanning every fastcache call guarantees.
-func TestConcurrent_PlanApply_NoStaleRegistration(t *testing.T) {
+func TestConcurrent_PlanApply_NoStale(t *testing.T) {
 	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
 	hour := time.Hour.Milliseconds()
 	set := newSet(t, time.Hour, 2, 0)
@@ -441,10 +446,13 @@ func TestConcurrent_PlanApply_NoStaleRegistration(t *testing.T) {
 				bucket := base + n*hour
 				cur, _ := set.Plan(id, bucket, bucket+1)
 				assert.True(t, cur, "worker %v: bucket %d planned as registered before any apply", id, n)
-				set.Apply(SingleRow(id, bucket))
+				set.Apply(func(yield func([]byte, int64) bool) {
+					yield(id, bucket)
+				})
 			}
 		}([]byte{byte(w), 0x01})
 	}
+
 	work.Wait()
 	close(stop)
 	advancer.Wait()

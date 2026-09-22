@@ -2,7 +2,6 @@ package timebucketedset
 
 import (
 	"fmt"
-	"iter"
 )
 
 type opType int
@@ -55,20 +54,15 @@ func RunSteps(set *Set, steps []Step) error {
 				return fmt.Errorf("step %d: next is %t, expected %t", i, next, *step.expectedNext)
 			}
 		case opApply:
-			set.Apply(SingleRow(step.id, step.bucketStartUnixMilliseconds))
+			set.Apply(func(yield func([]byte, int64) bool) {
+				yield(step.id, step.bucketStartUnixMilliseconds)
+			})
 		default:
 			return fmt.Errorf("step %d: unknown op %d", i, step.op)
 		}
 	}
 
 	return nil
-}
-
-// SingleRow is an Apply input holding one row.
-func SingleRow(id []byte, bucketStartUnixMilliseconds int64) iter.Seq2[[]byte, int64] {
-	return func(yield func([]byte, int64) bool) {
-		yield(id, bucketStartUnixMilliseconds)
-	}
 }
 
 // ExpectedBool wraps an expected Plan answer; pass nil to leave it unchecked.
