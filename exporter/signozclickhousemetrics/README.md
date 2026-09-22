@@ -29,6 +29,23 @@ Optional:
   within a batch; lowering the ratio additionally samples them, trading
   attribute-catalog completeness for fewer writes on extreme-ingest systems
   where the same attribute keys repeat across thousands of metrics.
+- `time_bucketed_set`: how series registration rows (one per series per hour
+  in the time-series table) are deduplicated. Off by default, which keeps the
+  in-memory TTL cache: every datapoint builds its row and the cache decides at
+  write time. When enabled, a per-hour set backed by
+  [`pkg/timebucketedset`](../../pkg/timebucketedset) decides per datapoint
+  before labels are built, marks a series only after its batch is sent, and
+  pre-writes the next hour's row during the last `pre_write_window` of the
+  hour, staggered by series, so the hourly re-registration burst is spread out.
+  The set reports `otelcol.timebucketedset.*` internal metrics with an
+  `exporter` attribute.
+  - `enabled` (default `false`)
+  - `max_buckets` (default `3`, min `2`): live hour buckets; a newer hour
+    evicts the oldest when full.
+  - `max_bucket_size` (default `268435456`, min `33554432`): bytes per bucket,
+    about 19M series per 256 MiB. Allocated as mmap chunks, outside what
+    `memory_limiter` sees.
+  - `pre_write_window` (default `15m`, `0` disables): must be under `1h`.
 - `timeout`, `retry_on_failure`, `sending_queue`: standard
   [exporterhelper](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/exporterhelper)
   settings.

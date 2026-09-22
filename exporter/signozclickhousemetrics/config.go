@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 )
 
 // Config defines configuration for ClickHouse Metrics exporter.
@@ -28,6 +30,8 @@ type Config struct {
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
 
+	TimeBucketedSet TimeBucketedSetConfig `mapstructure:"time_bucketed_set"`
+
 	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
 	// written per batch; 1.0 (default) writes all. Opt-in; lowering it trades
 	// attribute-catalog completeness for fewer writes at extreme ingest.
@@ -46,6 +50,14 @@ type ReductionConfig struct {
 	// TimeSeriesTable as the write targets when reduction is enabled.
 	BufferSamplesTable    string `mapstructure:"buffer_samples_table"`
 	BufferTimeSeriesTable string `mapstructure:"buffer_time_series_table"`
+}
+
+// TimeBucketedSetConfig, when enabled, replaces the TTL cache that deduplicates
+// time series registration rows with pkg/timebucketedset: one row per series
+// per hour, pre-written for the next hour over pre_write_window.
+type TimeBucketedSetConfig struct {
+	Enabled                bool `mapstructure:"enabled"`
+	timebucketedset.Config `mapstructure:",squash"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -71,6 +83,12 @@ func (cfg *Config) Validate() error {
 
 	if cfg.MetadataWriteSampleRatio <= 0 || cfg.MetadataWriteSampleRatio > 1 {
 		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
+	}
+
+	if cfg.TimeBucketedSet.Enabled {
+		if err := cfg.TimeBucketedSet.WithDefaults().Validate(timeSeriesBucket); err != nil {
+			return err
+		}
 	}
 
 	if cfg.Reduction.Enabled {
