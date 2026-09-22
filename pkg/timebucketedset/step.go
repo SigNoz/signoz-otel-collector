@@ -1,6 +1,9 @@
 package timebucketedset
 
-import "fmt"
+import (
+	"fmt"
+	"iter"
+)
 
 type opType int
 
@@ -41,8 +44,6 @@ func ApplyStep(id []byte, bucketStartUnixMilliseconds int64) Step {
 
 // RunSteps executes steps in order and stops at the first Plan whose answer differs from a non-nil expectation.
 func RunSteps(set *Set, steps []Step) error {
-	items := &Items{}
-
 	for i, step := range steps {
 		switch step.op {
 		case opPlan:
@@ -53,11 +54,8 @@ func RunSteps(set *Set, steps []Step) error {
 			if step.expectedNext != nil && next != *step.expectedNext {
 				return fmt.Errorf("step %d: next is %t, expected %t", i, next, *step.expectedNext)
 			}
-
 		case opApply:
-			items.Add(step.id, step.bucketStartUnixMilliseconds)
-			set.Apply(items)
-
+			set.Apply(SingleRow(step.id, step.bucketStartUnixMilliseconds))
 		default:
 			return fmt.Errorf("step %d: unknown op %d", i, step.op)
 		}
@@ -66,6 +64,14 @@ func RunSteps(set *Set, steps []Step) error {
 	return nil
 }
 
+// SingleRow is an Apply input holding one row.
+func SingleRow(id []byte, bucketStartUnixMilliseconds int64) iter.Seq2[[]byte, int64] {
+	return func(yield func([]byte, int64) bool) {
+		yield(id, bucketStartUnixMilliseconds)
+	}
+}
+
+// ExpectedBool wraps an expected Plan answer; pass nil to leave it unchecked.
 func ExpectedBool(v bool) *bool {
 	return &v
 }

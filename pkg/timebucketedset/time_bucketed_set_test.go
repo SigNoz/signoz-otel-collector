@@ -19,6 +19,7 @@ func newSet(t *testing.T, width time.Duration, maxBuckets int, preWriteWindow ti
 
 func TestBucketStart(t *testing.T) {
 	hour := time.Date(2026, 9, 22, 3, 0, 0, 0, time.UTC).UnixMilli()
+
 	testCases := []struct {
 		name      string
 		width     time.Duration
@@ -31,6 +32,7 @@ func TestBucketStart(t *testing.T) {
 		{name: "HalfHourWidth_FirstHalf_RoundsToHour", width: 30 * time.Minute, unixMilli: hour + 29*time.Minute.Milliseconds(), want: hour},
 		{name: "HalfHourWidth_SecondHalf_RoundsToHalfHour", width: 30 * time.Minute, unixMilli: hour + 31*time.Minute.Milliseconds(), want: hour + 30*time.Minute.Milliseconds()},
 	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			set := newSet(t, testCase.width, 2, 0)
@@ -39,204 +41,220 @@ func TestBucketStart(t *testing.T) {
 	}
 }
 
-func TestPlan_Registration(t *testing.T) {
-	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
-	hour := time.Hour.Milliseconds()
-	series := []byte{0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 0}
-	reduced := []byte{0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 1}
+func TestPlanAndApply(t *testing.T) {
+	baseUnixMilliseconds := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+	width := time.Hour
+
+	id := []byte{0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 0}
+	differentId := []byte{0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 1}
+
 	testCases := []struct {
 		name  string
 		steps []Step
 	}{
 		{
-			name:  "FirstSighting_CurTrue_NextFalse",
-			steps: []Step{PlanStep(series, base, base+1_000, ExpectedBool(true), ExpectedBool(false))},
+			name: "FirstSighting_CurrentTrue_NextFalse",
+			steps: []Step{
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1_000, ExpectedBool(true), ExpectedBool(false)),
+			},
 		},
 		{
 			name: "NotApplied_ReplannedOnNextCall",
 			steps: []Step{
-				PlanStep(series, base, base+1_000, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(series, base, base+2_000, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1_000, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+2_000, ExpectedBool(true), ExpectedBool(false)),
 			},
 		},
 		{
 			name: "Applied_NotReplanned",
 			steps: []Step{
-				PlanStep(series, base, base+1_000, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(series, base),
-				PlanStep(series, base, base+2_000, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1_000, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+2_000, ExpectedBool(false), ExpectedBool(false)),
 			},
 		},
 		{
 			name: "DistinctIds_Independent",
 			steps: []Step{
-				PlanStep(series, base, base+1_000, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(series, base),
-				PlanStep(reduced, base, base+2_000, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1_000, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(differentId, baseUnixMilliseconds, baseUnixMilliseconds+2_000, ExpectedBool(true), ExpectedBool(false)),
 			},
 		},
 		{
 			name: "SameId_DifferentBucket_Independent",
 			steps: []Step{
-				PlanStep(series, base, base+1_000, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(series, base),
-				PlanStep(series, base+hour, base+hour+1_000, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(id, baseUnixMilliseconds, baseUnixMilliseconds+1_000, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(id, baseUnixMilliseconds),
+				PlanStep(id, baseUnixMilliseconds+time.Hour.Milliseconds(), baseUnixMilliseconds+time.Hour.Milliseconds()+1_000, ExpectedBool(true), ExpectedBool(false)),
 			},
 		},
 	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			require.NoError(t, RunSteps(newSet(t, time.Hour, 3, 0), testCase.steps))
+			require.NoError(t, RunSteps(newSet(t, width, 3, 0), testCase.steps))
 		})
 	}
 }
 
-func TestApply_CopiesId(t *testing.T) {
-	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+func TestApply_MarksEveryYieldedRow(t *testing.T) {
+	baseUnixMilliseconds := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+	nextUnixMilliseconds := baseUnixMilliseconds + time.Hour.Milliseconds()
 	set := newSet(t, time.Hour, 3, 0)
-	buffer := []byte{7, 7, 7}
-	cur, _ := set.Plan(buffer, base, base+1_000)
-	require.True(t, cur)
+	first, second, third := []byte{1}, []byte{2}, []byte{3}
+	set.Plan(first, baseUnixMilliseconds, baseUnixMilliseconds+1)
+	set.Plan(third, nextUnixMilliseconds, nextUnixMilliseconds+1)
 
-	items := &Items{}
-	items.Add(buffer, base)
-	buffer[0] = 0
-	set.Apply(items)
+	set.Apply(func(yield func([]byte, int64) bool) {
+		yield(first, baseUnixMilliseconds)
+		yield(second, baseUnixMilliseconds)
+		yield(third, nextUnixMilliseconds)
+	})
 
-	cur, _ = set.Plan([]byte{7, 7, 7}, base, base+2_000)
-	assert.False(t, cur, "the id as added must be registered")
-	cur, _ = set.Plan([]byte{0, 7, 7}, base, base+2_000)
-	assert.True(t, cur, "the mutated buffer must not be registered")
+	require.NoError(t, RunSteps(set, []Step{
+		PlanStep(first, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(false), nil),
+		PlanStep(second, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(false), nil),
+		PlanStep(third, nextUnixMilliseconds, nextUnixMilliseconds+2, ExpectedBool(false), nil),
+	}))
 }
 
-func TestApply_EmptiesItemsForReuse(t *testing.T) {
-	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+// The exporter builds each key into one scratch buffer per batch; Apply must
+// have finished with an id before the next yield overwrites it.
+func TestApply_KeyBufferReusedAcrossYields(t *testing.T) {
+	baseUnixMilliseconds := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
 	set := newSet(t, time.Hour, 3, 0)
-	first, second := []byte{1}, []byte{2}
-	set.Plan(first, base, base+1_000)
+	set.Plan([]byte{0}, baseUnixMilliseconds, baseUnixMilliseconds+1)
 
-	items := &Items{}
-	items.Add(first, base)
-	items.Add(first, base)
-	require.Equal(t, 2, items.Len())
-	set.Apply(items)
-	assert.Equal(t, 0, items.Len())
+	var scratch [3]byte
+	set.Apply(func(yield func([]byte, int64) bool) {
+		for _, last := range []byte{7, 8, 9} {
+			scratch = [3]byte{1, 2, last}
+			if !yield(scratch[:], baseUnixMilliseconds) {
+				return
+			}
+		}
+	})
 
-	items.Add(second, base)
-	set.Apply(items)
-	cur, _ := set.Plan(second, base, base+2_000)
-	assert.False(t, cur)
+	require.NoError(t, RunSteps(set, []Step{
+		PlanStep([]byte{1, 2, 7}, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(false), nil),
+		PlanStep([]byte{1, 2, 8}, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(false), nil),
+		PlanStep([]byte{1, 2, 9}, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(false), nil),
+		PlanStep([]byte{1, 2, 0}, baseUnixMilliseconds, baseUnixMilliseconds+2, ExpectedBool(true), nil),
+	}))
 }
 
 func TestBuckets_Lifecycle(t *testing.T) {
-	base := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
-	hour := time.Hour.Milliseconds()
-	bucket := func(n int64) int64 { return base + n*hour }
+	baseUnixMilliseconds := time.Date(2026, 9, 22, 4, 0, 0, 0, time.UTC).UnixMilli()
+	width := time.Hour
+
+	nthBucket := func(n int64) int64 { return baseUnixMilliseconds + n*(width.Milliseconds()) }
 	a, b, c, d := []byte{0xaa}, []byte{0xbb}, []byte{0xcc}, []byte{0xdd}
+
 	testCases := []struct {
 		name            string
 		maxBuckets      int
 		steps           []Step
-		wantLiveBuckets int
+		expectedBuckets int
 	}{
 		{
 			name:       "NewerBucket_WhenFull_EvictsOldest",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, bucket(0), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(a, bucket(0)),
-				PlanStep(b, bucket(1), bucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(b, bucket(1)),
-				PlanStep(c, bucket(2), bucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, bucket(1), bucket(2)+2, ExpectedBool(false), ExpectedBool(false)),
-				PlanStep(a, bucket(0), bucket(2)+3, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)), // a added to 0th bucket
+				ApplyStep(a, nthBucket(0)),
+				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)), // b added to 1st bucket
+				ApplyStep(b, nthBucket(1)),
+				PlanStep(c, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)),  // c added to a new bucket (a's bucket was reassigned to c)
+				PlanStep(b, nthBucket(1), nthBucket(2)+2, ExpectedBool(false), ExpectedBool(false)), // b still has a bucket, so current is false
+				PlanStep(a, nthBucket(0), nthBucket(2)+3, ExpectedBool(true), ExpectedBool(false)),  // a's bucket was deleted, so current is true
 			},
-			wantLiveBuckets: 2,
+			expectedBuckets: 2,
 		},
 		{
 			name:       "EvictedBucket_ForgetsItsIds",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, bucket(0), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(a, bucket(0)),
-				PlanStep(b, bucket(1), bucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(c, bucket(2), bucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(d, bucket(3), bucket(3)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(a, bucket(3), bucket(3)+2, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(a, nthBucket(0)),
+				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(c, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(d, nthBucket(3), nthBucket(3)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(3), nthBucket(3)+2, ExpectedBool(true), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 2,
+			expectedBuckets: 2,
 		},
 		{
 			name:       "OlderThanAllLive_WhenFull_Uncacheable",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, bucket(1), bucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, bucket(2), bucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(c, bucket(0), bucket(2)+2, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(c, bucket(0)),
-				PlanStep(c, bucket(0), bucket(2)+3, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(b, nthBucket(2), nthBucket(2)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(c, nthBucket(0), nthBucket(2)+2, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(c, nthBucket(0)),
+				PlanStep(c, nthBucket(0), nthBucket(2)+3, ExpectedBool(true), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 2,
+			expectedBuckets: 2,
 		},
 		{
 			name:       "OlderThanAllLive_WhenNotFull_Cacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, bucket(1), bucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, bucket(0), bucket(1)+2, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(b, bucket(0)),
-				PlanStep(b, bucket(0), bucket(1)+3, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(b, nthBucket(0), nthBucket(1)+2, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(b, nthBucket(0)),
+				PlanStep(b, nthBucket(0), nthBucket(1)+3, ExpectedBool(false), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 2,
+			expectedBuckets: 2,
 		},
 		{
 			name:       "FutureBeyondOneWidth_Uncacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, bucket(2), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(a, bucket(2)),
-				PlanStep(a, bucket(2), bucket(0)+2, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(2), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(a, nthBucket(2)),
+				PlanStep(a, nthBucket(2), nthBucket(0)+2, ExpectedBool(true), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 0,
+			expectedBuckets: 0,
 		},
 		{
 			name:       "FutureWithinOneWidth_Cacheable",
 			maxBuckets: 3,
 			steps: []Step{
-				PlanStep(a, bucket(1), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(a, bucket(1)),
-				PlanStep(a, bucket(1), bucket(0)+2, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(a, nthBucket(1), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(a, nthBucket(1)),
+				PlanStep(a, nthBucket(1), nthBucket(0)+2, ExpectedBool(false), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 1,
+			expectedBuckets: 1,
 		},
 		{
 			name:       "JumpAhead_EvictsOnePerNewBucket",
 			maxBuckets: 2,
 			steps: []Step{
-				PlanStep(a, bucket(0), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, bucket(1), bucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
-				ApplyStep(b, bucket(1)),
-				PlanStep(c, bucket(5), bucket(5)+1, ExpectedBool(true), ExpectedBool(false)),
-				PlanStep(b, bucket(1), bucket(5)+2, ExpectedBool(false), ExpectedBool(false)),
-				PlanStep(a, bucket(0), bucket(5)+3, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(b, nthBucket(1), nthBucket(1)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(b, nthBucket(1)),
+				PlanStep(c, nthBucket(5), nthBucket(5)+1, ExpectedBool(true), ExpectedBool(false)),
+				PlanStep(b, nthBucket(1), nthBucket(5)+2, ExpectedBool(false), ExpectedBool(false)),
+				PlanStep(a, nthBucket(0), nthBucket(5)+3, ExpectedBool(true), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 2,
+			expectedBuckets: 2,
 		},
 		{
 			name:       "Apply_ForBucketNeverCreated_Dropped",
 			maxBuckets: 3,
 			steps: []Step{
-				ApplyStep(a, bucket(0)),
-				PlanStep(a, bucket(0), bucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
+				ApplyStep(a, nthBucket(0)),
+				PlanStep(a, nthBucket(0), nthBucket(0)+1, ExpectedBool(true), ExpectedBool(false)),
 			},
-			wantLiveBuckets: 1,
+			expectedBuckets: 1,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			set := newSet(t, time.Hour, testCase.maxBuckets, 0)
 			require.NoError(t, RunSteps(set, testCase.steps))
-			assert.Len(t, set.buckets, testCase.wantLiveBuckets)
+			assert.Len(t, set.buckets, testCase.expectedBuckets)
 		})
 	}
 }
@@ -419,13 +437,11 @@ func TestConcurrent_PlanApply_NoStaleRegistration(t *testing.T) {
 		work.Add(1)
 		go func(id []byte) {
 			defer work.Done()
-			items := &Items{}
 			for n := int64(0); n < rounds; n++ {
 				bucket := base + n*hour
 				cur, _ := set.Plan(id, bucket, bucket+1)
 				assert.True(t, cur, "worker %v: bucket %d planned as registered before any apply", id, n)
-				items.Add(id, bucket)
-				set.Apply(items)
+				set.Apply(SingleRow(id, bucket))
 			}
 		}([]byte{byte(w), 0x01})
 	}

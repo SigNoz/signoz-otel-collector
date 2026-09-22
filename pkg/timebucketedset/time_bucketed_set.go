@@ -1,6 +1,7 @@
 package timebucketedset
 
 import (
+	"iter"
 	"sync"
 	"time"
 
@@ -66,18 +67,19 @@ func (bs *Set) Plan(id []byte, bucketStartUnixMilliseconds int64, unixMillisecon
 	return false, nextBucket != nil && !nextBucket.Has(id)
 }
 
-func (bs *Set) Apply(items *Items) {
+// Apply marks every yielded (id, bucket start) as registered. Ids are only
+// read during the iteration, so the producer may reuse one key buffer across
+// yields. Rows for a bucket that is no longer live are ignored; the next Plan
+// for them is true again.
+func (bs *Set) Apply(rows iter.Seq2[[]byte, int64]) {
 	bs.mtx.RLock()
-	for i, id := range items.ids {
-		bucket, ok := bs.buckets[items.bucketKeys[i]]
-		if !ok {
-			continue
-		}
+	defer bs.mtx.RUnlock()
 
-		bucket.Set(id, nil)
+	for id, bucketStartUnixMilliseconds := range rows {
+		if bucket, ok := bs.buckets[bucketStartUnixMilliseconds]; ok {
+			bucket.Set(id, nil)
+		}
 	}
-	bs.mtx.RUnlock()
-	items.Reset()
 }
 
 func (bs *Set) getOrCreateBucket(bucketStartUnixMilliseconds int64, unixMilliseconds int64) *fastcache.Cache {
