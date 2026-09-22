@@ -3,10 +3,12 @@ package timebucketedset
 import (
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/collector/component/componenttest"
 )
 
 func BenchmarkPlan_Hit(b *testing.B) {
-	set, err := New(time.Hour, Config{MaxBuckets: 3, MaxBucketSize: 32 << 20})
+	set, err := New(time.Hour, Config{MaxBuckets: 3, MaxBucketSize: 32 << 20}, componenttest.NewNopTelemetrySettings())
 	if err != nil {
 		b.Fatal(err)
 	}

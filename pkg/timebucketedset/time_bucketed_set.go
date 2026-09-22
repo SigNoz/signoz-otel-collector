@@ -1,12 +1,15 @@
 package timebucketedset
 
 import (
+	"fmt"
 	"iter"
 	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/cespare/xxhash/v2"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Set struct {
@@ -27,21 +30,44 @@ type Set struct {
 
 	// Read Write mutex for internal bucket set operations.
 	mtx sync.RWMutex
+
+	telemetry *telemetry
 }
 
-func New(width time.Duration, config Config) (*Set, error) {
+// New reports metrics through settings, each carrying identifiers. Pass the
+// owning component's kind and ID, e.g. attribute.String("exporter",
+// set.ID.String()), plus anything that tells this set apart from others the
+// component owns.
+func New(width time.Duration, config Config, settings component.TelemetrySettings, identifiers ...attribute.KeyValue) (*Set, error) {
 	config = config.WithDefaults()
 	if err := config.Validate(width); err != nil {
 		return nil, err
 	}
 
-	return &Set{
+	telemetry, err := newTelemetry(settings, identifiers)
+	if err != nil {
+		return nil, fmt.Errorf("time_bucketed_set::telemetry: %w", err)
+	}
+
+	bs := &Set{
 		config:         config,
 		buckets:        make(map[int64]*fastcache.Cache, config.MaxBuckets),
 		width:          width.Milliseconds(),
 		preWriteWindow: config.PreWriteWindow.Milliseconds(),
-	}, nil
+		telemetry:      telemetry,
+	}
 
+	if err := telemetry.register(bs); err != nil {
+		telemetry.builder.Shutdown()
+		return nil, fmt.Errorf("time_bucketed_set::telemetry: %w", err)
+	}
+
+	return bs, nil
+}
+
+// Shutdown stops reporting metrics. The set stays usable.
+func (bs *Set) Shutdown() {
+	bs.telemetry.builder.Shutdown()
 }
 
 func (bs *Set) BucketStart(unixMilliseconds int64) int64 {
@@ -54,17 +80,29 @@ func (bs *Set) Plan(id []byte, bucketStartUnixMilliseconds int64, unixMillisecon
 
 	currentBucket := bs.getOrCreateBucket(bucketStartUnixMilliseconds, unixMilliseconds)
 	if currentBucket == nil {
+		bs.telemetry.noBucket.Add(1)
 		return true, false
 	}
 
 	// If the current bucket does not have the id or it's not in the pre-write window, next will always be false.
 	current := !currentBucket.Has(id)
-	if current || bs.preWriteWindow == 0 || !bs.isInPreWriteWindow(id, bucketStartUnixMilliseconds, unixMilliseconds) {
-		return current, false
+	if current {
+		bs.telemetry.miss.Add(1)
+		return true, false
+	}
+	if bs.preWriteWindow == 0 || !bs.isInPreWriteWindow(id, bucketStartUnixMilliseconds, unixMilliseconds) {
+		bs.telemetry.hit.Add(1)
+		return false, false
 	}
 
 	nextBucket := bs.getOrCreateBucket(bucketStartUnixMilliseconds+bs.width, unixMilliseconds)
-	return false, nextBucket != nil && !nextBucket.Has(id)
+	next := nextBucket != nil && !nextBucket.Has(id)
+	if next {
+		bs.telemetry.preWrite.Add(1)
+	} else {
+		bs.telemetry.hit.Add(1)
+	}
+	return false, next
 }
 
 // Apply marks every yielded (id, bucket start) as registered. Ids are only
@@ -75,11 +113,18 @@ func (bs *Set) Apply(rows iter.Seq2[[]byte, int64]) {
 	bs.mtx.RLock()
 	defer bs.mtx.RUnlock()
 
+	var applied, ignored int64
 	for id, bucketStartUnixMilliseconds := range rows {
-		if bucket, ok := bs.buckets[bucketStartUnixMilliseconds]; ok {
-			bucket.Set(id, nil)
+		bucket, ok := bs.buckets[bucketStartUnixMilliseconds]
+		if !ok {
+			ignored++
+			continue
 		}
+		bucket.Set(id, nil)
+		applied++
 	}
+	bs.telemetry.applied.Add(applied)
+	bs.telemetry.ignored.Add(ignored)
 }
 
 func (bs *Set) getOrCreateBucket(bucketStartUnixMilliseconds int64, unixMilliseconds int64) *fastcache.Cache {
@@ -124,6 +169,7 @@ func (bs *Set) createBucket(bucketStartUnixMilliseconds int64) {
 		// delete from the buckets map
 		bucket := bs.buckets[oldest]
 		delete(bs.buckets, oldest)
+		bs.telemetry.evictions.Add(1)
 
 		// reset and add to spare buckets
 		bucket.Reset()
