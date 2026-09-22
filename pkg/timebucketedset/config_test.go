@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
 )
 
 func TestConfig_WithDefaults(t *testing.T) {
@@ -109,7 +110,7 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestNew_AppliesDefaultsBeforeValidate(t *testing.T) {
-	set, err := New(time.Hour, Config{})
+	set, err := New(time.Hour, Config{}, componenttest.NewNopTelemetrySettings())
 	require.NoError(t, err)
 	assert.Equal(t, Config{MaxBuckets: 3, MaxBucketSize: 256 << 20}, set.config)
 }

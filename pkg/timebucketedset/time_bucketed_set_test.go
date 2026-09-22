@@ -1,6 +1,8 @@
 package timebucketedset
 
 import (
+	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -8,11 +10,17 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset/internal/metadatatest"
 )
 
 func newSet(t *testing.T, width time.Duration, maxBuckets int, preWriteWindow time.Duration) *Set {
 	t.Helper()
-	set, err := New(width, Config{MaxBuckets: maxBuckets, MaxBucketSize: 32 << 20, PreWriteWindow: preWriteWindow})
+	set, err := New(width, Config{MaxBuckets: maxBuckets, MaxBucketSize: 32 << 20, PreWriteWindow: preWriteWindow}, componenttest.NewNopTelemetrySettings())
 	require.NoError(t, err)
 	return set
 }
@@ -456,4 +464,169 @@ func TestConcurrent_PlanApply_NoStale(t *testing.T) {
 	work.Wait()
 	close(stop)
 	advancer.Wait()
+}
+
+func TestTelemetry(t *testing.T) {
+	base := time.Date(2026, 9, 22, 6, 0, 0, 0, time.UTC).UnixMilli()
+	hour := time.Hour.Milliseconds()
+	id := []byte{0x5a, 0x01}
+	otherId := []byte{0x5a, 0x02}
+	identifiers := []attribute.KeyValue{attribute.String("exporter", "clickhouselogs/main"), attribute.String("table", "resource_keys")}
+
+	withResult := func(result string) attribute.Set {
+		return attribute.NewSet(append(slices.Clone(identifiers), attribute.String("result", result))...)
+	}
+	planIds := func(miss, hit, preWrite, noBucket int64) []metricdata.DataPoint[int64] {
+		return []metricdata.DataPoint[int64]{
+			{Attributes: withResult("miss"), Value: miss},
+			{Attributes: withResult("hit"), Value: hit},
+			{Attributes: withResult("pre_write"), Value: preWrite},
+			{Attributes: withResult("no_bucket"), Value: noBucket},
+		}
+	}
+	applyIds := func(applied, ignored int64) []metricdata.DataPoint[int64] {
+		return []metricdata.DataPoint[int64]{
+			{Attributes: withResult("applied"), Value: applied},
+			{Attributes: withResult("ignored"), Value: ignored},
+		}
+	}
+	state := func(value int64) []metricdata.DataPoint[int64] {
+		return []metricdata.DataPoint[int64]{{Attributes: attribute.NewSet(slices.Clone(identifiers)...), Value: value}}
+	}
+
+	testCases := []struct {
+		name           string
+		preWriteWindow time.Duration
+		steps          []Step
+		wantPlanIds    []metricdata.DataPoint[int64]
+		wantApplyIds   []metricdata.DataPoint[int64]
+		wantEvictions  int64
+		wantBuckets    int64
+		wantIds        int64
+		wantUsage      int64
+	}{
+		{
+			name: "Plan_Miss_ThenApply_ThenHit",
+			steps: []Step{
+				PlanStep(id, base, base+1_000, nil, nil),
+				ApplyStep(id, base),
+				PlanStep(id, base, base+2_000, nil, nil),
+				PlanStep(id, base, base+3_000, nil, nil),
+			},
+			wantPlanIds:  planIds(1, 2, 0, 0),
+			wantApplyIds: applyIds(1, 0),
+			wantBuckets:  1,
+			wantIds:      1,
+			wantUsage:    64 << 10,
+		},
+		{
+			name: "Plan_FutureBeyondWidth_NoBucket",
+			steps: []Step{
+				PlanStep(id, base+2*hour, base+1_000, nil, nil),
+			},
+			wantPlanIds:  planIds(0, 0, 0, 1),
+			wantApplyIds: applyIds(0, 0),
+		},
+		{
+			name: "Plan_OlderThanLive_WhenFull_NoBucket",
+			steps: []Step{
+				PlanStep(id, base+hour, base+hour+1_000, nil, nil),
+				PlanStep(id, base+2*hour, base+2*hour+1_000, nil, nil),
+				PlanStep(id, base, base+2*hour+2_000, nil, nil),
+			},
+			wantPlanIds:  planIds(2, 0, 0, 1),
+			wantApplyIds: applyIds(0, 0),
+			wantBuckets:  2,
+		},
+		{
+			name:           "Plan_InPreWriteWindow_PreWrite",
+			preWriteWindow: 10 * time.Minute,
+			steps: []Step{
+				PlanStep(id, base, base+1_000, nil, nil),
+				ApplyStep(id, base),
+				PlanStep(id, base, base+hour-1, nil, nil),
+				ApplyStep(id, base+hour),
+				PlanStep(id, base, base+hour-1, nil, nil),
+			},
+			wantPlanIds:  planIds(1, 1, 1, 0),
+			wantApplyIds: applyIds(2, 0),
+			wantBuckets:  2,
+			wantIds:      2,
+			wantUsage:    2 * (64 << 10),
+		},
+		{
+			name: "Apply_DeadBucket_Ignored",
+			steps: []Step{
+				PlanStep(id, base, base+1_000, nil, nil),
+				ApplyStep(id, base+hour),
+				ApplyStep(id, base),
+			},
+			wantPlanIds:  planIds(1, 0, 0, 0),
+			wantApplyIds: applyIds(1, 1),
+			wantBuckets:  1,
+			wantIds:      1,
+			wantUsage:    64 << 10,
+		},
+		{
+			name: "Plan_NewerBucket_WhenFull_Eviction",
+			steps: []Step{
+				PlanStep(id, base, base+1_000, nil, nil),
+				PlanStep(id, base+hour, base+hour+1_000, nil, nil),
+				PlanStep(id, base+2*hour, base+2*hour+1_000, nil, nil),
+			},
+			wantPlanIds:   planIds(3, 0, 0, 0),
+			wantApplyIds:  applyIds(0, 0),
+			wantEvictions: 1,
+			wantBuckets:   2,
+		},
+		{
+			name: "Apply_TwoIds_IdCount",
+			steps: []Step{
+				PlanStep(id, base, base+1_000, nil, nil),
+				ApplyStep(id, base),
+				ApplyStep(otherId, base),
+			},
+			wantPlanIds:  planIds(1, 0, 0, 0),
+			wantApplyIds: applyIds(2, 0),
+			wantBuckets:  1,
+			wantIds:      2,
+			wantUsage:    2 * (64 << 10),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			telemetry := componenttest.NewTelemetry()
+			t.Cleanup(func() { require.NoError(t, telemetry.Shutdown(context.Background())) })
+
+			set, err := New(time.Hour, Config{MaxBuckets: 2, MaxBucketSize: 32 << 20, PreWriteWindow: testCase.preWriteWindow}, telemetry.NewTelemetrySettings(), identifiers...)
+			require.NoError(t, err)
+			t.Cleanup(set.Shutdown)
+			require.NoError(t, RunSteps(set, testCase.steps))
+
+			metadatatest.AssertEqualTimebucketedsetPlanIds(t, telemetry, testCase.wantPlanIds, metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetApplyIds(t, telemetry, testCase.wantApplyIds, metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetBucketEvictions(t, telemetry, state(testCase.wantEvictions), metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetBucketCount(t, telemetry, state(testCase.wantBuckets), metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetIDCount(t, telemetry, state(testCase.wantIds), metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetMemoryLimit(t, telemetry, state(testCase.wantBuckets*(32<<20)), metricdatatest.IgnoreTimestamp())
+			metadatatest.AssertEqualTimebucketedsetMemoryUsage(t, telemetry, state(testCase.wantUsage), metricdatatest.IgnoreTimestamp())
+		})
+	}
+}
+
+func TestShutdown_StopsObserving(t *testing.T) {
+	telemetry := componenttest.NewTelemetry()
+	t.Cleanup(func() { require.NoError(t, telemetry.Shutdown(context.Background())) })
+
+	set, err := New(time.Hour, Config{MaxBuckets: 2, MaxBucketSize: 32 << 20}, telemetry.NewTelemetrySettings(), attribute.String("processor", "signozspanmetrics/one"))
+	require.NoError(t, err)
+	base := time.Date(2026, 9, 22, 7, 0, 0, 0, time.UTC).UnixMilli()
+	set.Plan([]byte{0x7f}, base, base+1)
+	_, err = telemetry.GetMetric("otelcol.timebucketedset.bucket.count")
+	require.NoError(t, err)
+
+	set.Shutdown()
+	_, err = telemetry.GetMetric("otelcol.timebucketedset.bucket.count")
+	assert.Error(t, err)
 }
