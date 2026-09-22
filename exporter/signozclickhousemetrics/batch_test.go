@@ -343,7 +343,7 @@ func TestBatch_addMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := newBatch(zaptest.NewLogger(t), 0, 0, 0)
+			b := newBatch(zaptest.NewLogger(t), nil, 0, 0, 0)
 			attrs := tt.setupAttrs()
 			fp := pkgfingerprint.NewFingerprint(tt.fingerprintType, 0, attrs, nil)
 

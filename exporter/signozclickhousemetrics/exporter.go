@@ -57,15 +57,15 @@ var (
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
 type clickhouseMetricsExporter struct {
-	cfg           *Config
-	logger        *zap.Logger
-	meter         metricapi.Meter
-	cache         *ttlcache.Cache[string, bool]
-	cacheRunning  bool
-	registry      *timebucketedset.Set
-	conn          clickhouse.Conn
-	wg            sync.WaitGroup
-	enableExpHist bool
+	cfg                       *Config
+	logger                    *zap.Logger
+	meter                     metricapi.Meter
+	cache                     *ttlcache.Cache[string, bool]
+	cacheRunning              bool
+	timeSeriesTimeBucketedSet *timebucketedset.Set
+	conn                      clickhouse.Conn
+	wg                        sync.WaitGroup
+	enableExpHist             bool
 
 	samplesSQL    string
 	timeSeriesSQL string
@@ -252,7 +252,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 	}
 
 	if chExporter.cfg.TimeBucketedSet.Enabled {
-		registry, err := timebucketedset.New(
+		set, err := timebucketedset.New(
 			timeSeriesBucket,
 			chExporter.cfg.TimeBucketedSet.Config,
 			chExporter.settings.TelemetrySettings,
@@ -261,7 +261,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		if err != nil {
 			return nil, err
 		}
-		chExporter.registry = registry
+		chExporter.timeSeriesTimeBucketedSet = set
 	} else if chExporter.cache == nil {
 		chExporter.cache = ttlcache.New(
 			ttlcache.WithTTL[string, bool](45*time.Minute),
@@ -329,7 +329,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
-	if c.registry == nil {
+	if c.timeSeriesTimeBucketedSet == nil {
 		go c.cache.Start()
 		c.cacheRunning = true
 	}
@@ -347,8 +347,8 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	if c.cacheRunning {
 		c.cache.Stop()
 	}
-	if c.registry != nil {
-		c.registry.Shutdown()
+	if c.timeSeriesTimeBucketedSet != nil {
+		c.timeSeriesTimeBucketedSet.Shutdown()
 	}
 	if c.usageCollector != nil {
 		err := c.usageCollector.Stop()
@@ -415,7 +415,7 @@ func (c *clickhouseMetricsExporter) processGauge(batch *batch, metric pmetric.Me
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
@@ -487,7 +487,7 @@ func (c *clickhouseMetricsExporter) processSum(batch *batch, metric pmetric.Metr
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name,
@@ -569,7 +569,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
 
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:                env,
 			temporality:        sampleTemporality,
 			metricName:         name + suffix,
@@ -612,7 +612,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
-			c.planTimeSeries(batch, ts{
+			batch.planTimeSeries(ts{
 				env:                env,
 				temporality:        temporality,
 				metricName:         name + suffix,
@@ -644,7 +644,7 @@ func (c *clickhouseMetricsExporter) processHistogram(b *batch, metric pmetric.Me
 			flags:              uint32(dp.Flags()),
 		})
 		batch.addMetadata(name+suffix, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
@@ -758,7 +758,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:                env,
 			temporality:        temporality,
 			metricName:         name + suffix,
@@ -799,7 +799,7 @@ func (c *clickhouseMetricsExporter) processSummary(b *batch, metric pmetric.Metr
 				flags:              uint32(dp.Flags()),
 			})
 			batch.addMetadata(name+suffix, desc, unit, typ, quantileTemporality, quantileIsMonotonic, fingerprint, unixMilli, unixMilli)
-			c.planTimeSeries(batch, ts{
+			batch.planTimeSeries(ts{
 				env:                env,
 				temporality:        quantileTemporality,
 				metricName:         name + suffix,
@@ -927,7 +927,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		})
 		batch.addMetadata(name+suffix, desc, sampleUnit, sampleTyp, sampleTemporality, sampleIsMonotonic, fingerprint, unixMilli, unixMilli)
 
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:         env,
 			temporality: sampleTemporality,
 			metricName:  name + suffix,
@@ -983,7 +983,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		})
 		batch.addMetadata(name, desc, unit, typ, temporality, isMonotonic, fingerprint, unixMilli, unixMilli)
 
-		c.planTimeSeries(batch, ts{
+		batch.planTimeSeries(ts{
 			env:         env,
 			temporality: temporality,
 			metricName:  name,
@@ -1045,7 +1045,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 }
 
 func (c *clickhouseMetricsExporter) prepareBatch(ctx context.Context, md pmetric.Metrics) *batch {
-	batch := newBatch(c.logger,
+	batch := newBatch(c.logger, c.timeSeriesTimeBucketedSet,
 		int(float64(c.lastSamplesLen.Load())*1.5),
 		int(float64(c.lastTsLen.Load())*1.5),
 		int(float64(c.lastMetadataLen.Load())*1.5))
@@ -1138,7 +1138,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
-		if c.registry == nil {
+		if c.timeSeriesTimeBucketedSet == nil {
 			for i := range timeSeries {
 				ts := &timeSeries[i]
 				cacheKey := makeCacheKey(ts.fingerprint, uint64(ts.bucketStart))
@@ -1175,7 +1175,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if err := statement.Send(); err != nil {
 			return err
 		}
-		c.registry.Apply(registeredRows(timeSeries))
+		c.timeSeriesTimeBucketedSet.Apply(registeredRows(timeSeries))
 		return nil
 	}
 

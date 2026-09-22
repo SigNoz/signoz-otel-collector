@@ -50,9 +50,12 @@ func Test_planTimeSeries(t *testing.T) {
 
 	row := ts{metricName: "http.requests", fingerprint: 42, unixMilli: bucketStart + 5*time.Minute.Milliseconds()}
 
-	plan := func(exp *clickhouseMetricsExporter, b *batch, nowMilli int64, reducer *reducer, reduced *reducedSeries) {
+	plan := func(b *batch, nowMilli int64, reducer *reducer, reduced *reducedSeries) {
 		b.nowMilli = nowMilli
-		exp.planTimeSeries(b, row, point, scopeAttrs, resourceAttrs, reducer, reduced)
+		b.planTimeSeries(row, point, scopeAttrs, resourceAttrs, reducer, reduced)
+	}
+	newTestBatch := func(exp *clickhouseMetricsExporter) *batch {
+		return newBatch(zap.NewNop(), exp.timeSeriesTimeBucketedSet, 0, 0, 0)
 	}
 
 	type wantRow struct {
@@ -70,9 +73,9 @@ func Test_planTimeSeries(t *testing.T) {
 		{
 			name: "Disabled_RepeatInBatch_EveryRowBuilt",
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				b := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, b, midBucket, nil, nil)
-				plan(exp, b, midBucket, nil, nil)
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
+				plan(b, midBucket, nil, nil)
 				return b
 			},
 			want: []wantRow{{}, {}},
@@ -80,10 +83,10 @@ func Test_planTimeSeries(t *testing.T) {
 		{
 			name: "Disabled_Reduced_OneReducedRowPerReducer",
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				b := newBatch(zap.NewNop(), 0, 0, 0)
+				b := newTestBatch(exp)
 				r := &reducer{}
-				plan(exp, b, midBucket, r, reduced)
-				plan(exp, b, midBucket, r, reduced)
+				plan(b, midBucket, r, reduced)
+				plan(b, midBucket, r, reduced)
 				return b
 			},
 			want: []wantRow{{}, {isReduced: true}, {}},
@@ -92,8 +95,8 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_FirstSeen_WritesCurrent",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				b := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, b, midBucket, nil, nil)
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
 				return b
 			},
 			want: []wantRow{{writeCurrent: true}},
@@ -102,9 +105,9 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_RepeatInBatch_PlannedOnce",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				b := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, b, midBucket, nil, nil)
-				plan(exp, b, midBucket, nil, nil)
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
+				plan(b, midBucket, nil, nil)
 				return b
 			},
 			want: []wantRow{{writeCurrent: true}},
@@ -113,11 +116,11 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_Registered_NoRow",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				first := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, first, midBucket, nil, nil)
-				exp.registry.Apply(registeredRows(first.ts))
-				second := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, second, midBucket, nil, nil)
+				first := newTestBatch(exp)
+				plan(first, midBucket, nil, nil)
+				exp.timeSeriesTimeBucketedSet.Apply(registeredRows(first.ts))
+				second := newTestBatch(exp)
+				plan(second, midBucket, nil, nil)
 				return second
 			},
 			want: nil,
@@ -126,11 +129,11 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_Registered_InPreWriteWindow_WritesNext",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				first := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, first, midBucket, nil, nil)
-				exp.registry.Apply(registeredRows(first.ts))
-				second := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, second, lastMilliOfBucket, nil, nil)
+				first := newTestBatch(exp)
+				plan(first, midBucket, nil, nil)
+				exp.timeSeriesTimeBucketedSet.Apply(registeredRows(first.ts))
+				second := newTestBatch(exp)
+				plan(second, lastMilliOfBucket, nil, nil)
 				return second
 			},
 			want: []wantRow{{writeNext: true}},
@@ -139,9 +142,9 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_Reduced_RawAndReducedRowsDistinct",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				b := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, b, midBucket, &reducer{}, reduced)
-				plan(exp, b, midBucket, &reducer{}, reduced)
+				b := newTestBatch(exp)
+				plan(b, midBucket, &reducer{}, reduced)
+				plan(b, midBucket, &reducer{}, reduced)
 				return b
 			},
 			want: []wantRow{{writeCurrent: true}, {isReduced: true, writeCurrent: true}},
@@ -150,11 +153,11 @@ func Test_planTimeSeries(t *testing.T) {
 			name:    "Enabled_Reduced_Registered_NoRow",
 			enabled: true,
 			run: func(exp *clickhouseMetricsExporter) *batch {
-				first := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, first, midBucket, &reducer{}, reduced)
-				exp.registry.Apply(registeredRows(first.ts))
-				second := newBatch(zap.NewNop(), 0, 0, 0)
-				plan(exp, second, midBucket, &reducer{}, reduced)
+				first := newTestBatch(exp)
+				plan(first, midBucket, &reducer{}, reduced)
+				exp.timeSeriesTimeBucketedSet.Apply(registeredRows(first.ts))
+				second := newTestBatch(exp)
+				plan(second, midBucket, &reducer{}, reduced)
 				return second
 			},
 			want: nil,

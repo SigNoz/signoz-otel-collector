@@ -5,6 +5,7 @@ import (
 	"time"
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 )
@@ -20,19 +21,29 @@ type batch struct {
 	// after a successful send, so repeats within one batch must be caught here
 	tsSeen   map[tsKey]struct{}
 	nowMilli int64
-	logger   *zap.Logger
+	// nil when the exporter deduplicates through the TTL cache instead
+	timeSeriesTimeBucketedSet *timebucketedset.Set
+	logger                    *zap.Logger
+}
+
+// tsKey identifies a registration row within one batch.
+type tsKey struct {
+	fingerprint uint64
+	reduced     bool
+	bucketStart int64
 }
 
 // newBatch pre-sizes each slice from a per-table hint (the previous batch's length).
-func newBatch(logger *zap.Logger, samplesHint, tsHint, metadataHint int) *batch {
+func newBatch(logger *zap.Logger, timeSeriesTimeBucketedSet *timebucketedset.Set, samplesHint, tsHint, metadataHint int) *batch {
 	return &batch{
-		samples:  make([]sample, 0, max(samplesHint, 0)),
-		expHist:  make([]exponentialHistogramSample, 0),
-		ts:       make([]ts, 0, max(tsHint, 0)),
-		metadata: make([]metadata, 0, max(metadataHint, 0)),
-		metaIdx:  make(map[metaKey]int, max(metadataHint, 0)),
-		tsSeen:   make(map[tsKey]struct{}, max(tsHint, 0)),
-		logger:   logger,
+		samples:                   make([]sample, 0, max(samplesHint, 0)),
+		expHist:                   make([]exponentialHistogramSample, 0),
+		ts:                        make([]ts, 0, max(tsHint, 0)),
+		metadata:                  make([]metadata, 0, max(metadataHint, 0)),
+		metaIdx:                   make(map[metaKey]int, max(metadataHint, 0)),
+		tsSeen:                    make(map[tsKey]struct{}, max(tsHint, 0)),
+		timeSeriesTimeBucketedSet: timeSeriesTimeBucketedSet,
+		logger:                    logger,
 	}
 }
 
@@ -104,4 +115,50 @@ func (b *batch) addTs(ts *ts) {
 
 func (b *batch) addExpHist(expHist *exponentialHistogramSample) {
 	b.expHist = append(b.expHist, *expHist)
+}
+
+// setLabels builds the labels JSON and attribute maps, the expensive part of a row.
+func (row *ts) setLabels(fingerprint *pkgfingerprint.Fingerprint, scopeAttrs, resourceAttrs map[string]string) {
+	attrs := fingerprint.AttributesAsMap()
+	row.labels = pkgfingerprint.NewLabelsAsJSONString(row.metricName, attrs, scopeAttrs, resourceAttrs)
+	row.attrs = attrs
+	row.scopeAttrs = scopeAttrs
+	row.resourceAttrs = resourceAttrs
+}
+
+// planTimeSeries adds the registration rows one datapoint needs. row carries
+// only scalar fields. Without the time bucketed set every row is built and the
+// TTL cache decides at write time; with it, labels are built solely for rows
+// that will be written, which in steady state is none.
+func (b *batch) planTimeSeries(row ts, fingerprint *pkgfingerprint.Fingerprint, scopeAttrs, resourceAttrs map[string]string, reducer *reducer, reduced *reducedSeries) {
+	row.bucketStart = row.unixMilli / timeSeriesBucket.Milliseconds() * timeSeriesBucket.Milliseconds()
+
+	if b.timeSeriesTimeBucketedSet == nil {
+		row.setLabels(fingerprint, scopeAttrs, resourceAttrs)
+		b.addTs(&row)
+		if reduced != nil && reducer.firstSeen(reduced.fingerprint) {
+			reducedRow := reducedTsFrom(&row, reduced)
+			b.addTs(&reducedRow)
+		}
+		return
+	}
+
+	var key [9]byte
+	if !b.seenTs(tsKey{fingerprint: row.fingerprint, bucketStart: row.bucketStart}) {
+		row.writeCurrent, row.writeNext = b.timeSeriesTimeBucketedSet.Plan(seriesID(&key, row.fingerprint, false), row.bucketStart, b.nowMilli)
+	}
+	var reducedCurrent, reducedNext bool
+	if reduced != nil && !b.seenTs(tsKey{fingerprint: reduced.fingerprint, reduced: true, bucketStart: row.bucketStart}) {
+		reducedCurrent, reducedNext = b.timeSeriesTimeBucketedSet.Plan(seriesID(&key, reduced.fingerprint, true), row.bucketStart, b.nowMilli)
+	}
+
+	if row.writeCurrent || row.writeNext {
+		row.setLabels(fingerprint, scopeAttrs, resourceAttrs)
+		b.addTs(&row)
+	}
+	if reducedCurrent || reducedNext {
+		reducedRow := reducedTsFrom(&row, reduced)
+		reducedRow.writeCurrent, reducedRow.writeNext = reducedCurrent, reducedNext
+		b.addTs(&reducedRow)
+	}
 }
