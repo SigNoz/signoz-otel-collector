@@ -151,4 +151,18 @@ var MetadataMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1002,
+		UpItems: []Operation{
+			InsertIntoTable{
+				Database:    "signoz_metadata",
+				Table:       "distributed_column_evolution_metadata",
+				LightWeight: true,
+				Synchronous: true,
+				Columns:     []string{"signal", "column_name", "column_type", "field_context", "field_name", "version", "release_time"},
+				Values:      fmt.Sprintf("('traces', 'attributes', 'JSON()', 'attribute', '__all__', 1, %d)", time.Now().UnixNano()),
+			},
+		},
+		DownItems: []Operation{},
+	},
 }
