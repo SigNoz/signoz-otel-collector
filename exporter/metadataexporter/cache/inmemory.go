@@ -186,13 +186,35 @@ func (c *InMemoryKeyCache) ResourcesLimitExceeded(ctx context.Context, ds pipeli
 }
 
 func (c *InMemoryKeyCache) TotalCardinalityLimitExceeded(ctx context.Context, ds pipeline.Signal) bool {
-	// combine the cardinality of all resources
-	var totalCardinality uint64
-	for _, resourceFp := range c.tracesCache.Keys() {
-		entry := c.tracesCache.Get(resourceFp)
-		totalCardinality += uint64(len(entry.Value().attrs))
+	cache, _, _ := c.getCacheAndLimits(ds)
+	if cache == nil {
+		return false
 	}
-	return totalCardinality >= c.maxTracesCardinalityPerResource
+
+	// An entry can expire between Keys and Get. Treat a missing entry as
+	// already removed instead of dereferencing nil and crashing the collector.
+	var totalCardinality uint64
+	for _, resourceFp := range cache.Keys() {
+		entry := cache.Get(resourceFp)
+		if entry == nil {
+			continue
+		}
+		value := entry.Value()
+		value.mu.RLock()
+		totalCardinality += uint64(len(value.attrs))
+		value.mu.RUnlock()
+	}
+
+	var maxTotalCardinality uint64
+	switch ds {
+	case pipeline.SignalTraces:
+		maxTotalCardinality = c.tracesMaxTotalCardinality
+	case pipeline.SignalMetrics:
+		maxTotalCardinality = c.metricsMaxTotalCardinality
+	case pipeline.SignalLogs:
+		maxTotalCardinality = c.logsMaxTotalCardinality
+	}
+	return totalCardinality >= maxTotalCardinality
 }
 
 func (c *InMemoryKeyCache) CardinalityLimitExceededMulti(ctx context.Context, resourceFps []uint64, ds pipeline.Signal) ([]bool, error) {
