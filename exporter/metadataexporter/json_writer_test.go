@@ -117,11 +117,11 @@ func TestWalk_EndToEndTypes(t *testing.T) {
 	}
 
 	tests := []struct {
-		name               string
-		input              map[string]any
-		cfg                JSONConfig
-		expected           map[string][]utils.FieldDataType
-		expectedNumOfKeys  int
+		name              string
+		input             map[string]any
+		cfg               JSONConfig
+		expected          map[string][]utils.FieldDataType
+		expectedNumOfKeys int
 	}{
 		{
 			name: "message_skip_test_simple",

@@ -12,7 +12,7 @@ import (
 	"github.com/goccy/go-json"
 
 	"github.com/Shopify/sarama"
-	"github.com/aws/aws-sdk-go/aws/credentials" //nolint:staticcheck
+	"github.com/aws/aws-sdk-go/aws/credentials"    //nolint:staticcheck
 	sign "github.com/aws/aws-sdk-go/aws/signer/v4" //nolint:staticcheck
 	"go.uber.org/multierr"
 )

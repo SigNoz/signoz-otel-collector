@@ -214,10 +214,10 @@ func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 func TestHealthCheckMultipleStarts(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-								NetAddr: confignet.AddrConfig{
-									Endpoint:  testutil.GetAvailableLocalAddress(t),
-									Transport: "tcp",
-								},		},
+			NetAddr: confignet.AddrConfig{
+				Endpoint:  testutil.GetAvailableLocalAddress(t),
+				Transport: "tcp",
+			}},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",
 	}
@@ -234,10 +234,10 @@ func TestHealthCheckMultipleStarts(t *testing.T) {
 func TestHealthCheckMultipleShutdowns(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-								NetAddr: confignet.AddrConfig{
-									Endpoint:  testutil.GetAvailableLocalAddress(t),
-									Transport: "tcp",
-								},		},
+			NetAddr: confignet.AddrConfig{
+				Endpoint:  testutil.GetAvailableLocalAddress(t),
+				Transport: "tcp",
+			}},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 		Path:                   "/",
 	}
@@ -253,10 +253,10 @@ func TestHealthCheckMultipleShutdowns(t *testing.T) {
 func TestHealthCheckShutdownWithoutStart(t *testing.T) {
 	config := Config{
 		ServerConfig: confighttp.ServerConfig{
-								NetAddr: confignet.AddrConfig{
-									Endpoint:  testutil.GetAvailableLocalAddress(t),
-									Transport: "tcp",
-								},		},
+			NetAddr: confignet.AddrConfig{
+				Endpoint:  testutil.GetAvailableLocalAddress(t),
+				Transport: "tcp",
+			}},
 		CheckCollectorPipeline: defaultCheckCollectorPipelineSettings(),
 	}
 

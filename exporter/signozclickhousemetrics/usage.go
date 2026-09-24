@@ -2,13 +2,14 @@ package signozclickhousemetrics
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"strings"
 )
 
 const (
