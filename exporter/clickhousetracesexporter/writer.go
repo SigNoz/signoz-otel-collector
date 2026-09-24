@@ -114,14 +114,14 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 // doFetchShouldSkipKeys contains the logic for fetching skip keys
 func (e *SpanWriter) doFetchShouldSkipKeys() {
 	query := fmt.Sprintf(`
-		SELECT tag_key, tag_type, tag_data_type, countDistinct(string_value) as string_count, countDistinct(number_value) as number_count
+		SELECT tag_key, tag_type, tag_data_type, uniq(string_value) as string_count, uniq(number_value) as number_count
 		FROM %s.%s
 		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
 		GROUP BY tag_key, tag_type, tag_data_type
 		HAVING string_count > %d OR number_count > %d
 		SETTINGS max_threads = 2`, e.traceDatabase, e.attributeTableV2, e.maxDistinctValues, e.maxDistinctValues)
 
-	e.logger.Info("fetching should skip keys", zap.String("query", query))
+	e.logger.Debug("fetching should skip keys", zap.String("query", query))
 
 	keys := []shouldSkipKey{}
 
