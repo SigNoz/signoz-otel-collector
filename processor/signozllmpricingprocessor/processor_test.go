@@ -2,6 +2,7 @@ package signozllmpricingprocessor
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -347,4 +348,68 @@ func TestCacheEmpty(t *testing.T) {
 	assert.InDelta(t, 0.0, c.cacheWrite, 1e-9)
 	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
 	assert.InDelta(t, c.input+c.output, c.total, 1e-9)
+}
+
+func TestMatchRuleCachesResult(t *testing.T) {
+	p := newProcessor(testCfg)
+
+	matched := p.matchRule("gpt-4o-mini")
+	require.NotNil(t, matched)
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	// Without rules, only cached results can be returned.
+	p.rules = nil
+	assert.Same(t, matched, p.matchRule("gpt-4o-mini"))
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	rule, ok := p.matchCache.Get("unpriced-model")
+	assert.True(t, ok)
+	assert.Nil(t, rule)
+}
+
+func BenchmarkProcessTraces(b *testing.B) {
+	const usedModels = 25
+
+	for _, n := range []int{1000, 5000} {
+		cfg := *testCfg
+		cfg.DefaultPricing.Rules = make([]PricingRule, n)
+		for i := range cfg.DefaultPricing.Rules {
+			cfg.DefaultPricing.Rules[i] = PricingRule{Name: fmt.Sprintf("m-%d", i), Pattern: []string{fmt.Sprintf("vendor-%d/model-%d-*", i%20, i)}, In: 1, Out: 1}
+		}
+		p := newProcessor(&cfg)
+
+		// Used models are spread evenly across the rule list, plus one with no rule.
+		models := make([]string, 0, usedModels+1)
+		for i := 0; i < usedModels; i++ {
+			r := i * n / usedModels
+			models = append(models, fmt.Sprintf("vendor-%d/model-%d-2025", r%20, r))
+		}
+		models = append(models, "unpriced-model")
+
+		td := ptrace.NewTraces()
+		spans := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans()
+		for i := 0; i < 100; i++ {
+			a := spans.AppendEmpty().Attributes()
+			a.PutStr("gen_ai.request.model", models[i%len(models)])
+			a.PutInt("gen_ai.usage.input_tokens", 1000)
+			a.PutInt("gen_ai.usage.output_tokens", 500)
+		}
+
+		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = p.ProcessTraces(context.Background(), td)
+			}
+		})
+
+		b.Run(fmt.Sprintf("parallel/rules=%d", n), func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				td := ptrace.NewTraces()
+				spans.CopyTo(td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans())
+				for pb.Next() {
+					_, _ = p.ProcessTraces(context.Background(), td)
+				}
+			})
+		})
+	}
 }
