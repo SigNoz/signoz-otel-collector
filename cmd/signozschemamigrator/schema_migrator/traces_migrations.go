@@ -1362,5 +1362,837 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1017,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$request$$model",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.request.model']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$request$$model_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.request.model') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$request$$model",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.request.model']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$request$$model_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.request.model') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$provider$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.provider.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$provider$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.provider.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$provider$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.provider.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$provider$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.provider.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$tool$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.tool.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$tool$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.tool.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$tool$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.tool.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$tool$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.tool.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$agent$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.agent.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$agent$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.agent.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$agent$$name",
+					Type:    LowCardinalityColumnType{ColumnTypeString},
+					Default: "attributes_string['gen_ai.agent.name']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_string_gen_ai$$agent$$name_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_string, 'gen_ai.agent.name') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$output_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.output_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$output_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.output_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$output_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.output_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$output_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.output_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_read$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.cache_read.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_read$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.cache_read.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_read$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.cache_read.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_read$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.cache_read.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.cache_creation.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.cache_creation.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['gen_ai.usage.cache_creation.input_tokens']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'gen_ai.usage.cache_creation.input_tokens') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.output_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.output_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.output_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.output_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.cache_read.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.cache_read.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.cache_read.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.cache_read.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.cache_write.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.cache_write.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost",
+					Type:    ColumnTypeFloat64,
+					Default: "attributes_number['signoz.gen_ai.usage.cache_write.input_tokens.cost']",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column: Column{
+					Name:    "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost_exists",
+					Type:    ColumnTypeBool,
+					Default: "if(mapContains(attributes_number, 'signoz.gen_ai.usage.cache_write.input_tokens.cost') != 0, true, false)",
+					Codec:   "ZSTD(1)",
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_gen_ai_request_model",
+					Expression:  "attribute_string_gen_ai$$request$$model",
+					Type:        "bloom_filter",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_gen_ai_provider_name",
+					Expression:  "attribute_string_gen_ai$$provider$$name",
+					Type:        "bloom_filter",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_gen_ai_span_exists",
+					Expression:  "(attribute_string_gen_ai$$request$$model_exists, attribute_string_gen_ai$$tool$$name_exists, attribute_string_gen_ai$$agent$$name_exists)",
+					Type:        "set(8)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_gen_ai_request_model"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_gen_ai_provider_name"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_gen_ai_span_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$request$$model"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$request$$model_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$provider$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$provider$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$tool$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$tool$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$agent$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$agent$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$output_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$output_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_read$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_read$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "distributed_signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$request$$model"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$request$$model_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$provider$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$provider$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$tool$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$tool$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$agent$$name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_string_gen_ai$$agent$$name_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$output_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$output_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_read$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_read$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_gen_ai$$usage$$cache_creation$$input_tokens_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$input_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$output_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_read$$input_tokens$$cost_exists"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost_exists"},
+			},
+		},
+	},
 	// add new new migration to test file for sync/async check as well
 }
