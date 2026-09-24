@@ -28,6 +28,8 @@ func main() {
 		log.Fatalf("failed to initialize zap logger: %v", err)
 	}
 
+	var showVersion bool
+
 	rootCmd := &cobra.Command{
 		Use: "signoz-otel-collector",
 		CompletionOptions: cobra.CompletionOptions{
@@ -35,6 +37,11 @@ func main() {
 		},
 		SilenceUsage: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if showVersion {
+				printVersion()
+				os.Exit(0)
+			}
+
 			v := viper.New()
 
 			v.SetEnvPrefix("signoz-otel-collector")
@@ -53,6 +60,8 @@ func main() {
 			})
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			logStartupInfo(logger)
+
 			collectorConfig := config.Collector.Config
 			managerConfig := config.Collector.ManagerConfig
 			copyPath := config.Collector.CopyPath
@@ -91,6 +100,8 @@ func main() {
 			return err
 		},
 	}
+
+	rootCmd.PersistentFlags().BoolVar(&showVersion, "version", false, "Show version information")
 
 	config.Clickhouse.RegisterFlags(rootCmd)
 	config.Collector.RegisterFlags(rootCmd)
@@ -154,4 +165,26 @@ func copy(src, dest string) error {
 	}
 
 	return nil
+}
+
+func printVersion() {
+	fmt.Printf("%s version %s\n", constants.Desc, constants.Version)
+	if constants.CommitSHA != "unknown" {
+		fmt.Printf("  commit: %s\n", constants.CommitSHA)
+	}
+	if constants.BuildTime != "unknown" {
+		fmt.Printf("  built: %s\n", constants.BuildTime)
+	}
+	if constants.GoVersion != "unknown" {
+		fmt.Printf("  go version: %s\n", constants.GoVersion)
+	}
+}
+
+func logStartupInfo(logger *zap.Logger) {
+	logger.Info("Starting SigNoz OpenTelemetry Collector",
+		zap.String("version", constants.Version),
+		zap.String("commit", constants.CommitSHA),
+		zap.String("buildTime", constants.BuildTime),
+		zap.String("goVersion", constants.GoVersion),
+	)
 }
