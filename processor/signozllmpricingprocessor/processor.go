@@ -11,7 +11,7 @@ import (
 )
 
 // maxMatchCacheSize bounds matchCache; least recently seen model names are evicted beyond it.
-const maxMatchCacheSize = 10000
+const maxMatchCacheSize = 1000
 
 // costs holds the computed per-bucket costs for a single span.
 type costs struct {
