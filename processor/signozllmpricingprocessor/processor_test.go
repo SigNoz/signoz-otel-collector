@@ -350,6 +350,23 @@ func TestCacheEmpty(t *testing.T) {
 	assert.InDelta(t, c.input+c.output, c.total, 1e-9)
 }
 
+func TestMatchRuleCachesResult(t *testing.T) {
+	p := newProcessor(testCfg)
+
+	matched := p.matchRule("gpt-4o-mini")
+	require.NotNil(t, matched)
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	// Without rules, only cached results can be returned.
+	p.rules = nil
+	assert.Same(t, matched, p.matchRule("gpt-4o-mini"))
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	rule, ok := p.matchCache.Get("unpriced-model")
+	assert.True(t, ok)
+	assert.Nil(t, rule)
+}
+
 func BenchmarkProcessTraces(b *testing.B) {
 	const usedModels = 25
 
