@@ -25,8 +25,11 @@ func TestNewDynamicConfigInvalidPath(t *testing.T) {
 		return nil
 	}
 
-	_, err := NewDynamicConfig("./testdata/collector.yaml", reloadFunc, nil)
-	assert.ErrorContains(t, err, "no such file or directory")
+	// When config file doesn't exist, NewDynamicConfig should succeed
+	// (it will create an empty hash and proceed)
+	cfg, err := NewDynamicConfig("./testdata/nonexistent.yaml", nil, reloadFunc, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
 }
 
 func TestNewDynamicConfig(t *testing.T) {
@@ -36,7 +39,7 @@ func TestNewDynamicConfig(t *testing.T) {
 		return nil
 	}
 
-	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", nil, reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 }
@@ -58,7 +61,7 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 		return nil
 	}
 
-	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", nil, reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 
@@ -84,7 +87,7 @@ func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
 		_ = os.Remove("./testdata/service-instance-id-copy.yaml")
 	}()
 
-	_, err := NewDynamicConfig("./testdata/service-instance-id.yaml", func(contents []byte) error { return nil }, nil)
+	_, err := NewDynamicConfig("./testdata/service-instance-id.yaml", nil, func(contents []byte) error { return nil }, nil)
 	assert.NoError(t, err)
 
 	bytes, err := os.ReadFile("./testdata/service-instance-id.yaml")
@@ -118,7 +121,7 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 		return nil
 	}
 
-	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", nil, reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 

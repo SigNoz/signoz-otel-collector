@@ -57,7 +57,7 @@ func TestNewClient(t *testing.T) {
 		return nil
 	}
 
-	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, logger)
+	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", nil, reloadFunc, logger)
 	require.NoError(t, err)
 
 	// maintain a cop of the original config file and restore it after the test

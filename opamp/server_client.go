@@ -47,6 +47,7 @@ type NewServerClientOpts struct {
 	Config           *AgentManagerConfig
 	WrappedCollector *signozcol.WrappedCollector
 
+	BaseConfigs       []string
 	CollectorConfigPath string
 }
 
@@ -72,12 +73,16 @@ func NewServerClient(args *NewServerClientOpts) (Client, error) {
 	svrClient.createInstanceId()
 
 	var err error
-	svrClient.receivedInitialConfig, err = os.ReadFile(args.CollectorConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read default config: %s", err)
+	// Try to read the copyPath (OpAMP managed config). If it doesn't exist yet,
+	// we'll merge base configs at apply time.
+	if args.CollectorConfigPath != "" {
+		svrClient.receivedInitialConfig, err = os.ReadFile(args.CollectorConfigPath)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read collector config: %s", err)
+		}
 	}
 
-	dynamicConfig, err := NewDynamicConfig(args.CollectorConfigPath, svrClient.reload, clientLogger)
+	dynamicConfig, err := NewDynamicConfig(args.CollectorConfigPath, args.BaseConfigs, svrClient.reload, clientLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collector config: %v", err)
 	}

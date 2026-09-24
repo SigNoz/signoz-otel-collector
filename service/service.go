@@ -31,7 +31,8 @@ func New(
 	wrappedCollector *signozcol.WrappedCollector,
 	logger *zap.Logger,
 	managerConfigPath string,
-	collectorConfigPath string,
+	baseConfigs []string,
+	copyPath string,
 ) (*service, error) {
 
 	var client opamp.Client
@@ -50,7 +51,8 @@ func New(
 			Logger:              logger,
 			Config:              managerConfig,
 			WrappedCollector:    wrappedCollector,
-			CollectorConfigPath: collectorConfigPath,
+			BaseConfigs:         baseConfigs,
+			CollectorConfigPath: copyPath,
 		}
 		client, err = opamp.NewServerClient(serverClientOpts)
 		if err != nil {
