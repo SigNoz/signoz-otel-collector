@@ -288,3 +288,120 @@ func TestInMemoryKeyCache_Debug(t *testing.T) {
 	// Just verify we don't panic or error
 	cache.Debug(ctx)
 }
+
+func TestInMemoryKeyCache_SignalLimitsIsolation(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	opts := InMemoryKeyCacheOptions{
+		// Different resource capacities for each signal:
+		MaxTracesResourceFp:  2,
+		MaxMetricsResourceFp: 2,
+		MaxLogsResourceFp:    3,
+
+		// Different per-resource cardinality capacities:
+		MaxTracesCardinalityPerResource:  5,
+		MaxMetricsCardinalityPerResource: 10,
+		MaxLogsCardinalityPerResource:    15,
+
+		// Different total cardinality limits:
+		TracesMaxTotalCardinality:  10,
+		MetricsMaxTotalCardinality: 20,
+		LogsMaxTotalCardinality:    30,
+
+		TracesFingerprintCacheTTL:  10 * time.Second,
+		MetricsFingerprintCacheTTL: 10 * time.Second,
+		LogsFingerprintCacheTTL:    10 * time.Second,
+		TenantID:                   "tenant1",
+		Logger:                     logger,
+	}
+
+	cache, err := NewInMemoryKeyCache(opts)
+	require.NoError(t, err)
+
+	// --- 1. Test Resource Limits Isolation ---
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalTraces))
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalMetrics))
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalLogs))
+
+	// Traces capacity = 2
+	_ = cache.AddAttrsToResource(ctx, 101, []uint64{1}, pipeline.SignalTraces)
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalTraces), "traces should not be full yet")
+	
+	_ = cache.AddAttrsToResource(ctx, 102, []uint64{1}, pipeline.SignalTraces)
+	assert.True(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalTraces), "traces should be full")
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalMetrics), "metrics should not be full")
+	assert.False(t, cache.ResourcesLimitExceeded(ctx, pipeline.SignalLogs), "logs should not be full")
+
+	// --- 2. Test Per-Resource Cardinality Limits Isolation ---
+	// Traces max attr limit = 5, Metrics max attr limit = 10
+	err = cache.AddAttrsToResource(ctx, 101, []uint64{2, 3, 4, 5, 6}, pipeline.SignalTraces)
+	assert.Error(t, err, "should exceed traces limit of 5 attributes")
+
+	err = cache.AddAttrsToResource(ctx, 201, []uint64{1, 2, 3, 4, 5, 6, 7}, pipeline.SignalMetrics)
+	assert.NoError(t, err, "should not exceed metrics limit of 10 attributes")
+
+	// --- 3. Test Total Cardinality Limit Isolation ---
+	// Traces total cap = 10, Metrics total cap = 20
+	// Currently, resource 101 has 1 attribute, resource 102 has 1 attribute.
+	assert.False(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalTraces))
+
+	// Add 4 more attributes to 101 (total = 5, which is the per-resource limit)
+	_ = cache.AddAttrsToResource(ctx, 101, []uint64{2, 3, 4, 5}, pipeline.SignalTraces)
+
+	// Add 4 more attributes to 102 (total = 5, which is the per-resource limit)
+	_ = cache.AddAttrsToResource(ctx, 102, []uint64{10, 11, 12, 13}, pipeline.SignalTraces)
+
+	assert.True(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalTraces), "traces total cardinality should be exceeded")
+	assert.False(t, cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalMetrics), "metrics total cardinality should not be exceeded")
+}
+
+func TestInMemoryKeyCache_ConcurrentEvictionNoPanic(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	opts := InMemoryKeyCacheOptions{
+		MaxTracesResourceFp:             100,
+		MaxTracesCardinalityPerResource: 5,
+		TracesFingerprintCacheTTL:       5 * time.Millisecond, // very short TTL
+		TenantID:                        "tenant1",
+		Logger:                          logger,
+	}
+
+	cache, err := NewInMemoryKeyCache(opts)
+	require.NoError(t, err)
+
+	stopChan := make(chan struct{})
+
+	// Goroutine 1: Rapidly set entries to expire
+	go func() {
+		var i uint64
+		for {
+			select {
+			case <-stopChan:
+				return
+			default:
+				_ = cache.AddAttrsToResource(ctx, i, []uint64{1}, pipeline.SignalTraces)
+				i = (i + 1) % 100
+				time.Sleep(50 * time.Microsecond)
+			}
+		}
+	}()
+
+	// Goroutine 2: Constantly query TotalCardinalityLimitExceeded
+	go func() {
+		for {
+			select {
+			case <-stopChan:
+				return
+			default:
+				_ = cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalTraces)
+				time.Sleep(50 * time.Microsecond)
+			}
+		}
+	}()
+
+	// Run for 500ms to verify no panics occur
+	time.Sleep(500 * time.Millisecond)
+	close(stopChan)
+}
