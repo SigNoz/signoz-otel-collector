@@ -180,43 +180,66 @@ func (c *InMemoryKeyCache) AttrsExistForResource(ctx context.Context, resourceFp
 	return out, nil
 }
 
+// getMaxTotalCardinality picks the total attribute set limit for the signal.
+func (c *InMemoryKeyCache) getMaxTotalCardinality(ds pipeline.Signal) uint64 {
+	switch ds {
+	case pipeline.SignalTraces:
+		return c.tracesMaxTotalCardinality
+	case pipeline.SignalMetrics:
+		return c.metricsMaxTotalCardinality
+	case pipeline.SignalLogs:
+		return c.logsMaxTotalCardinality
+	}
+	return 0
+}
+
 func (c *InMemoryKeyCache) ResourcesLimitExceeded(ctx context.Context, ds pipeline.Signal) bool {
-	cache, _, _ := c.getCacheAndLimits(ds)
-	return uint64(len(cache.Keys())) >= c.maxTracesResourceFp
+	cache, maxResourceCount, _ := c.getCacheAndLimits(ds)
+	if cache == nil {
+		return false
+	}
+	return uint64(len(cache.Keys())) >= maxResourceCount
 }
 
 func (c *InMemoryKeyCache) TotalCardinalityLimitExceeded(ctx context.Context, ds pipeline.Signal) bool {
+	cache, _, _ := c.getCacheAndLimits(ds)
+	if cache == nil {
+		return false
+	}
 	// combine the cardinality of all resources
 	var totalCardinality uint64
-	for _, resourceFp := range c.tracesCache.Keys() {
-		entry := c.tracesCache.Get(resourceFp)
+	for _, resourceFp := range cache.Keys() {
+		entry := cache.Get(resourceFp)
+		if entry == nil {
+			continue
+		}
+		entry.Value().mu.RLock()
 		totalCardinality += uint64(len(entry.Value().attrs))
+		entry.Value().mu.RUnlock()
 	}
-	return totalCardinality >= c.maxTracesCardinalityPerResource
+	return totalCardinality >= c.getMaxTotalCardinality(ds)
 }
 
 func (c *InMemoryKeyCache) CardinalityLimitExceededMulti(ctx context.Context, resourceFps []uint64, ds pipeline.Signal) ([]bool, error) {
-	cache, _, _ := c.getCacheAndLimits(ds)
-
 	out := make([]bool, len(resourceFps))
 	for i, resourceFp := range resourceFps {
-		entry := cache.Get(resourceFp)
-		if entry == nil {
-			out[i] = false
-			continue
-		}
-		out[i] = uint64(len(entry.Value().attrs)) >= c.maxTracesCardinalityPerResource
+		out[i] = c.CardinalityLimitExceeded(ctx, resourceFp, ds)
 	}
 	return out, nil
 }
 
 func (c *InMemoryKeyCache) CardinalityLimitExceeded(ctx context.Context, resourceFp uint64, ds pipeline.Signal) bool {
-	cache, _, _ := c.getCacheAndLimits(ds)
+	cache, _, maxAttrCount := c.getCacheAndLimits(ds)
+	if cache == nil {
+		return false
+	}
 	entry := cache.Get(resourceFp)
 	if entry == nil {
 		return false
 	}
-	return uint64(len(entry.Value().attrs)) >= c.maxTracesCardinalityPerResource
+	entry.Value().mu.RLock()
+	defer entry.Value().mu.RUnlock()
+	return uint64(len(entry.Value().attrs)) >= maxAttrCount
 }
 
 func (c *InMemoryKeyCache) Debug(ctx context.Context) {

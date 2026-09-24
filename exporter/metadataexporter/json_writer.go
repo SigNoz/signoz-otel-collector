@@ -265,7 +265,7 @@ func (w *jsonMetadataWriter) skipStoringInDB(key string) bool {
 // this key already exceeds the configured limit. Unlike the parent exporter's
 // implementation it does NOT unconditionally skip number or bool keys.
 func (w *jsonMetadataWriter) skipUVT(key string) bool {
-	return w.valueTracker.GetUniqueValueCount(key) > int(w.limits.MaxStringDistinctValues)
+	return w.valueTracker.IsOverLimit(key)
 }
 
 func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
@@ -281,7 +281,7 @@ func (w *jsonMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
 		stmt:             vaStmt,
 		shouldSkipFromDB: w.skipStoringInDB,
 		shouldSkipUVT:    w.skipUVT,
-		addToUVT:         w.valueTracker.AddValue,
+		addToUVT:         func(key string, value any) { w.valueTracker.AddValue(key, value) },
 	}
 
 	rls := ld.ResourceLogs()

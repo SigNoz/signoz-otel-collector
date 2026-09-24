@@ -45,7 +45,36 @@ func FingerprintHash(attribs map[string]any) uint64 {
 	for _, k := range keys {
 		sum = hashAdd(sum, k)
 		sum = hashAddByte(sum, separatorByte)
-		sum = hashAdd(sum, fmt.Sprintf("%v", attribs[k]))
+		switch v := attribs[k].(type) {
+		case string:
+			sum = hashAdd(sum, v)
+		default:
+			sum = hashAdd(sum, fmt.Sprintf("%v", v))
+		}
+		sum = hashAddByte(sum, separatorByte)
+	}
+	return sum
+}
+
+// FingerprintHashStrings is FingerprintHash for a map of string values; a
+// string map hashes the same as the equivalent map[string]any.
+func FingerprintHashStrings(attribs map[string]string) uint64 {
+	if len(attribs) == 0 {
+		return offset64
+	}
+
+	keys := make([]string, 0, len(attribs))
+	for k := range attribs {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	sum := offset64
+	for _, k := range keys {
+		sum = hashAdd(sum, k)
+		sum = hashAddByte(sum, separatorByte)
+		sum = hashAdd(sum, attribs[k])
 		sum = hashAddByte(sum, separatorByte)
 	}
 	return sum
