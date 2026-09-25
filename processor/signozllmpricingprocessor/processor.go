@@ -4,9 +4,14 @@ import (
 	"context"
 	"path"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
+
+// maxMatchCacheSize bounds matchCache; least recently seen model names are evicted beyond it.
+const maxMatchCacheSize = 1000
 
 // costs holds the computed per-bucket costs for a single span.
 type costs struct {
@@ -45,6 +50,9 @@ type llmCostProcessor struct {
 
 	divisor float64 // 1e6 for per_million_tokens
 	rules   []compiledRule
+
+	// matchCache maps model -> *compiledRule; nil records that no rule matched.
+	matchCache *lru.Cache[string, *compiledRule]
 }
 
 func newProcessor(cfg *Config) *llmCostProcessor {
@@ -68,6 +76,9 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 
 	divisor := 1e6 // UnitPerMillionTokens
 
+	// lru.New errors only for a non-positive size.
+	matchCache, _ := lru.New[string, *compiledRule](maxMatchCacheSize)
+
 	return &llmCostProcessor{
 		modelAttr:         cfg.Attrs.Model,
 		inAttr:            cfg.Attrs.In,
@@ -81,19 +92,24 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 		outTotalAttr:      cfg.OutputAttrs.Total,
 		divisor:           divisor,
 		rules:             rules,
+		matchCache:        matchCache,
 	}
 }
 
 // ProcessTraces computes LLM costs for every span that carries a model attribute
-// matching a configured pricing rule.
+// matching a configured pricing rule. Cost attributes sent by the user are dropped
+// first: the prefix is excluded from billing, so nothing user-supplied may live under it.
 func (p *llmCostProcessor) ProcessTraces(_ context.Context, td ptrace.Traces) (ptrace.Traces, error) {
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
+		rss.At(i).Resource().Attributes().RemoveIf(isReservedCostAttr)
 		ilss := rss.At(i).ScopeSpans()
 		for j := 0; j < ilss.Len(); j++ {
 			spans := ilss.At(j).Spans()
 			for k := 0; k < spans.Len(); k++ {
-				p.processSpan(spans.At(k).Attributes())
+				attrs := spans.At(k).Attributes()
+				attrs.RemoveIf(isReservedCostAttr)
+				p.processSpan(attrs)
 			}
 		}
 	}
@@ -129,12 +145,20 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 
 // matchRule returns the first rule whose pattern matches model, or nil.
 func (p *llmCostProcessor) matchRule(model string) *compiledRule {
+	if rule, ok := p.matchCache.Get(model); ok {
+		return rule
+	}
+
+	var rule *compiledRule
 	for i := range p.rules {
 		if ok, _ := path.Match(p.rules[i].pattern, model); ok {
-			return &p.rules[i]
+			rule = &p.rules[i]
+			break
 		}
 	}
-	return nil
+
+	p.matchCache.Add(model, rule)
+	return rule
 }
 
 // compute calculates per-bucket and total costs.
@@ -217,4 +241,8 @@ func putIfKey(attrs pcommon.Map, key string, val float64) {
 	if key != "" {
 		attrs.PutDouble(key, val)
 	}
+}
+
+func isReservedCostAttr(key string, _ pcommon.Value) bool {
+	return metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(key)
 }

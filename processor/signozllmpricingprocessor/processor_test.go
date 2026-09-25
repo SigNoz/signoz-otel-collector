@@ -2,6 +2,7 @@ package signozllmpricingprocessor
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,11 +45,11 @@ var testCfg = &Config{
 		},
 	},
 	OutputAttrs: OutputMapping{
-		In:         "_signoz.gen_ai.cost_input",
-		Out:        "_signoz.gen_ai.cost_output",
-		CacheRead:  "_signoz.gen_ai.cost_cache_read",
-		CacheWrite: "_signoz.gen_ai.cost_cache_write",
-		Total:      "_signoz.gen_ai.total_cost",
+		In:         "signoz.gen_ai.usage.input_tokens.cost",
+		Out:        "signoz.gen_ai.usage.output_tokens.cost",
+		CacheRead:  "signoz.gen_ai.usage.cache_read.input_tokens.cost",
+		CacheWrite: "signoz.gen_ai.usage.cache_write.input_tokens.cost",
+		Total:      "signoz.gen_ai.usage.tokens.cost",
 	},
 }
 
@@ -96,11 +97,11 @@ func TestSubtractMode_NoCaching(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.005, getDouble(t, a, "_signoz.gen_ai.cost_input"), 1e-9)
-	assert.InDelta(t, 0.0075, getDouble(t, a, "_signoz.gen_ai.cost_output"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "_signoz.gen_ai.cost_cache_read"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "_signoz.gen_ai.cost_cache_write"), 1e-9)
-	assert.InDelta(t, 0.0125, getDouble(t, a, "_signoz.gen_ai.total_cost"), 1e-9)
+	assert.InDelta(t, 0.005, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0075, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0125, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestSubtractMode_WithCacheRead(t *testing.T) {
@@ -121,10 +122,10 @@ func TestSubtractMode_WithCacheRead(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.004, getDouble(t, a, "_signoz.gen_ai.cost_input"), 1e-9)
-	assert.InDelta(t, 0.0005, getDouble(t, a, "_signoz.gen_ai.cost_cache_read"), 1e-9)
-	assert.InDelta(t, 0.0075, getDouble(t, a, "_signoz.gen_ai.cost_output"), 1e-9)
-	assert.InDelta(t, 0.012, getDouble(t, a, "_signoz.gen_ai.total_cost"), 1e-9)
+	assert.InDelta(t, 0.004, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0005, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0075, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.012, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestSubtractMode_CacheReadExceedsInput(t *testing.T) {
@@ -140,9 +141,9 @@ func TestSubtractMode_CacheReadExceedsInput(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.0, getDouble(t, a, "_signoz.gen_ai.cost_input"), 1e-9)
+	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
 	// cache_read cost still billed for the actual cache_read value
-	assert.InDelta(t, 500*2.5/1e6, getDouble(t, a, "_signoz.gen_ai.cost_cache_read"), 1e-9)
+	assert.InDelta(t, 500*2.5/1e6, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
 }
 
 func TestAdditiveMode(t *testing.T) {
@@ -164,11 +165,11 @@ func TestAdditiveMode(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.003, getDouble(t, a, "_signoz.gen_ai.cost_input"), 1e-9)
-	assert.InDelta(t, 0.0075, getDouble(t, a, "_signoz.gen_ai.cost_output"), 1e-9)
-	assert.InDelta(t, 0.00006, getDouble(t, a, "_signoz.gen_ai.cost_cache_read"), 1e-9)
-	assert.InDelta(t, 0.000375, getDouble(t, a, "_signoz.gen_ai.cost_cache_write"), 1e-9)
-	assert.InDelta(t, 0.010935, getDouble(t, a, "_signoz.gen_ai.total_cost"), 1e-9)
+	assert.InDelta(t, 0.003, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0075, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.00006, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.000375, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.010935, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestAdditiveMode_NoCaching(t *testing.T) {
@@ -182,10 +183,10 @@ func TestAdditiveMode_NoCaching(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 2000*3.0/1e6, getDouble(t, a, "_signoz.gen_ai.cost_input"), 1e-9)
-	assert.InDelta(t, 1000*15.0/1e6, getDouble(t, a, "_signoz.gen_ai.cost_output"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "_signoz.gen_ai.cost_cache_read"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "_signoz.gen_ai.cost_cache_write"), 1e-9)
+	assert.InDelta(t, 2000*3.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 1000*15.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
 }
 
 func TestRuleFirstMatchWins(t *testing.T) {
@@ -198,7 +199,7 @@ func TestRuleFirstMatchWins(t *testing.T) {
 	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 	// gpt-4o rule price_in=5.0
-	assert.InDelta(t, 1000*5.0/1e6, getDouble(t, attrs(td), "_signoz.gen_ai.cost_input"), 1e-9)
+	assert.InDelta(t, 1000*5.0/1e6, getDouble(t, attrs(td), "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
 }
 
 func TestNoMatchingRule_SkipsSpan(t *testing.T) {
@@ -211,7 +212,7 @@ func TestNoMatchingRule_SkipsSpan(t *testing.T) {
 	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
+	_, ok := attrs(td).Get("signoz.gen_ai.usage.tokens.cost")
 	assert.False(t, ok, "no cost attrs must be written when no rule matches")
 }
 
@@ -224,7 +225,7 @@ func TestNoModelAttr_SkipsSpan(t *testing.T) {
 	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
+	_, ok := attrs(td).Get("signoz.gen_ai.usage.tokens.cost")
 	assert.False(t, ok)
 }
 
@@ -237,8 +238,43 @@ func TestAllTokensZero_SkipsSpan(t *testing.T) {
 	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	_, ok := attrs(td).Get("_signoz.gen_ai.total_cost")
+	_, ok := attrs(td).Get("signoz.gen_ai.usage.tokens.cost")
 	assert.False(t, ok, "cost attrs must not be written when all token counts are zero")
+}
+
+func TestDropsUserSentCostAttrs(t *testing.T) {
+	td := buildTrace(map[string]any{
+		"gen_ai.usage.input_tokens":       int64(1000),
+		"signoz.gen_ai.usage.tokens.cost": 42.0,
+		"signoz.gen_ai.anything":          "smuggled",
+	})
+	td.ResourceSpans().At(0).Resource().Attributes().PutDouble("signoz.gen_ai.usage.tokens.cost", 42.0)
+
+	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	_, ok := attrs(td).Get("signoz.gen_ai.usage.tokens.cost")
+	assert.False(t, ok)
+	_, ok = attrs(td).Get("signoz.gen_ai.anything")
+	assert.False(t, ok)
+	_, ok = td.ResourceSpans().At(0).Resource().Attributes().Get("signoz.gen_ai.usage.tokens.cost")
+	assert.False(t, ok)
+	_, ok = attrs(td).Get("gen_ai.usage.input_tokens")
+	assert.True(t, ok)
+}
+
+func TestUserSentCostReplacedByComputed(t *testing.T) {
+	td := buildTrace(map[string]any{
+		"gen_ai.request.model":            "gpt-4o",
+		"gen_ai.usage.input_tokens":       int64(1000),
+		"gen_ai.usage.output_tokens":      int64(0),
+		"signoz.gen_ai.usage.tokens.cost": 42.0,
+	})
+
+	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 0.005, getDouble(t, attrs(td), "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestTokenAsFloat(t *testing.T) {
@@ -252,13 +288,13 @@ func TestTokenAsFloat(t *testing.T) {
 	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
 	require.NoError(t, err)
 
-	assert.InDelta(t, 500*5.0/1e6, getDouble(t, attrs(td), "_signoz.gen_ai.cost_input"), 1e-9)
+	assert.InDelta(t, 500*5.0/1e6, getDouble(t, attrs(td), "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
 }
 
 func TestOptionalOutputAttrs(t *testing.T) {
 	cfg := *testCfg
 	cfg.OutputAttrs = OutputMapping{
-		Total: "_signoz.gen_ai.total_cost", // only total
+		Total: "signoz.gen_ai.usage.tokens.cost", // only total
 	}
 
 	td := buildTrace(map[string]any{
@@ -271,10 +307,10 @@ func TestOptionalOutputAttrs(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	_, hasIn := a.Get("_signoz.gen_ai.cost_input")
+	_, hasIn := a.Get("signoz.gen_ai.usage.input_tokens.cost")
 	assert.False(t, hasIn, "per-bucket attrs must not be written when key is empty")
 
-	_, hasTotal := a.Get("_signoz.gen_ai.total_cost")
+	_, hasTotal := a.Get("signoz.gen_ai.usage.tokens.cost")
 	assert.True(t, hasTotal)
 }
 
@@ -312,4 +348,68 @@ func TestCacheEmpty(t *testing.T) {
 	assert.InDelta(t, 0.0, c.cacheWrite, 1e-9)
 	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
 	assert.InDelta(t, c.input+c.output, c.total, 1e-9)
+}
+
+func TestMatchRuleCachesResult(t *testing.T) {
+	p := newProcessor(testCfg)
+
+	matched := p.matchRule("gpt-4o-mini")
+	require.NotNil(t, matched)
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	// Without rules, only cached results can be returned.
+	p.rules = nil
+	assert.Same(t, matched, p.matchRule("gpt-4o-mini"))
+	assert.Nil(t, p.matchRule("unpriced-model"))
+
+	rule, ok := p.matchCache.Get("unpriced-model")
+	assert.True(t, ok)
+	assert.Nil(t, rule)
+}
+
+func BenchmarkProcessTraces(b *testing.B) {
+	const usedModels = 25
+
+	for _, n := range []int{1000, 5000} {
+		cfg := *testCfg
+		cfg.DefaultPricing.Rules = make([]PricingRule, n)
+		for i := range cfg.DefaultPricing.Rules {
+			cfg.DefaultPricing.Rules[i] = PricingRule{Name: fmt.Sprintf("m-%d", i), Pattern: []string{fmt.Sprintf("vendor-%d/model-%d-*", i%20, i)}, In: 1, Out: 1}
+		}
+		p := newProcessor(&cfg)
+
+		// Used models are spread evenly across the rule list, plus one with no rule.
+		models := make([]string, 0, usedModels+1)
+		for i := 0; i < usedModels; i++ {
+			r := i * n / usedModels
+			models = append(models, fmt.Sprintf("vendor-%d/model-%d-2025", r%20, r))
+		}
+		models = append(models, "unpriced-model")
+
+		td := ptrace.NewTraces()
+		spans := td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans()
+		for i := 0; i < 100; i++ {
+			a := spans.AppendEmpty().Attributes()
+			a.PutStr("gen_ai.request.model", models[i%len(models)])
+			a.PutInt("gen_ai.usage.input_tokens", 1000)
+			a.PutInt("gen_ai.usage.output_tokens", 500)
+		}
+
+		b.Run(fmt.Sprintf("rules=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = p.ProcessTraces(context.Background(), td)
+			}
+		})
+
+		b.Run(fmt.Sprintf("parallel/rules=%d", n), func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				td := ptrace.NewTraces()
+				spans.CopyTo(td.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans())
+				for pb.Next() {
+					_, _ = p.ProcessTraces(context.Background(), td)
+				}
+			})
+		})
+	}
 }

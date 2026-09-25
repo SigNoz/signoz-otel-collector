@@ -1,0 +1,107 @@
+type: timebucketedset
+github_project: SigNoz/signoz-otel-collector
+
+status:
+  class: pkg
+  stability:
+    alpha: [logs, metrics, traces]
+
+attributes:
+  apply_result:
+    name_override: result
+    description: Outcome of applying an id.
+    type: string
+    enum: [applied, ignored]
+  plan_result:
+    name_override: result
+    description: Answer of a Plan call.
+    type: string
+    enum: [miss, hit, pre_write, no_bucket]
+
+telemetry:
+  metrics:
+    timebucketedset.apply.ids:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Ids given to Apply. An ignored id belongs to a bucket that is no longer live; its next Plan is a miss again.
+      unit: "{id}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+      attributes: [apply_result]
+
+    timebucketedset.bucket.count:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Live buckets.
+      unit: "{bucket}"
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+
+    timebucketedset.bucket.evictions:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Buckets evicted to make room for a newer bucket.
+      unit: "{bucket}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+
+    timebucketedset.id.count:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Entries across live buckets, one per bucket an id is registered in.
+      unit: "{id}"
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+
+    timebucketedset.memory.limit:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Chunk capacity of live buckets. Once a fastcache shard has filled its chunks it overwrites its oldest ids.
+      unit: By
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+
+    timebucketedset.memory.usage:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Bytes of fastcache chunks allocated by live buckets.
+      unit: By
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+
+    timebucketedset.plan.ids:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: "Ids given to Plan, by answer. miss: write. hit: skip. pre_write: skip, but write to the next bucket. no_bucket: write, nothing is cached."
+      unit: "{id}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+      attributes: [plan_result]

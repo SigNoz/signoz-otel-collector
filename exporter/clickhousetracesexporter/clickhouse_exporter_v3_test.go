@@ -412,8 +412,9 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					"http.url":         "http://test.com",
 					"test_key":         "test_value",
 				},
-				AttributesNumber: map[string]float64{},
-				AttributesBool:   map[string]bool{},
+				AttributesNumber:         map[string]float64{},
+				BillableAttributesNumber: map[string]float64{},
+				AttributesBool:           map[string]bool{},
 				ResourcesString: map[string]string{
 					"mymap.map_double": "20.5",
 					"mymap.map_key":    "map_val",
@@ -474,17 +475,18 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				config: storageConfig{},
 			},
 			want: &SpanV3{
-				TsBucketStart:     0,
-				FingerPrint:       "test_fingerprint",
-				StartTimeUnixNano: uint64(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)).AsTime().UnixNano()),
-				DurationNano:      0,
-				Name:              "test_span",
-				Kind:              2,
-				SpanKind:          "Server",
-				StatusCodeString:  "Unset",
-				AttributeString:   map[string]string{},
-				AttributesNumber:  map[string]float64{},
-				AttributesBool:    map[string]bool{},
+				TsBucketStart:            0,
+				FingerPrint:              "test_fingerprint",
+				StartTimeUnixNano:        uint64(pcommon.NewTimestampFromTime(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)).AsTime().UnixNano()),
+				DurationNano:             0,
+				Name:                     "test_span",
+				Kind:                     2,
+				SpanKind:                 "Server",
+				StatusCodeString:         "Unset",
+				AttributeString:          map[string]string{},
+				AttributesNumber:         map[string]float64{},
+				BillableAttributesNumber: map[string]float64{},
+				AttributesBool:           map[string]bool{},
 				ResourcesString: map[string]string{
 					"service.name": "test_service",
 				},
@@ -562,8 +564,9 @@ func Test_newStructuredSpanV3(t *testing.T) {
 					"http.url":         "http://test.com",
 					"test_key":         "test_value",
 				},
-				AttributesNumber: map[string]float64{},
-				AttributesBool:   map[string]bool{},
+				AttributesNumber:         map[string]float64{},
+				BillableAttributesNumber: map[string]float64{},
+				AttributesBool:           map[string]bool{},
 				ResourcesString: map[string]string{
 					"mymap.map_double":               "20.5",
 					"mymap.map_key":                  "map_val",
@@ -596,7 +599,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config)
+			got, err := newStructuredSpanV3(tt.args.bucketStart, tt.args.fingerprint, tt.args.otelSpan, tt.args.ServiceName, tt.args.resource, tt.args.scope, tt.args.config, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newStructuredSpanV3() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -610,6 +613,7 @@ func Test_newStructuredSpanV3(t *testing.T) {
 				got.SpanKind != tt.want.SpanKind ||
 				!reflect.DeepEqual(got.AttributeString, tt.want.AttributeString) ||
 				!reflect.DeepEqual(got.AttributesNumber, tt.want.AttributesNumber) ||
+				!reflect.DeepEqual(got.BillableAttributesNumber, tt.want.BillableAttributesNumber) ||
 				!reflect.DeepEqual(got.AttributesBool, tt.want.AttributesBool) ||
 				!reflect.DeepEqual(got.ResourcesString, tt.want.ResourcesString) ||
 				!reflect.DeepEqual(got.BillableResourcesString, tt.want.BillableResourcesString) ||
@@ -1089,5 +1093,41 @@ func Test_goccyErrorsOnNonFiniteFloats(t *testing.T) {
 	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		_, err := goccyjson.Marshal(map[string]any{"x": f})
 		require.Error(t, err, "goccy must error on non-finite float %v", f)
+	}
+}
+
+func Test_billableNumberAttributes(t *testing.T) {
+	testCases := []struct {
+		name  string
+		attrs map[string]float64
+		want  map[string]float64
+	}{
+		{
+			name:  "NoPricingAttrs_ReturnedUnchanged",
+			attrs: map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200},
+			want:  map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200},
+		},
+		{
+			name: "PricingAttrs_Dropped",
+			attrs: map[string]float64{
+				"gen_ai.usage.output_tokens":                        340,
+				"signoz.gen_ai.usage.input_tokens.cost":             0.006,
+				"signoz.gen_ai.usage.output_tokens.cost":            0.0051,
+				"signoz.gen_ai.usage.cache_read.input_tokens.cost":  0,
+				"signoz.gen_ai.usage.cache_write.input_tokens.cost": 0,
+				"signoz.gen_ai.usage.tokens.cost":                   0.0111,
+			},
+			want: map[string]float64{"gen_ai.usage.output_tokens": 340},
+		},
+		{
+			name:  "OnlyPricingAttrs_Empty",
+			attrs: map[string]float64{"signoz.gen_ai.usage.tokens.cost": 0.25},
+			want:  map[string]float64{},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, billableNumberAttributes(testCase.attrs))
+		})
 	}
 }
