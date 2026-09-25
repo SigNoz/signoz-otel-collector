@@ -2,6 +2,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"errors"
 	"log"
 	"testing"
 	"time"
@@ -817,4 +818,35 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 
 	require.True(t, found, "counter was not recorded")
 	assert.Equal(t, int64(3), recorded)
+}
+
+func TestExporterCachesKeysOnlyAfterSend(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+
+	expectBatches := func(resourceSendErr error) {
+		mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+		mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+		mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+		mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+		resources := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+		if resourceSendErr != nil {
+			resources.ExpectSend().WillReturnError(resourceSendErr)
+		}
+	}
+
+	exporter := setupTestExporter(t, mock)
+	logs := plogsgen.Generate()
+
+	// ClickHouse refuses writes like this while its replicated tables initialize after a restart.
+	expectBatches(errors.New("code: 667, message: Table is not initialized yet"))
+	require.Error(t, exporter.pushToClickhouse(context.Background(), logs))
+	require.Equal(t, 0, exporter.rfCache.Len(), "a failed send must leave no resource fingerprint cached")
+	require.Equal(t, 0, exporter.keysCache.Len(), "a failed send must leave no attribute key cached")
+
+	expectBatches(nil)
+	require.NoError(t, exporter.pushToClickhouse(context.Background(), logs))
+	require.Positive(t, exporter.rfCache.Len(), "a successful send caches the resource fingerprints it wrote")
+	require.Positive(t, exporter.keysCache.Len(), "a successful send caches the attribute keys it wrote")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
