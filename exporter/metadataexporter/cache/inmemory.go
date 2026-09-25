@@ -190,6 +190,10 @@ func (c *InMemoryKeyCache) TotalCardinalityLimitExceeded(ctx context.Context, ds
 	var totalCardinality uint64
 	for _, resourceFp := range c.tracesCache.Keys() {
 		entry := c.tracesCache.Get(resourceFp)
+		if entry == nil {
+			// The key can be evicted between Keys() and Get(), so skip it.
+			continue
+		}
 		totalCardinality += uint64(len(entry.Value().attrs))
 	}
 	return totalCardinality >= c.maxTracesCardinalityPerResource
