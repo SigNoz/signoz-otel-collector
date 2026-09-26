@@ -20,7 +20,7 @@ func TestAlterTableAddIndex(t *testing.T) {
 		{
 			name: "add-index-on-cluster",
 			op:   AlterTableAddIndex{Database: "db", Table: "table", Index: Index{Name: "idx", Expression: "mapKeys(numberTagMap)", Type: "bloom_filter", Granularity: 1}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD INDEX IF NOT EXISTS idx mapKeys(numberTagMap) TYPE bloom_filter GRANULARITY 1",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD INDEX IF NOT EXISTS idx mapKeys(numberTagMap) TYPE bloom_filter GRANULARITY 1",
 		},
 	}
 
@@ -45,7 +45,7 @@ func TestAlterTableDropIndex(t *testing.T) {
 		{
 			name: "drop-index-on-cluster",
 			op:   AlterTableDropIndex{Database: "db", Table: "table", Index: Index{Name: "idx"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster DROP INDEX IF EXISTS idx",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` DROP INDEX IF EXISTS idx",
 		},
 	}
 
@@ -70,7 +70,7 @@ func TestAlterTableMaterializeIndex(t *testing.T) {
 		{
 			name: "materialize-index-on-cluster",
 			op:   AlterTableMaterializeIndex{Database: "db", Table: "table", Index: Index{Name: "idx"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MATERIALIZE INDEX IF EXISTS idx",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MATERIALIZE INDEX IF EXISTS idx",
 		},
 		{
 			name: "materialize-index-in-partition",
@@ -100,7 +100,7 @@ func TestAlterTableClearIndex(t *testing.T) {
 		{
 			name: "clear-index-on-cluster",
 			op:   AlterTableClearIndex{Database: "db", Table: "table", Index: Index{Name: "idx"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster CLEAR INDEX IF EXISTS idx",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` CLEAR INDEX IF EXISTS idx",
 		},
 	}
 
