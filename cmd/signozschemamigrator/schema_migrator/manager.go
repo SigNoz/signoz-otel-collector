@@ -1028,6 +1028,27 @@ func (m *MigrationManager) updateMigrationEntry(ctx context.Context, db string, 
 }
 
 func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation, migrationID uint64, database string, skipStatusUpdate bool) error {
+	if dynamic, ok := operation.(DynamicOperation); ok {
+		operations, err := m.resolveOperation(ctx, dynamic, migrationID, database)
+		if err != nil {
+			updateErr := m.updateMigrationEntry(ctx, database, migrationID, FailedStatus, err.Error())
+			if updateErr != nil {
+				return errors.Join(err, updateErr)
+			}
+			return err
+		}
+		// nothing to run still marks the migration done so it is not resolved again on every run
+		if len(operations) == 0 && !skipStatusUpdate {
+			return m.insertMigrationEntry(ctx, database, migrationID, FinishedStatus)
+		}
+		for _, item := range operations {
+			if err := m.RunOperation(ctx, item, migrationID, database, skipStatusUpdate); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	m.logger.Info("Running operation", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.Bool("skip_status_update", skipStatusUpdate))
 	start := time.Now()
 	var sql string
@@ -1112,7 +1133,30 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 	return nil
 }
 
+func (m *MigrationManager) resolveOperation(ctx context.Context, operation DynamicOperation, migrationID uint64, database string) ([]Operation, error) {
+	m.logger.Info("Resolving dynamic operation", zap.Uint64("migration_id", migrationID), zap.String("database", database), zap.String("sql", operation.ToSQL()))
+	operations, err := operation.Resolve(ctx, m.conn)
+	if err != nil {
+		return nil, err
+	}
+	m.logger.Info("Resolved dynamic operation", zap.Uint64("migration_id", migrationID), zap.Int("operations", len(operations)))
+	return operations, nil
+}
+
 func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operation Operation, migrationID uint64, database string) error {
+	if dynamic, ok := operation.(DynamicOperation); ok {
+		operations, err := m.resolveOperation(ctx, dynamic, migrationID, database)
+		if err != nil {
+			return err
+		}
+		for _, item := range operations {
+			if err := m.RunOperationWithoutUpdate(ctx, item, migrationID, database); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	m.logger.Info("Running operation", zap.Uint64("migration_id", migrationID), zap.String("database", database))
 	start := time.Now()
 
