@@ -109,8 +109,10 @@ extensions:
 exporters:
   clickhousetraces:
     datasource: tcp://signoz-host:9000/?database=signoz_traces
+    timeout: 10s
   signozclickhousemetrics:
     dsn: tcp://signoz-host:9000/signoz_metrics
+    timeout: 10s
   clickhouselogsexporter:
     dsn: tcp://signoz-host:9000
     timeout: 10s
