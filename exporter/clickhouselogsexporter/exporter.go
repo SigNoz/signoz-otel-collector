@@ -277,8 +277,8 @@ type clickhouseLogsExporter struct {
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
-	promotedPaths          atomic.Value // stores map[string]struct{} for body paths
-	promotedAttributePaths atomic.Value // stores map[string]struct{} for attribute paths
+	promotedPaths          atomic.Value // stores map[string]struct{}
+	promotedAttributePaths atomic.Value // stores map[string]struct{}
 
 	promotedPathsSyncInterval time.Duration
 }
@@ -399,8 +399,6 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	}
 }
 
-// fetchPromotedPathsForColumn loads the promoted JSON paths for a given column
-// and field context from the evolution table.
 // Format: signal, col_name, col_type, field_context, field_name, release_time
 // Example: logs, body_promoted, JSON, body, user.name, Jan 10
 func (e *clickhouseLogsExporter) fetchPromotedPathsForColumn(columnName, fieldContext string) (map[string]struct{}, error) {
