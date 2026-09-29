@@ -852,9 +852,6 @@ func getStringifiedBody(body pcommon.Value) string {
 	return strBody
 }
 
-// getAttributesJSON serializes log attributes to a JSON string for the native ClickHouse
-// JSON column, which parses it server-side. A marshal failure is logged and falls back to
-// an empty object rather than failing the batch.
 func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID string) string {
 	b, err := json.Marshal(utils.SanitizeJSON(raw))
 	if err != nil {
