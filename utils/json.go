@@ -1,7 +1,6 @@
 package utils
 
-// SanitizeJSONFloats replaces NaN/Inf float64 values (recursively, in place) with nil so
-// json.Marshal does not reject the whole value.
+// SanitizeJSONFloats replaces NaN/Inf with nil, recursively and in place.
 func SanitizeJSONFloats(v any) any {
 	switch val := v.(type) {
 	case float64:
