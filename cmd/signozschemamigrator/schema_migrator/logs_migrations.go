@@ -607,4 +607,5 @@ ORDER BY name ASC`,
 			},
 		},
 	},
+	// add new migration to test file for sync/async check as well
 }
