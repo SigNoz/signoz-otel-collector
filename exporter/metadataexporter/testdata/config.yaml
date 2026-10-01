@@ -18,3 +18,21 @@ metadataexporter:
   json:
     max_keys_at_level: 100
     enabled: true
+metadataexporter/field_values:
+  enabled: true
+  cache:
+    provider: redis
+    redis:
+      addr: localhost:6379
+  field_values:
+    enabled: true
+    source: meter
+    limits:
+      max_record_field_values: 1000
+    cache:
+      provider: redis
+      max_bytes: 536870912
+    classification:
+      refresh_interval: 5m
+    always_include:
+      - service.name
