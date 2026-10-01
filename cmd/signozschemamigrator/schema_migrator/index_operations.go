@@ -380,6 +380,14 @@ func JSONPathsIndexExpr(column string) string {
 	return fmt.Sprintf("JSONAllPaths(%s)", column)
 }
 
+func JSONSubColumnCastIndexExpr(column, path, typeColumn string) string {
+	return fmt.Sprintf("%s.`%s`::%s", column, strings.Trim(path, "`"), typeColumn)
+}
+
+func JSONSubColumnCastIndexName(column, path string) string {
+	return fmt.Sprintf("idx_%s_%s", column, strings.ReplaceAll(strings.Trim(path, "`"), ".", "$$"))
+}
+
 func JSONFullTextIndexExpr(column string) string {
 	return fmt.Sprintf("lower(toString(%s))", column)
 }

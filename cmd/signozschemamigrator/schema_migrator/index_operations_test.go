@@ -180,3 +180,69 @@ func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
 		})
 	}
 }
+
+func TestJSONSubColumnCastIndexExpr(t *testing.T) {
+	testCases := []struct {
+		name       string
+		column     string
+		path       string
+		typeColumn string
+		want       string
+	}{
+		{
+			name:       "DottedAttributePath_String",
+			column:     "attributes",
+			path:       "http.route",
+			typeColumn: "String",
+			want:       "attributes.`http.route`::String",
+		},
+		{
+			name:       "SingleSegmentPath_String",
+			column:     "attributes",
+			path:       "peer.service",
+			typeColumn: "String",
+			want:       "attributes.`peer.service`::String",
+		},
+		{
+			name:       "AlreadyBacktickedPath_Trimmed",
+			column:     "attributes",
+			path:       "`db.system`",
+			typeColumn: "String",
+			want:       "attributes.`db.system`::String",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.Equal(t, testCase.want, JSONSubColumnCastIndexExpr(testCase.column, testCase.path, testCase.typeColumn))
+		})
+	}
+}
+
+func TestJSONSubColumnCastIndexName(t *testing.T) {
+	testCases := []struct {
+		name   string
+		column string
+		path   string
+		want   string
+	}{
+		{
+			name:   "DottedAttributePath",
+			column: "attributes",
+			path:   "rpc.method",
+			want:   "idx_attributes_rpc$$method",
+		},
+		{
+			name:   "AlreadyBacktickedPath_Trimmed",
+			column: "attributes",
+			path:   "`messaging.operation`",
+			want:   "idx_attributes_messaging$$operation",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.Equal(t, testCase.want, JSONSubColumnCastIndexName(testCase.column, testCase.path))
+		})
+	}
+}
