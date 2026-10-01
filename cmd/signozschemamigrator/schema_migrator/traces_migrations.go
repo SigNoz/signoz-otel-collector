@@ -4,6 +4,46 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils"
 )
 
+var defaultIndexedTraceAttributes = []string{
+	"http.route",
+	"messaging.system",
+	"messaging.operation",
+	"db.system",
+	"rpc.system",
+	"rpc.service",
+	"rpc.method",
+	"peer.service",
+}
+
+func defaultTraceAttributeIndexUpItems() []Operation {
+	ops := make([]Operation, 0, len(defaultIndexedTraceAttributes))
+	for _, path := range defaultIndexedTraceAttributes {
+		ops = append(ops, AlterTableAddIndex{
+			Database: "signoz_traces",
+			Table:    "signoz_index_v3",
+			Index: Index{
+				Name:        SimpleJSONSubColumnIndexName("attributes", path),
+				Expression:  SimpleJSONSubColumnIndexExpr("attributes", path, "String"),
+				Type:        "bloom_filter",
+				Granularity: 4,
+			},
+		})
+	}
+	return ops
+}
+
+func defaultTraceAttributeIndexDownItems() []Operation {
+	ops := make([]Operation, 0, len(defaultIndexedTraceAttributes))
+	for _, path := range defaultIndexedTraceAttributes {
+		ops = append(ops, AlterTableDropIndex{
+			Database: "signoz_traces",
+			Table:    "signoz_index_v3",
+			Index:    Index{Name: SimpleJSONSubColumnIndexName("attributes", path)},
+		})
+	}
+	return ops
+}
+
 // move them to TracesMigrations once it's ready to deploy
 var TracesMigrations = []SchemaMigrationRecord{
 	{
@@ -2193,6 +2233,11 @@ var TracesMigrations = []SchemaMigrationRecord{
 				Column:   Column{Name: "attribute_number_signoz$$gen_ai$$usage$$cache_write$$input_tokens$$cost_exists"},
 			},
 		},
+	},
+	{
+		MigrationID: 1018,
+		UpItems:     defaultTraceAttributeIndexUpItems(),
+		DownItems:   defaultTraceAttributeIndexDownItems(),
 	},
 	// add new new migration to test file for sync/async check as well
 }

@@ -29,6 +29,9 @@ var (
 	jsonNumberSubColumnIndexExprRe = regexp.MustCompile(
 		`assumeNotNull\(dynamicElement\((?P<expr>.+?),\s*'(?P<type>[^']+)'\)\)$`,
 	)
+
+	// ClickHouse stores a `col.path::Type` skip index expression as CAST(col.path, 'Type').
+	simpleJSONSubColumnIndexExprRe = regexp.MustCompile(`^CAST\((?P<expr>[^()]+), '(?P<type>.+)'\)$`)
 )
 
 // Index is used to represent an index in the SQL.
@@ -310,7 +313,7 @@ func JSONSubColumnIndexName(column, path, typeColumn string, index IndexType) st
 	return fmt.Sprintf("`%s_%s_%s`", expr, typeColumn, index)
 }
 
-func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
+func backtickedJSONPath(expr string) string {
 	parts := strings.Split(expr, ".")
 	for idx, part := range parts {
 		if keycheck.IsBacktickRequired(part) {
@@ -318,13 +321,16 @@ func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
 			parts[idx] = "`" + part + "`"
 		}
 	}
+	return strings.Join(parts, ".")
+}
 
+func jsonSubColumnIndexExprFormat(expr, typeColumn string) string {
 	indexExpr := stringBasedIndexExpr
 	if typeColumn != "String" {
 		indexExpr = numberBasedIndexExpr
 	}
 
-	return fmt.Sprintf(indexExpr, strings.Join(parts, "."), typeColumn)
+	return fmt.Sprintf(indexExpr, backtickedJSONPath(expr), typeColumn)
 }
 
 func JSONSubColumnIndexExpr(column, path, typeColumn string) string {
@@ -378,6 +384,22 @@ func UnfoldJSONSubColumnIndexExpr(expr string) (string, string, error) {
 
 func JSONPathsIndexExpr(column string) string {
 	return fmt.Sprintf("JSONAllPaths(%s)", column)
+}
+
+func SimpleJSONSubColumnIndexExpr(column, path, typeColumn string) string {
+	return fmt.Sprintf("%s::%s", backtickedJSONPath(column+"."+path), typeColumn)
+}
+
+func SimpleJSONSubColumnIndexName(column, path string) string {
+	return fmt.Sprintf("idx_%s_%s", column, strings.ReplaceAll(strings.Trim(path, "`"), ".", "$$"))
+}
+
+func UnfoldSimpleJSONSubColumnIndexExpr(expr string) (string, string, error) {
+	matches := simpleJSONSubColumnIndexExprRe.FindStringSubmatch(expr)
+	if matches == nil {
+		return "", "", fmt.Errorf("invalid expression: %s", expr)
+	}
+	return matches[1], matches[2], nil
 }
 
 func JSONFullTextIndexExpr(column string) string {
