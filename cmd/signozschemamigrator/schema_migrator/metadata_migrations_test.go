@@ -18,6 +18,7 @@ func TestMetadataMigrationsExactNature(t *testing.T) {
 			MetadataMigrations[0],
 			MetadataMigrations[1],
 			MetadataMigrations[2],
+			MetadataMigrations[3],
 		},
 		[]SchemaMigrationRecord{},
 	)
