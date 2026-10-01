@@ -181,7 +181,7 @@ func TestUnfoldJSONSubColumnIndexExpr(t *testing.T) {
 	}
 }
 
-func TestJSONSubColumnCastIndexExpr(t *testing.T) {
+func TestSimpleJSONSubColumnIndexExpr(t *testing.T) {
 	testCases := []struct {
 		name       string
 		column     string
@@ -194,32 +194,39 @@ func TestJSONSubColumnCastIndexExpr(t *testing.T) {
 			column:     "attributes",
 			path:       "http.route",
 			typeColumn: "String",
-			want:       "attributes.`http.route`::String",
+			want:       "attributes.http.route::String",
 		},
 		{
-			name:       "SingleSegmentPath_String",
-			column:     "attributes",
-			path:       "peer.service",
+			name:       "PromotedColumn_String",
+			column:     "attributes_promoted",
+			path:       "http.method",
 			typeColumn: "String",
-			want:       "attributes.`peer.service`::String",
+			want:       "attributes_promoted.http.method::String",
 		},
 		{
-			name:       "AlreadyBacktickedPath_Trimmed",
+			name:       "SegmentNeedingBackticks_Backticked",
 			column:     "attributes",
-			path:       "`db.system`",
+			path:       "user-name",
 			typeColumn: "String",
-			want:       "attributes.`db.system`::String",
+			want:       "attributes.`user-name`::String",
+		},
+		{
+			name:       "NumberType",
+			column:     "attributes",
+			path:       "http.status_code",
+			typeColumn: "Int64",
+			want:       "attributes.http.status_code::Int64",
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			require.Equal(t, testCase.want, JSONSubColumnCastIndexExpr(testCase.column, testCase.path, testCase.typeColumn))
+			require.Equal(t, testCase.want, SimpleJSONSubColumnIndexExpr(testCase.column, testCase.path, testCase.typeColumn))
 		})
 	}
 }
 
-func TestJSONSubColumnCastIndexName(t *testing.T) {
+func TestSimpleJSONSubColumnIndexName(t *testing.T) {
 	testCases := []struct {
 		name   string
 		column string
@@ -242,7 +249,59 @@ func TestJSONSubColumnCastIndexName(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			require.Equal(t, testCase.want, JSONSubColumnCastIndexName(testCase.column, testCase.path))
+			require.Equal(t, testCase.want, SimpleJSONSubColumnIndexName(testCase.column, testCase.path))
+		})
+	}
+}
+
+func TestUnfoldSimpleJSONSubColumnIndexExpr(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expr        string
+		wantExpr    string
+		wantType    string
+		wantError   bool
+		errorSubstr string
+	}{
+		{
+			name:     "CastString",
+			expr:     "CAST(attributes.http.route, 'String')",
+			wantExpr: "attributes.http.route",
+			wantType: "String",
+		},
+		{
+			name:     "CastBacktickedSegment",
+			expr:     "CAST(attributes.`user-name`, 'String')",
+			wantExpr: "attributes.`user-name`",
+			wantType: "String",
+		},
+		{
+			name:        "FoldedFormRejected",
+			expr:        "lower(assumeNotNull(dynamicElement(column.path, 'String')))",
+			wantError:   true,
+			errorSubstr: "invalid expression",
+		},
+		{
+			name:        "Empty",
+			expr:        "",
+			wantError:   true,
+			errorSubstr: "invalid expression: ",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			gotExpr, gotType, err := UnfoldSimpleJSONSubColumnIndexExpr(testCase.expr)
+			if testCase.wantError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), testCase.errorSubstr)
+				require.Empty(t, gotExpr)
+				require.Empty(t, gotType)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, testCase.wantExpr, gotExpr)
+			require.Equal(t, testCase.wantType, gotType)
 		})
 	}
 }

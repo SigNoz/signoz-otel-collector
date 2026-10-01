@@ -22,8 +22,8 @@ func defaultTraceAttributeIndexUpItems() []Operation {
 			Database: "signoz_traces",
 			Table:    "signoz_index_v3",
 			Index: Index{
-				Name:        JSONSubColumnCastIndexName("attributes", path),
-				Expression:  JSONSubColumnCastIndexExpr("attributes", path, "String"),
+				Name:        SimpleJSONSubColumnIndexName("attributes", path),
+				Expression:  SimpleJSONSubColumnIndexExpr("attributes", path, "String"),
 				Type:        "bloom_filter",
 				Granularity: 4,
 			},
@@ -38,7 +38,7 @@ func defaultTraceAttributeIndexDownItems() []Operation {
 		ops = append(ops, AlterTableDropIndex{
 			Database: "signoz_traces",
 			Table:    "signoz_index_v3",
-			Index:    Index{Name: JSONSubColumnCastIndexName("attributes", path)},
+			Index:    Index{Name: SimpleJSONSubColumnIndexName("attributes", path)},
 		})
 	}
 	return ops
