@@ -6,6 +6,8 @@ import (
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+
+	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/fieldvalues"
 )
 
 type CacheProvider string
@@ -101,4 +103,7 @@ type Config struct {
 
 	// JSON configures JSON field processing for body (and attributes in future).
 	JSON JSONConfig `mapstructure:"json"`
+
+	// FieldValues configures the writer of the field values store.
+	FieldValues fieldvalues.Config `mapstructure:"field_values"`
 }
