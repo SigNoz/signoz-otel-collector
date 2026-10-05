@@ -1,0 +1,8 @@
+type: signoznormalize
+status:
+  class: processor
+  stability:
+    alpha: [logs]
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
