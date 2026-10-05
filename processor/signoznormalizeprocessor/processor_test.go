@@ -381,7 +381,7 @@ func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
 	}
 }
 
-func TestLogsProcessedMetric(t *testing.T) {
+func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 	reader := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
@@ -392,25 +392,43 @@ func TestLogsProcessedMetric(t *testing.T) {
 	p, err := newNormalizeProcessor(set, testConfig(false))
 	require.NoError(t, err)
 
-	_, err = p.ProcessLogs(ctx, newLogsWithBodies(t, "a", nil, map[string]any{"msg": "x"}))
+	_, err = p.ProcessLogs(ctx, newLogsWithBodies(t,
+		"a",
+		nil,
+		map[string]any{"msg": "x"},
+		`{"log":"y"}`,
+		`{"message":{"k":"v"}}`,
+		`{"message":{"message":7}}`,
+		int64(5),
+	))
 	require.NoError(t, err)
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(ctx, &rm))
-	var found bool
+	got := map[string]int64{}
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			if m.Name != "signoz_normalize_processor_logs_processed" {
-				continue
-			}
 			sum, ok := m.Data.(metricdata.Sum[int64])
 			require.True(t, ok)
-			require.Len(t, sum.DataPoints, 1)
-			require.Equal(t, int64(2), sum.DataPoints[0].Value)
-			found = true
+			for _, dp := range sum.DataPoints {
+				key := m.Name
+				if v, ok := dp.Attributes.Value("field"); ok {
+					key += "/" + v.AsString()
+				}
+				got[key] = dp.Value
+			}
 		}
 	}
-	require.True(t, found)
+	require.Equal(t, map[string]int64{
+		"signoz_normalize_processor_logs_processed":           6,
+		"signoz_normalize_processor_logs_text":                1,
+		"signoz_normalize_processor_logs_json_parsed":         3,
+		"signoz_normalize_processor_messages_inferred/msg":    1,
+		"signoz_normalize_processor_messages_inferred/log":    1,
+		"signoz_normalize_processor_messages_flattened":       2,
+		"signoz_normalize_processor_messages_nested_promoted": 1,
+		"signoz_normalize_processor_messages_stringified":     2,
+	}, got)
 }
 
 func TestFactoryCreatesLogsProcessor(t *testing.T) {
