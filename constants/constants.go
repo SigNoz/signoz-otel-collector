@@ -6,7 +6,8 @@ const (
 	BodyPromotedColumn       = "body_promoted"
 	BodyPromotedColumnPrefix = "body_promoted."
 
-	OriginalBodyAttributeKey = "__signoz_original_body__"
+	SignozInternalAttrPrefix = "signoz.__internal."
+	OriginalBodyAttributeKey = SignozInternalAttrPrefix + "original_body"
 
 	SignozMetadataDB             = "signoz_metadata"
 	DistTableColumnEvolution     = SignozMetadataDB + ".distributed_column_evolution_metadata"
