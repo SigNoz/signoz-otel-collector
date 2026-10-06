@@ -2194,5 +2194,29 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1018,
+		UpItems: []Operation{
+			MaterializedKeyIndexes{
+				Database:    "signoz_traces",
+				Table:       "signoz_index_v3",
+				MapColumn:   "attributes_string",
+				JSONColumn:  "attributes",
+				IndexType:   "ngrambf_v1(4, 5000, 2, 0)",
+				Granularity: 1,
+			},
+		},
+		DownItems: []Operation{
+			MaterializedKeyIndexes{
+				Database:    "signoz_traces",
+				Table:       "signoz_index_v3",
+				MapColumn:   "attributes_string",
+				JSONColumn:  "attributes",
+				IndexType:   "ngrambf_v1(4, 5000, 2, 0)",
+				Granularity: 1,
+				Drop:        true,
+			},
+		},
+	},
 	// add new new migration to test file for sync/async check as well
 }
