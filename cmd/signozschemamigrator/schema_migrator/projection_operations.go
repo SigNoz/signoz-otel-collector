@@ -50,11 +50,73 @@ func (c CreateProjectionOperation) ToSQL() string {
 	sql.WriteString(c.Database)
 	sql.WriteString(".")
 	sql.WriteString(c.Table)
+	if c.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(c.cluster)
+	}
 	sql.WriteString(" ADD PROJECTION IF NOT EXISTS ")
 	sql.WriteString(c.Projection.Name)
 	sql.WriteString(" (")
 	sql.WriteString(c.Projection.Query)
 	sql.WriteString(")")
+	return sql.String()
+}
+
+// AlterTableMaterializeProjection populates a projection for existing parts.
+// Unlike adding the projection definition, this rewrites data and must run asynchronously.
+type AlterTableMaterializeProjection struct {
+	cluster    string
+	Database   string
+	Table      string
+	Projection Projection
+	Partition  string
+}
+
+func (a AlterTableMaterializeProjection) OnCluster(cluster string) Operation {
+	a.cluster = cluster
+	return &a
+}
+
+func (a AlterTableMaterializeProjection) WithReplication() Operation {
+	return &a
+}
+
+func (a AlterTableMaterializeProjection) ShouldWaitForDistributionQueue() (bool, string, string) {
+	return false, a.Database, a.Table
+}
+
+func (a AlterTableMaterializeProjection) IsMutation() bool {
+	return true
+}
+
+func (a AlterTableMaterializeProjection) IsIdempotent() bool {
+	return true
+}
+
+func (a AlterTableMaterializeProjection) IsLightweight() bool {
+	return false
+}
+
+func (a AlterTableMaterializeProjection) ForceMigrate() bool {
+	return false
+}
+
+func (a AlterTableMaterializeProjection) ToSQL() string {
+	var sql strings.Builder
+	sql.WriteString("ALTER TABLE ")
+	sql.WriteString(a.Database)
+	sql.WriteString(".")
+	sql.WriteString(a.Table)
+	if a.cluster != "" {
+		sql.WriteString(" ON CLUSTER ")
+		sql.WriteString(a.cluster)
+	}
+	sql.WriteString(" MATERIALIZE PROJECTION IF EXISTS ")
+	sql.WriteString(a.Projection.Name)
+	if a.Partition != "" {
+		sql.WriteString(" IN PARTITION ")
+		sql.WriteString(a.Partition)
+	}
 	return sql.String()
 }
 

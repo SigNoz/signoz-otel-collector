@@ -2284,4 +2284,50 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			DropTableOperation{Database: "signoz_metrics", Table: "samples_v4_reduced_last_5m_mv"},
 		},
 	},
+	{
+		MigrationID: 1012,
+		UpItems: []Operation{
+			// metadata is an AggregatingMergeTree. Rebuild the projection when
+			// merges aggregate its value-level rows so it remains usable and consistent.
+			AlterTableModifySettings{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Settings: TableSettings{
+					{Name: "deduplicate_merge_projection_mode", Value: "'rebuild'"},
+				},
+			},
+			CreateProjectionOperation{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Projection: Projection{
+					Name: "metric_field_keys",
+					// Keep metric_name so field discovery can still scope keys to
+					// an exact metric or namespace, without reading attribute values.
+					Query: `SELECT metric_name, attr_name, attr_type, attr_datatype
+GROUP BY metric_name, attr_name, attr_type, attr_datatype`,
+				},
+			},
+		},
+		DownItems: []Operation{
+			DropProjectionOperation{
+				Database:   "signoz_metrics",
+				Table:      "metadata",
+				Projection: Projection{Name: "metric_field_keys"},
+			},
+			// Leave the merge setting in place: its previous value is unknown,
+			// and rebuilding remains safe for any other projections on the table.
+		},
+	},
+	{
+		MigrationID: 1013,
+		UpItems: []Operation{
+			// Backfill historical parts asynchronously. Until this finishes,
+			// ClickHouse can still read those parts from the original metadata table.
+			AlterTableMaterializeProjection{
+				Database:   "signoz_metrics",
+				Table:      "metadata",
+				Projection: Projection{Name: "metric_field_keys"},
+			},
+		},
+	},
 }
