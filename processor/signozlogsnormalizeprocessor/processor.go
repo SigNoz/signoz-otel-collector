@@ -183,7 +183,7 @@ func stashOriginalBody(body, dest pcommon.Value) {
 
 func (p *normalizeProcessor) parseText(body pcommon.Value) bool {
 	str := body.Str()
-	unquoted := strings.TrimRight(utils.Unquote(strings.TrimRight(str, jsonWhitespace)), jsonWhitespace)
+	unquoted := strings.Trim(utils.Unquote(strings.Trim(str, jsonWhitespace)), jsonWhitespace)
 	if strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}") {
 		var parsed map[string]any
 		if err := p.json.UnmarshalFromString(unquoted, &parsed); err == nil {
@@ -202,6 +202,10 @@ func (p *normalizeProcessor) normalizeMessage(m pcommon.Map) messageOutcome {
 		for i, field := range p.messageFields {
 			val, found := m.Get(field)
 			if !found {
+				continue
+			}
+			if val.Type() == pcommon.ValueTypeEmpty {
+				m.Remove(field)
 				continue
 			}
 			promoted := pcommon.NewValueEmpty()

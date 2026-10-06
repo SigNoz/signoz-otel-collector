@@ -143,6 +143,11 @@ func TestNormalizeMessage(t *testing.T) {
 			expected: map[string]any{"level": "info"},
 		},
 		{
+			name:     "compatible_field_nil_falls_through_to_next_field",
+			input:    map[string]any{"log": nil, "msg": "request served"},
+			expected: map[string]any{"message": "request served"},
+		},
+		{
 			name:     "message_missing_compatible_field_as_map_flattens_after_promotion",
 			input:    map[string]any{"msg": map[string]any{"nested_key": "nested_val", "foo": "bar"}, "level": "info"},
 			expected: map[string]any{"nested_key": "nested_val", "foo": "bar", "level": "info"},
@@ -194,6 +199,16 @@ func TestProcessLogsBody(t *testing.T) {
 			name:     "json_with_trailing_whitespace_parsed",
 			body:     "{\"msg\":\"hi\"} \t\r\n",
 			expected: map[string]any{"message": "hi"},
+		},
+		{
+			name:     "json_with_leading_whitespace_parsed",
+			body:     " \t\r\n{\"msg\":\"hi\"}",
+			expected: map[string]any{"message": "hi"},
+		},
+		{
+			name:     "invalid_json_with_surrounding_whitespace_kept_verbatim",
+			body:     " {\"a\":1,,}\n",
+			expected: map[string]any{"message": " {\"a\":1,,}\n"},
 		},
 		{
 			name:     "quoted_json_with_trailing_whitespace_parsed",
