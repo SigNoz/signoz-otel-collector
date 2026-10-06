@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/processor/processortest"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadatatest"
 )
 
 func testConfig(dualIngestion bool) *Config {
@@ -418,14 +421,12 @@ func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
 
 func TestMetrics(t *testing.T) {
 	ctx := context.Background()
-	reader := sdkmetric.NewManualReader()
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	t.Cleanup(func() { require.NoError(t, mp.Shutdown(ctx)) })
+	tel := componenttest.NewTelemetry()
+	t.Cleanup(func() { require.NoError(t, tel.Shutdown(ctx)) })
 
-	set := componenttest.NewNopTelemetrySettings()
-	set.MeterProvider = mp
-	p, err := newNormalizeProcessor(set, testConfig(false))
+	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig(false))
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, p.telemetry.shutdown(ctx)) })
 
 	_, err = p.ProcessLogs(ctx, newLogsWithBodies(t,
 		"a",
@@ -438,32 +439,37 @@ func TestMetrics(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(ctx, &rm))
-	got := map[string]int64{}
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			sum, ok := m.Data.(metricdata.Sum[int64])
-			require.True(t, ok)
-			for _, dp := range sum.DataPoints {
-				key := m.Name
-				if v, ok := dp.Attributes.Value("field"); ok {
-					key += "/" + v.AsString()
-				}
-				got[key] = dp.Value
-			}
-		}
+	dp := func(value int64, attrs ...attribute.KeyValue) metricdata.DataPoint[int64] {
+		return metricdata.DataPoint[int64]{Value: value, Attributes: attribute.NewSet(attrs...)}
 	}
-	require.Equal(t, map[string]int64{
-		"signoz_logs_normalize_processor_logs_processed":           6,
-		"signoz_logs_normalize_processor_logs_text":                1,
-		"signoz_logs_normalize_processor_logs_json_parsed":         3,
-		"signoz_logs_normalize_processor_messages_inferred/msg":    1,
-		"signoz_logs_normalize_processor_messages_inferred/log":    1,
-		"signoz_logs_normalize_processor_messages_flattened":       2,
-		"signoz_logs_normalize_processor_messages_nested_promoted": 1,
-		"signoz_logs_normalize_processor_messages_stringified":     2,
-	}, got)
+	metadatatest.AssertEqualSignozlogsnormalizeRecords(t, tel, []metricdata.DataPoint[int64]{
+		dp(3, attribute.String("body", "json")),
+		dp(1, attribute.String("body", "text")),
+		dp(1, attribute.String("body", "map")),
+		dp(1, attribute.String("body", "other")),
+	}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizeMessagePromotions(t, tel, []metricdata.DataPoint[int64]{
+		dp(1, attribute.String("field", "log")),
+		dp(1, attribute.String("field", "msg")),
+	}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizeMessageFlattenings(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizeMessageNestedPromotions(t, tel, []metricdata.DataPoint[int64]{dp(1)}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizeMessageStringifications(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
+}
+
+func TestShutdownStopsObserving(t *testing.T) {
+	ctx := context.Background()
+	tel := componenttest.NewTelemetry()
+	t.Cleanup(func() { require.NoError(t, tel.Shutdown(ctx)) })
+
+	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig(false))
+	require.NoError(t, err)
+	_, err = tel.GetMetric("otelcol.signozlogsnormalize.records")
+	require.NoError(t, err)
+
+	require.NoError(t, p.telemetry.shutdown(ctx))
+	_, err = tel.GetMetric("otelcol.signozlogsnormalize.records")
+	assert.Error(t, err)
 }
 
 func TestFactoryCreatesLogsProcessor(t *testing.T) {

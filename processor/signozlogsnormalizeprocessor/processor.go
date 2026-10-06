@@ -10,37 +10,18 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 const (
 	messageField   = "message"
 	jsonWhitespace = " \t\r\n"
-	scopeName      = "github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor"
 )
 
 type normalizeProcessor struct {
 	json          sonic.API
 	stashOriginal bool
 	messageFields []string
-	telemetry     telemetry
-}
-
-type telemetry struct {
-	logsProcessed          metric.Int64Counter
-	logsText               metric.Int64Counter
-	logsJSONParsed         metric.Int64Counter
-	messagesInferred       metric.Int64Counter
-	messagesFlattened      metric.Int64Counter
-	messagesStringified    metric.Int64Counter
-	messagesNestedPromoted metric.Int64Counter
-	inferredFieldOpts      []metric.AddOption
-}
-
-type batchStats struct {
-	processed, text, jsonParsed, flattened, stringified, nestedPromoted int64
-	inferred                                                            []int64
+	telemetry     *telemetry
 }
 
 type messageOutcome struct {
@@ -48,36 +29,6 @@ type messageOutcome struct {
 	flattened      bool
 	stringified    bool
 	nestedPromoted bool
-}
-
-func newTelemetry(set component.TelemetrySettings, messageFields []string) (telemetry, error) {
-	meter := set.MeterProvider.Meter(scopeName)
-	var (
-		t   telemetry
-		err error
-	)
-	counter := func(name, desc string) metric.Int64Counter {
-		if err != nil {
-			return nil
-		}
-		var c metric.Int64Counter
-		c, err = meter.Int64Counter("signoz_logs_normalize_processor_"+name, metric.WithDescription(desc))
-		return c
-	}
-	t.logsProcessed = counter("logs_processed", "Number of log records whose body was normalized by the signozlogsnormalize processor")
-	t.logsText = counter("logs_text", "Number of log records whose body was plain text and became the message")
-	t.logsJSONParsed = counter("logs_json_parsed", "Number of log records whose text body was parsed as a JSON object")
-	t.messagesInferred = counter("messages_inferred", "Number of log records whose message was inferred from another field")
-	t.messagesFlattened = counter("messages_flattened", "Number of log records whose message was an object lifted to the top level")
-	t.messagesStringified = counter("messages_stringified", "Number of log records whose message is neither text nor an object and is stringified on storage by the typed body_v2.message path")
-	t.messagesNestedPromoted = counter("messages_nested_promoted", "Number of log records whose lifted message object carried its own message field, which became the message")
-	if err != nil {
-		return telemetry{}, err
-	}
-	for _, f := range messageFields {
-		t.inferredFieldOpts = append(t.inferredFieldOpts, metric.WithAttributes(attribute.String("field", f)))
-	}
-	return t, nil
 }
 
 func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*normalizeProcessor, error) {
@@ -93,8 +44,8 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 	}, nil
 }
 
-func (p *normalizeProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
-	st := batchStats{inferred: make([]int64, len(p.messageFields))}
+func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.Logs, error) {
+	st := batchStats{promotions: make([]int64, len(p.messageFields))}
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
@@ -105,27 +56,8 @@ func (p *normalizeProcessor) ProcessLogs(ctx context.Context, ld plog.Logs) (plo
 			}
 		}
 	}
-	p.record(ctx, &st)
+	p.telemetry.add(&st)
 	return ld, nil
-}
-
-func (p *normalizeProcessor) record(ctx context.Context, st *batchStats) {
-	add := func(c metric.Int64Counter, n int64) {
-		if n > 0 {
-			c.Add(ctx, n)
-		}
-	}
-	add(p.telemetry.logsProcessed, st.processed)
-	add(p.telemetry.logsText, st.text)
-	add(p.telemetry.logsJSONParsed, st.jsonParsed)
-	add(p.telemetry.messagesFlattened, st.flattened)
-	add(p.telemetry.messagesStringified, st.stringified)
-	add(p.telemetry.messagesNestedPromoted, st.nestedPromoted)
-	for i, n := range st.inferred {
-		if n > 0 {
-			p.telemetry.messagesInferred.Add(ctx, n, p.telemetry.inferredFieldOpts[i])
-		}
-	}
 }
 
 func (p *normalizeProcessor) normalizeRecord(lr plog.LogRecord, st *batchStats) {
@@ -139,14 +71,15 @@ func (p *normalizeProcessor) normalizeRecord(lr plog.LogRecord, st *batchStats) 
 		stashOriginalBody(body, original)
 	}
 
+	kind := bodyOther
 	switch body.Type() {
 	case pcommon.ValueTypeStr:
+		kind = bodyText
 		if p.parseText(body) {
-			st.jsonParsed++
-		} else {
-			st.text++
+			kind = bodyJSON
 		}
 	case pcommon.ValueTypeMap:
+		kind = bodyMap
 	default:
 		wrapped := pcommon.NewValueMap()
 		body.MoveTo(wrapped.Map().PutEmpty(messageField))
@@ -155,22 +88,22 @@ func (p *normalizeProcessor) normalizeRecord(lr plog.LogRecord, st *batchStats) 
 
 	out := p.normalizeMessage(body.Map())
 	if out.inferredFrom >= 0 {
-		st.inferred[out.inferredFrom]++
+		st.promotions[out.inferredFrom]++
 	}
 	if out.flattened {
-		st.flattened++
+		st.flattenings++
 	}
 	if out.stringified {
-		st.stringified++
+		st.stringifications++
 	}
 	if out.nestedPromoted {
-		st.nestedPromoted++
+		st.nestedPromotions++
 	}
 
 	if p.stashOriginal {
 		original.MoveTo(lr.Attributes().PutEmpty(constants.OriginalBodyAttributeKey))
 	}
-	st.processed++
+	st.records[kind]++
 }
 
 func stashOriginalBody(body, dest pcommon.Value) {

@@ -8,17 +8,17 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
-)
 
-const typeStr = "signozlogsnormalize"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadata"
+)
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}
 
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		component.MustNewType(typeStr),
+		metadata.Type,
 		createDefaultConfig,
-		processor.WithLogs(createLogsProcessor, component.StabilityLevelAlpha),
+		processor.WithLogs(createLogsProcessor, metadata.LogsStability),
 	)
 }
 
@@ -34,7 +34,7 @@ func createLogsProcessor(
 ) (processor.Logs, error) {
 	pCfg, ok := cfg.(*Config)
 	if !ok {
-		return nil, fmt.Errorf("invalid configuration type %T for %s processor", cfg, typeStr)
+		return nil, fmt.Errorf("invalid configuration type %T for %s processor", cfg, metadata.Type)
 	}
 	proc, err := newNormalizeProcessor(set.TelemetrySettings, pCfg)
 	if err != nil {
@@ -44,5 +44,6 @@ func createLogsProcessor(
 		ctx, set, cfg, nextConsumer,
 		proc.ProcessLogs,
 		processorhelper.WithCapabilities(processorCapabilities),
+		processorhelper.WithShutdown(proc.telemetry.shutdown),
 	)
 }
