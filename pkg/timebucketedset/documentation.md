@@ -8,7 +8,7 @@ The following telemetry is emitted by this component.
 
 ### otelcol.timebucketedset.apply.ids
 
-Ids given to Apply. An ignored id belongs to a bucket that is no longer live; its next Plan is a miss again. [Alpha]
+Ids given to Apply. An ignored id belongs to a bucket that is no longer live; its next Plan is a miss again.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -16,13 +16,13 @@ Ids given to Apply. An ignored id belongs to a bucket that is no longer live; it
 
 #### Attributes
 
-| Name | Description | Values |
-| ---- | ----------- | ------ |
-| result | Outcome of applying an id. | Str: ``applied``, ``ignored`` |
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| result | Outcome of applying an id. | Str: ``applied``, ``ignored`` | - |
 
 ### otelcol.timebucketedset.bucket.count
 
-Live buckets. [Alpha]
+Live buckets.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -30,7 +30,7 @@ Live buckets. [Alpha]
 
 ### otelcol.timebucketedset.bucket.evictions
 
-Buckets evicted to make room for a newer bucket. [Alpha]
+Buckets evicted to make room for a newer bucket.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -38,7 +38,7 @@ Buckets evicted to make room for a newer bucket. [Alpha]
 
 ### otelcol.timebucketedset.id.count
 
-Entries across live buckets, one per bucket an id is registered in. [Alpha]
+Entries across live buckets, one per bucket an id is registered in.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -46,7 +46,7 @@ Entries across live buckets, one per bucket an id is registered in. [Alpha]
 
 ### otelcol.timebucketedset.memory.limit
 
-Chunk capacity of live buckets. Once a fastcache shard has filled its chunks it overwrites its oldest ids. [Alpha]
+Chunk capacity of live buckets. Once a fastcache shard has filled its chunks it overwrites its oldest ids.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -54,7 +54,7 @@ Chunk capacity of live buckets. Once a fastcache shard has filled its chunks it 
 
 ### otelcol.timebucketedset.memory.usage
 
-Bytes of fastcache chunks allocated by live buckets. [Alpha]
+Bytes of fastcache chunks allocated by live buckets.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -62,7 +62,7 @@ Bytes of fastcache chunks allocated by live buckets. [Alpha]
 
 ### otelcol.timebucketedset.plan.ids
 
-Ids given to Plan, by answer. miss: write. hit: skip. pre_write: skip, but write to the next bucket. no_bucket: write, nothing is cached. [Alpha]
+Ids given to Plan, by answer. miss: write. hit: skip. pre_write: skip, but write to the next bucket. no_bucket: write, nothing is cached.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -70,6 +70,6 @@ Ids given to Plan, by answer. miss: write. hit: skip. pre_write: skip, but write
 
 #### Attributes
 
-| Name | Description | Values |
-| ---- | ----------- | ------ |
-| result | Answer of a Plan call. | Str: ``miss``, ``hit``, ``pre_write``, ``no_bucket`` |
+| Name | Description | Values | Semantic Convention |
+| ---- | ----------- | ------ | ------------------- |
+| result | Answer of a Plan call. | Str: ``miss``, ``hit``, ``pre_write``, ``no_bucket`` | - |

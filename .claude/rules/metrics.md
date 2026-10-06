@@ -12,8 +12,8 @@ Metrics a component or shared package emits about itself. Rules distilled from O
 ## Define
 
 - Declare every metric in `metadata.yaml` under `telemetry.metrics`; use the generated `internal/metadata.TelemetryBuilder`. Never hand-roll `meter.Int64Counter(...)`.
-- Generate with the collector version pinned in `go.mod`: build `cmd/mdatagen` from a checkout of that tag; `go run ...@version` fails on its replace directives.
-- Per metric: `enabled: true`, `stability: {level: alpha}`, `prefix: otelcol.`, `description`, `unit`, one of `sum` / `gauge` / `histogram`.
+- Generate with mdatagen `v0.159.0`: build `cmd/mdatagen` from a checkout of the `cmd/mdatagen/v0.159.0` tag; `go run ...@version` fails on its replace directives.
+- Per metric: `enabled: true`, `stability: alpha`, `prefix: otelcol.`, `description`, `unit`, one of `sum` / `gauge` / `histogram`.
 - Keys under `attributes` and `telemetry.metrics` sorted alphabetically; mdatagen rejects otherwise.
 - Generated files stay as emitted.
 

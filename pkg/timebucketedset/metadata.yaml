@@ -22,8 +22,7 @@ telemetry:
   metrics:
     timebucketedset.apply.ids:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Ids given to Apply. An ignored id belongs to a bucket that is no longer live; its next Plan is a miss again.
       unit: "{id}"
@@ -35,8 +34,7 @@ telemetry:
 
     timebucketedset.bucket.count:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Live buckets.
       unit: "{bucket}"
@@ -47,8 +45,7 @@ telemetry:
 
     timebucketedset.bucket.evictions:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Buckets evicted to make room for a newer bucket.
       unit: "{bucket}"
@@ -59,8 +56,7 @@ telemetry:
 
     timebucketedset.id.count:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Entries across live buckets, one per bucket an id is registered in.
       unit: "{id}"
@@ -71,8 +67,7 @@ telemetry:
 
     timebucketedset.memory.limit:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Chunk capacity of live buckets. Once a fastcache shard has filled its chunks it overwrites its oldest ids.
       unit: By
@@ -83,8 +78,7 @@ telemetry:
 
     timebucketedset.memory.usage:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: Bytes of fastcache chunks allocated by live buckets.
       unit: By
@@ -95,8 +89,7 @@ telemetry:
 
     timebucketedset.plan.ids:
       enabled: true
-      stability:
-        level: alpha
+      stability: alpha
       prefix: otelcol.
       description: "Ids given to Plan, by answer. miss: write. hit: skip. pre_write: skip, but write to the next bucket. no_bucket: write, nothing is cached."
       unit: "{id}"

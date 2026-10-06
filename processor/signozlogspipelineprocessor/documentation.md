@@ -8,7 +8,7 @@ The following telemetry is emitted by this component.
 
 ### otelcol_processor_incoming_items
 
-Number of items passed to the processor. [Alpha]
+Number of items passed to the processor.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
@@ -16,7 +16,7 @@ Number of items passed to the processor. [Alpha]
 
 ### otelcol_processor_outgoing_items
 
-Number of items emitted from the processor. [Alpha]
+Number of items emitted from the processor.
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
