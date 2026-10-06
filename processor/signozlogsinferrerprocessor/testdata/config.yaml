@@ -1,0 +1,8 @@
+signozlogsinferrer:
+signozlogsinferrer/fields:
+  severity_text_fields: [sev]
+  scope_name_fields: [logger, scope.name]
+signozlogsinferrer/empty:
+  severity_text_fields: []
+signozlogsinferrer/unknown:
+  unknown_key: true
