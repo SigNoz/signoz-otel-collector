@@ -6,7 +6,7 @@ const (
 	BodyPromotedColumn       = "body_promoted"
 	BodyPromotedColumnPrefix = "body_promoted."
 
-	SignozInternalAttrPrefix = "signoz.__internal."
+	SignozInternalAttrPrefix = "signoz.__internal__."
 	OriginalBodyAttributeKey = SignozInternalAttrPrefix + "original_body"
 
 	SignozMetadataDB             = "signoz_metadata"
