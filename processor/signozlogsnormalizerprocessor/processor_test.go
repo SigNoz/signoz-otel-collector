@@ -297,10 +297,19 @@ func TestProcessLogsBody(t *testing.T) {
 }
 
 func TestEmptyBodyIsLeftUntouched(t *testing.T) {
-	for _, dual := range []bool{false, true} {
-		lr := processSingle(t, newTestProcessor(t, dual), nil)
-		assert.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
-		assertNoStash(t, lr)
+	testCases := []struct {
+		name          string
+		dualIngestion bool
+	}{
+		{name: "DualIngestionDisabled"},
+		{name: "DualIngestionEnabled", dualIngestion: true},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			lr := processSingle(t, newTestProcessor(t, testCase.dualIngestion), nil)
+			assert.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
+			assertNoStash(t, lr)
+		})
 	}
 }
 
@@ -413,9 +422,19 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 }
 
 func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
+	testCases := []struct {
+		name string
+		body any
+	}{
+		{name: "Text", body: "no stash text"},
+		{name: "MapBody", body: map[string]any{"msg": "x"}},
+		{name: "IntBody", body: int64(7)},
+	}
 	p := newTestProcessor(t, false)
-	for _, body := range []any{"Hello World", map[string]any{"msg": "x"}, int64(7)} {
-		assertNoStash(t, processSingle(t, p, body))
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertNoStash(t, processSingle(t, p, testCase.body))
+		})
 	}
 }
 
@@ -499,41 +518,36 @@ func TestFactoryRejectsWrongConfigType(t *testing.T) {
 }
 
 func BenchmarkProcessLogs(b *testing.B) {
-	jsonLine := `{"level":"info","msg":"request served","status":200,"path":"/api/v1/items","duration_ms":12.5,"user":{"id":42,"name":"x"}}`
-	textLine := `2026-10-05T12:00:00Z INFO request served path=/api/v1/items status=200 duration=12.5ms`
-	mapBody := map[string]any{
-		"level": "info", "msg": "request served", "status": int64(200), "path": "/api/v1/items", "duration_ms": 12.5,
-		"user": map[string]any{"id": int64(42), "name": "x"},
-	}
 	testCases := []struct {
 		name string
 		body any
 	}{
-		{name: "JSONString", body: jsonLine},
-		{name: "Text", body: textLine},
-		{name: "MapBody", body: mapBody},
+		{name: "JSONString", body: `{"level":"info","msg":"request served","status":200,"path":"/api/v1/items","duration_ms":12.5,"user":{"id":42,"name":"x"}}`},
+		{name: "Text", body: `2026-10-05T12:00:00Z INFO request served path=/api/v1/items status=200 duration=12.5ms`},
+		{
+			name: "MapBody",
+			body: map[string]any{
+				"level": "info", "msg": "request served", "status": int64(200), "path": "/api/v1/items", "duration_ms": 12.5,
+				"user": map[string]any{"id": int64(42), "name": "x"},
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		for _, dual := range []bool{false, true} {
 			b.Run(fmt.Sprintf("%s/dual=%t", testCase.name, dual), func(b *testing.B) {
 				p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig(dual))
-				if err != nil {
-					b.Fatal(err)
-				}
+				require.NoError(b, err)
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					b.StopTimer()
 					ld := plog.NewLogs()
 					lrs := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
 					for range 1000 {
-						if err := lrs.AppendEmpty().Body().FromRaw(testCase.body); err != nil {
-							b.Fatal(err)
-						}
+						require.NoError(b, lrs.AppendEmpty().Body().FromRaw(testCase.body))
 					}
 					b.StartTimer()
-					if _, err := p.ProcessLogs(context.Background(), ld); err != nil {
-						b.Fatal(err)
-					}
+					_, err := p.ProcessLogs(context.Background(), ld)
+					require.NoError(b, err)
 				}
 			})
 		}

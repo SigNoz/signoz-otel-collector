@@ -16,27 +16,27 @@ func TestLoadConfig(t *testing.T) {
 	factory := NewFactory()
 
 	testCases := []struct {
-		id       component.ID
-		expected Config
+		name      string
+		id        component.ID
+		expected  Config
+		expectErr bool
 	}{
-		{id: component.NewID(factory.Type()), expected: Config{MessageFields: []string{"log", "msg"}}},
-		{id: component.NewIDWithName(factory.Type(), "dual"), expected: Config{JSONBodyDualIngestion: true, MessageFields: []string{"log", "msg"}}},
-		{id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{MessageFields: []string{"text"}}},
+		{name: "Default", id: component.NewID(factory.Type()), expected: Config{MessageFields: []string{"log", "msg"}}},
+		{name: "DualIngestion", id: component.NewIDWithName(factory.Type(), "dual"), expected: Config{JSONBodyDualIngestion: true, MessageFields: []string{"log", "msg"}}},
+		{name: "CustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{MessageFields: []string{"text"}}},
+		{name: "UnknownKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
 	}
 	for _, testCase := range testCases {
-		t.Run(testCase.id.String(), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			cfg := factory.CreateDefaultConfig()
 			sub, err := cm.Sub(testCase.id.String())
 			require.NoError(t, err)
+			if testCase.expectErr {
+				assert.Error(t, sub.Unmarshal(cfg))
+				return
+			}
 			require.NoError(t, sub.Unmarshal(cfg))
 			assert.Equal(t, testCase.expected, *cfg.(*Config))
 		})
 	}
-
-	t.Run("UnknownKey_Rejected", func(t *testing.T) {
-		cfg := factory.CreateDefaultConfig()
-		sub, err := cm.Sub(component.NewIDWithName(factory.Type(), "unknown").String())
-		require.NoError(t, err)
-		assert.Error(t, sub.Unmarshal(cfg))
-	})
 }
