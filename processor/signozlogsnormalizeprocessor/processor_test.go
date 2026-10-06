@@ -50,50 +50,50 @@ func processSingle(t *testing.T, p *normalizeProcessor, body any) plog.LogRecord
 	return out.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 }
 
-func requireNoStash(t *testing.T, lr plog.LogRecord) {
+func assertNoStash(t *testing.T, lr plog.LogRecord) {
 	t.Helper()
 	_, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
-	require.False(t, exists)
+	assert.False(t, exists)
 }
 
 func TestNormalizeMessage(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		input    map[string]any
 		expected map[string]any
 	}{
 		{
-			name:     "message_already_exists_as_string",
+			name:     "MessageString_Unchanged",
 			input:    map[string]any{"message": "hello", "level": "info"},
 			expected: map[string]any{"message": "hello", "level": "info"},
 		},
 		{
-			name:     "message_missing_msg_field_moved_to_message",
+			name:     "MessageMissing_MsgPromoted",
 			input:    map[string]any{"msg": "test message", "level": "info"},
 			expected: map[string]any{"message": "test message", "level": "info"},
 		},
 		{
-			name:     "message_present_log_field_also_present",
+			name:     "MessagePresent_LogUntouched",
 			input:    map[string]any{"message": "message content", "log": "log content", "other": "data"},
 			expected: map[string]any{"message": "message content", "log": "log content", "other": "data"},
 		},
 		{
-			name:     "message_missing_prefers_log_over_msg_when_both_present",
+			name:     "MessageMissing_LogAndMsg_LogPromoted",
 			input:    map[string]any{"log": "from log", "msg": "from msg"},
 			expected: map[string]any{"message": "from log", "msg": "from msg"},
 		},
 		{
-			name:     "message_missing_promotes_non_string_compatible_field",
+			name:     "MessageMissing_NonStringField_Promoted",
 			input:    map[string]any{"msg": int64(123), "log": int64(456)},
 			expected: map[string]any{"message": int64(456), "msg": int64(123)},
 		},
 		{
-			name:     "message_missing_no_compatible_fields",
+			name:     "MessageMissing_NoMessageFields_Unchanged",
 			input:    map[string]any{"level": "info", "other": "data"},
 			expected: map[string]any{"level": "info", "other": "data"},
 		},
 		{
-			name: "message_as_map_flattens_to_top_level",
+			name: "MessageMap_InnerMessageInt_Flattened",
 			input: map[string]any{
 				"message": map[string]any{"nested_key": "nested_val", "foo": "bar", "message": int64(36)},
 				"level":   "info",
@@ -106,7 +106,7 @@ func TestNormalizeMessage(t *testing.T) {
 			},
 		},
 		{
-			name: "message_as_map_flattens_to_top_level_and_message_is_removed",
+			name: "MessageMap_Flattened_MessageRemoved",
 			input: map[string]any{
 				"message": map[string]any{"nested_key": "nested_val", "foo": "bar"},
 				"level":   "info",
@@ -118,7 +118,7 @@ func TestNormalizeMessage(t *testing.T) {
 			},
 		},
 		{
-			name: "message_as_map_flattens_to_top_level_and_message_is_again_map",
+			name: "MessageMap_InnerMessageMap_FlattenedOnce",
 			input: map[string]any{
 				"message": map[string]any{"nested_key": "nested_val", "foo": "bar", "message": map[string]any{"deep": "value"}},
 				"level":   "info",
@@ -131,167 +131,167 @@ func TestNormalizeMessage(t *testing.T) {
 			},
 		},
 		{
-			name:     "message_as_nil_handled_message_is_removed",
+			name:     "MessageNil_Removed",
 			input:    map[string]any{"message": nil, "level": "info"},
 			expected: map[string]any{"level": "info"},
 		},
 		{
-			name:     "message_nil_then_compatible_field_promoted",
+			name:     "MessageNil_MsgPromoted",
 			input:    map[string]any{"message": nil, "msg": "x"},
 			expected: map[string]any{"message": "x"},
 		},
 		{
-			name:     "compatible_field_nil_is_dropped",
+			name:     "MessageFieldNil_Dropped",
 			input:    map[string]any{"msg": nil, "level": "info"},
 			expected: map[string]any{"level": "info"},
 		},
 		{
-			name:     "compatible_field_nil_falls_through_to_next_field",
+			name:     "MessageFieldNil_NextFieldPromoted",
 			input:    map[string]any{"log": nil, "msg": "request served"},
 			expected: map[string]any{"message": "request served"},
 		},
 		{
-			name:     "message_missing_compatible_field_as_map_flattens_after_promotion",
+			name:     "MessageMissing_MsgMap_PromotedThenFlattened",
 			input:    map[string]any{"msg": map[string]any{"nested_key": "nested_val", "foo": "bar"}, "level": "info"},
 			expected: map[string]any{"nested_key": "nested_val", "foo": "bar", "level": "info"},
 		},
 		{
-			name:     "flattened_keys_overwrite_top_level_keys",
+			name:     "MessageMap_KeyCollision_InnerWins",
 			input:    map[string]any{"message": map[string]any{"level": "debug"}, "level": "info"},
 			expected: map[string]any{"level": "debug"},
 		},
 		{
-			name:     "message_as_slice_skipped",
+			name:     "MessageSlice_Unchanged",
 			input:    map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 			expected: map[string]any{"message": []any{"a", "b", "c"}, "level": "info"},
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
 			m := pcommon.NewMap()
-			require.NoError(t, m.FromRaw(tc.input))
+			require.NoError(t, m.FromRaw(testCase.input))
 			newTestProcessor(t, false).normalizeMessage(m)
-			require.Equal(t, tc.expected, m.AsRaw())
+			assert.Equal(t, testCase.expected, m.AsRaw())
 		})
 	}
 }
 
 func TestProcessLogsBody(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		name     string
 		body     any
 		expected map[string]any
 	}{
 		{
-			name:     "json_string_promotes_msg",
+			name:     "JSONString_MsgPromoted",
 			body:     `{"msg": "test message", "level": "info"}`,
 			expected: map[string]any{"message": "test message", "level": "info"},
 		},
 		{
-			name:     "text_wrapped_in_message",
+			name:     "Text_WrappedInMessage",
 			body:     "Hello World",
 			expected: map[string]any{"message": "Hello World"},
 		},
 		{
-			name:     "quoted_json_string_is_unquoted_then_parsed",
+			name:     "QuotedJSONString_UnquotedThenParsed",
 			body:     `"{\"msg\":\"hi\"}"`,
 			expected: map[string]any{"message": "hi"},
 		},
 		{
-			name:     "json_with_trailing_whitespace_parsed",
+			name:     "JSONString_TrailingWhitespace_Parsed",
 			body:     "{\"msg\":\"hi\"} \t\r\n",
 			expected: map[string]any{"message": "hi"},
 		},
 		{
-			name:     "json_with_leading_whitespace_parsed",
+			name:     "JSONString_LeadingWhitespace_Parsed",
 			body:     " \t\r\n{\"msg\":\"hi\"}",
 			expected: map[string]any{"message": "hi"},
 		},
 		{
-			name:     "invalid_json_with_surrounding_whitespace_kept_verbatim",
+			name:     "InvalidJSON_SurroundingWhitespace_KeptVerbatim",
 			body:     " {\"a\":1,,}\n",
 			expected: map[string]any{"message": " {\"a\":1,,}\n"},
 		},
 		{
-			name:     "quoted_json_with_trailing_whitespace_parsed",
+			name:     "QuotedJSONString_TrailingWhitespace_Parsed",
 			body:     "\"{\\\"msg\\\":\\\"hi\\n\\\"}\\n\"\n",
 			expected: map[string]any{"message": "hi\n"},
 		},
 		{
-			name:     "invalid_json_with_trailing_whitespace_kept_verbatim",
+			name:     "InvalidJSON_TrailingWhitespace_KeptVerbatim",
 			body:     "{\"a\":1,,}\n",
 			expected: map[string]any{"message": "{\"a\":1,,}\n"},
 		},
 		{
-			name:     "text_with_trailing_whitespace_kept_verbatim",
+			name:     "Text_TrailingWhitespace_KeptVerbatim",
 			body:     "Hello World \n",
 			expected: map[string]any{"message": "Hello World \n"},
 		},
 		{
-			name:     "invalid_json_object_kept_as_text",
+			name:     "InvalidJSON_KeptAsText",
 			body:     `{"a":1,,}`,
 			expected: map[string]any{"message": `{"a":1,,}`},
 		},
 		{
-			name:     "concatenated_objects_kept_as_text",
+			name:     "ConcatenatedObjects_KeptAsText",
 			body:     `{"a":1}{"b":2}`,
 			expected: map[string]any{"message": `{"a":1}{"b":2}`},
 		},
 		{
-			name:     "json_array_string_kept_as_text",
+			name:     "JSONArray_KeptAsText",
 			body:     `[1,2]`,
 			expected: map[string]any{"message": "[1,2]"},
 		},
 		{
-			name:     "empty_object_string_stays_empty",
+			name:     "EmptyObject_StaysEmpty",
 			body:     `{}`,
 			expected: map[string]any{},
 		},
 		{
-			name:     "integers_kept_exact",
+			name:     "LargeInteger_KeptExact",
 			body:     `{"id": 9007199254740993, "ratio": 1.5, "ok": true, "none": null}`,
 			expected: map[string]any{"id": int64(9007199254740993), "ratio": 1.5, "ok": true, "none": nil},
 		},
 		{
-			name:     "map_body_promotes_msg",
+			name:     "MapBody_MsgPromoted",
 			body:     map[string]any{"msg": "x", "level": "info"},
 			expected: map[string]any{"message": "x", "level": "info"},
 		},
 		{
-			name:     "int_body_wrapped",
+			name:     "IntBody_WrappedInMessage",
 			body:     int64(42),
 			expected: map[string]any{"message": int64(42)},
 		},
 		{
-			name:     "double_body_wrapped",
+			name:     "DoubleBody_WrappedInMessage",
 			body:     1.25,
 			expected: map[string]any{"message": 1.25},
 		},
 		{
-			name:     "bool_body_wrapped",
+			name:     "BoolBody_WrappedInMessage",
 			body:     true,
 			expected: map[string]any{"message": true},
 		},
 		{
-			name:     "bytes_body_wrapped",
+			name:     "BytesBody_WrappedInMessage",
 			body:     []byte("raw"),
 			expected: map[string]any{"message": []byte("raw")},
 		},
 		{
-			name:     "slice_body_wrapped",
+			name:     "SliceBody_WrappedInMessage",
 			body:     []any{"a", int64(1)},
 			expected: map[string]any{"message": []any{"a", int64(1)}},
 		},
 	}
 
 	p := newTestProcessor(t, false)
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			lr := processSingle(t, p, tc.body)
-			require.Equal(t, pcommon.ValueTypeMap, lr.Body().Type())
-			require.Equal(t, tc.expected, lr.Body().AsRaw())
-			requireNoStash(t, lr)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			lr := processSingle(t, p, testCase.body)
+			assert.Equal(t, pcommon.ValueTypeMap, lr.Body().Type())
+			assert.Equal(t, testCase.expected, lr.Body().AsRaw())
+			assertNoStash(t, lr)
 		})
 	}
 }
@@ -299,80 +299,80 @@ func TestProcessLogsBody(t *testing.T) {
 func TestEmptyBodyIsLeftUntouched(t *testing.T) {
 	for _, dual := range []bool{false, true} {
 		lr := processSingle(t, newTestProcessor(t, dual), nil)
-		require.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
-		requireNoStash(t, lr)
+		assert.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
+		assertNoStash(t, lr)
 	}
 }
 
 func TestStashOriginalBodyWhenDualIngestion(t *testing.T) {
-	cases := []struct {
+	testCases := []struct {
 		name          string
 		body          any
 		expectedBody  map[string]any
 		expectedStash any
 	}{
 		{
-			name:          "text_stashed_as_is",
+			name:          "Text_StashedAsIs",
 			body:          "Hello World",
 			expectedBody:  map[string]any{"message": "Hello World"},
 			expectedStash: "Hello World",
 		},
 		{
-			name:          "json_string_stashed_byte_exact",
+			name:          "JSONString_StashedByteExact",
 			body:          `{"msg": "hi",   "level": "info"}`,
 			expectedBody:  map[string]any{"message": "hi", "level": "info"},
 			expectedStash: `{"msg": "hi",   "level": "info"}`,
 		},
 		{
-			name:          "quoted_json_string_stashed_with_quotes",
+			name:          "QuotedJSONString_StashedWithQuotes",
 			body:          `"{\"msg\":\"hi\"}"`,
 			expectedBody:  map[string]any{"message": "hi"},
 			expectedStash: `"{\"msg\":\"hi\"}"`,
 		},
 		{
-			name:          "invalid_json_stashed_as_is",
+			name:          "InvalidJSON_StashedAsIs",
 			body:          `{"a":1,,}`,
 			expectedBody:  map[string]any{"message": `{"a":1,,}`},
 			expectedStash: `{"a":1,,}`,
 		},
 		{
-			name:          "int_stashed_typed",
+			name:          "IntBody_StashedTyped",
 			body:          int64(42),
 			expectedBody:  map[string]any{"message": int64(42)},
 			expectedStash: int64(42),
 		},
 		{
-			name:          "bytes_stashed_typed",
+			name:          "BytesBody_StashedTyped",
 			body:          []byte("raw"),
 			expectedBody:  map[string]any{"message": []byte("raw")},
 			expectedStash: []byte("raw"),
 		},
 		{
-			name:          "slice_stashed_typed",
+			name:          "SliceBody_StashedTyped",
 			body:          []any{"a", int64(1)},
 			expectedBody:  map[string]any{"message": []any{"a", int64(1)}},
 			expectedStash: []any{"a", int64(1)},
 		},
 		{
-			name:          "unmutated_map_stashed_as_legacy_json",
+			name:          "MapBody_Unmutated_StashedAsLegacyJSON",
 			body:          map[string]any{"message": "x", "level": "info"},
 			expectedBody:  map[string]any{"message": "x", "level": "info"},
 			expectedStash: `{"level":"info","message":"x"}`,
 		},
 		{
-			name:          "map_with_msg_promotion_stashed_as_legacy_json",
+			name:          "MapBody_MsgPromoted_StashedAsLegacyJSON",
 			body:          map[string]any{"msg": "x", "level": "info"},
 			expectedBody:  map[string]any{"message": "x", "level": "info"},
 			expectedStash: `{"level":"info","msg":"x"}`,
 		},
 		{
-			name:          "map_with_nil_message_stashed_as_legacy_json",
+			name:          "MapBody_MessageNil_StashedAsLegacyJSON",
 			body:          map[string]any{"message": nil, "level": "info"},
 			expectedBody:  map[string]any{"level": "info"},
 			expectedStash: `{"level":"info","message":null}`,
 		},
 		{
-			name:          "map_with_message_map_hoist_stashed_as_legacy_json",
+			name:          "MapBody_MessageMapFlattened_StashedAsLegacyJSON",
 			body:          map[string]any{"message": map[string]any{"a": "b"}, "level": "info"},
 			expectedBody:  map[string]any{"a": "b", "level": "info"},
 			expectedStash: `{"level":"info","message":{"a":"b"}}`,
@@ -380,13 +380,13 @@ func TestStashOriginalBodyWhenDualIngestion(t *testing.T) {
 	}
 
 	p := newTestProcessor(t, true)
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			lr := processSingle(t, p, tc.body)
-			require.Equal(t, tc.expectedBody, lr.Body().AsRaw())
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			lr := processSingle(t, p, testCase.body)
+			assert.Equal(t, testCase.expectedBody, lr.Body().AsRaw())
 			stash, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
 			require.True(t, exists)
-			require.Equal(t, tc.expectedStash, stash.AsRaw())
+			assert.Equal(t, testCase.expectedStash, stash.AsRaw())
 		})
 	}
 }
@@ -399,7 +399,7 @@ func TestMapStashMatchesLegacyBodyStringification(t *testing.T) {
 	lr := processSingle(t, newTestProcessor(t, true), body)
 	stash, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
 	require.True(t, exists)
-	require.Equal(t, legacy.AsString(), stash.Str())
+	assert.Equal(t, legacy.AsString(), stash.Str())
 }
 
 func TestStashKeepsExistingAttributes(t *testing.T) {
@@ -409,13 +409,13 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 
 	_, err := newTestProcessor(t, true).ProcessLogs(context.Background(), ld)
 	require.NoError(t, err)
-	require.Equal(t, map[string]any{"k": "v", constants.OriginalBodyAttributeKey: "Hello World"}, lr.Attributes().AsRaw())
+	assert.Equal(t, map[string]any{"k": "v", constants.OriginalBodyAttributeKey: "Hello World"}, lr.Attributes().AsRaw())
 }
 
 func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
 	p := newTestProcessor(t, false)
 	for _, body := range []any{"Hello World", map[string]any{"msg": "x"}, int64(7)} {
-		requireNoStash(t, processSingle(t, p, body))
+		assertNoStash(t, processSingle(t, p, body))
 	}
 }
 
@@ -476,12 +476,12 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 	ctx := context.Background()
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
-	require.False(t, cfg.(*Config).JSONBodyDualIngestion)
+	assert.False(t, cfg.(*Config).JSONBodyDualIngestion)
 
 	sink := new(consumertest.LogsSink)
 	proc, err := factory.CreateLogs(ctx, processortest.NewNopSettings(factory.Type()), cfg, sink)
 	require.NoError(t, err)
-	require.True(t, proc.Capabilities().MutatesData)
+	assert.True(t, proc.Capabilities().MutatesData)
 
 	require.NoError(t, proc.Start(ctx, componenttest.NewNopHost()))
 	require.NoError(t, proc.ConsumeLogs(ctx, newLogsWithBodies(t, `{"log":"line"}`)))
@@ -489,13 +489,13 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 
 	require.Equal(t, 1, sink.LogRecordCount())
 	body := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body()
-	require.Equal(t, map[string]any{"message": "line"}, body.AsRaw())
+	assert.Equal(t, map[string]any{"message": "line"}, body.AsRaw())
 }
 
 func TestFactoryRejectsWrongConfigType(t *testing.T) {
 	factory := NewFactory()
 	_, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), struct{}{}, consumertest.NewNop())
-	require.Error(t, err)
+	assert.Error(t, err)
 }
 
 func BenchmarkProcessLogs(b *testing.B) {
@@ -505,17 +505,17 @@ func BenchmarkProcessLogs(b *testing.B) {
 		"level": "info", "msg": "request served", "status": int64(200), "path": "/api/v1/items", "duration_ms": 12.5,
 		"user": map[string]any{"id": int64(42), "name": "x"},
 	}
-	cases := []struct {
+	testCases := []struct {
 		name string
 		body any
 	}{
-		{name: "json_string", body: jsonLine},
-		{name: "text", body: textLine},
-		{name: "map", body: mapBody},
+		{name: "JSONString", body: jsonLine},
+		{name: "Text", body: textLine},
+		{name: "MapBody", body: mapBody},
 	}
-	for _, bc := range cases {
+	for _, testCase := range testCases {
 		for _, dual := range []bool{false, true} {
-			b.Run(fmt.Sprintf("%s/dual=%t", bc.name, dual), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%s/dual=%t", testCase.name, dual), func(b *testing.B) {
 				p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig(dual))
 				if err != nil {
 					b.Fatal(err)
@@ -526,7 +526,7 @@ func BenchmarkProcessLogs(b *testing.B) {
 					ld := plog.NewLogs()
 					lrs := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
 					for range 1000 {
-						if err := lrs.AppendEmpty().Body().FromRaw(bc.body); err != nil {
+						if err := lrs.AppendEmpty().Body().FromRaw(testCase.body); err != nil {
 							b.Fatal(err)
 						}
 					}
@@ -549,5 +549,5 @@ func TestCustomMessageFields(t *testing.T) {
 	m := pcommon.NewMap()
 	require.NoError(t, m.FromRaw(map[string]any{"text": "a", "msg": "b"}))
 	p.normalizeMessage(m)
-	require.Equal(t, map[string]any{"message": "a", "msg": "b"}, m.AsRaw())
+	assert.Equal(t, map[string]any{"message": "a", "msg": "b"}, m.AsRaw())
 }

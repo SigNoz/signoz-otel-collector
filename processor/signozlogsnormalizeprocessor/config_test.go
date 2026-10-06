@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
@@ -14,7 +15,7 @@ func TestLoadConfig(t *testing.T) {
 	require.NoError(t, err)
 	factory := NewFactory()
 
-	cases := []struct {
+	testCases := []struct {
 		id       component.ID
 		expected Config
 	}{
@@ -22,20 +23,20 @@ func TestLoadConfig(t *testing.T) {
 		{id: component.NewIDWithName(factory.Type(), "dual"), expected: Config{JSONBodyDualIngestion: true, MessageFields: []string{"log", "msg"}}},
 		{id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{MessageFields: []string{"text"}}},
 	}
-	for _, tc := range cases {
-		t.Run(tc.id.String(), func(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.id.String(), func(t *testing.T) {
 			cfg := factory.CreateDefaultConfig()
-			sub, err := cm.Sub(tc.id.String())
+			sub, err := cm.Sub(testCase.id.String())
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
-			require.Equal(t, tc.expected, *cfg.(*Config))
+			assert.Equal(t, testCase.expected, *cfg.(*Config))
 		})
 	}
 
-	t.Run("unknown keys are rejected", func(t *testing.T) {
+	t.Run("UnknownKey_Rejected", func(t *testing.T) {
 		cfg := factory.CreateDefaultConfig()
 		sub, err := cm.Sub(component.NewIDWithName(factory.Type(), "unknown").String())
 		require.NoError(t, err)
-		require.Error(t, sub.Unmarshal(cfg))
+		assert.Error(t, sub.Unmarshal(cfg))
 	})
 }
