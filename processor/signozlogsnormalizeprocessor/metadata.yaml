@@ -1,4 +1,4 @@
-type: signoznormalize
+type: signozlogsnormalize
 status:
   class: processor
   stability:

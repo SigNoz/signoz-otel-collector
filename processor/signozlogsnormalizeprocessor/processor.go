@@ -1,4 +1,4 @@
-package signoznormalizeprocessor
+package signozlogsnormalizeprocessor
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 
 const (
 	messageField = "message"
-	scopeName    = "github.com/SigNoz/signoz-otel-collector/processor/signoznormalizeprocessor"
+	scopeName    = "github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor"
 )
 
 type normalizeProcessor struct {
@@ -60,10 +60,10 @@ func newTelemetry(set component.TelemetrySettings, messageFields []string) (tele
 			return nil
 		}
 		var c metric.Int64Counter
-		c, err = meter.Int64Counter("signoz_normalize_processor_"+name, metric.WithDescription(desc))
+		c, err = meter.Int64Counter("signoz_logs_normalize_processor_"+name, metric.WithDescription(desc))
 		return c
 	}
-	t.logsProcessed = counter("logs_processed", "Number of log records whose body was normalized by the signoznormalize processor")
+	t.logsProcessed = counter("logs_processed", "Number of log records whose body was normalized by the signozlogsnormalize processor")
 	t.logsText = counter("logs_text", "Number of log records whose body was plain text and became the message")
 	t.logsJSONParsed = counter("logs_json_parsed", "Number of log records whose text body was parsed as a JSON object")
 	t.messagesInferred = counter("messages_inferred", "Number of log records whose message was inferred from another field")

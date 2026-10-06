@@ -1,4 +1,4 @@
-package signoznormalizeprocessor
+package signozlogsnormalizeprocessor
 
 import (
 	"context"
@@ -420,14 +420,14 @@ func TestMetrics(t *testing.T) {
 		}
 	}
 	require.Equal(t, map[string]int64{
-		"signoz_normalize_processor_logs_processed":           6,
-		"signoz_normalize_processor_logs_text":                1,
-		"signoz_normalize_processor_logs_json_parsed":         3,
-		"signoz_normalize_processor_messages_inferred/msg":    1,
-		"signoz_normalize_processor_messages_inferred/log":    1,
-		"signoz_normalize_processor_messages_flattened":       2,
-		"signoz_normalize_processor_messages_nested_promoted": 1,
-		"signoz_normalize_processor_messages_stringified":     2,
+		"signoz_logs_normalize_processor_logs_processed":           6,
+		"signoz_logs_normalize_processor_logs_text":                1,
+		"signoz_logs_normalize_processor_logs_json_parsed":         3,
+		"signoz_logs_normalize_processor_messages_inferred/msg":    1,
+		"signoz_logs_normalize_processor_messages_inferred/log":    1,
+		"signoz_logs_normalize_processor_messages_flattened":       2,
+		"signoz_logs_normalize_processor_messages_nested_promoted": 1,
+		"signoz_logs_normalize_processor_messages_stringified":     2,
 	}, got)
 }
 

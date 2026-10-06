@@ -1,4 +1,4 @@
-package signoznormalizeprocessor
+package signozlogsnormalizeprocessor
 
 import (
 	"path/filepath"

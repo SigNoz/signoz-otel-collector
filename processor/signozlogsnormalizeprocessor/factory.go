@@ -1,4 +1,4 @@
-package signoznormalizeprocessor
+package signozlogsnormalizeprocessor
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
-const typeStr = "signoznormalize"
+const typeStr = "signozlogsnormalize"
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}
 

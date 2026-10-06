@@ -1,4 +1,4 @@
-package signoznormalizeprocessor
+package signozlogsnormalizeprocessor
 
 type Config struct {
 	JSONBodyDualIngestion bool     `mapstructure:"json_body_dual_ingestion"`
