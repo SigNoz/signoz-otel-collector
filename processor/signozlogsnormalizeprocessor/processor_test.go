@@ -191,6 +191,26 @@ func TestProcessLogsBody(t *testing.T) {
 			expected: map[string]any{"message": "hi"},
 		},
 		{
+			name:     "json_with_trailing_whitespace_parsed",
+			body:     "{\"msg\":\"hi\"} \t\r\n",
+			expected: map[string]any{"message": "hi"},
+		},
+		{
+			name:     "quoted_json_with_trailing_whitespace_parsed",
+			body:     "\"{\\\"msg\\\":\\\"hi\\n\\\"}\\n\"\n",
+			expected: map[string]any{"message": "hi\n"},
+		},
+		{
+			name:     "invalid_json_with_trailing_whitespace_kept_verbatim",
+			body:     "{\"a\":1,,}\n",
+			expected: map[string]any{"message": "{\"a\":1,,}\n"},
+		},
+		{
+			name:     "text_with_trailing_whitespace_kept_verbatim",
+			body:     "Hello World \n",
+			expected: map[string]any{"message": "Hello World \n"},
+		},
+		{
 			name:     "invalid_json_object_kept_as_text",
 			body:     `{"a":1,,}`,
 			expected: map[string]any{"message": `{"a":1,,}`},

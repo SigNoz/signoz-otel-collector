@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	messageField = "message"
-	scopeName    = "github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor"
+	messageField   = "message"
+	jsonWhitespace = " \t\r\n"
+	scopeName      = "github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor"
 )
 
 type normalizeProcessor struct {
@@ -182,7 +183,7 @@ func stashOriginalBody(body, dest pcommon.Value) {
 
 func (p *normalizeProcessor) parseText(body pcommon.Value) bool {
 	str := body.Str()
-	unquoted := utils.Unquote(str)
+	unquoted := strings.TrimRight(utils.Unquote(strings.TrimRight(str, jsonWhitespace)), jsonWhitespace)
 	if strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}") {
 		var parsed map[string]any
 		if err := p.json.UnmarshalFromString(unquoted, &parsed); err == nil {
