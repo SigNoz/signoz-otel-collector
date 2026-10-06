@@ -1,4 +1,4 @@
-package signozlogsnormalizeprocessor
+package signozlogsnormalizerprocessor
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 
-	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor/internal/metadata"
 )
 
 var processorCapabilities = consumer.Capabilities{MutatesData: true}

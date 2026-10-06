@@ -16,14 +16,14 @@ import (
 
 func NewSettings(tt *componenttest.Telemetry) processor.Settings {
 	set := processortest.NewNopSettings(processortest.NopType)
-	set.ID = component.NewID(component.MustNewType("signozlogsnormalize"))
+	set.ID = component.NewID(component.MustNewType("signozlogsnormalizer"))
 	set.TelemetrySettings = tt.NewTelemetrySettings()
 	return set
 }
 
-func AssertEqualSignozlogsnormalizeMessageFlattenings(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozlogsnormalizerMessageFlattenings(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozlogsnormalize.message.flattenings",
+		Name:        "otelcol.signozlogsnormalizer.message.flattenings",
 		Description: "Object messages lifted to the top level of the body. [Alpha]",
 		Unit:        "{message}",
 		Data: metricdata.Sum[int64]{
@@ -32,14 +32,14 @@ func AssertEqualSignozlogsnormalizeMessageFlattenings(t *testing.T, tt *componen
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozlogsnormalize.message.flattenings")
+	got, err := tt.GetMetric("otelcol.signozlogsnormalizer.message.flattenings")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualSignozlogsnormalizeMessageNestedPromotions(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozlogsnormalizerMessageNestedPromotions(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozlogsnormalize.message.nested_promotions",
+		Name:        "otelcol.signozlogsnormalizer.message.nested_promotions",
 		Description: "Flattened messages whose own message field became the message. [Alpha]",
 		Unit:        "{message}",
 		Data: metricdata.Sum[int64]{
@@ -48,14 +48,14 @@ func AssertEqualSignozlogsnormalizeMessageNestedPromotions(t *testing.T, tt *com
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozlogsnormalize.message.nested_promotions")
+	got, err := tt.GetMetric("otelcol.signozlogsnormalizer.message.nested_promotions")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualSignozlogsnormalizeMessagePromotions(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozlogsnormalizerMessagePromotions(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozlogsnormalize.message.promotions",
+		Name:        "otelcol.signozlogsnormalizer.message.promotions",
 		Description: "Messages promoted from a configured message field, by field. [Alpha]",
 		Unit:        "{message}",
 		Data: metricdata.Sum[int64]{
@@ -64,14 +64,14 @@ func AssertEqualSignozlogsnormalizeMessagePromotions(t *testing.T, tt *component
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozlogsnormalize.message.promotions")
+	got, err := tt.GetMetric("otelcol.signozlogsnormalizer.message.promotions")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualSignozlogsnormalizeMessageStringifications(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozlogsnormalizerMessageStringifications(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozlogsnormalize.message.stringifications",
+		Name:        "otelcol.signozlogsnormalizer.message.stringifications",
 		Description: "Messages neither text nor an object, stringified on storage by the typed body_v2.message path. [Alpha]",
 		Unit:        "{message}",
 		Data: metricdata.Sum[int64]{
@@ -80,14 +80,14 @@ func AssertEqualSignozlogsnormalizeMessageStringifications(t *testing.T, tt *com
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozlogsnormalize.message.stringifications")
+	got, err := tt.GetMetric("otelcol.signozlogsnormalizer.message.stringifications")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
-func AssertEqualSignozlogsnormalizeRecords(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozlogsnormalizerRecords(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozlogsnormalize.records",
+		Name:        "otelcol.signozlogsnormalizer.records",
 		Description: "Log records normalized, by body type. [Alpha]",
 		Unit:        "{record}",
 		Data: metricdata.Sum[int64]{
@@ -96,7 +96,7 @@ func AssertEqualSignozlogsnormalizeRecords(t *testing.T, tt *componenttest.Telem
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozlogsnormalize.records")
+	got, err := tt.GetMetric("otelcol.signozlogsnormalizer.records")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }

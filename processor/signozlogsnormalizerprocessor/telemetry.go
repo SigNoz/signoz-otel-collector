@@ -1,4 +1,4 @@
-package signozlogsnormalizeprocessor
+package signozlogsnormalizerprocessor
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor/internal/metadata"
 )
 
 type bodyKind int
@@ -62,27 +62,27 @@ func newTelemetry(settings component.TelemetrySettings, messageFields []string) 
 	}
 
 	err = errors.Join(
-		builder.RegisterSignozlogsnormalizeRecordsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		builder.RegisterSignozlogsnormalizerRecordsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 			for i := range t.records {
 				observer.Observe(t.records[i].Load(), t.recordsBody[i])
 			}
 			return nil
 		}),
-		builder.RegisterSignozlogsnormalizeMessagePromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		builder.RegisterSignozlogsnormalizerMessagePromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 			for i := range t.promotions {
 				observer.Observe(t.promotions[i].Load(), t.promotionsField[i])
 			}
 			return nil
 		}),
-		builder.RegisterSignozlogsnormalizeMessageFlatteningsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		builder.RegisterSignozlogsnormalizerMessageFlatteningsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(t.flattenings.Load())
 			return nil
 		}),
-		builder.RegisterSignozlogsnormalizeMessageNestedPromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		builder.RegisterSignozlogsnormalizerMessageNestedPromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(t.nestedPromotions.Load())
 			return nil
 		}),
-		builder.RegisterSignozlogsnormalizeMessageStringificationsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		builder.RegisterSignozlogsnormalizerMessageStringificationsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 			observer.Observe(t.stringifications.Load())
 			return nil
 		}),

@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 
-	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor/internal/metadata"
 	"go.opentelemetry.io/collector/component/componenttest"
 )
 
@@ -20,39 +20,39 @@ func TestSetupTelemetry(t *testing.T) {
 	tb, err := metadata.NewTelemetryBuilder(testTel.NewTelemetrySettings())
 	require.NoError(t, err)
 	defer tb.Shutdown()
-	require.NoError(t, tb.RegisterSignozlogsnormalizeMessageFlatteningsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+	require.NoError(t, tb.RegisterSignozlogsnormalizerMessageFlatteningsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(1)
 		return nil
 	}))
-	require.NoError(t, tb.RegisterSignozlogsnormalizeMessageNestedPromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+	require.NoError(t, tb.RegisterSignozlogsnormalizerMessageNestedPromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(1)
 		return nil
 	}))
-	require.NoError(t, tb.RegisterSignozlogsnormalizeMessagePromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+	require.NoError(t, tb.RegisterSignozlogsnormalizerMessagePromotionsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(1)
 		return nil
 	}))
-	require.NoError(t, tb.RegisterSignozlogsnormalizeMessageStringificationsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+	require.NoError(t, tb.RegisterSignozlogsnormalizerMessageStringificationsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(1)
 		return nil
 	}))
-	require.NoError(t, tb.RegisterSignozlogsnormalizeRecordsCallback(func(_ context.Context, observer metric.Int64Observer) error {
+	require.NoError(t, tb.RegisterSignozlogsnormalizerRecordsCallback(func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(1)
 		return nil
 	}))
-	AssertEqualSignozlogsnormalizeMessageFlattenings(t, testTel,
+	AssertEqualSignozlogsnormalizerMessageFlattenings(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
-	AssertEqualSignozlogsnormalizeMessageNestedPromotions(t, testTel,
+	AssertEqualSignozlogsnormalizerMessageNestedPromotions(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
-	AssertEqualSignozlogsnormalizeMessagePromotions(t, testTel,
+	AssertEqualSignozlogsnormalizerMessagePromotions(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
-	AssertEqualSignozlogsnormalizeMessageStringifications(t, testTel,
+	AssertEqualSignozlogsnormalizerMessageStringifications(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
-	AssertEqualSignozlogsnormalizeRecords(t, testTel,
+	AssertEqualSignozlogsnormalizerRecords(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 

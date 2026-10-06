@@ -1,4 +1,4 @@
-type: signozlogsnormalize
+type: signozlogsnormalizer
 github_project: SigNoz/signoz-otel-collector
 
 status:
@@ -17,7 +17,7 @@ attributes:
 
 telemetry:
   metrics:
-    signozlogsnormalize.message.flattenings:
+    signozlogsnormalizer.message.flattenings:
       enabled: true
       stability:
         level: alpha
@@ -29,7 +29,7 @@ telemetry:
         monotonic: true
         async: true
 
-    signozlogsnormalize.message.nested_promotions:
+    signozlogsnormalizer.message.nested_promotions:
       enabled: true
       stability:
         level: alpha
@@ -41,7 +41,7 @@ telemetry:
         monotonic: true
         async: true
 
-    signozlogsnormalize.message.promotions:
+    signozlogsnormalizer.message.promotions:
       enabled: true
       stability:
         level: alpha
@@ -54,7 +54,7 @@ telemetry:
         async: true
       attributes: [field]
 
-    signozlogsnormalize.message.stringifications:
+    signozlogsnormalizer.message.stringifications:
       enabled: true
       stability:
         level: alpha
@@ -66,7 +66,7 @@ telemetry:
         monotonic: true
         async: true
 
-    signozlogsnormalize.records:
+    signozlogsnormalizer.records:
       enabled: true
       stability:
         level: alpha

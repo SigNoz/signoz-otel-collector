@@ -15,24 +15,24 @@ import (
 )
 
 func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor")
+	return settings.MeterProvider.Meter("github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor")
 }
 
 func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor")
+	return settings.TracerProvider.Tracer("github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor")
 }
 
 // TelemetryBuilder provides an interface for components to report telemetry
 // as defined in metadata and user config.
 type TelemetryBuilder struct {
-	meter                                      metric.Meter
-	mu                                         sync.Mutex
-	registrations                              []metric.Registration
-	SignozlogsnormalizeMessageFlattenings      metric.Int64ObservableCounter
-	SignozlogsnormalizeMessageNestedPromotions metric.Int64ObservableCounter
-	SignozlogsnormalizeMessagePromotions       metric.Int64ObservableCounter
-	SignozlogsnormalizeMessageStringifications metric.Int64ObservableCounter
-	SignozlogsnormalizeRecords                 metric.Int64ObservableCounter
+	meter                                       metric.Meter
+	mu                                          sync.Mutex
+	registrations                               []metric.Registration
+	SignozlogsnormalizerMessageFlattenings      metric.Int64ObservableCounter
+	SignozlogsnormalizerMessageNestedPromotions metric.Int64ObservableCounter
+	SignozlogsnormalizerMessagePromotions       metric.Int64ObservableCounter
+	SignozlogsnormalizerMessageStringifications metric.Int64ObservableCounter
+	SignozlogsnormalizerRecords                 metric.Int64ObservableCounter
 }
 
 // TelemetryBuilderOption applies changes to default builder.
@@ -46,12 +46,12 @@ func (tbof telemetryBuilderOptionFunc) apply(mb *TelemetryBuilder) {
 	tbof(mb)
 }
 
-// RegisterSignozlogsnormalizeMessageFlatteningsCallback sets callback for observable SignozlogsnormalizeMessageFlattenings metric.
-func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageFlatteningsCallback(cb metric.Int64Callback) error {
+// RegisterSignozlogsnormalizerMessageFlatteningsCallback sets callback for observable SignozlogsnormalizerMessageFlattenings metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerMessageFlatteningsCallback(cb metric.Int64Callback) error {
 	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizeMessageFlattenings, obs: o})
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerMessageFlattenings, obs: o})
 		return nil
-	}, builder.SignozlogsnormalizeMessageFlattenings)
+	}, builder.SignozlogsnormalizerMessageFlattenings)
 	if err != nil {
 		return err
 	}
@@ -61,12 +61,12 @@ func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageFlatteningsCa
 	return nil
 }
 
-// RegisterSignozlogsnormalizeMessageNestedPromotionsCallback sets callback for observable SignozlogsnormalizeMessageNestedPromotions metric.
-func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageNestedPromotionsCallback(cb metric.Int64Callback) error {
+// RegisterSignozlogsnormalizerMessageNestedPromotionsCallback sets callback for observable SignozlogsnormalizerMessageNestedPromotions metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerMessageNestedPromotionsCallback(cb metric.Int64Callback) error {
 	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizeMessageNestedPromotions, obs: o})
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerMessageNestedPromotions, obs: o})
 		return nil
-	}, builder.SignozlogsnormalizeMessageNestedPromotions)
+	}, builder.SignozlogsnormalizerMessageNestedPromotions)
 	if err != nil {
 		return err
 	}
@@ -76,12 +76,12 @@ func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageNestedPromoti
 	return nil
 }
 
-// RegisterSignozlogsnormalizeMessagePromotionsCallback sets callback for observable SignozlogsnormalizeMessagePromotions metric.
-func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessagePromotionsCallback(cb metric.Int64Callback) error {
+// RegisterSignozlogsnormalizerMessagePromotionsCallback sets callback for observable SignozlogsnormalizerMessagePromotions metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerMessagePromotionsCallback(cb metric.Int64Callback) error {
 	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizeMessagePromotions, obs: o})
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerMessagePromotions, obs: o})
 		return nil
-	}, builder.SignozlogsnormalizeMessagePromotions)
+	}, builder.SignozlogsnormalizerMessagePromotions)
 	if err != nil {
 		return err
 	}
@@ -91,12 +91,12 @@ func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessagePromotionsCal
 	return nil
 }
 
-// RegisterSignozlogsnormalizeMessageStringificationsCallback sets callback for observable SignozlogsnormalizeMessageStringifications metric.
-func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageStringificationsCallback(cb metric.Int64Callback) error {
+// RegisterSignozlogsnormalizerMessageStringificationsCallback sets callback for observable SignozlogsnormalizerMessageStringifications metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerMessageStringificationsCallback(cb metric.Int64Callback) error {
 	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizeMessageStringifications, obs: o})
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerMessageStringifications, obs: o})
 		return nil
-	}, builder.SignozlogsnormalizeMessageStringifications)
+	}, builder.SignozlogsnormalizerMessageStringifications)
 	if err != nil {
 		return err
 	}
@@ -106,12 +106,12 @@ func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeMessageStringificati
 	return nil
 }
 
-// RegisterSignozlogsnormalizeRecordsCallback sets callback for observable SignozlogsnormalizeRecords metric.
-func (builder *TelemetryBuilder) RegisterSignozlogsnormalizeRecordsCallback(cb metric.Int64Callback) error {
+// RegisterSignozlogsnormalizerRecordsCallback sets callback for observable SignozlogsnormalizerRecords metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerRecordsCallback(cb metric.Int64Callback) error {
 	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizeRecords, obs: o})
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerRecords, obs: o})
 		return nil
-	}, builder.SignozlogsnormalizeRecords)
+	}, builder.SignozlogsnormalizerRecords)
 	if err != nil {
 		return err
 	}
@@ -149,32 +149,32 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	}
 	builder.meter = Meter(settings)
 	var err, errs error
-	builder.SignozlogsnormalizeMessageFlattenings, err = builder.meter.Int64ObservableCounter(
-		"otelcol.signozlogsnormalize.message.flattenings",
+	builder.SignozlogsnormalizerMessageFlattenings, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.message.flattenings",
 		metric.WithDescription("Object messages lifted to the top level of the body. [Alpha]"),
 		metric.WithUnit("{message}"),
 	)
 	errs = errors.Join(errs, err)
-	builder.SignozlogsnormalizeMessageNestedPromotions, err = builder.meter.Int64ObservableCounter(
-		"otelcol.signozlogsnormalize.message.nested_promotions",
+	builder.SignozlogsnormalizerMessageNestedPromotions, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.message.nested_promotions",
 		metric.WithDescription("Flattened messages whose own message field became the message. [Alpha]"),
 		metric.WithUnit("{message}"),
 	)
 	errs = errors.Join(errs, err)
-	builder.SignozlogsnormalizeMessagePromotions, err = builder.meter.Int64ObservableCounter(
-		"otelcol.signozlogsnormalize.message.promotions",
+	builder.SignozlogsnormalizerMessagePromotions, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.message.promotions",
 		metric.WithDescription("Messages promoted from a configured message field, by field. [Alpha]"),
 		metric.WithUnit("{message}"),
 	)
 	errs = errors.Join(errs, err)
-	builder.SignozlogsnormalizeMessageStringifications, err = builder.meter.Int64ObservableCounter(
-		"otelcol.signozlogsnormalize.message.stringifications",
+	builder.SignozlogsnormalizerMessageStringifications, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.message.stringifications",
 		metric.WithDescription("Messages neither text nor an object, stringified on storage by the typed body_v2.message path. [Alpha]"),
 		metric.WithUnit("{message}"),
 	)
 	errs = errors.Join(errs, err)
-	builder.SignozlogsnormalizeRecords, err = builder.meter.Int64ObservableCounter(
-		"otelcol.signozlogsnormalize.records",
+	builder.SignozlogsnormalizerRecords, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.records",
 		metric.WithDescription("Log records normalized, by body type. [Alpha]"),
 		metric.WithUnit("{record}"),
 	)

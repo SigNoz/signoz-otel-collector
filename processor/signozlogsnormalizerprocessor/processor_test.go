@@ -1,4 +1,4 @@
-package signozlogsnormalizeprocessor
+package signozlogsnormalizerprocessor
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
-	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizeprocessor/internal/metadatatest"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor/internal/metadatatest"
 )
 
 func testConfig(dualIngestion bool) *Config {
@@ -442,19 +442,19 @@ func TestMetrics(t *testing.T) {
 	dp := func(value int64, attrs ...attribute.KeyValue) metricdata.DataPoint[int64] {
 		return metricdata.DataPoint[int64]{Value: value, Attributes: attribute.NewSet(attrs...)}
 	}
-	metadatatest.AssertEqualSignozlogsnormalizeRecords(t, tel, []metricdata.DataPoint[int64]{
+	metadatatest.AssertEqualSignozlogsnormalizerRecords(t, tel, []metricdata.DataPoint[int64]{
 		dp(3, attribute.String("body", "json")),
 		dp(1, attribute.String("body", "text")),
 		dp(1, attribute.String("body", "map")),
 		dp(1, attribute.String("body", "other")),
 	}, metricdatatest.IgnoreTimestamp())
-	metadatatest.AssertEqualSignozlogsnormalizeMessagePromotions(t, tel, []metricdata.DataPoint[int64]{
+	metadatatest.AssertEqualSignozlogsnormalizerMessagePromotions(t, tel, []metricdata.DataPoint[int64]{
 		dp(1, attribute.String("field", "log")),
 		dp(1, attribute.String("field", "msg")),
 	}, metricdatatest.IgnoreTimestamp())
-	metadatatest.AssertEqualSignozlogsnormalizeMessageFlattenings(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
-	metadatatest.AssertEqualSignozlogsnormalizeMessageNestedPromotions(t, tel, []metricdata.DataPoint[int64]{dp(1)}, metricdatatest.IgnoreTimestamp())
-	metadatatest.AssertEqualSignozlogsnormalizeMessageStringifications(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizerMessageFlattenings(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizerMessageNestedPromotions(t, tel, []metricdata.DataPoint[int64]{dp(1)}, metricdatatest.IgnoreTimestamp())
+	metadatatest.AssertEqualSignozlogsnormalizerMessageStringifications(t, tel, []metricdata.DataPoint[int64]{dp(2)}, metricdatatest.IgnoreTimestamp())
 }
 
 func TestShutdownStopsObserving(t *testing.T) {
@@ -464,11 +464,11 @@ func TestShutdownStopsObserving(t *testing.T) {
 
 	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig(false))
 	require.NoError(t, err)
-	_, err = tel.GetMetric("otelcol.signozlogsnormalize.records")
+	_, err = tel.GetMetric("otelcol.signozlogsnormalizer.records")
 	require.NoError(t, err)
 
 	require.NoError(t, p.telemetry.shutdown(ctx))
-	_, err = tel.GetMetric("otelcol.signozlogsnormalize.records")
+	_, err = tel.GetMetric("otelcol.signozlogsnormalizer.records")
 	assert.Error(t, err)
 }
 

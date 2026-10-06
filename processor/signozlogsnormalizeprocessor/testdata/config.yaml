@@ -1,7 +1,0 @@
-signozlogsnormalize:
-signozlogsnormalize/fields:
-  message_fields: [text]
-signozlogsnormalize/dual:
-  json_body_dual_ingestion: true
-signozlogsnormalize/unknown:
-  unknown_key: true
