@@ -364,7 +364,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.cfg.BodyJSONEnabled || e.cfg.JSONBodyDualIngestion {
+	if e.cfg.BodyJSONEnabled {
 		ticker := time.NewTicker(e.promotedPathsSyncInterval)
 		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
 			ticker.Stop()
@@ -800,9 +800,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 	promoted := pcommon.NewValueMap()
 	bodyJSON := pcommon.NewValueMap()
 
-	restoreOriginal := e.cfg.JSONBodyDualIngestion && hasOriginalBody
-	writeBodyJSON := e.cfg.BodyJSONEnabled || restoreOriginal
-	if writeBodyJSON {
+	if e.cfg.BodyJSONEnabled {
 		if body.Type() == pcommon.ValueTypeMap {
 			// switch the reference to bodyJSON
 			bodyJSON = body
@@ -815,9 +813,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		promotedSet := e.promotedPaths.Load().(map[string]struct{})
 		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 
-		if restoreOriginal {
+		if hasOriginalBody {
 			body = originalBody
-		} else if !e.cfg.JSONBodyDualIngestion {
+		} else {
 			// set body to empty string
 			body = pcommon.NewValueEmpty()
 		}
