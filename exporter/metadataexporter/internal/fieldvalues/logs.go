@@ -6,55 +6,54 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/constants"
 )
 
-func (b *batch) addLogs(ld plog.Logs) {
+func (in *recordsInput) addLogs(ld plog.Logs, body *BodyJSONLimits) {
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
 		rl := rls.At(i)
-		var res *resourceRef
+		res := len(in.resources)
+		lo := len(in.pairs)
+		in.pairs = appendAttrPairs(in.pairs, contextResource, rl.Resource().Attributes(), "")
+		in.resources = append(in.resources, pairRange{lo: lo, hi: len(in.pairs)})
 		sls := rl.ScopeLogs()
 		for j := 0; j < sls.Len(); j++ {
 			sl := sls.At(j)
-			scopePairs := logScopePairs(sl)
+			scope := pairRange{lo: len(in.pairs)}
+			in.pairs = appendLogScopePairs(in.pairs, sl)
+			scope.hi = len(in.pairs)
 			lrs := sl.LogRecords()
 			for k := 0; k < lrs.Len(); k++ {
 				lr := lrs.At(k)
-				seen := b.seenMillis(lr.Timestamp(), lr.ObservedTimestamp())
-				if res == nil {
-					r := b.resource(rl.Resource().Attributes(), seen)
-					res = &r
-				}
-				pairs := make([]pair, 0, len(scopePairs)+lr.Attributes().Len()+2)
-				pairs = append(pairs, scopePairs...)
+				lo := len(in.pairs)
+				in.pairs = append(in.pairs, in.pairs[scope.lo:scope.hi]...)
 				if lr.SeverityText() != "" {
-					pairs = append(pairs, stringPair(contextLog, "severity_text", lr.SeverityText()))
+					in.pairs = append(in.pairs, stringPair(contextLog, "severity_text", lr.SeverityText()))
 				}
 				if lr.SeverityNumber() != plog.SeverityNumberUnspecified {
-					pairs = append(pairs, numberPair(contextLog, "severity_number", float64(lr.SeverityNumber())))
+					in.pairs = append(in.pairs, numberPair(contextLog, "severity_number", float64(lr.SeverityNumber())))
 				}
-				attrs := lr.Attributes()
-				if _, ok := attrs.Get(constants.OriginalBodyAttributeKey); ok {
-					filtered := plog.NewLogRecord().Attributes()
-					attrs.CopyTo(filtered)
-					filtered.Remove(constants.OriginalBodyAttributeKey)
-					attrs = filtered
+				in.pairs = appendAttrPairs(in.pairs, contextAttribute, lr.Attributes(), constants.OriginalBodyAttributeKey)
+				if body != nil {
+					in.pairs = bodyPairs(in.pairs, lr.Body(), *body)
 				}
-				pairs = appendAttrPairs(pairs, contextAttribute, attrs)
-				if b.bodyLimits != nil {
-					pairs = bodyPairs(pairs, lr.Body(), *b.bodyLimits)
-				}
-				b.record(*res, pairs, nil, seen)
+				in.records = append(in.records, preparedRecord{
+					resource: res,
+					ts:       lr.Timestamp(),
+					fallback: lr.ObservedTimestamp(),
+					lo:       lo,
+					mid:      len(in.pairs),
+					hi:       len(in.pairs),
+				})
 			}
 		}
 	}
 }
 
-func logScopePairs(sl plog.ScopeLogs) []pair {
-	var pairs []pair
+func appendLogScopePairs(dst []pair, sl plog.ScopeLogs) []pair {
 	if name := sl.Scope().Name(); name != "" {
-		pairs = append(pairs, stringPair(contextScope, "scope_name", name))
+		dst = append(dst, stringPair(contextScope, "scope_name", name))
 	}
 	if version := sl.Scope().Version(); version != "" {
-		pairs = append(pairs, stringPair(contextScope, "scope_version", version))
+		dst = append(dst, stringPair(contextScope, "scope_version", version))
 	}
-	return appendAttrPairs(pairs, contextScope, sl.Scope().Attributes())
+	return appendAttrPairs(dst, contextScope, sl.Scope().Attributes(), "")
 }

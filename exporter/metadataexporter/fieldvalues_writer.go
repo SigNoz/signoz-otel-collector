@@ -13,7 +13,7 @@ import (
 )
 
 // newFieldValuesWriter creates the writer of the field values store for one
-// signal. The shared day cache uses the Redis connection of the key cache.
+// signal. The shared window cache uses the Redis connection of the key cache.
 // Body pairs follow the JSON config, so they are written only where the JSON
 // writer runs today.
 func newFieldValuesWriter(cfg Config, set exporter.Settings, signal pipeline.Signal, conn driver.Conn) (*fieldvalues.Writer, error) {

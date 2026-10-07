@@ -14,15 +14,52 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-func TestCacheBytes(t *testing.T) {
-	assert.Equal(t, uint64(1<<20), cacheBytes(CacheConfig{MaxBytes: 1 << 20}), "a configured size is used as is")
+func TestMemoryBytes(t *testing.T) {
+	assert.Equal(t, uint64(1<<20), memoryBytes(CacheConfig{MaxBytes: 1 << 20}), "a configured size is used as is")
 
 	previous := debug.SetMemoryLimit(-1)
 	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
+	autoMemory.Lock()
+	writers := autoMemory.writers
+	autoMemory.writers = 4
+	autoMemory.Unlock()
+	t.Cleanup(func() {
+		autoMemory.Lock()
+		autoMemory.writers = writers
+		autoMemory.Unlock()
+	})
 	debug.SetMemoryLimit(3 << 30)
-	assert.Equal(t, uint64((3<<30)/10/3), cacheBytes(CacheConfig{}), "a third of 10% of the memory limit")
+	assert.Equal(t, uint64((3<<30)/10/4), memoryBytes(CacheConfig{}), "four writers share 10% of the memory limit")
 	debug.SetMemoryLimit(256 << 20)
-	assert.Equal(t, uint64(minCacheBytes/3), cacheBytes(CacheConfig{}), "at least 64 MiB for the three signals")
+	assert.Equal(t, uint64(minMemoryBytes/4), memoryBytes(CacheConfig{}), "at least 64 MiB for all writers")
+}
+
+func TestAutoMemoryCountsWritersWithoutASize(t *testing.T) {
+	autoMemory.Lock()
+	before := autoMemory.writers
+	autoMemory.Unlock()
+	cfg := testConfig()
+	cfg.Cache.MaxBytes = 0
+	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), "logs", "")
+	require.NoError(t, err)
+	a := newWriter(cfg, Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
+	b := newWriter(cfg, Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
+	sized := newWriter(testConfig(), Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
+	autoMemory.Lock()
+	assert.Equal(t, before+2, autoMemory.writers, "a writer with max_bytes takes no share")
+	autoMemory.Unlock()
+	for _, w := range []*Writer{a, b, sized, a} {
+		require.NoError(t, w.Shutdown())
+	}
+	autoMemory.Lock()
+	assert.Equal(t, before, autoMemory.writers, "shutdown gives the share back once")
+	autoMemory.Unlock()
+}
+
+func TestMemoryIsSplitBetweenCacheAndTracker(t *testing.T) {
+	e, _ := newTestExporter(t, testConfig(), pipeline.SignalLogs)
+	assert.Len(t, e.state.cache.slots, (1<<20)/4*3/slotBytes, "three quarters for the window cache, with no rounding")
+	assert.Equal(t, (1<<20)/4, e.state.budget.limit, "a quarter for the tracker and the resource states")
 }
 
 func TestFailedInsertsWarnOncePerInterval(t *testing.T) {

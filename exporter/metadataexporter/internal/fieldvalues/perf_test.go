@@ -54,19 +54,19 @@ func TestPerfReadsOverDays(t *testing.T) {
 	require.NoError(t, conn.QueryRow(ctx, "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
 	t.Logf("%d days x %d batches of 1,000 log records: %d rows in field_values_sets before merges", days, batches, rows)
 
-	related := `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+	related := `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
-  AND first_seen < ? AND last_seen >= ?
-  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets
+  AND first_seen < fromUnixTimestamp(?) AND last_seen >= fromUnixTimestamp(?)
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
       WHERE signal = 'logs' AND source = '' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'svc-01')
-  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets
+  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets AS c
       WHERE signal = 'logs' AND source = '' AND field_name = 'http.method' AND field_context = 'attribute' AND string_value = 'GET')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`
 	plain := `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
   AND day >= toDate(fromUnixTimestamp64Milli(?), 'UTC') AND day < toDate(fromUnixTimestamp64Milli(?), 'UTC') + 1
-GROUP BY string_value ORDER BY uniqMerge(holders) DESC LIMIT 51`
+GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`
 
 	end := last.Add(12 * time.Hour).UnixMilli()
 	for _, window := range []int{1, days} {
@@ -75,7 +75,7 @@ GROUP BY string_value ORDER BY uniqMerge(holders) DESC LIMIT 51`
 			name, sql string
 			args      []any
 		}{
-			{"related values", related, []any{uint64(end), uint64(startDay)}},
+			{"related values", related, []any{uint64(end / 1000), uint64(startDay / 1000)}},
 			{"plain values", plain, []any{startDay, end - 1}},
 		} {
 			comment := fmt.Sprintf("fieldvalues-days-%s-%d", q.name, window)

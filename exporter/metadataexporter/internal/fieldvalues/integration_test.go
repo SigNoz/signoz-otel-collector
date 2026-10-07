@@ -120,18 +120,19 @@ func exampleLogs() plog.Logs {
 
 // relatedQuery is the read of Example 1 of the proposal, on the distributed
 // tables. The subqueries are answered by each shard from its own rows, which
-// is correct because the pair table is sharded by resource.
+// is correct because the pair table is sharded by resource. The old analyzer
+// needs an alias for each distributed table in this mode.
 const relatedQuery = `SELECT string_value
-FROM signoz_metadata.distributed_field_values_sets
+FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = ? AND field_context = ?
-  AND first_seen < toUnixTimestamp(toDateTime(?, 'UTC')) * 1000
-  AND last_seen >= toUnixTimestamp(toDate('2026-09-22')) * 1000
+  AND first_seen < toDateTime(?, 'UTC')
+  AND last_seen >= toDateTime('2026-09-22 00:00:00', 'UTC')
   AND resource_hash IN (
-      SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets
+      SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
       WHERE signal = 'logs' AND field_name = 'deployment.environment.name'
         AND field_context = 'resource' AND string_value = 'prod')
   AND %s IN (
-      SELECT %s FROM signoz_metadata.distributed_field_values_sets
+      SELECT %s FROM signoz_metadata.distributed_field_values_sets AS c
       WHERE signal = 'logs' AND field_name = 'severity_text'
         AND field_context = 'log' AND string_value = 'ERROR')
 GROUP BY string_value
@@ -155,7 +156,7 @@ func TestIntegrationExampleOneQuickFilter(t *testing.T) {
 	assert.Equal(t, []string{"checkout", "payments"}, queryStrings(t, conn, resourceQuery, "service.name", "resource", "2026-09-22 12:00:00"),
 		"exclude-self: the service filter drops its own condition")
 
-	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqMerge(holders)))
+	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqHLL12Merge(holders)))
 FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.method' AND field_context = 'attribute'
   AND field_data_type = 'string' AND day = '2026-09-22'
@@ -199,8 +200,8 @@ GROUP BY string_value`)
 	e.refresh()
 	class := e.class.Load()
 	require.NotNil(t, class)
-	assert.True(t, class.isOver(fieldKey{ctx: contextAttribute, name: "user.id"}))
-	assert.False(t, class.isOver(fieldKey{ctx: contextAttribute, name: "http.method"}))
+	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "user.id")))
+	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "http.method")))
 
 	inHash := queryStrings(t, conn, `SELECT concat(field_name, ':', toString(min(in_hash)))
 FROM signoz_metadata.distributed_field_values_sets WHERE field_name IN ('http.method', 'user.id') GROUP BY field_name, string_value`)
@@ -265,4 +266,28 @@ func TestIntegrationBodyPairs(t *testing.T) {
 	flush(t, conn)
 	assert.Equal(t, []string{"user.plan:string:pro", "user.seats:number:5"}, queryStrings(t, conn, `SELECT concat(field_name, ':', toString(field_data_type), ':', if(field_data_type = 'number', toString(number_value), string_value))
 FROM signoz_metadata.distributed_field_values_daily WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type, string_value, number_value`))
+}
+
+// Rows written ahead and late records land on the day of their window in the
+// pair table and in the view.
+func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
+	conn := integrationConn(t)
+	e := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
+	ctx := context.Background()
+	setNow(e, testDay)
+	require.NoError(t, e.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", map[string]any{"http.method": "GET"}})))
+	setNow(e, lastMillisecond)
+	require.NoError(t, e.WriteLogs(ctx, logsAt(lastMillisecond, checkout, map[string]any{"http.method": "GET"})))
+	setNow(e, midnight.Add(5*time.Minute))
+	require.NoError(t, e.WriteLogs(ctx, logsAt(midnight.Add(-time.Minute), checkout, map[string]any{"http.method": "PUT"})))
+	flush(t, conn)
+
+	assert.Equal(t, []string{
+		"GET 2026-09-22 10:00:00 2026-09-23 00:00:00",
+		"PUT 2026-09-23 00:00:00 2026-09-23 00:00:00",
+	}, queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(min(first_seen), 'UTC'), ' ', toString(max(last_seen), 'UTC'))
+FROM signoz_metadata.field_values_sets WHERE field_name = 'http.method' GROUP BY string_value ORDER BY string_value`))
+	assert.Equal(t, []string{"GET 2026-09-22", "GET 2026-09-23", "PUT 2026-09-23"},
+		queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(day)) FROM signoz_metadata.field_values_daily
+WHERE field_name = 'http.method' GROUP BY string_value, day ORDER BY string_value, day`))
 }

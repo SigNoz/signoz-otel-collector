@@ -217,37 +217,37 @@ type perfQuery struct {
 var perfQueries = []perfQuery{
 	{"plain values: logs http.route (top 50 by holders)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqMerge(holders) DESC LIMIT 51`},
+GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
 	{"plain values: logs user.id (high-cardinality sample)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'user.id' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqMerge(holders) DESC LIMIT 51`},
+GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
 	{"type-ahead: logs http.route ILIKE '%route-1%'", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC') AND string_value ILIKE '%route-1%'
-GROUP BY string_value ORDER BY uniqMerge(holders) DESC LIMIT 51`},
-	{"related values: logs http.route where service.name = svc-01 and http.method = GET", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
+	{"related values: logs http.route where service.name = svc-01 and http.method = GET", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
-  AND last_seen >= toUnixTimestamp(toDate(now(), 'UTC')) * 1000
-  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets
+  AND last_seen >= toDateTime(toDate(now(), 'UTC'), 'UTC')
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
       WHERE signal = 'logs' AND source = '' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'svc-01')
-  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets
+  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets AS c
       WHERE signal = 'logs' AND source = '' AND field_name = 'http.method' AND field_context = 'attribute' AND string_value = 'GET')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`},
 	{"related values (old store, same question): attributes_metadata", `SELECT DISTINCT attributes['http.route'] FROM signoz_metadata.distributed_attributes_metadata
 WHERE data_source = 'logs' AND resource_attributes['service.name'] = 'svc-01' AND attributes['http.method'] = 'GET'
   AND unix_milli >= toUnixTimestamp(toDate(now(), 'UTC')) * 1000 LIMIT 51`},
-	{"related values: traces name where has_error = true", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+	{"related values: traces name where has_error = true", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'traces' AND source = '' AND metric_name = '' AND field_name = 'name' AND field_context = 'span'
-  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets
+  AND (resource_hash, attrs_hash) IN (SELECT resource_hash, attrs_hash FROM signoz_metadata.distributed_field_values_sets AS c
       WHERE signal = 'traces' AND source = '' AND field_name = 'has_error' AND field_context = 'span' AND string_value = 'true')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`},
 	{"metric keys: app_metric_01", `SELECT field_context, field_name FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND day = toDate(now(), 'UTC')
 GROUP BY field_context, field_name`},
-	{"metric label values: app_metric_01 route where service.name = svc-01", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+	{"metric label values: app_metric_01 route where service.name = svc-01", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND field_name = 'route' AND field_context = 'attribute'
-  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
       WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'svc-01')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`},

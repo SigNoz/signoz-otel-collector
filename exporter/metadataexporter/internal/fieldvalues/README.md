@@ -39,8 +39,10 @@ exporters:
         max_outside_pairs_per_resource: 16384
       cache:
         provider: in_memory     # or redis
-        max_bytes: 0            # 0: the three signals share 10% of the Go memory limit
+        max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit
         reserve_share: 0.1
+        window: 24h             # each set, pair and resource is written once per window; divides 24h
+        pre_write_window: 1h    # 0 disables the spread of new windows and of the daily sample
       classification:
         refresh_interval: 15m
         lookback_days: 7
@@ -57,12 +59,19 @@ exporters:
   values per day make the identity of a resource. A resource field over the
   limit leaves the identity, but all its values are still written.
 - **Limits per resource.** When a resource reaches `max_sets_per_resource` new
-  sets in a step, the field with the most values leaves its hash (a coarse
-  set). The last step is one overflow set per resource. Pairs outside the
-  hash are limited the same way.
-- **Time.** Each row is written once per UTC day per collector. A record time
-  of 0, older than a day, or more than 5 minutes in the future becomes the
-  time of the batch.
+  sets in a step of a window, the field with the most values leaves its hash
+  (a coarse set). The last step is one overflow set per resource. Pairs
+  outside the hash are limited the same way.
+- **Time.** Each row is written once per window per collector. A record time
+  of 0, or more than 5 minutes in the future, becomes the time of the batch. A
+  record time before the window becomes the start of the window, so a late
+  record cannot stamp the window with the time of an earlier one.
+- **Spread.** In the last `pre_write_window` of a window, a key seen again is
+  also written for the next window, at its start. Each key is due from a time
+  set by its hash, as in `pkg/timebucketedset`, so a new window does not start
+  with a burst of all active sets. The daily sample of each high-cardinality
+  field grows with the time of the day over the first `pre_write_window` of
+  the UTC day.
 - **Signals.**
   - Logs: attributes, severity, scope, and the paths of JSON bodies when the
     JSON config is enabled.
@@ -77,29 +86,44 @@ exporters:
   `field_values_daily` for the fields over the limit today, and once per day
   for the closed days of the lookback and the fields of yesterday.
 
-## Day cache
+## Memory
 
-The local day cache is a fixed table of 8-byte keys. A key of today is never
-evicted: when a part is full, new sets go to the overflow set (from the
-reserve), and then pairs are left out until 00:00 UTC.
+Each writer (one signal of one exporter) has `max_bytes`, or its share of the
+automatic size. Three quarters go to the window cache, a fixed table of 8-byte
+keys of any size. A key of the window is never evicted: when a part is full,
+new sets go to the overflow set (from the reserve), and then pairs are left
+out until the next window. Keys written ahead give their slots to keys of the
+window.
+
+The last quarter is for the value tracker (8 to 16 bytes per value) and the
+resource states. The values of a field are freed when the field passes its
+limit and its sample is full. When this memory is full, new values are not
+counted (the reads of `field_values_daily` and the coarse sets still bound the
+field), and records of new resources go into their overflow set.
+
+The work on the pdata (pairs, hashes, metric fingerprints) runs before the
+writer lock. Under the lock, only the value rules and the cache are left.
 
 With `provider: redis`, a shared cache is added. Before each insert, the
-writer drops the rows whose keys another collector already wrote today. The
-memory budget and the limits stay per collector. If Redis fails, the rows are
-written anyway.
+writer drops the rows whose keys another collector already wrote in the
+window. The memory and the limits stay per collector. If Redis fails, the rows
+are written anyway.
 
 ## Telemetry
 
 | Metric | Meaning |
 |---|---|
 | `signoz_metadata_exporter_field_values_rows_written` | rows inserted |
-| `signoz_metadata_exporter_field_values_left_out` | pairs not written, by `reason`: `value_length`, `field_places`, `sample_budget`, `cache_full` |
-| `signoz_metadata_exporter_field_values_resources_overflowed` | resources that started to use their overflow set today |
+| `signoz_metadata_exporter_field_values_left_out` | pairs not written, by `reason`: `value_length`, `field_places`, `sample_budget` (every pair of a field after its sample is full), `cache_full`, `tracker_full` |
+| `signoz_metadata_exporter_field_values_resources_overflowed` | resources that started to use their overflow set in the window |
+| `signoz_metadata_exporter_field_values_resources_untracked` | resources of a batch without a state, because the tracker memory is full |
+| `signoz_metadata_exporter_field_values_keys_written_ahead` | keys written for the next window |
 | `signoz_metadata_exporter_field_values_insert_errors` | failed inserts |
 | `signoz_metadata_exporter_field_values_cache_collisions` | keys without a free slot in the local cache |
-| `signoz_metadata_exporter_field_values_rows_skipped_shared` | rows that another collector already wrote |
+| `signoz_metadata_exporter_field_values_rows_skipped_shared` | rows that another collector already wrote in the window |
 | `signoz_metadata_exporter_field_values_shared_cache_errors` | failed calls to the shared cache |
-| `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys of today in the local cache, and its capacity, by `part` |
+| `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys in the local cache, and its capacity, by `part`: `exact`, `reserve`, `ahead` |
+| `signoz_metadata_exporter_field_values_tracker_bytes`, `..._tracker_capacity_bytes` | memory of the value tracker and the resource states, and its limit |
 
 ## Tests
 

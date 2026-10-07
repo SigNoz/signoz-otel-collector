@@ -57,9 +57,18 @@ func newTestExporterWith(t *testing.T, cfg Config, set Settings, w *fakeWriter) 
 	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), set.Signal.String(), cfg.Source)
 	require.NoError(t, err)
 	e := newWriter(cfg, set, w, tel)
+	e.allocate()
 	now := testDay
 	e.now = func() time.Time { return now }
 	return e, w
+}
+
+// addLogs adds logs to a batch, as WriteLogs does under the lock.
+func addLogs(b *batch, ld plog.Logs) {
+	in := getRecordsInput()
+	defer putRecordsInput(in)
+	in.addLogs(ld, nil)
+	b.addRecords(in)
 }
 
 func setNow(e *Writer, now time.Time) {
