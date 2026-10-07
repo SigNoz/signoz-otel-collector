@@ -67,8 +67,8 @@ exporters:
   record time before the window becomes the start of the window, so a late
   record cannot stamp the window with the time of an earlier one.
 - **Spread.** In the last `pre_write_window` of a window, a key seen again is
-  also written for the next window, at its start. Each key is due from a time
-  set by its hash, as in `pkg/timebucketedset`, so a new window does not start
+  also written for the next window, at its start. `pkg/timebucketedset` makes
+  each key due from a time set by its hash, so a new window does not start
   with a burst of all active sets. The daily sample of each high-cardinality
   field grows with the time of the day over the first `pre_write_window` of
   the UTC day.
@@ -89,11 +89,13 @@ exporters:
 ## Memory
 
 Each writer (one signal of one exporter) has `max_bytes`, or its share of the
-automatic size. Three quarters go to the window cache, a fixed table of 8-byte
-keys of any size. A key of the window is never evicted: when a part is full,
-new sets go to the overflow set (from the reserve), and then pairs are left
-out until the next window. Keys written ahead give their slots to keys of the
-window.
+automatic size. Three quarters go to the key cache: `pkg/timebucketedset` with
+two buckets, the window and the next one. Each bucket has at least 32 MiB, so
+a writer uses at least 64 MiB for its keys. This memory is outside the Go
+heap, so `GOMEMLIMIT` does not see it. The writer counts the keys of each
+window and stops at 80% of a bucket, before the bucket drops its oldest keys:
+new sets then go to the overflow set (from the reserve), and then pairs are
+left out until the next window.
 
 The last quarter is for the value tracker (8 to 16 bytes per value) and the
 resource states. The values of a field are freed when the field passes its
@@ -119,11 +121,11 @@ are written anyway.
 | `signoz_metadata_exporter_field_values_resources_untracked` | resources of a batch without a state, because the tracker memory is full |
 | `signoz_metadata_exporter_field_values_keys_written_ahead` | keys written for the next window |
 | `signoz_metadata_exporter_field_values_insert_errors` | failed inserts |
-| `signoz_metadata_exporter_field_values_cache_collisions` | keys without a free slot in the local cache |
 | `signoz_metadata_exporter_field_values_rows_skipped_shared` | rows that another collector already wrote in the window |
 | `signoz_metadata_exporter_field_values_shared_cache_errors` | failed calls to the shared cache |
 | `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys in the local cache, and its capacity, by `part`: `exact`, `reserve`, `ahead` |
 | `signoz_metadata_exporter_field_values_tracker_bytes`, `..._tracker_capacity_bytes` | memory of the value tracker and the resource states, and its limit |
+| `otelcol.timebucketedset.*` | the key cache: plans by result, applied keys, buckets, evictions (see `pkg/timebucketedset`) |
 
 ## Tests
 

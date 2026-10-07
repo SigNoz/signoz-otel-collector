@@ -1,7 +1,7 @@
 package fieldvalues
 
 // budget is the memory that the value tracker and the resource states of one
-// signal may use. The window cache has a fixed size of its own.
+// signal may use. The key cache has a size of its own.
 type budget struct {
 	used  int
 	limit int
@@ -91,7 +91,7 @@ func (t *tracker) newState(f fieldID) *fieldState {
 // has no room.
 func (t *tracker) add(st *fieldState, v uint64) bool {
 	if size, grow := st.values.growth(); grow {
-		delta := (size - len(st.values.slots)) * slotBytes
+		delta := (size - len(st.values.slots)) * valueSlotBytes
 		if !t.budget.take(delta) {
 			return false
 		}
@@ -103,14 +103,17 @@ func (t *tracker) add(st *fieldState, v uint64) bool {
 }
 
 func (t *tracker) spend(st *fieldState) {
-	freed := len(st.values.slots) * slotBytes
+	freed := len(st.values.slots) * valueSlotBytes
 	t.budget.give(freed)
 	t.bytes -= freed
 	st.values = valueSet{}
 	st.spent = true
 }
 
-const minValueSlots = 8
+const (
+	minValueSlots  = 8
+	valueSlotBytes = 8
+)
 
 // valueSet is a set of value hashes in one table with linear probing. It
 // costs 8 to 16 bytes per value, a quarter to a half of a Go map.

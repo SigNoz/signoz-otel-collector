@@ -22,7 +22,6 @@ type telemetry struct {
 	valuesLeftOut       metric.Int64Counter
 	resourcesOverflowed metric.Int64Counter
 	insertErrors        metric.Int64Counter
-	cacheCollisions     metric.Int64Counter
 	rowsSkippedShared   metric.Int64Counter
 	sharedCacheErrors   metric.Int64Counter
 	resourcesUntracked  metric.Int64Counter
@@ -52,7 +51,6 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 		{&t.valuesLeftOut, "signoz_metadata_exporter_field_values_left_out", "Pairs not written, by reason: value_length, field_places, sample_budget, cache_full, tracker_full."},
 		{&t.resourcesOverflowed, "signoz_metadata_exporter_field_values_resources_overflowed", "Resources that started to write into their overflow set in the window."},
 		{&t.insertErrors, "signoz_metadata_exporter_field_values_insert_errors", "Failed inserts. Their keys are not cached, so the next sighting writes them again."},
-		{&t.cacheCollisions, "signoz_metadata_exporter_field_values_cache_collisions", "Keys that found no free slot in the local window cache. They are written again at their next sighting."},
 		{&t.rowsSkippedShared, "signoz_metadata_exporter_field_values_rows_skipped_shared", "Rows not written because the shared cache shows that another collector wrote them in the window."},
 		{&t.sharedCacheErrors, "signoz_metadata_exporter_field_values_shared_cache_errors", "Failed reads or writes of the shared cache. The rows are written anyway."},
 		{&t.resourcesUntracked, "signoz_metadata_exporter_field_values_resources_untracked", "Resources of a batch without a state, because the memory of the tracker is full. Their records write into the overflow set."},
@@ -70,8 +68,8 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 		name   string
 		desc   string
 	}{
-		{&t.cacheUsed, "signoz_metadata_exporter_field_values_cache_keys", "Keys in the local window cache, by part: exact and reserve for the window, ahead for the next window."},
-		{&t.cacheCapacity, "signoz_metadata_exporter_field_values_cache_capacity", "Keys that each part of the local window cache can hold."},
+		{&t.cacheUsed, "signoz_metadata_exporter_field_values_cache_keys", "Keys counted in the local key cache, by part: exact and reserve for the window, ahead for the next window."},
+		{&t.cacheCapacity, "signoz_metadata_exporter_field_values_cache_capacity", "Keys that each part of the local key cache can take before the writer degrades."},
 	}
 	for _, g := range gauges {
 		values := g.values

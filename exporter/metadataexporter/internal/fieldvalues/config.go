@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// CacheProvider names the window cache that is shared by the collectors of a
-// tenant. The local window cache is always used; a shared provider adds a
-// second level that removes repeat inserts across collectors.
+// CacheProvider names the key cache that is shared by the collectors of a
+// tenant. The local key cache is always used; a shared provider adds a second
+// level that removes repeat inserts across collectors.
 type CacheProvider string
 
 const (
@@ -38,13 +38,14 @@ type LimitsConfig struct {
 	MaxOutsidePairsPerResource int `mapstructure:"max_outside_pairs_per_resource"`
 }
 
-// CacheConfig sizes the local window cache and selects the shared one.
+// CacheConfig sizes the local key cache and selects the shared one.
 type CacheConfig struct {
 	Provider CacheProvider `mapstructure:"provider"`
 	// MaxBytes is the memory of one writer (one signal of one exporter): three
-	// quarters for the window cache, one quarter for the value tracker and the
-	// resource states. With 0, the writers of the process share 10% of the Go
-	// memory limit, between 64 MiB and 1 GiB, or 256 MiB without a limit.
+	// quarters for the key cache, at least 64 MiB outside the Go heap, and one
+	// quarter for the value tracker and the resource states. With 0, the
+	// writers of the process share 10% of the Go memory limit, between 64 MiB
+	// and 1 GiB, or 256 MiB without a limit.
 	MaxBytes uint64 `mapstructure:"max_bytes"`
 	// ReserveShare is the share of the local cache kept for overflow sets and
 	// metric labels.
@@ -126,8 +127,8 @@ func (c *Config) Validate() error {
 	if c.Cache.Window < time.Minute || (24*time.Hour)%c.Cache.Window != 0 {
 		errs = append(errs, errors.New("field_values.cache: window must be at least 1m and divide 24h"))
 	}
-	if c.Cache.PreWriteWindow < 0 || c.Cache.PreWriteWindow >= c.Cache.Window {
-		errs = append(errs, errors.New("field_values.cache: pre_write_window must be at least 0 and shorter than window"))
+	if c.Cache.PreWriteWindow < 0 || c.Cache.PreWriteWindow >= c.Cache.Window || (c.Cache.PreWriteWindow > 0 && c.Cache.PreWriteWindow < time.Second) {
+		errs = append(errs, errors.New("field_values.cache: pre_write_window must be 0, or at least 1s and shorter than window"))
 	}
 	if c.Classification.RefreshInterval <= 0 {
 		errs = append(errs, errors.New("field_values.classification: refresh_interval must be positive"))
