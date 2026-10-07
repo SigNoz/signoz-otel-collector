@@ -156,7 +156,7 @@ func TestIntegrationExampleOneQuickFilter(t *testing.T) {
 	assert.Equal(t, []string{"checkout", "payments"}, queryStrings(t, conn, resourceQuery, "service.name", "resource", "2026-09-22 12:00:00"),
 		"exclude-self: the service filter drops its own condition")
 
-	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqHLL12Merge(holders)))
+	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqCombinedMerge(12)(holders)))
 FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.method' AND field_context = 'attribute'
   AND field_data_type = 'string' AND day = '2026-09-22'
