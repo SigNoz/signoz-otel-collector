@@ -73,7 +73,7 @@ func TestLogsHighCardinalityFieldKeepsDailySample(t *testing.T) {
 
 	// Day 1 showed 4 values in field_values_daily, so user.id starts day 2
 	// outside the hash.
-	e.class.Store(&classification{overClosedDays: map[fieldKey]struct{}{{ctx: contextAttribute, name: "user.id"}: {}}})
+	e.class.Store(&classification{overClosedDays: map[fieldID]struct{}{fieldIDOf(contextAttribute, "user.id"): {}}})
 	setNow(e, testDay.Add(24*time.Hour))
 	day2 := logsOf(checkout,
 		logRecord{"08:00", map[string]any{"http.method": "GET", "user.id": "u6"}},
@@ -134,7 +134,7 @@ func TestLogsOverflowSetWhenCacheIsFull(t *testing.T) {
 	)
 	e.mu.Lock()
 	first := e.newBatch()
-	first.addLogs(ld)
+	addLogs(first, ld)
 	e.mu.Unlock()
 	assert.Equal(t, 1, first.stats.leftOut[reasonCacheFull], "the last record has two new pairs and the reserve has room for one")
 	assert.Equal(t, 1, first.stats.resourcesOverflowed)
@@ -155,7 +155,7 @@ func TestLogsOverflowSetWhenCacheIsFull(t *testing.T) {
 	assert.Contains(t, setList(rows), "{http.method=POST, status=200}")
 	e.mu.Lock()
 	b := e.newBatch()
-	b.addLogs(logsOf(checkout, logRecord{"10:04", map[string]any{"http.method": "PUT", "status": "200"}}))
+	addLogs(b, logsOf(checkout, logRecord{"10:04", map[string]any{"http.method": "PUT", "status": "200"}}))
 	e.mu.Unlock()
 	assert.Equal(t, 2, b.stats.leftOut[reasonCacheFull], "with the reserve full, the new pairs http.method=PUT and status=200 of the overflow set are left out")
 }
@@ -202,7 +202,7 @@ func TestLogsValueRules(t *testing.T) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		b := e.newBatch()
-		b.addLogs(ld)
+		addLogs(b, ld)
 		return b.stats
 	}()
 	assert.Equal(t, 1, b.leftOut[reasonValueLength])

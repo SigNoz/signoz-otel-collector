@@ -25,7 +25,7 @@ func (w *clickhouseWriter) write(ctx context.Context, rows []row) error {
 		return err
 	}
 	defer func() { _ = stmt.Close() }()
-	now := time.Now()
+	now := time.Now().Unix()
 	for _, r := range rows {
 		var number *float64
 		str := r.p.str
@@ -46,8 +46,8 @@ func (w *clickhouseWriter) write(ctx context.Context, rows []row) error {
 			r.resourceHash,
 			r.attrsHash,
 			r.inHash,
-			r.seenMillis,
-			r.seenMillis,
+			int64(r.seenMillis/1000),
+			int64(r.seenMillis/1000),
 			now,
 		); err != nil {
 			return err

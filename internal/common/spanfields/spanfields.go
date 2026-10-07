@@ -46,12 +46,7 @@ func Calculate(attributes pcommon.Map, kind int8) Calculated {
 	attributes.Range(func(k string, v pcommon.Value) bool {
 		if k == "http.status_code" || k == "http.response.status_code" {
 			// Handle both string/int http status codes.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			c.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+			c.ResponseStatusCode = statusCode(v)
 		} else if (k == "http.url" || k == "url.full") && kind == spanKindClient {
 			value := v.Str()
 			valueURL, err := url.Parse(value)
@@ -78,18 +73,26 @@ func Calculate(attributes pcommon.Map, kind int8) Calculated {
 			c.DBOperation = v.Str()
 		} else if k == "rpc.grpc.status_code" {
 			// Handle both string/int status code in GRPC spans.
-			statusString, err := strconv.Atoi(v.Str())
-			statusInt := v.Int()
-			if err == nil && statusString != 0 {
-				statusInt = int64(statusString)
-			}
-			c.ResponseStatusCode = strconv.FormatInt(statusInt, 10)
+			c.ResponseStatusCode = statusCode(v)
 		} else if k == "rpc.jsonrpc.error_code" {
 			c.ResponseStatusCode = v.Str()
 		}
 		return true
 	})
 	return c
+}
+
+// statusCode gives a status code held as an int or as a string. A string that
+// is not a number gives "0", as do types other than int and string. Atoi runs
+// only on strings, because its error allocates.
+func statusCode(v pcommon.Value) string {
+	statusInt := v.Int()
+	if v.Type() == pcommon.ValueTypeStr {
+		if statusString, err := strconv.Atoi(v.Str()); err == nil && statusString != 0 {
+			statusInt = int64(statusString)
+		}
+	}
+	return strconv.FormatInt(statusInt, 10)
 }
 
 // IsRemote gives "yes", "no" or "unknown" from the flags of a span.

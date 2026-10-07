@@ -161,7 +161,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
 						OrderBy: "(signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, resource_hash, attrs_hash)",
-						TTL:     "toDateTime(intDiv(last_seen, 1000)) + toIntervalDay(30)",
+						TTL:     "last_seen + toIntervalDay(30)",
 						Settings: TableSettings{
 							{Name: "allow_nullable_key", Value: "1"},
 						},
@@ -200,7 +200,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Engine: Distributed{
 					Database:    "signoz_metadata",
 					Table:       "field_values_daily",
-					ShardingKey: "cityHash64(signal, field_name)",
+					ShardingKey: "rand()",
 				},
 			},
 			CreateMaterializedViewOperation{
@@ -216,8 +216,8 @@ var MetadataMigrations = []SchemaMigrationRecord{
     field_data_type,
     string_value,
     number_value,
-    toDate(toDateTime(intDiv(first_seen, 1000), 'UTC')) AS day,
-    uniqState(cityHash64(resource_hash, attrs_hash)) AS holders
+    toDate(first_seen, 'UTC') AS day,
+    uniqHLL12State(cityHash64(resource_hash, attrs_hash)) AS holders
 FROM signoz_metadata.field_values_sets
 ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
 GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, string_value, number_value, day`,
@@ -267,12 +267,12 @@ var fieldValuesSetsColumns = []Column{
 	{Name: "field_data_type", Type: fieldDataTypeColumnType},
 	{Name: "string_value", Type: ColumnTypeString},
 	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
-	{Name: "resource_hash", Type: ColumnTypeUInt64},
+	{Name: "resource_hash", Type: ColumnTypeUInt64, Codec: "ZSTD(1)"},
 	{Name: "attrs_hash", Type: ColumnTypeUInt64},
 	{Name: "in_hash", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeBool}}},
-	{Name: "first_seen", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeUInt64}}},
-	{Name: "last_seen", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{ColumnTypeUInt64}}},
-	{Name: "inserted_at", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTime64ColumnType{Precision: 3}}}},
+	{Name: "first_seen", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+	{Name: "last_seen", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+	{Name: "inserted_at", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
 }
 
 var fieldValuesDailyColumns = []Column{
@@ -285,5 +285,5 @@ var fieldValuesDailyColumns = []Column{
 	{Name: "string_value", Type: ColumnTypeString},
 	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
 	{Name: "day", Type: ColumnTypeDate},
-	{Name: "holders", Type: AggregateFunction{FunctionName: "uniq", Arguments: []ColumnType{ColumnTypeUInt64}}},
+	{Name: "holders", Type: AggregateFunction{FunctionName: "uniqHLL12", Arguments: []ColumnType{ColumnTypeUInt64}}},
 }

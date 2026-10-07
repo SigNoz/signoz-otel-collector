@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// CacheProvider names the day cache that is shared by the collectors of a
-// tenant. The local day cache is always used; a shared provider adds a second
-// level that removes repeat inserts across collectors.
+// CacheProvider names the window cache that is shared by the collectors of a
+// tenant. The local window cache is always used; a shared provider adds a
+// second level that removes repeat inserts across collectors.
 type CacheProvider string
 
 const (
@@ -30,24 +30,34 @@ type LimitsConfig struct {
 	// MaxFieldsPerSignal is the number of field places per day on one
 	// collector.
 	MaxFieldsPerSignal int `mapstructure:"max_fields_per_signal"`
-	// MaxSetsPerResource is the number of new sets per resource per day on one
-	// collector, for each coarse step.
+	// MaxSetsPerResource is the number of new sets per resource per window on
+	// one collector, for each coarse step.
 	MaxSetsPerResource int `mapstructure:"max_sets_per_resource"`
 	// MaxOutsidePairsPerResource is the number of new keys of pairs outside the
-	// hash per resource per day on one collector, for each coarse step.
+	// hash per resource per window on one collector, for each coarse step.
 	MaxOutsidePairsPerResource int `mapstructure:"max_outside_pairs_per_resource"`
 }
 
-// CacheConfig sizes the local day cache and selects the shared one.
+// CacheConfig sizes the local window cache and selects the shared one.
 type CacheConfig struct {
 	Provider CacheProvider `mapstructure:"provider"`
-	// MaxBytes is the memory of the local day cache of one signal. With 0,
-	// the three signals share 10% of the Go memory limit, between 64 MiB and
-	// 1 GiB, or 256 MiB without a limit.
+	// MaxBytes is the memory of one writer (one signal of one exporter): three
+	// quarters for the window cache, one quarter for the value tracker and the
+	// resource states. With 0, the writers of the process share 10% of the Go
+	// memory limit, between 64 MiB and 1 GiB, or 256 MiB without a limit.
 	MaxBytes uint64 `mapstructure:"max_bytes"`
 	// ReserveShare is the share of the local cache kept for overflow sets and
 	// metric labels.
 	ReserveShare float64 `mapstructure:"reserve_share"`
+	// Window is the time in which each set, pair and resource is written once
+	// per collector. It must divide a UTC day.
+	Window time.Duration `mapstructure:"window"`
+	// PreWriteWindow is the last part of each window in which the keys seen
+	// are also written for the next window, each at a time set by its hash.
+	// It spreads the writes of a new window over this time. The daily sample
+	// of high-cardinality fields is spread over the first PreWriteWindow of
+	// each UTC day. 0 disables both.
+	PreWriteWindow time.Duration `mapstructure:"pre_write_window"`
 }
 
 // ClassificationConfig controls the reads of field_values_daily.
@@ -84,8 +94,10 @@ func DefaultConfig() Config {
 			MaxOutsidePairsPerResource: 16384,
 		},
 		Cache: CacheConfig{
-			Provider:     CacheProviderInMemory,
-			ReserveShare: 0.1,
+			Provider:       CacheProviderInMemory,
+			ReserveShare:   0.1,
+			Window:         24 * time.Hour,
+			PreWriteWindow: time.Hour,
 		},
 		Classification: ClassificationConfig{
 			RefreshInterval: 15 * time.Minute,
@@ -110,6 +122,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Cache.ReserveShare <= 0 || c.Cache.ReserveShare >= 1 {
 		errs = append(errs, errors.New("field_values.cache: reserve_share must be between 0 and 1"))
+	}
+	if c.Cache.Window < time.Minute || (24*time.Hour)%c.Cache.Window != 0 {
+		errs = append(errs, errors.New("field_values.cache: window must be at least 1m and divide 24h"))
+	}
+	if c.Cache.PreWriteWindow < 0 || c.Cache.PreWriteWindow >= c.Cache.Window {
+		errs = append(errs, errors.New("field_values.cache: pre_write_window must be at least 0 and shorter than window"))
 	}
 	if c.Classification.RefreshInterval <= 0 {
 		errs = append(errs, errors.New("field_values.classification: refresh_interval must be positive"))

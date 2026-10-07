@@ -102,7 +102,7 @@ func appendBodyValue(dst []pair, path string, val pcommon.Value) []pair {
 			return append(dst, numberPair(contextBody, path, f))
 		}
 	case pcommon.ValueTypeBool:
-		return append(dst, pair{ctx: contextBody, name: path, typ: typeBool, str: strconv.FormatBool(val.Bool())})
+		return append(dst, boolPair(contextBody, path, val.Bool()))
 	}
 	return dst
 }
