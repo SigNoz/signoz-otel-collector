@@ -175,33 +175,39 @@ func (b *batch) addSeries(in *metricsInput) {
 
 func (b *batch) series(s *preparedSeries, labels []pair, rh uint64, resourcePairs []pair) {
 	seen := b.seenMillis(s.ts, 0)
-	if k := setKey(rh, s.id); !b.known(k) {
+	sk := setKey(rh, s.id)
+	if known, ahead := b.lookup(sk); !known {
 		if b.room(classExact) {
 			for i := range labels {
-				b.emit(k, s.name, &labels[i], rh, s.id, true, seen)
+				b.emit(sk, s.name, &labels[i], rh, s.id, true, seen)
 			}
-			b.remember(k, classExact)
+			b.remember(sk, classExact)
 			b.rememberLabels(s.nameHash, labels)
 		} else {
 			b.leaveOut(reasonCacheFull, 1)
 			b.keepLabels(s, labels, rh, s.id, seen)
 		}
-	} else if b.writeAhead(k) {
-		b.emitAhead(k, s.name, labels, rh, s.id, true)
+	} else if ahead {
+		b.emitAhead(sk, s.name, labels, rh, s.id, true)
 	}
-	if k := resourceKey(s.nameHash, rh); !b.known(k) {
+	rk := resourceKey(s.nameHash, rh)
+	if rk == b.lastResourceKey {
+		return
+	}
+	b.lastResourceKey = rk
+	if known, ahead := b.lookup(rk); !known {
 		if b.room(classExact) {
 			for i := range resourcePairs {
-				b.emit(k, s.name, &resourcePairs[i], rh, resourceAttrsHash, true, seen)
+				b.emit(rk, s.name, &resourcePairs[i], rh, resourceAttrsHash, true, seen)
 			}
-			b.remember(k, classExact)
+			b.remember(rk, classExact)
 			b.rememberLabels(s.nameHash, resourcePairs)
 		} else {
 			b.leaveOut(reasonCacheFull, 1)
 			b.keepLabels(s, resourcePairs, rh, resourceAttrsHash, seen)
 		}
-	} else if b.writeAhead(k) {
-		b.emitAhead(k, s.name, resourcePairs, rh, resourceAttrsHash, true)
+	} else if ahead {
+		b.emitAhead(rk, s.name, resourcePairs, rh, resourceAttrsHash, true)
 	}
 }
 
@@ -212,7 +218,7 @@ func (b *batch) series(s *preparedSeries, labels []pair, rh uint64, resourcePair
 func (b *batch) rememberLabels(metricNameHash uint64, labels []pair) {
 	for i := range labels {
 		k := labelKey(metricNameHash, &labels[i])
-		if b.known(k) {
+		if known, _ := b.lookup(k); known {
 			continue
 		}
 		if class, ok := b.classFor(); ok {
@@ -224,7 +230,10 @@ func (b *batch) rememberLabels(metricNameHash uint64, labels []pair) {
 func (b *batch) keepLabels(s *preparedSeries, labels []pair, resourceHash, attrsHash uint64, seen uint64) {
 	for i := range labels {
 		k := labelKey(s.nameHash, &labels[i])
-		if b.known(k) {
+		if known, ahead := b.lookup(k); known {
+			if ahead {
+				b.emitAhead(k, s.name, labels[i:i+1], resourceHash, attrsHash, true)
+			}
 			continue
 		}
 		if !b.room(classReserve) {

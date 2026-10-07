@@ -16,7 +16,7 @@ type Window struct {
 	End   uint64
 }
 
-// SharedCache is a window cache that the collectors of a tenant share. Before
+// SharedCache is a key cache that the collectors of a tenant share. Before
 // an insert, a collector drops the rows whose keys another collector already
 // wrote in the window. A shared cache only removes repeat inserts: on an
 // error the rows are written anyway, because writes are idempotent.
