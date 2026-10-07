@@ -424,10 +424,13 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 func TestIncomingStashReplaced(t *testing.T) {
 	testCases := []struct {
 		name          string
+		bodyDisabled  bool
 		dualIngestion bool
 		body          any
 		expectedStash any
 	}{
+		{name: "BodyDisabled_Removed", bodyDisabled: true, body: "untouched line"},
+		{name: "BodyDisabled_DualIngestionEnabled_Removed", bodyDisabled: true, dualIngestion: true, body: "skipped line"},
 		{name: "DualIngestionDisabled_Removed", body: "fresh line"},
 		{name: "DualIngestionDisabled_EmptyBody_Removed", body: nil},
 		{name: "DualIngestionEnabled_EmptyBody_Removed", dualIngestion: true, body: nil},
@@ -439,7 +442,11 @@ func TestIncomingStashReplaced(t *testing.T) {
 			lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 			lr.Attributes().PutStr(constants.OriginalBodyAttributeKey, "stale upstream stash")
 
-			_, err := newTestProcessor(t, testCase.dualIngestion).ProcessLogs(context.Background(), ld)
+			cfg := testConfig(testCase.dualIngestion)
+			cfg.Body.Enabled = !testCase.bodyDisabled
+			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
+			require.NoError(t, err)
+			_, err = p.ProcessLogs(context.Background(), ld)
 			require.NoError(t, err)
 
 			stash, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
