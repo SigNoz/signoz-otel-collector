@@ -217,13 +217,13 @@ type perfQuery struct {
 var perfQueries = []perfQuery{
 	{"plain values: logs http.route (top 50 by holders)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
+GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
 	{"plain values: logs user.id (high-cardinality sample)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'user.id' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
+GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
 	{"type-ahead: logs http.route ILIKE '%route-1%'", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC') AND string_value ILIKE '%route-1%'
-GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`},
+GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
 	{"related values: logs http.route where service.name = svc-01 and http.method = GET", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
   AND last_seen >= toDateTime(toDate(now(), 'UTC'), 'UTC')
