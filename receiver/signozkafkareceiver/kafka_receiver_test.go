@@ -105,6 +105,18 @@ func TestTracesReceiverStart(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+func TestReceiverShutdownWithoutStart(t *testing.T) {
+	set := receivertest.NewNopSettings(metadata.Type)
+	tracesGroup, metricsGroup, logsGroup := &testConsumerGroup{}, &testConsumerGroup{}, &testConsumerGroup{}
+
+	require.NoError(t, (&kafkaTracesConsumer{settings: set, consumerGroup: tracesGroup}).Shutdown(context.Background()))
+	require.NoError(t, (&kafkaMetricsConsumer{settings: set, consumerGroup: metricsGroup}).Shutdown(context.Background()))
+	require.NoError(t, (&kafkaLogsConsumer{settings: set, consumerGroup: logsGroup}).Shutdown(context.Background()))
+	assert.True(t, tracesGroup.closed)
+	assert.True(t, metricsGroup.closed)
+	assert.True(t, logsGroup.closed)
+}
+
 func TestTracesReceiverStartConsume(t *testing.T) {
 	consumerGroup := &testConsumerGroup{}
 	c := kafkaTracesConsumer{
