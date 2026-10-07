@@ -40,8 +40,8 @@ func newBenchWriter(b testing.TB, signal pipeline.Signal) (*Writer, *countingWri
 	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), signal.String(), "")
 	require.NoError(b, err)
 	cw := &countingWriter{}
-	w := newWriter(cfg, Settings{Signal: signal, Logger: zap.NewNop()}, cw, tel)
-	w.allocate()
+	w := newWriter(cfg, Settings{Signal: signal, Logger: zap.NewNop(), Telemetry: componenttest.NewNopTelemetrySettings()}, cw, tel)
+	require.NoError(b, w.allocate())
 	w.now = func() time.Time { return testDay }
 	return w, cw
 }
@@ -115,22 +115,30 @@ func BenchmarkWriteMetricsNewData(b *testing.B) {
 	b.ReportMetric(float64(cw.rows)/float64(b.N*benchBatch), "rows/point")
 }
 
-func BenchmarkWindowCache(b *testing.B) {
-	c := newWindowCache(256<<20, 0.1)
-	c.rotate(1)
-	exact, _ := c.capacity()
-	keys := make([]uint64, exact)
-	for i := range keys {
-		keys[i] = mix64(uint64(i) + 1)
+func BenchmarkKeyCache(b *testing.B) {
+	c, err := newKeyCache(24*time.Hour, time.Hour, 64<<20, 0.1, componenttest.NewNopTelemetrySettings())
+	require.NoError(b, err)
+	window, now := uint64(20000)*dayMillis, uint64(20000)*dayMillis+1000
+	c.rotate(window)
+	c.plan(1, window, now)
+	keys := make(map[uint64]cacheClass, 1<<20)
+	for i := 0; i < 1<<20; i++ {
+		keys[mix64(uint64(i)+1)] = classExact
 	}
-	b.Run("insert", func(b *testing.B) {
+	b.Run("apply", func(b *testing.B) {
+		batch := make(map[uint64]cacheClass, 1000)
 		for i := 0; i < b.N; i++ {
-			c.insert(keys[i%len(keys)], classExact)
+			batch[mix64(uint64(i)+1)] = classExact
+			if len(batch) == 1000 {
+				c.apply(window, batch, nil)
+				clear(batch)
+			}
 		}
 	})
-	b.Run("has", func(b *testing.B) {
+	c.apply(window, keys, nil)
+	b.Run("plan", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			c.has(keys[i%len(keys)])
+			c.plan(mix64(uint64(i%(1<<20))+1), window, now)
 		}
 	})
 }

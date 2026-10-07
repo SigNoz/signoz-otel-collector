@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -46,6 +47,8 @@ type Settings struct {
 	Conn      driver.Conn
 	Logger    *zap.Logger
 	Telemetry component.TelemetrySettings
+	// ExporterID names the exporter in the telemetry of the key cache.
+	ExporterID string
 	// Shared is the cache shared by the collectors of a tenant, or nil.
 	Shared SharedCache
 	// BodyJSON enables the pairs of JSON log bodies, or is nil.
@@ -54,11 +57,10 @@ type Settings struct {
 
 // signalState is the state of one signal for the current window and UTC day.
 type signalState struct {
-	window      Window
-	windowIndex uint64
-	day         uint64
+	window Window
+	day    uint64
 	// cache is made at the first push; see autoMemory.
-	cache     *windowCache
+	cache     *keyCache
 	budget    budget
 	tracker   *tracker
 	resources *resourceTable
@@ -75,6 +77,8 @@ type Writer struct {
 	signal         pipeline.Signal
 	logger         *zap.Logger
 	rows           rowWriter
+	telemetry      component.TelemetrySettings
+	exporterID     string
 	shared         SharedCache
 	classifier     *classifier
 	bodyJSON       *BodyJSONLimits
@@ -132,6 +136,8 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 		signal:         set.Signal,
 		logger:         set.Logger,
 		rows:           rows,
+		telemetry:      set.Telemetry,
+		exporterID:     set.ExporterID,
 		shared:         set.Shared,
 		bodyJSON:       set.BodyJSON,
 		alwaysInclude:  alwaysInclude,
@@ -170,12 +176,20 @@ func memoryBytes(cfg CacheConfig) uint64 {
 	return total / uint64(writers)
 }
 
-// allocate makes the window cache with three quarters of the memory. The
-// value tracker and the resource states get the rest.
-func (w *Writer) allocate() {
+// allocate makes the key cache with three quarters of the memory, and at
+// least the smallest buckets of pkg/timebucketedset. The value tracker and
+// the resource states get the rest.
+func (w *Writer) allocate() error {
 	total := memoryBytes(w.cfg.Cache)
 	cacheMemory := total / 4 * 3
-	w.state.cache = newWindowCache(cacheMemory, w.cfg.Cache.ReserveShare)
+	cache, err := newKeyCache(w.cfg.Cache.Window, w.cfg.Cache.PreWriteWindow, cacheMemory, w.cfg.Cache.ReserveShare, w.telemetry,
+		attribute.String("exporter", w.exporterID),
+		attribute.String("signal", w.signal.String()),
+		attribute.String("source", w.cfg.Source))
+	if err != nil {
+		return err
+	}
+	w.state.cache = cache
 	w.state.budget.limit = int(total - cacheMemory)
 	exact, reserve := w.state.cache.capacity()
 	w.tel.cacheCapacity[classExact].Store(int64(exact))
@@ -186,7 +200,8 @@ func (w *Writer) allocate() {
 		zap.String("signal", w.signal.String()),
 		zap.String("source", w.cfg.Source),
 		zap.String("shared", string(w.cfg.Cache.Provider)),
-		zap.Uint64("bytes", total))
+		zap.Uint64("bytes", max(cacheMemory, cacheBuckets*minBucketBytes)+total-cacheMemory))
+	return nil
 }
 
 // Start begins the reads of field_values_daily. Metrics have no value limits,
@@ -209,6 +224,11 @@ func (w *Writer) Shutdown() error {
 		}
 	})
 	w.wg.Wait()
+	w.mu.Lock()
+	if w.state.cache != nil {
+		w.state.cache.shutdown()
+	}
+	w.mu.Unlock()
 	if w.shared != nil {
 		return w.shared.Close()
 	}
@@ -285,6 +305,13 @@ func (w *Writer) WriteMetrics(ctx context.Context, md pmetric.Metrics) error {
 // returns an error, so the metadata never holds up the export of the data.
 func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	w.mu.Lock()
+	if w.state.cache == nil {
+		if err := w.allocate(); err != nil {
+			w.mu.Unlock()
+			w.warn("failed to create the field values key cache", zap.Error(err))
+			return nil
+		}
+	}
 	b := w.newBatch()
 	fill(b)
 	st := w.state
@@ -411,13 +438,9 @@ func pendingKeys(b *batch, group int) []uint64 {
 func (w *Writer) newBatch() *batch {
 	now := uint64(w.now().UnixMilli())
 	st := w.state
-	if st.cache == nil {
-		w.allocate()
-	}
-	if idx := now / w.widthMillis; st.window.End == 0 || idx != st.windowIndex {
-		st.windowIndex = idx
-		st.window = Window{Start: idx * w.widthMillis, End: (idx + 1) * w.widthMillis}
-		st.cache.rotate(idx)
+	if start := now / w.widthMillis * w.widthMillis; st.window.End == 0 || start != st.window.Start {
+		st.window = Window{Start: start, End: start + w.widthMillis}
+		st.cache.rotate(st.window.Start)
 		st.resources.reset()
 		if day := now / dayMillis; day != st.day {
 			st.day = day
@@ -434,7 +457,6 @@ func (w *Writer) newBatch() *batch {
 	}
 	b := w.batches.Get().(*batch)
 	b.window = st.window
-	b.windowIndex = st.windowIndex
 	b.dayStart = st.day * dayMillis
 	b.limits = w.cfg.Limits
 	b.alwaysInclude = w.alwaysInclude
@@ -452,28 +474,10 @@ func (w *Writer) release(b *batch) {
 
 // commit caches the keys of a written batch. When the window changed while
 // the batch was inserted, its keys written ahead are the keys of the new
-// window; a batch of an older window caches nothing.
+// window.
 func (w *Writer) commit(b *batch) {
 	st := w.state
-	before := st.cache.collisions
-	switch b.windowIndex {
-	case st.windowIndex:
-		for k, class := range b.pending {
-			st.cache.insert(k, class)
-		}
-		for k := range b.pendingAhead {
-			st.cache.insertNext(k)
-		}
-	case st.windowIndex - 1:
-		for k := range b.pendingAhead {
-			st.cache.insert(k, classExact)
-		}
-	default:
-		return
-	}
-	if n := st.cache.collisions - before; n > 0 {
-		w.tel.cacheCollisions.Add(context.Background(), int64(n), w.tel.attrs)
-	}
+	st.cache.apply(b.window.Start, b.pending, b.pendingAhead)
 	w.tel.cacheUsed[classExact].Store(int64(st.cache.used[classExact]))
 	w.tel.cacheUsed[classReserve].Store(int64(st.cache.used[classReserve]))
 	w.tel.cacheUsed[partAhead].Store(int64(st.cache.nextUsed))

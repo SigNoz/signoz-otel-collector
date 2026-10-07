@@ -18,10 +18,11 @@ import (
 // writer runs today.
 func newFieldValuesWriter(cfg Config, set exporter.Settings, signal pipeline.Signal, conn driver.Conn) (*fieldvalues.Writer, error) {
 	settings := fieldvalues.Settings{
-		Signal:    signal,
-		Conn:      conn,
-		Logger:    set.Logger,
-		Telemetry: set.TelemetrySettings,
+		Signal:     signal,
+		Conn:       conn,
+		Logger:     set.Logger,
+		Telemetry:  set.TelemetrySettings,
+		ExporterID: set.ID.String(),
 	}
 	if cfg.FieldValues.Cache.Provider == fieldvalues.CacheProviderRedis {
 		client := redis.NewClient(&redis.Options{

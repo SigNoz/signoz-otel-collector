@@ -9,7 +9,7 @@ import (
 
 // The input of a push is built from the pdata before the writer lock is
 // taken: the pairs of each record with their hashes. Under the lock, only the
-// value rules and the window cache are left.
+// value rules and the key cache are left.
 
 type pairRange struct {
 	lo, hi int

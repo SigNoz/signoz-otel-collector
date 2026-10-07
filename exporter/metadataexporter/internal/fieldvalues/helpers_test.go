@@ -54,10 +54,12 @@ func newTestExporter(t *testing.T, cfg Config, signal pipeline.Signal) (*Writer,
 func newTestExporterWith(t *testing.T, cfg Config, set Settings, w *fakeWriter) (*Writer, *fakeWriter) {
 	t.Helper()
 	set.Logger = zap.NewNop()
+	set.Telemetry = componenttest.NewNopTelemetrySettings()
 	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), set.Signal.String(), cfg.Source)
 	require.NoError(t, err)
 	e := newWriter(cfg, set, w, tel)
-	e.allocate()
+	require.NoError(t, e.allocate())
+	t.Cleanup(func() { _ = e.Shutdown() })
 	now := testDay
 	e.now = func() time.Time { return now }
 	return e, w

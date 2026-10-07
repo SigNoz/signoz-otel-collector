@@ -57,9 +57,16 @@ func TestAutoMemoryCountsWritersWithoutASize(t *testing.T) {
 }
 
 func TestMemoryIsSplitBetweenCacheAndTracker(t *testing.T) {
-	e, _ := newTestExporter(t, testConfig(), pipeline.SignalLogs)
-	assert.Len(t, e.state.cache.slots, (1<<20)/4*3/slotBytes, "three quarters for the window cache, with no rounding")
-	assert.Equal(t, (1<<20)/4, e.state.budget.limit, "a quarter for the tracker and the resource states")
+	cfg := testConfig()
+	cfg.Cache.MaxBytes = 256 << 20
+	e, _ := newTestExporter(t, cfg, pipeline.SignalLogs)
+	exact, reserve := e.state.cache.capacity()
+	assert.Equal(t, bucketCapacity(96<<20), exact+reserve, "three quarters for the key cache: two buckets of 96 MiB, 80% full")
+	assert.Equal(t, 64<<20, e.state.budget.limit, "a quarter for the tracker and the resource states")
+
+	small, _ := newTestExporter(t, testConfig(), pipeline.SignalLogs)
+	exact, reserve = small.state.cache.capacity()
+	assert.Equal(t, bucketCapacity(minBucketBytes), exact+reserve, "a bucket has at least the 32 MiB of pkg/timebucketedset")
 }
 
 func TestFailedInsertsWarnOncePerInterval(t *testing.T) {
@@ -67,7 +74,7 @@ func TestFailedInsertsWarnOncePerInterval(t *testing.T) {
 	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), "logs", "")
 	require.NoError(t, err)
 	fw := &fakeWriter{fail: 3}
-	w := newWriter(testConfig(), Settings{Signal: pipeline.SignalLogs, Logger: zap.New(core)}, fw, tel)
+	w := newWriter(testConfig(), Settings{Signal: pipeline.SignalLogs, Logger: zap.New(core), Telemetry: componenttest.NewNopTelemetrySettings()}, fw, tel)
 	w.now = func() time.Time { return testDay }
 	for i := 0; i < 3; i++ {
 		ld := logsOf(checkout, logRecord{"10:00", map[string]any{"n": int64(i)}})
