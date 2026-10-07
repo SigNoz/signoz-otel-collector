@@ -124,6 +124,9 @@ func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, err
 	if err != nil {
 		return nil, err
 	}
+	// allow ClickHouse to handle duplicate paths in the JSON attribute columns instead of
+	// failing the batch when a span sends the same path as both a scalar and an object.
+	options.Settings["type_json_skip_duplicated_paths"] = 1
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	// default to 1 extra idle connection; if queue config present, align with consumer count.
 	maxIdleConnections := 1

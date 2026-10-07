@@ -49,7 +49,8 @@ type ExistsAny struct {
 	Resource []string `mapstructure:"resource"`
 }
 
-// AttributeRule describes how to populate a single target attribute.
+// AttributeRule describes how to populate a single target attribute. A target
+// the span already carries is never overwritten.
 type AttributeRule struct {
 	// Target is the attribute key to write.
 	Target  string   `mapstructure:"target"`

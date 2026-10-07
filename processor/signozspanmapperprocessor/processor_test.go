@@ -210,6 +210,41 @@ func TestSourceFirstMatchWins(t *testing.T) {
 	assert.Equal(t, "100", val.Str())
 }
 
+func TestExistingTargetIsKept(t *testing.T) {
+	cfg := &Config{
+		Groups: []Group{
+			{
+				ID:        "operation",
+				ExistsAny: ExistsAny{Attributes: []string{"llm"}},
+				Attributes: []AttributeRule{
+					{
+						Target:  "gen_ai.operation.name",
+						Sources: []Source{{Key: "llm.request.type", Action: ActionMove}},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, cfg.Validate())
+
+	td := buildTrace(
+		t,
+		map[string]string{
+			"gen_ai.operation.name": "chat",
+			"llm.request.type":      "completion",
+		},
+		nil,
+	)
+	_, err := newProcessor(cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	val, ok := spanAttrs(t, td).Get("gen_ai.operation.name")
+	require.True(t, ok)
+	assert.Equal(t, "chat", val.Str())
+	_, srcPresent := spanAttrs(t, td).Get("llm.request.type")
+	assert.True(t, srcPresent)
+}
+
 func TestSourceFallsBackToSecond(t *testing.T) {
 	cfg := &Config{
 		Groups: []Group{

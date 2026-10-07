@@ -341,92 +341,82 @@ func TestExporterConcurrency(t *testing.T) {
 }
 
 func TestProcessBody(t *testing.T) {
-	tests := []struct {
-		name                  string
-		bodyJSONEnabled       bool
-		jsonBodyDualIngestion bool
-		promotedPaths         map[string]struct{}
-		body                  func() pcommon.Value
-		originalBody          func() pcommon.Value
-		expectedBody          string
-		expectedBodyJSON      string
-		expectedPromoted      string
+	testCases := []struct {
+		name             string
+		bodyJSONEnabled  bool
+		promotedPaths    map[string]struct{}
+		body             func() pcommon.Value
+		originalBody     func() pcommon.Value
+		expectedBody     string
+		expectedBodyJSON string
+		expectedPromoted string
 	}{
 		{
-			name:                  "bodyJSONEnabled_false_string_body",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONDisabled_StringBody",
+			bodyJSONEnabled: false,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
-				v := pcommon.NewValueStr("test log message")
-				return v
+				return pcommon.NewValueStr("test log message")
 			},
 			expectedBody:     "test log message",
 			expectedBodyJSON: "{}",
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_false_map_body",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONDisabled_MapBody",
+			bodyJSONEnabled: false,
+			promotedPaths:   map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "test")
+				v.Map().PutStr("message", "structured")
 				return v
 			},
-			expectedBody:     `{"message":"test"}`,
+			expectedBody:     `{"message":"structured"}`,
 			expectedBodyJSON: "{}",
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_true_string_body",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONDisabled_Stash_Ignored",
+			bodyJSONEnabled: false,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
-				v := pcommon.NewValueStr("test log message")
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "raw text log")
 				return v
 			},
-			expectedBody:     "",
-			expectedBodyJSON: `{"message":"test log message"}`,
+			originalBody: func() pcommon.Value {
+				return pcommon.NewValueStr("spoofed original body")
+			},
+			expectedBody:     `{"message":"raw text log"}`,
+			expectedBodyJSON: "{}",
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "explicit_body_json_with_dual_and_no_stash_still_writes_body_v2",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
-			promotedPaths: map[string]struct{}{
-				"message": {},
-			},
+			name:            "BodyJSONEnabled_StringBody_NoStash_BodyEmpty",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
-				v := pcommon.NewValueStr("test log message")
-				return v
+				return pcommon.NewValueStr("plain line")
 			},
-			expectedBody:     "test log message",
-			expectedBodyJSON: `{"message":"test log message"}`,
-			expectedPromoted: `{"message":"test log message"}`,
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"plain line"}`,
+			expectedPromoted: `{"message":"plain line"}`,
 		},
 		{
-			name:                  "explicit_body_json_with_dual_int_body_wrapped",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
-			promotedPaths: map[string]struct{}{
-				"message": {},
-			},
+			name:            "BodyJSONEnabled_IntBody_Wrapped",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
-				v := pcommon.NewValueInt(42)
-				return v
+				return pcommon.NewValueInt(42)
 			},
-			expectedBody:     "42",
+			expectedBody:     "",
 			expectedBodyJSON: `{"message":"42"}`,
 			expectedPromoted: `{"message":"42"}`,
 		},
 		{
-			name:                  "bodyJSONEnabled_true_slice_body",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_SliceBody_Wrapped",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueSlice()
 				v.Slice().AppendEmpty().SetStr("a")
@@ -438,10 +428,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_true_bytes_body",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_BytesBody_Wrapped",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueBytes()
 				v.Bytes().Append([]byte("raw bytes")...)
@@ -452,10 +441,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_true_empty_body",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_EmptyBody_Wrapped",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				return pcommon.NewValueEmpty()
 			},
@@ -464,12 +452,22 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "bodyJSONEnabled_true_map_body_with_promoted_paths",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
-			promotedPaths: map[string]struct{}{
-				"message": {},
+			name:            "BodyJSONEnabled_MapBody_NoStash_BodyEmpty",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{"message": {}},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "test")
+				return v
 			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"test"}`,
+			expectedPromoted: `{"message":"test"}`,
+		},
+		{
+			name:            "BodyJSONEnabled_MapBody_Stash_PromotedPaths",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
 				v.Map().PutStr("message", "test")
@@ -484,9 +482,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
-			name:                  "bodyJSONEnabled_true_map_body_with_nested_promoted_paths",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
+			name:            "BodyJSONEnabled_MapBody_Stash_NestedPromotedPaths",
+			bodyJSONEnabled: true,
 			promotedPaths: map[string]struct{}{
 				"user.id": {},
 				"message": {},
@@ -507,25 +504,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
-			name:                  "bodyJSONEnabled_true_jsonBodyDualIngestion_false",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths: map[string]struct{}{
-				"message": {},
-			},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "test")
-				return v
-			},
-			expectedBody:     "",
-			expectedBodyJSON: `{"message":"test"}`,
-			expectedPromoted: `{"message":"test"}`,
-		},
-		{
-			name:                  "bodyJSONEnabled_true_map_body_multiple_promoted_paths",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
+			name:            "BodyJSONEnabled_MapBody_Stash_MultiplePromotedPaths",
+			bodyJSONEnabled: true,
 			promotedPaths: map[string]struct{}{
 				"level":      {},
 				"user.id":    {},
@@ -554,10 +534,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 		{
-			name:                  "original_body_restored_when_old_body_enabled",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_MapBody_Stash_RawTextRestored",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
 				v.Map().PutStr("message", "raw text log")
@@ -571,10 +550,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "original_body_restored_for_normalized_json_string",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_MapBody_Stash_NormalizedJSONStringRestored",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
 				v.Map().PutStr("message", "hi")
@@ -589,79 +567,9 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:                  "original_body_ignored_when_old_body_disabled",
-			bodyJSONEnabled:       true,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "raw text log")
-				return v
-			},
-			originalBody: func() pcommon.Value {
-				return pcommon.NewValueStr("raw text log")
-			},
-			expectedBody:     "",
-			expectedBodyJSON: `{"message":"raw text log"}`,
-			expectedPromoted: "{}",
-		},
-		{
-			name:                  "dual_ingestion_alone_implies_body_json_enabled",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "raw text log")
-				return v
-			},
-			originalBody: func() pcommon.Value {
-				return pcommon.NewValueStr("raw text log")
-			},
-			expectedBody:     "raw text log",
-			expectedBodyJSON: `{"message":"raw text log"}`,
-			expectedPromoted: "{}",
-		},
-		{
-			name:                  "dual_ingestion_without_body_json_enabled_writes_body_v2_from_stashed_records",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: true,
-			promotedPaths: map[string]struct{}{
-				"user.id": {},
-			},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "test")
-				userMap := v.Map().PutEmptyMap("user")
-				userMap.PutStr("id", "123")
-				return v
-			},
-			originalBody: func() pcommon.Value {
-				return pcommon.NewValueStr(`{"message": "test", "user": {"id": "123"}}`)
-			},
-			expectedBody:     `{"message": "test", "user": {"id": "123"}}`,
-			expectedBodyJSON: `{"message":"test","user":{"id":"123"}}`,
-			expectedPromoted: `{"user.id":"123"}`,
-		},
-		{
-			name:                  "dual_ingestion_map_body_without_stash_skips_body_v2",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{"message": {}},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "structured")
-				return v
-			},
-			expectedBody:     `{"message":"structured"}`,
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
-		},
-		{
-			name:                  "dual_ingestion_string_body_with_stash_wrapped_into_body_v2",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{},
+			name:            "BodyJSONEnabled_StringBody_Stash_Restored",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				return pcommon.NewValueStr("stringified by a pipeline")
 			},
@@ -672,39 +580,10 @@ func TestProcessBody(t *testing.T) {
 			expectedBodyJSON: `{"message":"stringified by a pipeline"}`,
 			expectedPromoted: "{}",
 		},
-		{
-			name:                  "dual_ingestion_alone_string_body_without_original",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: true,
-			promotedPaths:         map[string]struct{}{},
-			body: func() pcommon.Value {
-				return pcommon.NewValueStr("plain line")
-			},
-			expectedBody:     "plain line",
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
-		},
-		{
-			name:                  "original_body_ignored_when_body_json_disabled",
-			bodyJSONEnabled:       false,
-			jsonBodyDualIngestion: false,
-			promotedPaths:         map[string]struct{}{},
-			body: func() pcommon.Value {
-				v := pcommon.NewValueMap()
-				v.Map().PutStr("message", "raw text log")
-				return v
-			},
-			originalBody: func() pcommon.Value {
-				return pcommon.NewValueStr("spoofed original body")
-			},
-			expectedBody:     `{"message":"raw text log"}`,
-			expectedBodyJSON: "{}",
-			expectedPromoted: "{}",
-		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
 			// Create exporter with test configuration
 			opts := testOptions(t)
 			opts = append(opts, WithClickHouseClient(nil))
@@ -715,8 +594,7 @@ func TestProcessBody(t *testing.T) {
 				exporter.Settings{},
 				&Config{
 					DSN:                       "clickhouse://localhost:9000/test",
-					BodyJSONEnabled:           tc.bodyJSONEnabled,
-					JSONBodyDualIngestion:     tc.jsonBodyDualIngestion,
+					BodyJSONEnabled:           testCase.bodyJSONEnabled,
 					PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
 					LogLevelConcurrency:       utils.ToPointer(1),
 					AttributesLimits: AttributesLimits{
@@ -729,19 +607,19 @@ func TestProcessBody(t *testing.T) {
 			require.NoError(t, err)
 
 			// Set promoted paths
-			if tc.promotedPaths != nil {
-				exporter.promotedPaths.Store(tc.promotedPaths)
+			if testCase.promotedPaths != nil {
+				exporter.promotedPaths.Store(testCase.promotedPaths)
 			} else {
 				exporter.promotedPaths.Store(map[string]struct{}{})
 			}
 
 			// Create body value
-			body := tc.body()
+			body := testCase.body()
 
 			originalBody := pcommon.NewValueEmpty()
 			hasOriginalBody := false
-			if tc.originalBody != nil {
-				originalBody = tc.originalBody()
+			if testCase.originalBody != nil {
+				originalBody = testCase.originalBody()
 				hasOriginalBody = true
 			}
 
@@ -752,9 +630,9 @@ func TestProcessBody(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify results
-			assert.Equal(t, tc.expectedBody, bodyStr, "body string mismatch")
-			assert.Equal(t, tc.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
-			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
+			assert.Equal(t, testCase.expectedBody, bodyStr, "body string mismatch")
+			assert.Equal(t, testCase.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
+			assert.Equal(t, testCase.expectedPromoted, promotedStr, "promoted string mismatch")
 		})
 	}
 }

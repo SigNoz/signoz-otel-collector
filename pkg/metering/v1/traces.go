@@ -19,7 +19,10 @@ type traces struct {
 func NewTraces(logger *zap.Logger) metering.Traces {
 	return &traces{
 		Logger: logger,
-		Sizer:  metering.NewJSONSizer(logger, metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs)),
+		Sizer: metering.NewJSONSizer(logger,
+			metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs),
+			metering.WithExcludePattern(metering.ExcludeSigNozLLMPricingSpanAttrs),
+		),
 		KeySizes: map[string]int{
 			"resources_string":  len("\"resources_string\""),
 			"startTimeUnixNano": len("\"startTimeUnixNano\""),

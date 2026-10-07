@@ -28,6 +28,8 @@ func TestTracesMigrationsExactNature(t *testing.T) {
 			TracesMigrations[14],
 			TracesMigrations[15],
 			TracesMigrations[16],
+			TracesMigrations[17],
+			TracesMigrations[18],
 		},
 		[]SchemaMigrationRecord{
 			TracesMigrations[1], // 1001 (async)
