@@ -217,7 +217,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
     string_value,
     number_value,
     toDate(first_seen, 'UTC') AS day,
-    uniqHLL12State(cityHash64(resource_hash, attrs_hash)) AS holders
+    uniqCombinedState(12)(cityHash64(resource_hash, attrs_hash)) AS holders
 FROM signoz_metadata.field_values_sets
 ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
 GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, string_value, number_value, day`,
@@ -285,5 +285,5 @@ var fieldValuesDailyColumns = []Column{
 	{Name: "string_value", Type: ColumnTypeString},
 	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
 	{Name: "day", Type: ColumnTypeDate},
-	{Name: "holders", Type: AggregateFunction{FunctionName: "uniqHLL12", Arguments: []ColumnType{ColumnTypeUInt64}}},
+	{Name: "holders", Type: AggregateFunction{FunctionName: "uniqCombined(12)", Arguments: []ColumnType{ColumnTypeUInt64}}},
 }

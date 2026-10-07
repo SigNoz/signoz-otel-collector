@@ -47,7 +47,7 @@ const knownFieldsQuery = `SELECT field_context, field_name
 FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = ? AND source = ? AND metric_name = '' AND day = toDate(now(), 'UTC') - 1
 GROUP BY field_context, field_name
-ORDER BY uniqHLL12Merge(holders) DESC
+ORDER BY uniqCombinedMerge(12)(holders) DESC
 LIMIT ?`
 
 type classifier struct {

@@ -66,7 +66,7 @@ SETTINGS distributed_product_mode = 'local'`
 	plain := `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
   AND day >= toDate(fromUnixTimestamp64Milli(?), 'UTC') AND day < toDate(fromUnixTimestamp64Milli(?), 'UTC') + 1
-GROUP BY string_value ORDER BY uniqHLL12Merge(holders) DESC LIMIT 51`
+GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`
 
 	end := last.Add(12 * time.Hour).UnixMilli()
 	for _, window := range []int{1, days} {
