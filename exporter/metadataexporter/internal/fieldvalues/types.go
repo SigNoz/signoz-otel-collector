@@ -2,7 +2,8 @@ package fieldvalues
 
 import (
 	"math"
-	"sort"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 // fieldContext values match the Enum8 of the field_context column.
@@ -68,40 +69,51 @@ func (d dataType) String() string {
 	return ""
 }
 
-type fieldKey struct {
-	ctx  fieldContext
-	name string
+// fieldID identifies a field, its context and name, within one signal.
+type fieldID uint64
+
+func fieldIDOf(ctx fieldContext, name string) fieldID {
+	return fieldID(mix64(xxhash.Sum64String(name) ^ uint64(ctx)*0x9e3779b97f4a7c15))
 }
 
 // pair is one `field = value` of a record. Bool values are kept in str as
-// "true" or "false".
+// "true" or "false". The hashes are computed once, when the pair is made:
+// field identifies the field, vh the value, and h the pair.
 type pair struct {
-	ctx  fieldContext
-	name string
-	typ  dataType
-	str  string
-	num  float64
+	ctx   fieldContext
+	typ   dataType
+	name  string
+	str   string
+	num   float64
+	field fieldID
+	vh    uint64
+	h     uint64
 }
 
-func (p pair) key() fieldKey {
-	return fieldKey{ctx: p.ctx, name: p.name}
-}
-
-func (p pair) valueHash() uint64 {
-	h := hashByte(fnvOffset, byte(p.typ))
-	if p.typ == typeNumber {
-		h = hashUint64(h, math.Float64bits(p.num))
+func newPair(ctx fieldContext, name string, typ dataType, str string, num float64) pair {
+	p := pair{ctx: ctx, typ: typ, name: name, str: str, num: num, field: fieldIDOf(ctx, name)}
+	if typ == typeNumber {
+		p.vh = mix64(math.Float64bits(num) ^ uint64(typ)<<56)
 	} else {
-		h = hashString(h, p.str)
+		p.vh = mix64(xxhash.Sum64String(str) ^ uint64(typ)<<56)
 	}
-	return mix64(h)
+	p.h = mix64(uint64(p.field) ^ p.vh*0xff51afd7ed558ccd)
+	return p
 }
 
-func (p pair) hash() uint64 {
-	h := hashByte(fnvOffset, byte(p.ctx))
-	h = hashString(h, p.name)
-	h = hashByte(h, separatorByte)
-	return mix64(hashUint64(h, p.valueHash()))
+func stringPair(ctx fieldContext, name, value string) pair {
+	return newPair(ctx, name, typeString, value, 0)
+}
+
+func numberPair(ctx fieldContext, name string, value float64) pair {
+	return newPair(ctx, name, typeNumber, "", value)
+}
+
+func boolPair(ctx fieldContext, name string, value bool) pair {
+	if value {
+		return newPair(ctx, name, typeBool, "true", 0)
+	}
+	return newPair(ctx, name, typeBool, "false", 0)
 }
 
 const (
@@ -121,23 +133,15 @@ type row struct {
 	seenMillis   uint64
 }
 
-// setHash identifies a set, or a resource, by its pairs. The pairs are sorted
-// by context and name, so the order of the attributes does not change the id.
-// The result is never 0 or 1, which mark resource rows and overflow sets.
+// setHash identifies a set, or a resource, by its pairs. It adds the pair
+// hashes, so the order of the attributes does not change the id. The result
+// is never 0 or 1, which mark resource rows and overflow sets.
 func setHash(pairs []pair) uint64 {
-	sorted := make([]pair, len(pairs))
-	copy(sorted, pairs)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].ctx != sorted[j].ctx {
-			return sorted[i].ctx < sorted[j].ctx
-		}
-		return sorted[i].name < sorted[j].name
-	})
-	h := fnvOffset
-	for _, p := range sorted {
-		h = hashUint64(h, p.hash())
+	var sum uint64
+	for i := range pairs {
+		sum += pairs[i].h
 	}
-	h = mix64(h)
+	h := mix64(sum ^ uint64(len(pairs)))
 	if h <= overflowAttrsHash {
 		h += 2
 	}
@@ -145,55 +149,30 @@ func setHash(pairs []pair) uint64 {
 }
 
 func setKey(resourceHash, attrsHash uint64) uint64 {
-	h := hashByte(fnvOffset, 'S')
-	h = hashUint64(h, resourceHash)
-	return mix64(hashUint64(h, attrsHash))
+	return mix64(resourceHash*0x9e3779b97f4a7c15 ^ attrsHash ^ 'S')
 }
 
-func pairKey(resourceHash, attrsHash uint64, p pair) uint64 {
-	h := hashByte(fnvOffset, 'P')
-	h = hashUint64(h, resourceHash)
-	h = hashUint64(h, attrsHash)
-	return mix64(hashUint64(h, p.hash()))
+func pairKey(resourceHash, attrsHash uint64, p *pair) uint64 {
+	return mix64(mix64(resourceHash*0x9e3779b97f4a7c15^attrsHash^'P') ^ p.h)
 }
 
-func resourceKey(metricName string, resourceHash uint64) uint64 {
-	h := hashByte(fnvOffset, 'R')
-	h = hashString(h, metricName)
-	h = hashByte(h, separatorByte)
-	return mix64(hashUint64(h, resourceHash))
+// nameHash hashes a metric name for resourceKey and labelKey. Logs and traces
+// use the hash of the empty name.
+func nameHash(metricName string) uint64 {
+	return xxhash.Sum64String(metricName)
 }
 
-const (
-	fnvOffset     uint64 = 14695981039346656037
-	fnvPrime      uint64 = 1099511628211
-	separatorByte byte   = 255
-)
+var emptyNameHash = nameHash("")
 
-func hashString(h uint64, s string) uint64 {
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= fnvPrime
-	}
-	return h
+func resourceKey(metricNameHash, resourceHash uint64) uint64 {
+	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ resourceHash ^ 'R')
 }
 
-func hashByte(h uint64, b byte) uint64 {
-	h ^= uint64(b)
-	h *= fnvPrime
-	return h
+func labelKey(metricNameHash uint64, p *pair) uint64 {
+	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(fieldIDOf(p.ctx, p.name)) ^ 'K')
 }
 
-func hashUint64(h, v uint64) uint64 {
-	for i := 0; i < 8; i++ {
-		h ^= v & 0xff
-		h *= fnvPrime
-		v >>= 8
-	}
-	return h
-}
-
-// mix64 is the splitmix64 finalizer. It spreads the bits of an FNV hash, so
+// mix64 is the splitmix64 finalizer. It spreads the bits of its input, so
 // that any bit range of the result can pick a cache bucket.
 func mix64(x uint64) uint64 {
 	x ^= x >> 30

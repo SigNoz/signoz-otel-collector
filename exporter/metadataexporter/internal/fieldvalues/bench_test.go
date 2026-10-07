@@ -41,6 +41,7 @@ func newBenchWriter(b testing.TB, signal pipeline.Signal) (*Writer, *countingWri
 	require.NoError(b, err)
 	cw := &countingWriter{}
 	w := newWriter(cfg, Settings{Signal: signal, Logger: zap.NewNop()}, cw, tel)
+	w.allocate()
 	w.now = func() time.Time { return testDay }
 	return w, cw
 }
@@ -114,8 +115,8 @@ func BenchmarkWriteMetricsNewData(b *testing.B) {
 	b.ReportMetric(float64(cw.rows)/float64(b.N*benchBatch), "rows/point")
 }
 
-func BenchmarkDayCache(b *testing.B) {
-	c := newDayCache(256<<20, 0.1)
+func BenchmarkWindowCache(b *testing.B) {
+	c := newWindowCache(256<<20, 0.1)
 	c.rotate(1)
 	exact, _ := c.capacity()
 	keys := make([]uint64, exact)
@@ -135,7 +136,7 @@ func BenchmarkDayCache(b *testing.B) {
 }
 
 // Batches pushed at the same time must not race, and must not pass the room
-// of the day cache together.
+// of the window cache together.
 func TestConcurrentPushes(t *testing.T) {
 	w, cw := newBenchWriter(t, pipeline.SignalLogs)
 	w.state.cache.limit = [2]int{5000, 500}
@@ -157,6 +158,7 @@ func TestConcurrentPushes(t *testing.T) {
 	assert.LessOrEqual(t, w.state.cache.used[classExact], 5000)
 	assert.LessOrEqual(t, w.state.cache.used[classReserve], 500)
 	assert.Equal(t, [2]int{0, 0}, w.state.inflight)
+	assert.Zero(t, w.state.inflightAhead)
 }
 
 // BenchmarkWriteCorrelatedNewData is BenchmarkWrite*NewData with correlated

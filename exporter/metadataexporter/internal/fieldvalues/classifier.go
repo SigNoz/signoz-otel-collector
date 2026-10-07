@@ -12,23 +12,23 @@ import (
 type classification struct {
 	// overClosedDays holds the fields over the limit on one of the closed days
 	// of the lookback. It is read once per day.
-	overClosedDays map[fieldKey]struct{}
+	overClosedDays map[fieldID]struct{}
 	closedDay      uint64
 	// overToday holds the fields over the limit today, read every refresh.
-	overToday map[fieldKey]struct{}
+	overToday map[fieldID]struct{}
 	// known are yesterday's fields, ranked by holders. They get their field
 	// places first at the start of a day.
-	known []fieldKey
+	known []fieldID
 }
 
-func (c *classification) isOver(fk fieldKey) bool {
+func (c *classification) isOver(f fieldID) bool {
 	if c == nil {
 		return false
 	}
-	if _, ok := c.overToday[fk]; ok {
+	if _, ok := c.overToday[f]; ok {
 		return true
 	}
-	_, ok := c.overClosedDays[fk]
+	_, ok := c.overClosedDays[f]
 	return ok
 }
 
@@ -47,7 +47,7 @@ const knownFieldsQuery = `SELECT field_context, field_name
 FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = ? AND source = ? AND metric_name = '' AND day = toDate(now(), 'UTC') - 1
 GROUP BY field_context, field_name
-ORDER BY uniqMerge(holders) DESC
+ORDER BY uniqHLL12Merge(holders) DESC
 LIMIT ?`
 
 type classifier struct {
@@ -87,48 +87,48 @@ func (c *classifier) refresh(ctx context.Context, prev *classification, today ui
 	return next, nil
 }
 
-func (c *classifier) overLimit(ctx context.Context, fromDaysAgo, toDaysAgo int) (map[fieldKey]struct{}, error) {
+func (c *classifier) overLimit(ctx context.Context, fromDaysAgo, toDaysAgo int) (map[fieldID]struct{}, error) {
 	rows, err := c.conn.Query(ctx, overLimitQuery, c.signal, c.source, fromDaysAgo, toDaysAgo, c.resourceLimit, c.recordLimit)
 	if err != nil {
 		return nil, fmt.Errorf("query fields over the limit: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	out := make(map[fieldKey]struct{})
+	out := make(map[fieldID]struct{})
 	for rows.Next() {
-		fk, err := scanFieldKey(rows)
+		f, err := scanFieldID(rows)
 		if err != nil {
 			return nil, err
 		}
-		out[fk] = struct{}{}
+		out[f] = struct{}{}
 	}
 	return out, rows.Err()
 }
 
-func (c *classifier) knownFields(ctx context.Context) ([]fieldKey, error) {
+func (c *classifier) knownFields(ctx context.Context) ([]fieldID, error) {
 	rows, err := c.conn.Query(ctx, knownFieldsQuery, c.signal, c.source, c.maxFields)
 	if err != nil {
 		return nil, fmt.Errorf("query known fields: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var known []fieldKey
+	var known []fieldID
 	for rows.Next() {
-		fk, err := scanFieldKey(rows)
+		f, err := scanFieldID(rows)
 		if err != nil {
 			return nil, err
 		}
-		known = append(known, fk)
+		known = append(known, f)
 	}
 	return known, rows.Err()
 }
 
-func scanFieldKey(rows driver.Rows) (fieldKey, error) {
+func scanFieldID(rows driver.Rows) (fieldID, error) {
 	var ctxName, name string
 	if err := rows.Scan(&ctxName, &name); err != nil {
-		return fieldKey{}, err
+		return 0, err
 	}
 	fc, ok := parseFieldContext(ctxName)
 	if !ok {
-		return fieldKey{}, fmt.Errorf("unknown field context %q", ctxName)
+		return 0, fmt.Errorf("unknown field context %q", ctxName)
 	}
-	return fieldKey{ctx: fc, name: name}, nil
+	return fieldIDOf(fc, name), nil
 }

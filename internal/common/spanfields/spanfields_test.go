@@ -28,6 +28,24 @@ func TestCalculate(t *testing.T) {
 			want:  Calculated{ResponseStatusCode: "503"},
 		},
 		{
+			name:  "status code from a string that is not a number",
+			kind:  2,
+			attrs: map[string]any{"http.status_code": "OK"},
+			want:  Calculated{ResponseStatusCode: "0"},
+		},
+		{
+			name:  "status code from a double",
+			kind:  2,
+			attrs: map[string]any{"http.status_code": 200.0},
+			want:  Calculated{ResponseStatusCode: "0"},
+		},
+		{
+			name:  "grpc status code from a string",
+			kind:  2,
+			attrs: map[string]any{"rpc.grpc.status_code": "2"},
+			want:  Calculated{ResponseStatusCode: "2"},
+		},
+		{
 			name:  "client span: external url, host from the url, external method",
 			kind:  3,
 			attrs: map[string]any{"url.full": "https://api.example.com:8080/path", "http.request.method": "POST"},

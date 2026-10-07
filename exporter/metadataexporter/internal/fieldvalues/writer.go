@@ -22,18 +22,23 @@ import (
 )
 
 const (
-	minCacheBytes     = 64 << 20
-	maxCacheBytes     = 1 << 30
-	defaultCacheBytes = 256 << 20
-	// signalsPerProcess divides the automatic cache size, because each of the
-	// three signals has its own writer and cache.
-	signalsPerProcess = 3
-	refreshTimeout    = 30 * time.Second
-	warnInterval      = time.Minute
+	minMemoryBytes     = 64 << 20
+	maxMemoryBytes     = 1 << 30
+	defaultMemoryBytes = 256 << 20
+	refreshTimeout     = 30 * time.Second
+	warnInterval       = time.Minute
 	// sharedTimeout bounds each call to the shared cache, so a slow cache
 	// cannot hold up the export.
 	sharedTimeout = 2 * time.Second
 )
+
+// autoMemory counts the writers of the process without max_bytes, which share
+// the automatic memory. The collector creates all exporters before the first
+// push, so each writer sizes its memory at its first push.
+var autoMemory struct {
+	sync.Mutex
+	writers int
+}
 
 // Settings are what the metadata exporter gives the writer.
 type Settings struct {
@@ -47,44 +52,43 @@ type Settings struct {
 	BodyJSON *BodyJSONLimits
 }
 
-// signalState is the state of one signal for the current UTC day.
+// signalState is the state of one signal for the current window and UTC day.
 type signalState struct {
-	day       uint64
-	cache     *dayCache
+	window      Window
+	windowIndex uint64
+	day         uint64
+	// cache is made at the first push; see autoMemory.
+	cache     *windowCache
+	budget    budget
 	tracker   *tracker
-	resources map[uint64]*resourceState
-	// inflight counts the cache keys of batches that are being inserted, so
-	// that concurrent batches do not pass the room of the cache together.
-	inflight [2]int
-}
-
-func (s *signalState) rotate(day uint64, class *classification) {
-	s.day = day
-	s.cache.rotate(day)
-	var known []fieldKey
-	if class != nil {
-		known = class.known
-	}
-	s.tracker.reset(known)
-	s.resources = make(map[uint64]*resourceState)
+	resources *resourceTable
+	// inflight and inflightAhead count the cache keys of batches that are
+	// being inserted, so that concurrent batches do not pass the room of the
+	// cache together.
+	inflight      [2]int
+	inflightAhead int
 }
 
 // Writer writes the field values of one signal.
 type Writer struct {
-	cfg           Config
-	signal        pipeline.Signal
-	logger        *zap.Logger
-	rows          rowWriter
-	shared        SharedCache
-	classifier    *classifier
-	bodyJSON      *BodyJSONLimits
-	alwaysInclude map[string]struct{}
-	tel           *telemetry
-	now           func() time.Time
+	cfg            Config
+	signal         pipeline.Signal
+	logger         *zap.Logger
+	rows           rowWriter
+	shared         SharedCache
+	classifier     *classifier
+	bodyJSON       *BodyJSONLimits
+	alwaysInclude  map[string]struct{}
+	tel            *telemetry
+	now            func() time.Time
+	widthMillis    uint64
+	preWriteMillis uint64
+	autoMemory     bool
 
-	mu    sync.Mutex
-	state *signalState
-	class atomic.Pointer[classification]
+	mu      sync.Mutex
+	state   *signalState
+	class   atomic.Pointer[classification]
+	batches sync.Pool
 
 	refreshNow chan struct{}
 	stop       chan struct{}
@@ -120,48 +124,69 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	for _, name := range cfg.AlwaysInclude {
 		alwaysInclude[name] = struct{}{}
 	}
-	cacheMemory := cacheBytes(cfg.Cache)
-	set.Logger.Info("field values day cache",
-		zap.String("signal", set.Signal.String()),
-		zap.String("source", cfg.Source),
-		zap.String("shared", string(cfg.Cache.Provider)),
-		zap.Uint64("bytes", cacheMemory))
+	state := &signalState{}
+	state.tracker = newTracker(cfg.Limits.MaxFieldsPerSignal, &state.budget)
+	state.resources = newResourceTable(&state.budget)
 	w := &Writer{
-		cfg:           cfg,
-		signal:        set.Signal,
-		logger:        set.Logger,
-		rows:          rows,
-		shared:        set.Shared,
-		bodyJSON:      set.BodyJSON,
-		alwaysInclude: alwaysInclude,
-		tel:           tel,
-		now:           time.Now,
-		state: &signalState{
-			cache:     newDayCache(cacheMemory, cfg.Cache.ReserveShare),
-			tracker:   newTracker(cfg.Limits.MaxFieldsPerSignal),
-			resources: make(map[uint64]*resourceState),
-		},
-		refreshNow: make(chan struct{}, 1),
-		stop:       make(chan struct{}),
+		cfg:            cfg,
+		signal:         set.Signal,
+		logger:         set.Logger,
+		rows:           rows,
+		shared:         set.Shared,
+		bodyJSON:       set.BodyJSON,
+		alwaysInclude:  alwaysInclude,
+		tel:            tel,
+		now:            time.Now,
+		widthMillis:    uint64(cfg.Cache.Window.Milliseconds()),
+		preWriteMillis: uint64(cfg.Cache.PreWriteWindow.Milliseconds()),
+		state:          state,
+		refreshNow:     make(chan struct{}, 1),
+		stop:           make(chan struct{}),
 	}
-	exact, reserve := w.state.cache.capacity()
-	tel.cacheCapacity[classExact].Store(int64(exact))
-	tel.cacheCapacity[classReserve].Store(int64(reserve))
+	w.batches.New = func() any { return newBatchBuffers() }
+	if cfg.Cache.MaxBytes == 0 {
+		autoMemory.Lock()
+		autoMemory.writers++
+		autoMemory.Unlock()
+		w.autoMemory = true
+	}
 	return w
 }
 
-// cacheBytes is the configured size of the cache of one signal. Without a
-// size, the three signals share 10% of the Go memory limit, between 64 MiB and
-// 1 GiB, or 256 MiB when no limit is set.
-func cacheBytes(cfg CacheConfig) uint64 {
+// memoryBytes is the memory of one writer: max_bytes, or its share of 10% of
+// the Go memory limit, between 64 MiB and 1 GiB, or of 256 MiB when no limit
+// is set.
+func memoryBytes(cfg CacheConfig) uint64 {
 	if cfg.MaxBytes > 0 {
 		return cfg.MaxBytes
 	}
-	total := uint64(defaultCacheBytes)
+	total := uint64(defaultMemoryBytes)
 	if limit := debug.SetMemoryLimit(-1); limit > 0 && limit != math.MaxInt64 {
-		total = min(max(uint64(limit)/10, minCacheBytes), maxCacheBytes)
+		total = min(max(uint64(limit)/10, minMemoryBytes), maxMemoryBytes)
 	}
-	return total / signalsPerProcess
+	autoMemory.Lock()
+	writers := max(autoMemory.writers, 1)
+	autoMemory.Unlock()
+	return total / uint64(writers)
+}
+
+// allocate makes the window cache with three quarters of the memory. The
+// value tracker and the resource states get the rest.
+func (w *Writer) allocate() {
+	total := memoryBytes(w.cfg.Cache)
+	cacheMemory := total / 4 * 3
+	w.state.cache = newWindowCache(cacheMemory, w.cfg.Cache.ReserveShare)
+	w.state.budget.limit = int(total - cacheMemory)
+	exact, reserve := w.state.cache.capacity()
+	w.tel.cacheCapacity[classExact].Store(int64(exact))
+	w.tel.cacheCapacity[classReserve].Store(int64(reserve))
+	w.tel.cacheCapacity[partAhead].Store(int64(exact))
+	w.tel.trackerCapacity.Store(int64(w.state.budget.limit))
+	w.logger.Info("field values memory",
+		zap.String("signal", w.signal.String()),
+		zap.String("source", w.cfg.Source),
+		zap.String("shared", string(w.cfg.Cache.Provider)),
+		zap.Uint64("bytes", total))
 }
 
 // Start begins the reads of field_values_daily. Metrics have no value limits,
@@ -175,7 +200,14 @@ func (w *Writer) Start() {
 }
 
 func (w *Writer) Shutdown() error {
-	w.stopOnce.Do(func() { close(w.stop) })
+	w.stopOnce.Do(func() {
+		close(w.stop)
+		if w.autoMemory {
+			autoMemory.Lock()
+			autoMemory.writers--
+			autoMemory.Unlock()
+		}
+	})
 	w.wg.Wait()
 	if w.shared != nil {
 		return w.shared.Close()
@@ -226,29 +258,41 @@ func utcDay(t time.Time) uint64 {
 }
 
 func (w *Writer) WriteLogs(ctx context.Context, ld plog.Logs) error {
-	return w.push(ctx, func(b *batch) { b.addLogs(ld) })
+	in := getRecordsInput()
+	defer putRecordsInput(in)
+	in.addLogs(ld, w.bodyJSON)
+	return w.push(ctx, func(b *batch) { b.addRecords(in) })
 }
 
 func (w *Writer) WriteTraces(ctx context.Context, td ptrace.Traces) error {
-	return w.push(ctx, func(b *batch) { b.addTraces(td) })
+	in := getRecordsInput()
+	defer putRecordsInput(in)
+	in.addTraces(td)
+	return w.push(ctx, func(b *batch) { b.addRecords(in) })
 }
 
 func (w *Writer) WriteMetrics(ctx context.Context, md pmetric.Metrics) error {
-	return w.push(ctx, func(b *batch) { b.addMetrics(md) })
+	in := getMetricsInput()
+	defer putMetricsInput(in)
+	in.addMetrics(md)
+	return w.push(ctx, func(b *batch) { b.addSeries(in) })
 }
 
 // push builds the rows of one export call, drops the rows that another
-// collector already wrote today, inserts the rest, and caches the keys only
-// when the insert succeeds. A failed insert is not retried: its rows are
-// written again at the next sighting of their sets. push never returns an
-// error, so the metadata never holds up the export of the data.
+// collector already wrote in the window, inserts the rest, and caches the
+// keys only when the insert succeeds. A failed insert is not retried: its
+// rows are written again at the next sighting of their sets. push never
+// returns an error, so the metadata never holds up the export of the data.
 func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	w.mu.Lock()
 	b := w.newBatch()
 	fill(b)
-	w.state.inflight[classExact] += b.pendingCount[classExact]
-	w.state.inflight[classReserve] += b.pendingCount[classReserve]
+	st := w.state
+	st.inflight[classExact] += b.pendingCount[classExact]
+	st.inflight[classReserve] += b.pendingCount[classReserve]
+	st.inflightAhead += len(b.pendingAhead)
 	w.mu.Unlock()
+	defer w.release(b)
 	w.tel.recordBatch(ctx, b.stats)
 
 	rows, sharedKeys := w.dropShared(ctx, b)
@@ -258,8 +302,9 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	}
 
 	w.mu.Lock()
-	w.state.inflight[classExact] -= b.pendingCount[classExact]
-	w.state.inflight[classReserve] -= b.pendingCount[classReserve]
+	st.inflight[classExact] -= b.pendingCount[classExact]
+	st.inflight[classReserve] -= b.pendingCount[classReserve]
+	st.inflightAhead -= len(b.pendingAhead)
 	if err == nil {
 		w.commit(b)
 	} else {
@@ -273,10 +318,15 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 		return nil
 	}
 	w.tel.rowsWritten.Add(ctx, int64(len(rows)), w.tel.attrs)
-	if len(sharedKeys) > 0 {
+	windows := b.windows()
+	for g, keys := range sharedKeys {
+		if len(keys) == 0 {
+			continue
+		}
 		sctx, cancel := context.WithTimeout(ctx, sharedTimeout)
-		defer cancel()
-		if err := w.shared.Add(sctx, b.day, sharedKeys); err != nil {
+		err := w.shared.Add(sctx, windows[g], keys)
+		cancel()
+		if err != nil {
 			w.tel.sharedCacheErrors.Add(ctx, 1, w.tel.attrs)
 			w.logger.Debug("failed to add keys to the shared cache", zap.Error(err))
 		}
@@ -284,38 +334,52 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	return nil
 }
 
-// dropShared removes the rows whose keys the shared cache already has today,
-// and returns the keys to add to the shared cache after the insert. On an
-// error of the shared cache, all rows are kept.
-func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, []uint64) {
-	if w.shared == nil || len(b.pending) == 0 {
-		return b.rows, nil
+// windows gives the window of the batch and the next window.
+func (b *batch) windows() [2]Window {
+	width := b.window.End - b.window.Start
+	return [2]Window{b.window, {Start: b.window.End, End: b.window.End + width}}
+}
+
+// dropShared removes the rows whose keys the shared cache already has in their
+// window, and returns the keys to add to the shared cache after the insert,
+// for the window and the next window. On an error of the shared cache, all
+// rows are kept.
+func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, [2][]uint64) {
+	var add [2][]uint64
+	if w.shared == nil {
+		return b.rows, add
 	}
-	keys := make([]uint64, 0, len(b.pending))
-	for k := range b.pending {
-		keys = append(keys, k)
-	}
-	sctx, cancel := context.WithTimeout(ctx, sharedTimeout)
-	defer cancel()
-	seen, err := w.shared.Seen(sctx, b.day, keys)
-	if err != nil {
-		w.tel.sharedCacheErrors.Add(ctx, 1, w.tel.attrs)
-		w.logger.Debug("failed to read the shared cache", zap.Error(err))
-		return b.rows, keys
-	}
-	drop := make(map[int]struct{})
-	unseen := keys[:0:0]
-	for i, k := range keys {
-		if !seen[i] {
-			unseen = append(unseen, k)
+	windows := b.windows()
+	var drop map[int]struct{}
+	for g := range windows {
+		keys := pendingKeys(b, g)
+		if len(keys) == 0 {
 			continue
 		}
-		for _, r := range b.owners[k] {
-			drop[r] = struct{}{}
+		sctx, cancel := context.WithTimeout(ctx, sharedTimeout)
+		seen, err := w.shared.Seen(sctx, windows[g], keys)
+		cancel()
+		if err != nil {
+			w.tel.sharedCacheErrors.Add(ctx, 1, w.tel.attrs)
+			w.logger.Debug("failed to read the shared cache", zap.Error(err))
+			add[g] = keys
+			continue
+		}
+		for i, k := range keys {
+			if !seen[i] {
+				add[g] = append(add[g], k)
+				continue
+			}
+			for _, r := range b.owners[g][k] {
+				if drop == nil {
+					drop = make(map[int]struct{})
+				}
+				drop[r] = struct{}{}
+			}
 		}
 	}
 	if len(drop) == 0 {
-		return b.rows, unseen
+		return b.rows, add
 	}
 	rows := make([]row, 0, len(b.rows)-len(drop))
 	for i, r := range b.rows {
@@ -324,56 +388,105 @@ func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, []uint64) {
 		}
 	}
 	w.tel.rowsSkippedShared.Add(ctx, int64(len(drop)), w.tel.attrs)
-	return rows, unseen
+	return rows, add
 }
 
+func pendingKeys(b *batch, group int) []uint64 {
+	if group == 0 {
+		keys := make([]uint64, 0, len(b.pending))
+		for k := range b.pending {
+			keys = append(keys, k)
+		}
+		return keys
+	}
+	keys := make([]uint64, 0, len(b.pendingAhead))
+	for k := range b.pendingAhead {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// newBatch moves the state to the current window and day, and returns an
+// empty batch.
 func (w *Writer) newBatch() *batch {
-	now := w.now()
-	if day := utcDay(now); day != w.state.day {
-		w.state.rotate(day, w.class.Load())
-		select {
-		case w.refreshNow <- struct{}{}:
-		default:
+	now := uint64(w.now().UnixMilli())
+	st := w.state
+	if st.cache == nil {
+		w.allocate()
+	}
+	if idx := now / w.widthMillis; st.window.End == 0 || idx != st.windowIndex {
+		st.windowIndex = idx
+		st.window = Window{Start: idx * w.widthMillis, End: (idx + 1) * w.widthMillis}
+		st.cache.rotate(idx)
+		st.resources.reset()
+		if day := now / dayMillis; day != st.day {
+			st.day = day
+			var known []fieldID
+			if class := w.class.Load(); class != nil {
+				known = class.known
+			}
+			st.tracker.reset(known)
+			select {
+			case w.refreshNow <- struct{}{}:
+			default:
+			}
 		}
 	}
-	return &batch{
-		day:           w.state.day,
-		limits:        w.cfg.Limits,
-		alwaysInclude: w.alwaysInclude,
-		bodyLimits:    w.bodyJSON,
-		state:         w.state,
-		class:         w.class.Load(),
-		nowMillis:     uint64(now.UnixMilli()),
-		pending:       make(map[uint64]cacheClass),
-		owners:        make(map[uint64][]int),
-		stats:         batchStats{leftOut: make(map[leftOutReason]int)},
-	}
+	b := w.batches.Get().(*batch)
+	b.window = st.window
+	b.windowIndex = st.windowIndex
+	b.dayStart = st.day * dayMillis
+	b.limits = w.cfg.Limits
+	b.alwaysInclude = w.alwaysInclude
+	b.state = st
+	b.class = w.class.Load()
+	b.nowMillis = now
+	b.preWriteMillis = w.preWriteMillis
+	return b
 }
 
-// commit caches the keys of a written batch. A batch of an earlier day caches
-// nothing, so its sets are written again on the new day.
+func (w *Writer) release(b *batch) {
+	b.reset()
+	w.batches.Put(b)
+}
+
+// commit caches the keys of a written batch. When the window changed while
+// the batch was inserted, its keys written ahead are the keys of the new
+// window; a batch of an older window caches nothing.
 func (w *Writer) commit(b *batch) {
-	if b.day != w.state.day {
+	st := w.state
+	before := st.cache.collisions
+	switch b.windowIndex {
+	case st.windowIndex:
+		for k, class := range b.pending {
+			st.cache.insert(k, class)
+		}
+		for k := range b.pendingAhead {
+			st.cache.insertNext(k)
+		}
+	case st.windowIndex - 1:
+		for k := range b.pendingAhead {
+			st.cache.insert(k, classExact)
+		}
+	default:
 		return
 	}
-	before := w.state.cache.collisions
-	for k, class := range b.pending {
-		w.state.cache.insert(k, class)
-	}
-	if n := w.state.cache.collisions - before; n > 0 {
+	if n := st.cache.collisions - before; n > 0 {
 		w.tel.cacheCollisions.Add(context.Background(), int64(n), w.tel.attrs)
 	}
-	w.tel.cacheUsed[classExact].Store(int64(w.state.cache.used[classExact]))
-	w.tel.cacheUsed[classReserve].Store(int64(w.state.cache.used[classReserve]))
+	w.tel.cacheUsed[classExact].Store(int64(st.cache.used[classExact]))
+	w.tel.cacheUsed[classReserve].Store(int64(st.cache.used[classReserve]))
+	w.tel.cacheUsed[partAhead].Store(int64(st.cache.nextUsed))
+	w.tel.trackerUsed.Store(int64(st.budget.used))
 }
 
 // rollback gives back the sample budget of a failed batch.
 func (w *Writer) rollback(b *batch) {
-	if b.day != w.state.day {
+	if b.dayStart != w.state.day*dayMillis {
 		return
 	}
 	for _, s := range b.samples {
-		delete(s.st.values, s.vh)
+		s.st.values.remove(s.vh)
 	}
 }
 

@@ -16,13 +16,13 @@ import (
 // mapCache is a shared cache in memory, as two collectors would see Redis.
 type mapCache struct {
 	mu   sync.Mutex
-	keys map[uint64]map[uint64]struct{}
+	keys map[Window]map[uint64]struct{}
 	err  error
 }
 
-func newMapCache() *mapCache { return &mapCache{keys: map[uint64]map[uint64]struct{}{}} }
+func newMapCache() *mapCache { return &mapCache{keys: map[Window]map[uint64]struct{}{}} }
 
-func (c *mapCache) Seen(_ context.Context, day uint64, keys []uint64) ([]bool, error) {
+func (c *mapCache) Seen(_ context.Context, w Window, keys []uint64) ([]bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.err != nil {
@@ -30,22 +30,22 @@ func (c *mapCache) Seen(_ context.Context, day uint64, keys []uint64) ([]bool, e
 	}
 	seen := make([]bool, len(keys))
 	for i, k := range keys {
-		_, seen[i] = c.keys[day][k]
+		_, seen[i] = c.keys[w][k]
 	}
 	return seen, nil
 }
 
-func (c *mapCache) Add(_ context.Context, day uint64, keys []uint64) error {
+func (c *mapCache) Add(_ context.Context, w Window, keys []uint64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.err != nil {
 		return c.err
 	}
-	if c.keys[day] == nil {
-		c.keys[day] = map[uint64]struct{}{}
+	if c.keys[w] == nil {
+		c.keys[w] = map[uint64]struct{}{}
 	}
 	for _, k := range keys {
-		c.keys[day][k] = struct{}{}
+		c.keys[w][k] = struct{}{}
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func TestRedisCacheCommands(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	c := NewRedisCache(db, "tenant", "logs", "")
 	t.Cleanup(func() { _ = c.Close() })
-	day := uint64(20718)
+	day := Window{Start: 20718 * dayMillis, End: 20719 * dayMillis}
 	k1, k2 := uint64(256*3+5), uint64(256*7+5)
 	key := c.setKey(day, 5)
 
@@ -116,19 +116,20 @@ func TestRedisCacheCommands(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []bool{true, false}, seen, "both keys are in bucket 5")
 
-	expireAt := time.Unix(int64(day+1)*86400, 0).Add(redisKeepAfterDay)
+	expireAt := time.Unix(20719*86400, 0).Add(redisKeepAfterWindow)
 	mock.ExpectSAdd(key, member(k2)).SetVal(1)
 	mock.ExpectExpireAt(key, expireAt).SetVal(true)
 	require.NoError(t, c.Add(context.Background(), day, []uint64{k2}))
 	assert.NoError(t, mock.ExpectationsWereMet())
-	assert.Equal(t, "tenant:field_values:logs::20718:5", key)
+	assert.Equal(t, "tenant:field_values:logs::1790035200:5", key, "the set is named by the start of the window in seconds")
 }
 
 func TestRedisCacheErrorIsReturned(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	c := NewRedisCache(db, "tenant", "logs", "")
 	t.Cleanup(func() { _ = c.Close() })
-	mock.ExpectSMIsMember(c.setKey(1, 1), member(1)).SetErr(errors.New("timeout"))
-	_, err := c.Seen(context.Background(), 1, []uint64{1})
+	w := Window{Start: 0, End: dayMillis}
+	mock.ExpectSMIsMember(c.setKey(w, 1), member(1)).SetErr(errors.New("timeout"))
+	_, err := c.Seen(context.Background(), w, []uint64{1})
 	assert.Error(t, err)
 }
