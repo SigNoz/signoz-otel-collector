@@ -19,6 +19,7 @@ const (
 
 type normalizeProcessor struct {
 	json          sonic.API
+	bodyEnabled   bool
 	stashOriginal bool
 	messageFields []string
 	telemetry     *telemetry
@@ -32,14 +33,15 @@ type messageOutcome struct {
 }
 
 func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*normalizeProcessor, error) {
-	t, err := newTelemetry(set, cfg.MessageFields)
+	t, err := newTelemetry(set, cfg.Body.MessageFields)
 	if err != nil {
 		return nil, err
 	}
 	return &normalizeProcessor{
 		json:          sonic.Config{UseInt64: true}.Froze(),
-		stashOriginal: cfg.JSONBodyDualIngestion,
-		messageFields: cfg.MessageFields,
+		bodyEnabled:   cfg.Body.Enabled,
+		stashOriginal: cfg.Body.JSONBodyDualIngestion,
+		messageFields: cfg.Body.MessageFields,
 		telemetry:     t,
 	}, nil
 }
@@ -52,7 +54,9 @@ func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.
 		for j := 0; j < sls.Len(); j++ {
 			lrs := sls.At(j).LogRecords()
 			for k := 0; k < lrs.Len(); k++ {
-				p.normalizeRecord(lrs.At(k), &st)
+				if p.bodyEnabled {
+					p.normalizeBody(lrs.At(k), &st)
+				}
 			}
 		}
 	}
@@ -60,7 +64,8 @@ func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.
 	return ld, nil
 }
 
-func (p *normalizeProcessor) normalizeRecord(lr plog.LogRecord, st *batchStats) {
+func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
+	lr.Attributes().Remove(constants.OriginalBodyAttributeKey)
 	body := lr.Body()
 	if body.Type() == pcommon.ValueTypeEmpty {
 		return

@@ -21,9 +21,10 @@ func TestLoadConfig(t *testing.T) {
 		expected  Config
 		expectErr bool
 	}{
-		{name: "Default", id: component.NewID(factory.Type()), expected: Config{MessageFields: []string{"log", "msg"}}},
-		{name: "DualIngestion", id: component.NewIDWithName(factory.Type(), "dual"), expected: Config{JSONBodyDualIngestion: true, MessageFields: []string{"log", "msg"}}},
-		{name: "CustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{MessageFields: []string{"text"}}},
+		{name: "Default_BodyEnabled", id: component.NewID(factory.Type()), expected: Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
+		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: Config{Body: BodyConfig{MessageFields: []string{"log", "msg"}}}},
+		{name: "BodyDualIngestion", id: component.NewIDWithName(factory.Type(), "dual"), expected: Config{Body: BodyConfig{Enabled: true, JSONBodyDualIngestion: true, MessageFields: []string{"log", "msg"}}}},
+		{name: "BodyCustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"text"}}}},
 		{name: "UnknownKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
 	}
 	for _, testCase := range testCases {

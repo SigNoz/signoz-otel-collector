@@ -1,7 +1,13 @@
 signozlogsnormalizer:
+signozlogsnormalizer/body_disabled:
+  body:
+    enabled: false
 signozlogsnormalizer/fields:
-  message_fields: [text]
+  body:
+    message_fields: [text]
 signozlogsnormalizer/dual:
-  json_body_dual_ingestion: true
+  body:
+    json_body_dual_ingestion: true
 signozlogsnormalizer/unknown:
-  unknown_key: true
+  body:
+    unknown_key: true

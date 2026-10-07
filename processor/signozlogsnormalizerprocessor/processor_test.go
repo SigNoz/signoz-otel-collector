@@ -22,7 +22,7 @@ import (
 
 func testConfig(dualIngestion bool) *Config {
 	cfg := createDefaultConfig().(*Config)
-	cfg.JSONBodyDualIngestion = dualIngestion
+	cfg.Body.JSONBodyDualIngestion = dualIngestion
 	return cfg
 }
 
@@ -421,6 +421,38 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 	assert.Equal(t, map[string]any{"k": "v", constants.OriginalBodyAttributeKey: "Hello World"}, lr.Attributes().AsRaw())
 }
 
+func TestIncomingStashReplaced(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dualIngestion bool
+		body          any
+		expectedStash any
+	}{
+		{name: "DualIngestionDisabled_Removed", body: "fresh line"},
+		{name: "DualIngestionDisabled_EmptyBody_Removed", body: nil},
+		{name: "DualIngestionEnabled_EmptyBody_Removed", dualIngestion: true, body: nil},
+		{name: "DualIngestionEnabled_Overwritten", dualIngestion: true, body: "current line", expectedStash: "current line"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ld := newLogsWithBodies(t, testCase.body)
+			lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+			lr.Attributes().PutStr(constants.OriginalBodyAttributeKey, "stale upstream stash")
+
+			_, err := newTestProcessor(t, testCase.dualIngestion).ProcessLogs(context.Background(), ld)
+			require.NoError(t, err)
+
+			stash, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
+			if testCase.expectedStash == nil {
+				assert.False(t, exists)
+				return
+			}
+			require.True(t, exists)
+			assert.Equal(t, testCase.expectedStash, stash.AsRaw())
+		})
+	}
+}
+
 func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -492,23 +524,38 @@ func TestShutdownStopsObserving(t *testing.T) {
 }
 
 func TestFactoryCreatesLogsProcessor(t *testing.T) {
-	ctx := context.Background()
-	factory := NewFactory()
-	cfg := factory.CreateDefaultConfig()
-	assert.False(t, cfg.(*Config).JSONBodyDualIngestion)
+	testCases := []struct {
+		name         string
+		bodyDisabled bool
+		input        string
+		expected     any
+	}{
+		{name: "DefaultConfig_BodyNormalized", input: `{"log":"line"}`, expected: map[string]any{"message": "line"}},
+		{name: "BodyDisabled_BodyUntouched", bodyDisabled: true, input: `{"log":"raw line"}`, expected: `{"log":"raw line"}`},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := context.Background()
+			factory := NewFactory()
+			cfg := factory.CreateDefaultConfig().(*Config)
+			assert.True(t, cfg.Body.Enabled)
+			assert.False(t, cfg.Body.JSONBodyDualIngestion)
+			cfg.Body.Enabled = !testCase.bodyDisabled
 
-	sink := new(consumertest.LogsSink)
-	proc, err := factory.CreateLogs(ctx, processortest.NewNopSettings(factory.Type()), cfg, sink)
-	require.NoError(t, err)
-	assert.True(t, proc.Capabilities().MutatesData)
+			sink := new(consumertest.LogsSink)
+			proc, err := factory.CreateLogs(ctx, processortest.NewNopSettings(factory.Type()), cfg, sink)
+			require.NoError(t, err)
+			assert.True(t, proc.Capabilities().MutatesData)
 
-	require.NoError(t, proc.Start(ctx, componenttest.NewNopHost()))
-	require.NoError(t, proc.ConsumeLogs(ctx, newLogsWithBodies(t, `{"log":"line"}`)))
-	require.NoError(t, proc.Shutdown(ctx))
+			require.NoError(t, proc.Start(ctx, componenttest.NewNopHost()))
+			require.NoError(t, proc.ConsumeLogs(ctx, newLogsWithBodies(t, testCase.input)))
+			require.NoError(t, proc.Shutdown(ctx))
 
-	require.Equal(t, 1, sink.LogRecordCount())
-	body := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body()
-	assert.Equal(t, map[string]any{"message": "line"}, body.AsRaw())
+			require.Equal(t, 1, sink.LogRecordCount())
+			body := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body()
+			assert.Equal(t, testCase.expected, body.AsRaw())
+		})
+	}
 }
 
 func TestFactoryRejectsWrongConfigType(t *testing.T) {
@@ -556,7 +603,7 @@ func BenchmarkProcessLogs(b *testing.B) {
 
 func TestCustomMessageFields(t *testing.T) {
 	cfg := testConfig(false)
-	cfg.MessageFields = []string{"text"}
+	cfg.Body.MessageFields = []string{"text"}
 	p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
 	require.NoError(t, err)
 
