@@ -5,9 +5,6 @@ signozlogsnormalizer/body_disabled:
 signozlogsnormalizer/fields:
   body:
     message_fields: [text]
-signozlogsnormalizer/dual:
-  body:
-    json_body_dual_ingestion: true
 signozlogsnormalizer/unknown:
   body:
     unknown_key: true

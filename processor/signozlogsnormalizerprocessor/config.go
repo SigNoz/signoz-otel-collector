@@ -5,7 +5,6 @@ type Config struct {
 }
 
 type BodyConfig struct {
-	Enabled               bool     `mapstructure:"enabled"`
-	JSONBodyDualIngestion bool     `mapstructure:"json_body_dual_ingestion"`
-	MessageFields         []string `mapstructure:"message_fields"`
+	Enabled       bool     `mapstructure:"enabled"`
+	MessageFields []string `mapstructure:"message_fields"`
 }

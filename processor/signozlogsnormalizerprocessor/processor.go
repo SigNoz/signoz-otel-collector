@@ -20,7 +20,6 @@ const (
 type normalizeProcessor struct {
 	json          sonic.API
 	bodyEnabled   bool
-	stashOriginal bool
 	messageFields []string
 	telemetry     *telemetry
 }
@@ -40,7 +39,6 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 	return &normalizeProcessor{
 		json:          sonic.Config{UseInt64: true}.Froze(),
 		bodyEnabled:   cfg.Body.Enabled,
-		stashOriginal: cfg.Body.JSONBodyDualIngestion,
 		messageFields: cfg.Body.MessageFields,
 		telemetry:     t,
 	}, nil
@@ -73,9 +71,7 @@ func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
 	}
 
 	original := pcommon.NewValueEmpty()
-	if p.stashOriginal {
-		stashOriginalBody(body, original)
-	}
+	stashOriginalBody(body, original)
 
 	kind := bodyOther
 	switch body.Type() {
@@ -106,9 +102,7 @@ func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
 		st.nestedPromotions++
 	}
 
-	if p.stashOriginal {
-		original.MoveTo(lr.Attributes().PutEmpty(constants.OriginalBodyAttributeKey))
-	}
+	original.MoveTo(lr.Attributes().PutEmpty(constants.OriginalBodyAttributeKey))
 	st.records[kind]++
 }
 

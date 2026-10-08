@@ -2,7 +2,6 @@ package signozlogsnormalizerprocessor
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,15 +19,13 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor/internal/metadatatest"
 )
 
-func testConfig(dualIngestion bool) *Config {
-	cfg := createDefaultConfig().(*Config)
-	cfg.Body.JSONBodyDualIngestion = dualIngestion
-	return cfg
+func testConfig() *Config {
+	return createDefaultConfig().(*Config)
 }
 
-func newTestProcessor(t *testing.T, dualIngestion bool) *normalizeProcessor {
+func newTestProcessor(t *testing.T) *normalizeProcessor {
 	t.Helper()
-	p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig(dualIngestion))
+	p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig())
 	require.NoError(t, err)
 	return p
 }
@@ -171,7 +168,7 @@ func TestNormalizeMessage(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			m := pcommon.NewMap()
 			require.NoError(t, m.FromRaw(testCase.input))
-			newTestProcessor(t, false).normalizeMessage(m)
+			newTestProcessor(t).normalizeMessage(m)
 			assert.Equal(t, testCase.expected, m.AsRaw())
 		})
 	}
@@ -285,35 +282,23 @@ func TestProcessLogsBody(t *testing.T) {
 		},
 	}
 
-	p := newTestProcessor(t, false)
+	p := newTestProcessor(t)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			lr := processSingle(t, p, testCase.body)
 			assert.Equal(t, pcommon.ValueTypeMap, lr.Body().Type())
 			assert.Equal(t, testCase.expected, lr.Body().AsRaw())
-			assertNoStash(t, lr)
 		})
 	}
 }
 
 func TestEmptyBodyIsLeftUntouched(t *testing.T) {
-	testCases := []struct {
-		name          string
-		dualIngestion bool
-	}{
-		{name: "DualIngestionDisabled"},
-		{name: "DualIngestionEnabled", dualIngestion: true},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			lr := processSingle(t, newTestProcessor(t, testCase.dualIngestion), nil)
-			assert.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
-			assertNoStash(t, lr)
-		})
-	}
+	lr := processSingle(t, newTestProcessor(t), nil)
+	assert.Equal(t, pcommon.ValueTypeEmpty, lr.Body().Type())
+	assertNoStash(t, lr)
 }
 
-func TestStashOriginalBodyWhenDualIngestion(t *testing.T) {
+func TestStashOriginalBody(t *testing.T) {
 	testCases := []struct {
 		name          string
 		body          any
@@ -388,7 +373,7 @@ func TestStashOriginalBodyWhenDualIngestion(t *testing.T) {
 		},
 	}
 
-	p := newTestProcessor(t, true)
+	p := newTestProcessor(t)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			lr := processSingle(t, p, testCase.body)
@@ -405,7 +390,7 @@ func TestMapStashMatchesLegacyBodyStringification(t *testing.T) {
 	legacy := pcommon.NewValueEmpty()
 	require.NoError(t, legacy.FromRaw(body))
 
-	lr := processSingle(t, newTestProcessor(t, true), body)
+	lr := processSingle(t, newTestProcessor(t), body)
 	stash, exists := lr.Attributes().Get(constants.OriginalBodyAttributeKey)
 	require.True(t, exists)
 	assert.Equal(t, legacy.AsString(), stash.Str())
@@ -416,7 +401,7 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 	lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	lr.Attributes().PutStr("k", "v")
 
-	_, err := newTestProcessor(t, true).ProcessLogs(context.Background(), ld)
+	_, err := newTestProcessor(t).ProcessLogs(context.Background(), ld)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"k": "v", constants.OriginalBodyAttributeKey: "Hello World"}, lr.Attributes().AsRaw())
 }
@@ -425,16 +410,12 @@ func TestIncomingStashReplaced(t *testing.T) {
 	testCases := []struct {
 		name          string
 		bodyDisabled  bool
-		dualIngestion bool
 		body          any
 		expectedStash any
 	}{
 		{name: "BodyDisabled_Removed", bodyDisabled: true, body: "untouched line"},
-		{name: "BodyDisabled_DualIngestionEnabled_Removed", bodyDisabled: true, dualIngestion: true, body: "skipped line"},
-		{name: "DualIngestionDisabled_Removed", body: "fresh line"},
-		{name: "DualIngestionDisabled_EmptyBody_Removed", body: nil},
-		{name: "DualIngestionEnabled_EmptyBody_Removed", dualIngestion: true, body: nil},
-		{name: "DualIngestionEnabled_Overwritten", dualIngestion: true, body: "current line", expectedStash: "current line"},
+		{name: "EmptyBody_Removed", body: nil},
+		{name: "Overwritten", body: "current line", expectedStash: "current line"},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -442,7 +423,7 @@ func TestIncomingStashReplaced(t *testing.T) {
 			lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 			lr.Attributes().PutStr(constants.OriginalBodyAttributeKey, "stale upstream stash")
 
-			cfg := testConfig(testCase.dualIngestion)
+			cfg := testConfig()
 			cfg.Body.Enabled = !testCase.bodyDisabled
 			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
 			require.NoError(t, err)
@@ -460,29 +441,12 @@ func TestIncomingStashReplaced(t *testing.T) {
 	}
 }
 
-func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
-	testCases := []struct {
-		name string
-		body any
-	}{
-		{name: "Text", body: "no stash text"},
-		{name: "MapBody", body: map[string]any{"msg": "x"}},
-		{name: "IntBody", body: int64(7)},
-	}
-	p := newTestProcessor(t, false)
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			assertNoStash(t, processSingle(t, p, testCase.body))
-		})
-	}
-}
-
 func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 	tel := componenttest.NewTelemetry()
 	t.Cleanup(func() { require.NoError(t, tel.Shutdown(ctx)) })
 
-	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig(false))
+	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, p.telemetry.shutdown(ctx)) })
 
@@ -520,7 +484,7 @@ func TestShutdownStopsObserving(t *testing.T) {
 	tel := componenttest.NewTelemetry()
 	t.Cleanup(func() { require.NoError(t, tel.Shutdown(ctx)) })
 
-	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig(false))
+	p, err := newNormalizeProcessor(tel.NewTelemetrySettings(), testConfig())
 	require.NoError(t, err)
 	_, err = tel.GetMetric("otelcol.signozlogsnormalizer.records")
 	require.NoError(t, err)
@@ -546,7 +510,6 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 			factory := NewFactory()
 			cfg := factory.CreateDefaultConfig().(*Config)
 			assert.True(t, cfg.Body.Enabled)
-			assert.False(t, cfg.Body.JSONBodyDualIngestion)
 			cfg.Body.Enabled = !testCase.bodyDisabled
 
 			sink := new(consumertest.LogsSink)
@@ -587,29 +550,27 @@ func BenchmarkProcessLogs(b *testing.B) {
 		},
 	}
 	for _, testCase := range testCases {
-		for _, dual := range []bool{false, true} {
-			b.Run(fmt.Sprintf("%s/dual=%t", testCase.name, dual), func(b *testing.B) {
-				p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig(dual))
-				require.NoError(b, err)
-				b.ReportAllocs()
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					ld := plog.NewLogs()
-					lrs := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
-					for range 1000 {
-						require.NoError(b, lrs.AppendEmpty().Body().FromRaw(testCase.body))
-					}
-					b.StartTimer()
-					_, err := p.ProcessLogs(context.Background(), ld)
-					require.NoError(b, err)
+		b.Run(testCase.name, func(b *testing.B) {
+			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig())
+			require.NoError(b, err)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				ld := plog.NewLogs()
+				lrs := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
+				for range 1000 {
+					require.NoError(b, lrs.AppendEmpty().Body().FromRaw(testCase.body))
 				}
-			})
-		}
+				b.StartTimer()
+				_, err := p.ProcessLogs(context.Background(), ld)
+				require.NoError(b, err)
+			}
+		})
 	}
 }
 
 func TestCustomMessageFields(t *testing.T) {
-	cfg := testConfig(false)
+	cfg := testConfig()
 	cfg.Body.MessageFields = []string{"text"}
 	p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
 	require.NoError(t, err)
