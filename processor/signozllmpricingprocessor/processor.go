@@ -13,6 +13,14 @@ import (
 // maxMatchCacheSize bounds matchCache; least recently seen model names are evicted beyond it.
 const maxMatchCacheSize = 1000
 
+// tokens are one span's per-bucket token counts.
+type tokens struct {
+	input      float64
+	output     float64
+	cacheRead  float64
+	cacheWrite float64
+}
+
 // costs holds the computed per-bucket costs for a single span.
 type costs struct {
 	input      float64
@@ -26,7 +34,6 @@ type costs struct {
 type compiledRule struct {
 	name       string
 	pattern    string
-	cacheMode  CacheMode // "", CacheModeSubtract, or CacheModeAdditive
 	in         float64
 	out        float64
 	cacheRead  float64
@@ -65,7 +72,6 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 			rules = append(rules, compiledRule{
 				name:       r.Name,
 				pattern:    p,
-				cacheMode:  r.Cache.Mode,
 				in:         r.In,
 				out:        r.Out,
 				cacheRead:  r.Cache.Read,
@@ -130,17 +136,17 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 		return
 	}
 
-	in := getTokenCount(attrs, p.inAttr)
-	out := getTokenCount(attrs, p.outAttr)
-	cacheRead := getTokenCount(attrs, p.cacheReadAttr)
-	cacheWrite := getTokenCount(attrs, p.cacheWriteAttr)
-
-	if in == 0 && out == 0 && cacheRead == 0 && cacheWrite == 0 {
+	raw := tokens{
+		input:      getTokenCount(attrs, p.inAttr),
+		output:     getTokenCount(attrs, p.outAttr),
+		cacheRead:  getTokenCount(attrs, p.cacheReadAttr),
+		cacheWrite: getTokenCount(attrs, p.cacheWriteAttr),
+	}
+	if raw == (tokens{}) {
 		return
 	}
 
-	c := p.compute(rule, in, out, cacheRead, cacheWrite)
-	p.writeAttrs(attrs, c)
+	p.writeAttrs(attrs, p.price(rule, normalize(raw)))
 }
 
 // matchRule returns the first rule whose pattern matches model, or nil.
@@ -161,49 +167,30 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 	return rule
 }
 
-// compute calculates per-bucket and total costs.
-//
-// subtract mode (e.g. OpenAI): cache_read tokens are already counted inside
-// input_tokens, so they are subtracted before billing the regular input rate.
-//
-//	billed_input = max(input_tokens - cache_read, 0)
-//	cost_input   = billed_input  * price_in        / divisor
-//	cost_cache_read  = cache_read    * price_cache_read / divisor
-//	cost_output  = output_tokens * price_out       / divisor
-//	total        = cost_input + cost_cache_read + cost_output
-//
-// additive mode (e.g. Anthropic): cache_read/write are separate from
-// input_tokens; all four buckets are billed independently.
-//
-//	cost_input       = input_tokens  * price_in         / divisor
-//	cost_cache_read  = cache_read    * price_cache_read  / divisor
-//	cost_cache_write = cache_write   * price_cache_write / divisor
-//	cost_output      = output_tokens * price_out         / divisor
-//	total            = cost_input + cost_cache_read + cost_cache_write + cost_output
-func (p *llmCostProcessor) compute(rule *compiledRule, in, out, cacheRead, cacheWrite float64) costs {
-	d := p.divisor
-	var c costs
-	c.output = out * rule.out / d
-
-	switch rule.cacheMode {
-	case CacheModeAdditive:
-		c.input = in * rule.in / d
-		c.cacheRead = cacheRead * rule.cacheRead / d
-		c.cacheWrite = cacheWrite * rule.cacheWrite / d
-	case CacheModeSubtract:
-		billedInput := in - cacheRead
-		if billedInput < 0 {
-			billedInput = 0
-		}
-		c.input = billedInput * rule.in / d
-		c.cacheRead = cacheRead * rule.cacheRead / d
-	default:
-		// Unknown/absent mode: we don't know how cache_read relates to
-		// input_tokens, so bill input as-is and don't bill cache.
-		c.input = in * rule.in / d
+// normalize splits raw counters into the buckets the rule prices. Cache tokens are a
+// subset of input (OTel GenAI, OpenInference) unless they exceed it, which only raw
+// provider usage with disjoint buckets can do.
+func normalize(raw tokens) tokens {
+	cached := raw.cacheRead + raw.cacheWrite
+	if cached > raw.input {
+		return raw
 	}
 
-	c.total = c.input + c.cacheRead + c.cacheWrite + c.output
+	billed := raw
+	billed.input = raw.input - cached
+	return billed
+}
+
+// price bills each bucket at the rule's per-million rate.
+func (p *llmCostProcessor) price(rule *compiledRule, t tokens) costs {
+	d := p.divisor
+	c := costs{
+		input:      t.input * rule.in / d,
+		output:     t.output * rule.out / d,
+		cacheRead:  t.cacheRead * rule.cacheRead / d,
+		cacheWrite: t.cacheWrite * rule.cacheWrite / d,
+	}
+	c.total = c.input + c.output + c.cacheRead + c.cacheWrite
 	return c
 }
 
