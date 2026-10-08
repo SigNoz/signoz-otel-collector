@@ -1,4 +1,8 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
+BUILD_TIME ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+GO_VERSION ?= $(shell go version | awk '{print $$3}')
+VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo dev)
+
 REPONAME ?= signoz
 IMAGE_NAME ?= signoz-otel-collector
 MIGRATOR_IMAGE_NAME ?= signoz-schema-migrator
@@ -16,7 +20,7 @@ IMPORT_LOG=.import.log
 CLICKHOUSE_HOST ?= 127.0.0.1
 CLICKHOUSE_PORT ?= 9000
 
-LD_FLAGS ?=
+LD_FLAGS ?= -ldflags "-X github.com/SigNoz/signoz-otel-collector/constants.Version=$(VERSION) -X github.com/SigNoz/signoz-otel-collector/constants.CommitSHA=$(COMMIT_SHA) -X github.com/SigNoz/signoz-otel-collector/constants.BuildTime=$(BUILD_TIME) -X github.com/SigNoz/signoz-otel-collector/constants.GoVersion=$(GO_VERSION)"
 
 
 .PHONY: install-tools
@@ -34,7 +38,7 @@ test:
 
 .PHONY: build
 build:
-	go build -o .build/${GOOS}-${GOARCH}/signoz-otel-collector ./cmd/signozotelcollector
+	go build $(LD_FLAGS) -o .build/${GOOS}-${GOARCH}/signoz-otel-collector ./cmd/signozotelcollector
 	go build -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator ./cmd/signozschemamigrator
 
 .PHONY: amd64
@@ -50,7 +54,7 @@ build-all: amd64 arm64
 
 .PHONY: run
 run:
-	go run cmd/signozotelcollector/main.go --config ${CONFIG_FILE}
+	go run $(LD_FLAGS) ./cmd/signozotelcollector --config ${CONFIG_FILE}
 
 .PHONY: fmt
 fmt:
