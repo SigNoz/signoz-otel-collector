@@ -165,6 +165,7 @@ func (meterconnector *meterConnector) exportMetrics(ctx context.Context) error {
 func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
+	metrics.ResourceMetrics().EnsureCapacity(len(meterconnector.aggregatedMeterMetrics.meterMetrics))
 
 	for _, meterMetrics := range meterconnector.aggregatedMeterMetrics.meterMetrics {
 		resourceMetrics := metrics.ResourceMetrics().AppendEmpty()
@@ -173,7 +174,7 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 		// add connector id for single-writer in case of multiple connectors
 		scopeMetrics.Scope().Attributes().PutStr("connector_id", meterconnector.id.String())
 		// for each resource metric key we need 6 metrics (2 for each telemetry data type)
-		scopeMetrics.Metrics().EnsureCapacity(6 * len(meterconnector.aggregatedMeterMetrics.meterMetrics))
+		scopeMetrics.Metrics().EnsureCapacity(6)
 
 		// generate the metrics from the aggregated telemetry data collected in memory
 		meterconnector.collectLogMeterMetrics(scopeMetrics, meterMetrics, timestamp)
