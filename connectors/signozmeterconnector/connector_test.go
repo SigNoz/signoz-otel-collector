@@ -2,7 +2,6 @@ package signozmeterconnector
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
@@ -430,21 +429,4 @@ func TestCollectLogMeterMetrics(t *testing.T) {
 	assert.Equal(t, metricNameLogsSize, metric.Name())
 	assert.Equal(t, "By", metric.Unit())
 	assert.Equal(t, int64(590), metric.Sum().DataPoints().At(0).IntValue())
-}
-
-func BenchmarkBuildMetrics(b *testing.B) {
-	connector, err := newConnector(zaptest.NewLogger(b), connectortest.NewNopSettings(typ), &Config{Dimensions: []Dimension{{Name: "host.name"}}, MetricsFlushInterval: time.Hour})
-	require.NoError(b, err)
-
-	for i := 0; i < 10000; i++ {
-		m := pcommon.NewMap()
-		m.PutStr("host.name", "host-"+strconv.Itoa(i))
-		connector.aggregatedMeterMetrics.UpdateLogMeterMetrics(m, 1, 100)
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		_ = connector.buildMetrics()
-	}
 }
