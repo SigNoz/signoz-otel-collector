@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
@@ -336,5 +337,28 @@ func TestNoStashWhenDualIngestionDisabled(t *testing.T) {
 		require.NoError(t, processor.transform(e))
 		_, exists := e.Attributes[constants.OriginalBodyAttributeKey]
 		require.False(t, exists)
+	}
+}
+
+func TestSkipWhenStashPresent(t *testing.T) {
+	testCases := []struct {
+		name          string
+		dualIngestion bool
+		body          any
+	}{
+		{name: "MessageMap_DualIngestionDisabled_NotFlattened", body: map[string]any{"message": map[string]any{"b": "c"}}},
+		{name: "MsgField_DualIngestionEnabled_NotPromoted", dualIngestion: true, body: map[string]any{"msg": "already normalized"}},
+		{name: "TextBody_DualIngestionEnabled_NotWrapped", dualIngestion: true, body: "raw line"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			processor := newProcessor(t, testCase.dualIngestion)
+			e := newTestEntryWithTime(t, time.Now())
+			e.Body = testCase.body
+			e.Attributes = map[string]any{constants.OriginalBodyAttributeKey: "stashed upstream"}
+			require.NoError(t, processor.transform(e))
+			assert.Equal(t, testCase.body, e.Body)
+			assert.Equal(t, map[string]any{constants.OriginalBodyAttributeKey: "stashed upstream"}, e.Attributes)
+		})
 	}
 }
