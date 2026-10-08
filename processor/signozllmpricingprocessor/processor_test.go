@@ -43,12 +43,11 @@ var testCfg = &Config{
 		},
 	},
 	OutputAttrs: OutputMapping{
-		In:               "signoz.gen_ai.usage.input_tokens.cost",
-		Out:              "signoz.gen_ai.usage.output_tokens.cost",
-		CacheRead:        "signoz.gen_ai.usage.cache_read.input_tokens.cost",
-		CacheWrite:       "signoz.gen_ai.usage.cache_write.input_tokens.cost",
-		Total:            "signoz.gen_ai.usage.tokens.cost",
-		TotalInputTokens: "signoz.gen_ai.usage.total_input_tokens",
+		In:         "signoz.gen_ai.usage.input_tokens.cost",
+		Out:        "signoz.gen_ai.usage.output_tokens.cost",
+		CacheRead:  "signoz.gen_ai.usage.cache_read.input_tokens.cost",
+		CacheWrite: "signoz.gen_ai.usage.cache_write.input_tokens.cost",
+		Total:      "signoz.gen_ai.usage.tokens.cost",
 	},
 }
 
@@ -79,13 +78,6 @@ func getDouble(t *testing.T, m pcommon.Map, key string) float64 {
 	v, ok := m.Get(key)
 	require.True(t, ok, "expected attribute %q to be present", key)
 	return v.Double()
-}
-
-func getInt(t *testing.T, m pcommon.Map, key string) int64 {
-	t.Helper()
-	v, ok := m.Get(key)
-	require.True(t, ok, "expected attribute %q to be present", key)
-	return v.Int()
 }
 
 func TestNoCaching(t *testing.T) {
@@ -132,7 +124,6 @@ func TestCacheReadWithinInput(t *testing.T) {
 	assert.InDelta(t, 0.0005, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.0075, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.012, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
-	assert.Equal(t, int64(1000), getInt(t, a, "signoz.gen_ai.usage.total_input_tokens"))
 }
 
 func TestCacheExceedsInput(t *testing.T) {
@@ -155,7 +146,6 @@ func TestCacheExceedsInput(t *testing.T) {
 	assert.InDelta(t, 0.00125, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.003, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.00475, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
-	assert.Equal(t, int64(600), getInt(t, a, "signoz.gen_ai.usage.total_input_tokens"))
 }
 
 func TestCacheReadAndWriteWithinInput(t *testing.T) {
@@ -183,7 +173,6 @@ func TestCacheReadAndWriteWithinInput(t *testing.T) {
 	assert.InDelta(t, 0.00006, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.000375, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.010035, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
-	assert.Equal(t, int64(1000), getInt(t, a, "signoz.gen_ai.usage.total_input_tokens"))
 }
 
 func TestRuleFirstMatchWins(t *testing.T) {
@@ -325,48 +314,40 @@ func TestRuleWithoutCachePrices(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.Equal(t, int64(1000), getInt(t, a, "signoz.gen_ai.usage.total_input_tokens"))
 	assert.InDelta(t, 800*1.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestNormalize(t *testing.T) {
 	tests := []struct {
-		name       string
-		raw        tokens
-		billed     tokens
-		totalInput float64
+		name   string
+		raw    tokens
+		billed tokens
 	}{
 		{
-			name:       "cache within input",
-			raw:        tokens{input: 1000, output: 500, cacheRead: 200, cacheWrite: 100},
-			billed:     tokens{input: 700, output: 500, cacheRead: 200, cacheWrite: 100},
-			totalInput: 1000,
+			name:   "cache within input",
+			raw:    tokens{input: 1000, output: 500, cacheRead: 200, cacheWrite: 100},
+			billed: tokens{input: 700, output: 500, cacheRead: 200, cacheWrite: 100},
 		},
 		{
-			name:       "cache equals input",
-			raw:        tokens{input: 2048, output: 503, cacheRead: 1800, cacheWrite: 248},
-			billed:     tokens{input: 0, output: 503, cacheRead: 1800, cacheWrite: 248},
-			totalInput: 2048,
+			name:   "cache equals input",
+			raw:    tokens{input: 2048, output: 503, cacheRead: 1800, cacheWrite: 248},
+			billed: tokens{input: 0, output: 503, cacheRead: 1800, cacheWrite: 248},
 		},
 		{
-			name:       "cache exceeds input",
-			raw:        tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
-			billed:     tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
-			totalInput: 1100,
+			name:   "cache exceeds input",
+			raw:    tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
+			billed: tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
 		},
 		{
-			name:       "no cache",
-			raw:        tokens{input: 1000, output: 500},
-			billed:     tokens{input: 1000, output: 500},
-			totalInput: 1000,
+			name:   "no cache",
+			raw:    tokens{input: 1000, output: 500},
+			billed: tokens{input: 1000, output: 500},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			billed, totalInput := normalize(tc.raw)
-			assert.Equal(t, tc.billed, billed)
-			assert.Equal(t, tc.totalInput, totalInput)
+			assert.Equal(t, tc.billed, normalize(tc.raw))
 		})
 	}
 }

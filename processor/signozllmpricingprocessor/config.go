@@ -55,12 +55,11 @@ type PricingRuleCache struct {
 }
 
 type OutputMapping struct {
-	In               string `mapstructure:"in"`
-	Out              string `mapstructure:"out"`
-	CacheRead        string `mapstructure:"cache_read"`
-	CacheWrite       string `mapstructure:"cache_write"`
-	Total            string `mapstructure:"total"`
-	TotalInputTokens string `mapstructure:"total_input_tokens"`
+	In         string `mapstructure:"in"`
+	Out        string `mapstructure:"out"`
+	CacheRead  string `mapstructure:"cache_read"`
+	CacheWrite string `mapstructure:"cache_write"`
+	Total      string `mapstructure:"total"`
 }
 
 func (c *CacheMode) String() string {

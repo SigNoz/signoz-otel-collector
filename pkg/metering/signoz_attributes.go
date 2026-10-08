@@ -8,7 +8,7 @@ import (
 
 var (
 	ExcludeSigNozWorkspaceResourceAttrs = regexp.MustCompile("^signoz.workspace.*")
-	// Costs and token totals the signozllmpricing processor attaches to spans; derived data, not billed.
+	// Costs the signozllmpricing processor attaches to spans; derived data, not billed.
 	ExcludeSigNozLLMPricingSpanAttrs = regexp.MustCompile(`^signoz\.gen_ai\.`)
 	ExcludeSigNozInternalAttrPrefix  = regexp.MustCompile("^" + regexp.QuoteMeta(constants.SignozInternalAttrPrefix))
 )

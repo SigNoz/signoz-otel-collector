@@ -54,7 +54,6 @@ type llmCostProcessor struct {
 	outCacheReadAttr  string
 	outCacheWriteAttr string
 	outTotalAttr      string
-	outTotalInputAttr string
 
 	divisor float64 // 1e6 for per_million_tokens
 	rules   []compiledRule
@@ -97,7 +96,6 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 		outCacheReadAttr:  cfg.OutputAttrs.CacheRead,
 		outCacheWriteAttr: cfg.OutputAttrs.CacheWrite,
 		outTotalAttr:      cfg.OutputAttrs.Total,
-		outTotalInputAttr: cfg.OutputAttrs.TotalInputTokens,
 		divisor:           divisor,
 		rules:             rules,
 		matchCache:        matchCache,
@@ -148,9 +146,7 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 		return
 	}
 
-	billed, totalInput := normalize(raw)
-	p.writeAttrs(attrs, p.price(rule, billed))
-	putIntIfKey(attrs, p.outTotalInputAttr, int64(totalInput))
+	p.writeAttrs(attrs, p.price(rule, normalize(raw)))
 }
 
 // matchRule returns the first rule whose pattern matches model, or nil.
@@ -171,18 +167,18 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 	return rule
 }
 
-// normalize splits raw counters into the buckets the rule prices and counts every
-// input token once. Cache tokens are a subset of input (OTel GenAI, OpenInference)
-// unless they exceed it, which only raw provider usage with disjoint buckets can do.
-func normalize(raw tokens) (billed tokens, totalInput float64) {
+// normalize splits raw counters into the buckets the rule prices. Cache tokens are a
+// subset of input (OTel GenAI, OpenInference) unless they exceed it, which only raw
+// provider usage with disjoint buckets can do.
+func normalize(raw tokens) tokens {
 	cached := raw.cacheRead + raw.cacheWrite
 	if cached > raw.input {
-		return raw, raw.input + cached
+		return raw
 	}
 
-	billed = raw
+	billed := raw
 	billed.input = raw.input - cached
-	return billed, raw.input
+	return billed
 }
 
 // price bills each bucket at the rule's per-million rate.
@@ -231,12 +227,6 @@ func getTokenCount(attrs pcommon.Map, key string) float64 {
 func putIfKey(attrs pcommon.Map, key string, val float64) {
 	if key != "" {
 		attrs.PutDouble(key, val)
-	}
-}
-
-func putIntIfKey(attrs pcommon.Map, key string, val int64) {
-	if key != "" {
-		attrs.PutInt(key, val)
 	}
 }
 
