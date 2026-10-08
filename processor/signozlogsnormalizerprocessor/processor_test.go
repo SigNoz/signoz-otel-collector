@@ -406,14 +406,14 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 	assert.Equal(t, map[string]any{"k": "v", constants.OriginalBodyAttributeKey: "Hello World"}, lr.Attributes().AsRaw())
 }
 
-func TestIncomingStashReplaced(t *testing.T) {
+func TestIncomingStash(t *testing.T) {
 	testCases := []struct {
 		name          string
 		bodyDisabled  bool
 		body          any
 		expectedStash any
 	}{
-		{name: "BodyDisabled_Removed", bodyDisabled: true, body: "untouched line"},
+		{name: "BodyDisabled_Kept", bodyDisabled: true, body: "untouched line", expectedStash: "stale upstream stash"},
 		{name: "EmptyBody_Removed", body: nil},
 		{name: "Overwritten", body: "current line", expectedStash: "current line"},
 	}

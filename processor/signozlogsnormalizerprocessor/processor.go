@@ -52,10 +52,8 @@ func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.
 		for j := 0; j < sls.Len(); j++ {
 			lrs := sls.At(j).LogRecords()
 			for k := 0; k < lrs.Len(); k++ {
-				lr := lrs.At(k)
-				lr.Attributes().Remove(constants.OriginalBodyAttributeKey)
 				if p.bodyEnabled {
-					p.normalizeBody(lr, &st)
+					p.normalizeBody(lrs.At(k), &st)
 				}
 			}
 		}
@@ -65,6 +63,7 @@ func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.
 }
 
 func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
+	lr.Attributes().Remove(constants.OriginalBodyAttributeKey)
 	body := lr.Body()
 	if body.Type() == pcommon.ValueTypeEmpty {
 		return

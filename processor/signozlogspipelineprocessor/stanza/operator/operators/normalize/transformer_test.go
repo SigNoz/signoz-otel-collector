@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 
@@ -356,8 +357,8 @@ func TestSkipWhenStashPresent(t *testing.T) {
 			e.Body = testCase.body
 			e.Attributes = map[string]any{constants.OriginalBodyAttributeKey: "stashed upstream"}
 			require.NoError(t, processor.transform(e))
-			require.Equal(t, testCase.body, e.Body)
-			require.Equal(t, map[string]any{constants.OriginalBodyAttributeKey: "stashed upstream"}, e.Attributes)
+			assert.Equal(t, testCase.body, e.Body)
+			assert.Equal(t, map[string]any{constants.OriginalBodyAttributeKey: "stashed upstream"}, e.Attributes)
 		})
 	}
 }
