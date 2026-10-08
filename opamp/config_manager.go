@@ -33,7 +33,7 @@ type reloadFunc func([]byte) error
 
 type remoteControlledConfig struct {
 	path        string     // path to the agent config file (copyPath / managed file)
-	baseConfigs []string  // local --config files provided by user
+	baseConfigs []string   // local --config files provided by user
 	reloader    reloadFunc // function to reload the agent config
 	currentHash []byte     // hash of the current agent config, used to determine if the config has changed
 	logger      *zap.Logger
@@ -45,7 +45,7 @@ func NewDynamicConfig(configPath string, baseConfigs []string, reloader reloadFu
 	}
 	remoteControlledConfig := &remoteControlledConfig{
 		path:        configPath,
-		baseConfigs:  baseConfigs,
+		baseConfigs: baseConfigs,
 		reloader:    reloader,
 		logger:      logger.Named("dynamic-config"),
 	}

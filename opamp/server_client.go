@@ -47,7 +47,7 @@ type NewServerClientOpts struct {
 	Config           *AgentManagerConfig
 	WrappedCollector *signozcol.WrappedCollector
 
-	BaseConfigs       []string
+	BaseConfigs         []string
 	CollectorConfigPath string
 }
 
