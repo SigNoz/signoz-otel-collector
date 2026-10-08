@@ -6,6 +6,22 @@
 
 The following telemetry is emitted by this component.
 
+### otelcol.signozlogsnormalizer.field.inferences
+
+Top level fields inferred, by target, the field read and where it was found. [Alpha]
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| {field} | Sum | Int | true | Alpha |
+
+#### Attributes
+
+| Name | Description | Values |
+| ---- | ----------- | ------ |
+| target | Top level log record field inferred. | Str: ``severity_number``, ``severity_text``, ``trace_id``, ``span_id``, ``scope_name``, ``scope_version`` |
+| field | Configured field name a message was promoted from or a value was inferred from; for a derived value, the target it was derived from. | Any Str |
+| source | Where the value was found. derived is a severity half filled from the other half. | Str: ``body``, ``attributes``, ``scope``, ``resource``, ``derived`` |
+
 ### otelcol.signozlogsnormalizer.message.flattenings
 
 Object messages lifted to the top level of the body. [Alpha]
@@ -34,7 +50,7 @@ Messages promoted from a configured message field, by field. [Alpha]
 
 | Name | Description | Values |
 | ---- | ----------- | ------ |
-| field | Configured message field the message was promoted from. | Any Str |
+| field | Configured field name a message was promoted from or a value was inferred from; for a derived value, the target it was derived from. | Any Str |
 
 ### otelcol.signozlogsnormalizer.message.stringifications
 
