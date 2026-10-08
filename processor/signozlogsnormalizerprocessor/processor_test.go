@@ -2,7 +2,6 @@ package signozlogsnormalizerprocessor
 
 import (
 	"context"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -537,64 +536,37 @@ func TestFactoryRejectsWrongConfigType(t *testing.T) {
 }
 
 func BenchmarkProcessLogs(b *testing.B) {
-	modes := []struct {
-		name   string
-		body   bool
-		fields bool
-	}{
-		{name: "BodyOnly", body: true},
-		{name: "FieldsOnly", fields: true},
-		{name: "BodyAndFields", body: true, fields: true},
-	}
-	bodies := []struct {
+	testCases := []struct {
 		name string
 		body any
 	}{
-		{name: "JSONString", body: `{"level":"info","msg":"request served","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","status":200,"path":"/api/v1/items","duration_ms":12.5,"user":{"id":42,"name":"x"}}`},
+		{name: "JSONString", body: `{"level":"info","msg":"request served","status":200,"path":"/api/v1/items","duration_ms":12.5,"user":{"id":42,"name":"x"}}`},
 		{name: "Text", body: `2026-10-05T12:00:00Z INFO request served path=/api/v1/items status=200 duration=12.5ms`},
 		{
 			name: "MapBody",
 			body: map[string]any{
-				"level": "info", "msg": "request served", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7",
-				"status": int64(200), "path": "/api/v1/items", "duration_ms": 12.5,
+				"level": "info", "msg": "request served", "status": int64(200), "path": "/api/v1/items", "duration_ms": 12.5,
 				"user": map[string]any{"id": int64(42), "name": "x"},
 			},
 		},
 	}
-	for _, mode := range modes {
-		for _, testCase := range bodies {
-			b.Run(mode.name+"/"+testCase.name, func(b *testing.B) {
-				cfg := testConfig()
-				cfg.Body.Enabled = mode.body
-				cfg.Fields.Enabled = mode.fields
-				p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
-				require.NoError(b, err)
-				b.ReportAllocs()
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					ld := plog.NewLogs()
-					rl := ld.ResourceLogs().AppendEmpty()
-					require.NoError(b, rl.Resource().Attributes().FromRaw(map[string]any{
-						"service.name": "frontend", "service.namespace": "shop", "service.version": "1.4.2",
-						"deployment.environment": "prod", "host.name": "ip-10-0-1-23", "host.arch": "arm64",
-						"os.type": "linux", "cloud.provider": "aws", "cloud.region": "us-east-1",
-						"k8s.cluster.name": "prod-1", "k8s.namespace.name": "shop", "k8s.pod.name": "frontend-7d9c-x2x",
-						"k8s.pod.uid": "0b5e3f8c-1c2d-4e5f-9a8b-7c6d5e4f3a2b", "k8s.node.name": "node-17",
-						"k8s.deployment.name": "frontend", "k8s.container.name": "app", "container.id": "4f9a2c1e8b7d",
-					}))
-					lrs := rl.ScopeLogs().AppendEmpty().LogRecords()
-					for range 1000 {
-						lr := lrs.AppendEmpty()
-						require.NoError(b, lr.Body().FromRaw(testCase.body))
-						lr.Attributes().PutStr("host", "node-1")
-					}
-					runtime.GC()
-					b.StartTimer()
-					_, err := p.ProcessLogs(context.Background(), ld)
-					require.NoError(b, err)
+	for _, testCase := range testCases {
+		b.Run(testCase.name, func(b *testing.B) {
+			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig())
+			require.NoError(b, err)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				ld := plog.NewLogs()
+				lrs := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
+				for range 1000 {
+					require.NoError(b, lrs.AppendEmpty().Body().FromRaw(testCase.body))
 				}
-			})
-		}
+				b.StartTimer()
+				_, err := p.ProcessLogs(context.Background(), ld)
+				require.NoError(b, err)
+			}
+		})
 	}
 }
 

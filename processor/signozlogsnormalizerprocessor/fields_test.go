@@ -391,41 +391,68 @@ func TestScope(t *testing.T) {
 }
 
 func TestScopeRegrouping(t *testing.T) {
-	t.Run("RecordsGroupedByInferredScope", func(t *testing.T) {
-		ld := plog.NewLogs()
-		sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
-		sl.SetSchemaUrl("https://opentelemetry.io/schemas/1.30.0")
-		for _, name := range []string{"a", "", "b", "a"} {
-			m := sl.LogRecords().AppendEmpty().Body().SetEmptyMap()
-			m.PutStr("scope_name", name)
-			m.PutStr("id", name)
-		}
+	type scopeGroup struct {
+		name   string
+		bodies []any
+	}
+	testCases := []struct {
+		name      string
+		schemaURL string
+		input     [][]any
+		expected  []scopeGroup
+	}{
+		{
+			name:      "RecordsGroupedByInferredScope_SchemaKept",
+			schemaURL: "https://opentelemetry.io/schemas/1.30.0",
+			input: [][]any{{
+				map[string]any{"scope_name": "a", "id": int64(1)},
+				map[string]any{"id": int64(2)},
+				map[string]any{"scope_name": "b", "id": int64(3)},
+				map[string]any{"scope_name": "a", "id": int64(4)},
+			}},
+			expected: []scopeGroup{
+				{name: "", bodies: []any{map[string]any{"id": int64(2)}}},
+				{name: "a", bodies: []any{map[string]any{"scope_name": "a", "id": int64(1)}, map[string]any{"scope_name": "a", "id": int64(4)}}},
+				{name: "b", bodies: []any{map[string]any{"scope_name": "b", "id": int64(3)}}},
+			},
+		},
+		{
+			name:      "EmptiedScope_Removed",
+			schemaURL: "https://opentelemetry.io/schemas/1.26.0",
+			input:     [][]any{{map[string]any{"scope_name": "inventory"}}, {"plain line"}},
+			expected: []scopeGroup{
+				{name: "", bodies: []any{"plain line"}},
+				{name: "inventory", bodies: []any{map[string]any{"scope_name": "inventory"}}},
+			},
+		},
+	}
 
-		sls := process(t, newFieldsProcessor(t, fieldsConfig(nil)), ld).ResourceLogs().At(0).ScopeLogs()
-		got := map[string][]string{}
-		for i := 0; i < sls.Len(); i++ {
-			assert.Equal(t, "https://opentelemetry.io/schemas/1.30.0", sls.At(i).SchemaUrl())
-			lrs := sls.At(i).LogRecords()
-			for k := 0; k < lrs.Len(); k++ {
-				id, _ := lrs.At(k).Body().Map().Get("id")
-				got[sls.At(i).Scope().Name()] = append(got[sls.At(i).Scope().Name()], id.Str())
+	p := newFieldsProcessor(t, fieldsConfig(nil))
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ld := plog.NewLogs()
+			sls := ld.ResourceLogs().AppendEmpty().ScopeLogs()
+			for _, bodies := range testCase.input {
+				sl := sls.AppendEmpty()
+				sl.SetSchemaUrl(testCase.schemaURL)
+				for _, body := range bodies {
+					require.NoError(t, sl.LogRecords().AppendEmpty().Body().FromRaw(body))
+				}
 			}
-		}
-		assert.Equal(t, map[string][]string{"": {""}, "a": {"a", "a"}, "b": {"b"}}, got)
-	})
 
-	t.Run("EmptiedScope_Removed", func(t *testing.T) {
-		ld := plog.NewLogs()
-		sls := ld.ResourceLogs().AppendEmpty().ScopeLogs()
-		sls.AppendEmpty().LogRecords().AppendEmpty().Body().SetEmptyMap().PutStr("scope_name", "inventory")
-		sls.AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("plain line")
-
-		got := process(t, newFieldsProcessor(t, fieldsConfig(nil)), ld).ResourceLogs().At(0).ScopeLogs()
-		require.Equal(t, 2, got.Len())
-		assert.Empty(t, got.At(0).Scope().Name())
-		assert.Equal(t, "plain line", got.At(0).LogRecords().At(0).Body().Str())
-		assert.Equal(t, "inventory", got.At(1).Scope().Name())
-	})
+			out := process(t, p, ld).ResourceLogs().At(0).ScopeLogs()
+			got := make([]scopeGroup, out.Len())
+			for i := 0; i < out.Len(); i++ {
+				assert.Equal(t, testCase.schemaURL, out.At(i).SchemaUrl())
+				got[i].name = out.At(i).Scope().Name()
+				lrs := out.At(i).LogRecords()
+				for k := 0; k < lrs.Len(); k++ {
+					got[i].bodies = append(got[i].bodies, lrs.At(k).Body().AsRaw())
+				}
+			}
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
 }
 
 func TestFieldNames(t *testing.T) {
