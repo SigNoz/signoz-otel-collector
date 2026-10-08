@@ -57,18 +57,22 @@ func (c *baseClient) ensureRunning() {
 			c.logger.Info("Collector is stopped")
 			return
 		case <-time.After(c.coll.PollInterval):
-			currentState := c.coll.GetState()
-			lastState := otelcol.State(c.lastKnownState.Load())
-
-			// Only log and react if state has changed
-			if currentState != lastState {
-				c.lastKnownState.Store(int32(currentState))
-				c.logger.Info("Collector state changed", zap.Stringer("previous_state", lastState), zap.Stringer("current_state", currentState))
-
-				if currentState == otelcol.StateClosed && !c.isReloading.Load() {
-					c.err <- fmt.Errorf("collector stopped unexpectedly")
-				}
+			if c.stoppedUnexpectedly(c.coll.GetState()) {
+				c.err <- fmt.Errorf("collector stopped unexpectedly")
 			}
 		}
 	}
+}
+
+// stoppedUnexpectedly logs state transitions and reports whether the
+// collector is closed outside of a reload. The closed check runs on every
+// poll, not only on transitions, so a collector that stays closed after a
+// failed reload is still reported.
+func (c *baseClient) stoppedUnexpectedly(current otelcol.State) bool {
+	last := otelcol.State(c.lastKnownState.Load())
+	if current != last {
+		c.lastKnownState.Store(int32(current))
+		c.logger.Info("Collector state changed", zap.Stringer("previous_state", last), zap.Stringer("current_state", current))
+	}
+	return current == otelcol.StateClosed && !c.isReloading.Load()
 }
