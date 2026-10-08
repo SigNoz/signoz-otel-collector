@@ -10,6 +10,12 @@ import (
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 )
 
+func withDefaults(mutate func(*Config)) Config {
+	cfg := createDefaultConfig().(*Config)
+	mutate(cfg)
+	return *cfg
+}
+
 func TestLoadConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	require.NoError(t, err)
@@ -21,10 +27,21 @@ func TestLoadConfig(t *testing.T) {
 		expected  Config
 		expectErr bool
 	}{
-		{name: "Default_BodyEnabled", id: component.NewID(factory.Type()), expected: Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
-		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: Config{Body: BodyConfig{MessageFields: []string{"log", "msg"}}}},
-		{name: "BodyCustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"text"}}}},
-		{name: "UnknownKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
+		{name: "Default_BodyAndFieldsEnabled", id: component.NewID(factory.Type()), expected: withDefaults(func(*Config) {})},
+		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: withDefaults(func(c *Config) { c.Body.Enabled = false })},
+		{name: "BodyCustomMessageFields", id: component.NewIDWithName(factory.Type(), "message_fields"), expected: withDefaults(func(c *Config) { c.Body.MessageFields = []string{"text"} })},
+		{name: "FieldsDisabled", id: component.NewIDWithName(factory.Type(), "fields_disabled"), expected: withDefaults(func(c *Config) { c.Fields.Enabled = false })},
+		{
+			name: "FieldsCustomNames_OthersDefault",
+			id:   component.NewIDWithName(factory.Type(), "fields"),
+			expected: withDefaults(func(c *Config) {
+				c.Fields.SeverityText = []string{"sev"}
+				c.Fields.ScopeName = []string{"logger", "scope.name"}
+			}),
+		},
+		{name: "FieldsEmptyList_KeptEmpty", id: component.NewIDWithName(factory.Type(), "fields_empty"), expected: withDefaults(func(c *Config) { c.Fields.SeverityText = []string{} })},
+		{name: "UnknownBodyKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
+		{name: "UnknownFieldsKey_Rejected", id: component.NewIDWithName(factory.Type(), "fields_unknown"), expectErr: true},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {

@@ -23,7 +23,18 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}
+	return &Config{
+		Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}},
+		Fields: FieldsConfig{
+			Enabled:        true,
+			SeverityNumber: []string{"severity_number", "severitynumber"},
+			SeverityText:   []string{"severity_text", "severitytext", "severity", "level", "log.level", "log_level", "loglevel", "levelname", "lvl"},
+			TraceID:        []string{"trace_id", "traceid", "trace.id"},
+			SpanID:         []string{"span_id", "spanid", "span.id"},
+			ScopeName:      []string{"scope.name", "scope_name", "scopename"},
+			ScopeVersion:   []string{"scope.version", "scope_version", "scopeversion"},
+		},
+	}
 }
 
 func createLogsProcessor(

@@ -21,6 +21,7 @@ type normalizeProcessor struct {
 	json          sonic.API
 	bodyEnabled   bool
 	messageFields []string
+	names         fieldNames
 	telemetry     *telemetry
 }
 
@@ -32,7 +33,8 @@ type messageOutcome struct {
 }
 
 func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*normalizeProcessor, error) {
-	t, err := newTelemetry(set, cfg.Body.MessageFields)
+	names := newFieldNames(cfg.Fields)
+	t, err := newTelemetry(set, cfg.Body.MessageFields, &names)
 	if err != nil {
 		return nil, err
 	}
@@ -40,23 +42,22 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 		json:          sonic.Config{UseInt64: true}.Froze(),
 		bodyEnabled:   cfg.Body.Enabled,
 		messageFields: cfg.Body.MessageFields,
+		names:         names,
 		telemetry:     t,
 	}, nil
 }
 
 func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.Logs, error) {
-	st := batchStats{promotions: make([]int64, len(p.messageFields))}
+	if !p.bodyEnabled && !p.names.any() {
+		return ld, nil
+	}
+	st := batchStats{
+		promotions: make([]int64, len(p.messageFields)),
+		inferences: make([]int64, len(p.telemetry.inferences)),
+	}
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
-		sls := rls.At(i).ScopeLogs()
-		for j := 0; j < sls.Len(); j++ {
-			lrs := sls.At(j).LogRecords()
-			for k := 0; k < lrs.Len(); k++ {
-				if p.bodyEnabled {
-					p.normalizeBody(lrs.At(k), &st)
-				}
-			}
-		}
+		p.processResource(rls.At(i), &st)
 	}
 	p.telemetry.add(&st)
 	return ld, nil
@@ -70,7 +71,7 @@ func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
 	}
 
 	original := pcommon.NewValueEmpty()
-	stashOriginalBody(body, original)
+	st.scratch = stashOriginalBody(body, original, st.scratch)
 
 	kind := bodyOther
 	switch body.Type() {
@@ -105,12 +106,18 @@ func (p *normalizeProcessor) normalizeBody(lr plog.LogRecord, st *batchStats) {
 	st.records[kind]++
 }
 
-func stashOriginalBody(body, dest pcommon.Value) {
-	if body.Type() == pcommon.ValueTypeMap {
-		dest.SetStr(body.AsString())
-		return
+func stashOriginalBody(body, dest pcommon.Value, scratch []byte) []byte {
+	if body.Type() != pcommon.ValueTypeMap {
+		body.CopyTo(dest)
+		return scratch
 	}
-	body.CopyTo(dest)
+	encoded, ok := appendAsString(scratch[:0], body)
+	if ok {
+		dest.SetStr(string(encoded))
+	} else {
+		dest.SetStr("")
+	}
+	return encoded
 }
 
 func (p *normalizeProcessor) parseText(body pcommon.Value) bool {

@@ -510,6 +510,7 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 			factory := NewFactory()
 			cfg := factory.CreateDefaultConfig().(*Config)
 			assert.True(t, cfg.Body.Enabled)
+			assert.True(t, cfg.Fields.Enabled)
 			cfg.Body.Enabled = !testCase.bodyDisabled
 
 			sink := new(consumertest.LogsSink)

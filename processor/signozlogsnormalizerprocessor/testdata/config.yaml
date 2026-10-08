@@ -2,9 +2,22 @@ signozlogsnormalizer:
 signozlogsnormalizer/body_disabled:
   body:
     enabled: false
-signozlogsnormalizer/fields:
+signozlogsnormalizer/message_fields:
   body:
     message_fields: [text]
+signozlogsnormalizer/fields_disabled:
+  fields:
+    enabled: false
+signozlogsnormalizer/fields:
+  fields:
+    severity_text: [sev]
+    scope_name: [logger, scope.name]
+signozlogsnormalizer/fields_empty:
+  fields:
+    severity_text: []
 signozlogsnormalizer/unknown:
   body:
+    unknown_key: true
+signozlogsnormalizer/fields_unknown:
+  fields:
     unknown_key: true
