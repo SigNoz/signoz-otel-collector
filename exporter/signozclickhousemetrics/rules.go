@@ -280,6 +280,7 @@ func reducedTsFrom(raw *ts, reduced *reducedSeries) ts {
 		reducedFingerprint: reduced.fingerprint,
 		isReduced:          true,
 		unixMilli:          raw.unixMilli,
+		bucketStart:        raw.bucketStart,
 		labels:             pkgfingerprint.NewLabelsAsJSONString(raw.metricName, pointMap, scopeMap, resourceMap),
 		attrs:              pointMap,
 		scopeAttrs:         scopeMap,
