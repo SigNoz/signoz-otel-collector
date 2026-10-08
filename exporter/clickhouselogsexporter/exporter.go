@@ -795,13 +795,11 @@ producerIteration:
 }
 
 func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
-	promoted := pcommon.NewValueMap()
-	bodyJSON := pcommon.NewValueMap()
-
 	if !e.cfg.BodyJSONEnabled && !hasOriginalBody {
-		return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+		return getStringifiedBody(body), "{}", "{}"
 	}
 
+	bodyJSON := pcommon.NewValueMap()
 	if body.Type() == pcommon.ValueTypeMap {
 		// switch the reference to bodyJSON
 		bodyJSON = body
@@ -812,7 +810,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 
 	// promoted paths extraction using cached set
 	promotedSet := e.promotedPaths.Load().(map[string]struct{})
-	promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
+	promoted := utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 
 	if e.cfg.BodyJSONEnabled {
 		// set body to empty string
