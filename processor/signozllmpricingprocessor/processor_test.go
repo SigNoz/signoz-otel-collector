@@ -25,7 +25,6 @@ var testCfg = &Config{
 				Name:    "gpt-4o",
 				Pattern: []string{"gpt-4o*"},
 				Cache: PricingRuleCache{
-					Mode: CacheModeSubtract,
 					Read: 2.5,
 				},
 				In:  5.0,
@@ -35,7 +34,6 @@ var testCfg = &Config{
 				Name:    "claude",
 				Pattern: []string{"claude-*"},
 				Cache: PricingRuleCache{
-					Mode:  CacheModeAdditive,
 					Read:  0.30,
 					Write: 3.75,
 				},
@@ -82,7 +80,7 @@ func getDouble(t *testing.T, m pcommon.Map, key string) float64 {
 	return v.Double()
 }
 
-func TestSubtractMode_NoCaching(t *testing.T) {
+func TestNoCaching(t *testing.T) {
 	// 1000 input, 500 output, no cache
 	// cost_input = 1000 * 5.0 / 1e6 = 0.005
 	// cost_output = 500 * 15.0 / 1e6 = 0.0075
@@ -104,7 +102,7 @@ func TestSubtractMode_NoCaching(t *testing.T) {
 	assert.InDelta(t, 0.0125, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
-func TestSubtractMode_WithCacheRead(t *testing.T) {
+func TestCacheReadWithinInput(t *testing.T) {
 	// 1000 input (includes 200 cache_read), 500 output
 	// billed_input = 1000 - 200 = 800
 	// cost_input     = 800  * 5.0  / 1e6 = 0.004
@@ -128,8 +126,11 @@ func TestSubtractMode_WithCacheRead(t *testing.T) {
 	assert.InDelta(t, 0.012, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
-func TestSubtractMode_CacheReadExceedsInput(t *testing.T) {
-	// cache_read > input → billed_input clamped to 0
+func TestCacheExceedsInput(t *testing.T) {
+	// cache_read > input cannot be a subset, so input is billed whole alongside the cache.
+	// cost_input      = 100 * 5.0 / 1e6 = 0.0005
+	// cost_cache_read = 500 * 2.5 / 1e6 = 0.00125
+	// cost_output     = 200 * 15.0 / 1e6 = 0.003
 	td := buildTrace(map[string]any{
 		"gen_ai.request.model":           "gpt-4o",
 		"gen_ai.usage.input_tokens":      int64(100),
@@ -141,18 +142,20 @@ func TestSubtractMode_CacheReadExceedsInput(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
-	// cache_read cost still billed for the actual cache_read value
-	assert.InDelta(t, 500*2.5/1e6, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0005, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.00125, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.003, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.00475, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
-func TestAdditiveMode(t *testing.T) {
-	// 1000 input, 500 output, 200 cache_read, 100 cache_write
-	// cost_input       = 1000 * 3.0  / 1e6 = 0.003
-	// cost_output      = 500  * 15.0 / 1e6 = 0.0075
-	// cost_cache_read  = 200  * 0.30 / 1e6 = 0.00006
-	// cost_cache_write = 100  * 3.75 / 1e6 = 0.000375
-	// total = 0.010935
+func TestCacheReadAndWriteWithinInput(t *testing.T) {
+	// 1000 input (includes 200 cache_read and 100 cache_write), 500 output
+	// billed_input     = 1000 - 200 - 100 = 700
+	// cost_input       = 700 * 3.0  / 1e6 = 0.0021
+	// cost_output      = 500 * 15.0 / 1e6 = 0.0075
+	// cost_cache_read  = 200 * 0.30 / 1e6 = 0.00006
+	// cost_cache_write = 100 * 3.75 / 1e6 = 0.000375
+	// total = 0.010035
 	td := buildTrace(map[string]any{
 		"gen_ai.request.model":            "claude-3-5-sonnet",
 		"gen_ai.usage.input_tokens":       int64(1000),
@@ -165,28 +168,11 @@ func TestAdditiveMode(t *testing.T) {
 	require.NoError(t, err)
 
 	a := attrs(td)
-	assert.InDelta(t, 0.003, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.0021, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.0075, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.00006, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
 	assert.InDelta(t, 0.000375, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
-	assert.InDelta(t, 0.010935, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
-}
-
-func TestAdditiveMode_NoCaching(t *testing.T) {
-	td := buildTrace(map[string]any{
-		"gen_ai.request.model":       "claude-3-haiku",
-		"gen_ai.usage.input_tokens":  int64(2000),
-		"gen_ai.usage.output_tokens": int64(1000),
-	})
-
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
-	require.NoError(t, err)
-
-	a := attrs(td)
-	assert.InDelta(t, 2000*3.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
-	assert.InDelta(t, 1000*15.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.output_tokens.cost"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_read.input_tokens.cost"), 1e-9)
-	assert.InDelta(t, 0.0, getDouble(t, a, "signoz.gen_ai.usage.cache_write.input_tokens.cost"), 1e-9)
+	assert.InDelta(t, 0.010035, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
 func TestRuleFirstMatchWins(t *testing.T) {
@@ -314,40 +300,68 @@ func TestOptionalOutputAttrs(t *testing.T) {
 	assert.True(t, hasTotal)
 }
 
-func TestComputeSubtract(t *testing.T) {
-	p := newProcessor(testCfg)
-	rule := &p.rules[0] // gpt-4o*: subtract
+func TestRuleWithoutCachePrices(t *testing.T) {
+	cfg := *testCfg
+	cfg.DefaultPricing = PricingConfig{Rules: []PricingRule{{Pattern: []string{"*"}, In: 1.0, Out: 2.0}}}
 
-	c := p.compute(rule, 1000, 500, 200, 0)
-	assert.InDelta(t, 800*5.0/1e6, c.input, 1e-9)
-	assert.InDelta(t, 200*2.5/1e6, c.cacheRead, 1e-9)
-	assert.InDelta(t, 0.0, c.cacheWrite, 1e-9)
-	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
-	assert.InDelta(t, c.input+c.cacheRead+c.output, c.total, 1e-9)
+	td := buildTrace(map[string]any{
+		"gen_ai.request.model":           "mystery-model",
+		"gen_ai.usage.input_tokens":      int64(1000),
+		"gen_ai.usage.cache_read_tokens": int64(200),
+	})
+
+	_, err := newProcessor(&cfg).ProcessTraces(context.Background(), td)
+	require.NoError(t, err)
+
+	a := attrs(td)
+	assert.InDelta(t, 800*1.0/1e6, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
-func TestComputeAdditive(t *testing.T) {
-	p := newProcessor(testCfg)
-	rule := &p.rules[1] // claude-*: additive
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		name   string
+		raw    tokens
+		billed tokens
+	}{
+		{
+			name:   "cache within input",
+			raw:    tokens{input: 1000, output: 500, cacheRead: 200, cacheWrite: 100},
+			billed: tokens{input: 700, output: 500, cacheRead: 200, cacheWrite: 100},
+		},
+		{
+			name:   "cache equals input",
+			raw:    tokens{input: 2048, output: 503, cacheRead: 1800, cacheWrite: 248},
+			billed: tokens{input: 0, output: 503, cacheRead: 1800, cacheWrite: 248},
+		},
+		{
+			name:   "cache exceeds input",
+			raw:    tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
+			billed: tokens{input: 200, output: 150, cacheRead: 800, cacheWrite: 100},
+		},
+		{
+			name:   "no cache",
+			raw:    tokens{input: 1000, output: 500},
+			billed: tokens{input: 1000, output: 500},
+		},
+	}
 
-	c := p.compute(rule, 1000, 500, 200, 100)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.billed, normalize(tc.raw))
+		})
+	}
+}
+
+func TestPrice(t *testing.T) {
+	p := newProcessor(testCfg)
+	rule := &p.rules[1] // claude-*: 3.0 in, 15.0 out, 0.30 read, 3.75 write
+
+	c := p.price(rule, tokens{input: 1000, output: 500, cacheRead: 200, cacheWrite: 100})
 	assert.InDelta(t, 1000*3.0/1e6, c.input, 1e-9)
+	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
 	assert.InDelta(t, 200*0.30/1e6, c.cacheRead, 1e-9)
 	assert.InDelta(t, 100*3.75/1e6, c.cacheWrite, 1e-9)
-	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
-	assert.InDelta(t, c.input+c.cacheRead+c.cacheWrite+c.output, c.total, 1e-9)
-}
-
-func TestCacheEmpty(t *testing.T) {
-	p := newProcessor(testCfg)
-	rule := &compiledRule{name: "gpt-4o", pattern: "gpt-4o*", cacheMode: "", in: 5.0, out: 15.0}
-
-	c := p.compute(rule, 1000, 500, 200, 100)
-	assert.InDelta(t, 1000*5.0/1e6, c.input, 1e-9)
-	assert.InDelta(t, 0.0, c.cacheRead, 1e-9)
-	assert.InDelta(t, 0.0, c.cacheWrite, 1e-9)
-	assert.InDelta(t, 500*15.0/1e6, c.output, 1e-9)
-	assert.InDelta(t, c.input+c.output, c.total, 1e-9)
+	assert.InDelta(t, c.input+c.output+c.cacheRead+c.cacheWrite, c.total, 1e-9)
 }
 
 func TestMatchRuleCachesResult(t *testing.T) {
