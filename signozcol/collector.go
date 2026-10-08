@@ -35,7 +35,7 @@ type WrappedCollector struct {
 	logger       *zap.Logger
 	PollInterval time.Duration
 	bgCtx        context.Context
-	bgCancel    context.CancelFunc
+	bgCancel     context.CancelFunc
 }
 
 type WrappedCollectorSettings struct {
@@ -98,11 +98,11 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	// When we disable graceful shutdown, it doesn't respond to SIGTERM and
 	// SIGINT signals, it runs until the shutdown is invoked or some async error
 	// occurs.
-	
+
 	// Create a background context for the collector that won't be cancelled
 	// when the opamp client's context is cancelled
 	wCol.bgCtx, wCol.bgCancel = context.WithCancel(context.Background())
-	
+
 	wCol.wg.Add(1)
 	go func() {
 		defer wCol.wg.Done()
