@@ -26,7 +26,7 @@ type collector struct {
 }
 
 func (cfg *collector) RegisterFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringArrayVar(&cfg.Config, "config", nil, "File path(s) for the collector configuration. Multiple files are merged; OpAMP remote config overrides on conflict.")
+	cmd.PersistentFlags().StringArrayVar(&cfg.Config, "config", nil, "File path(s) for the collector configuration. Multiple files are merged; these files override OpAMP remote config on conflict.")
 	cmd.PersistentFlags().StringVar(&cfg.ManagerConfig, "manager-config", "", "File path for the agent manager configuration")
 	cmd.PersistentFlags().StringVar(&cfg.CopyPath, "copy-path", "/etc/otel/signozcol-config.yaml", "File path for the copied collector configuration")
 	cmd.PersistentFlags().Var(signozcolFeatureGate.NewFlag(otelcolFeatureGate.GlobalRegistry()), "feature-gates",
