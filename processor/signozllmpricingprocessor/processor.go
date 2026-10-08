@@ -178,12 +178,12 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 func (r *compiledRule) normalize(raw tokens) (billed tokens, totalInput float64) {
 	switch r.cacheMode {
 	case CacheModeAdditive:
-		// Anthropic style: cache_read and cache_creation are reported outside input_tokens,
+		// Additive mode (e.g. Anthropic): cache_read and cache_creation sit outside input_tokens,
 		// so every bucket is billed and the total is their sum.
 		return raw, raw.input + raw.cacheRead + raw.cacheWrite
 	case CacheModeSubtract:
-		// OpenAI/Gemini style: cache_read is a slice of input_tokens, so it is moved out before
-		// the input rate applies. No per-request cache write count exists, so none is billed.
+		// Subtract mode (e.g. OpenAI, Gemini): cache_read is a slice of input_tokens, so it is
+		// moved out before the input rate applies, and cache writes are not priced per token.
 		return tokens{input: max(raw.input-raw.cacheRead, 0), output: raw.output, cacheRead: raw.cacheRead}, raw.input
 	default:
 		// Unknown mode: input is taken as the whole input and the cache buckets are skipped.
