@@ -302,7 +302,7 @@ func TestCreateWithCluster(t *testing.T) {
 					},
 				},
 			},
-			want: "CREATE TABLE IF NOT EXISTS db.table ON CLUSTER cluster (id Int16) ENGINE = ReplacingMergeTree ORDER BY id",
+			want: "CREATE TABLE IF NOT EXISTS db.table ON CLUSTER `cluster` (id Int16) ENGINE = ReplacingMergeTree ORDER BY id",
 		},
 	}
 
@@ -335,7 +335,7 @@ func TestTruncateTable(t *testing.T) {
 				Table:    "table",
 				cluster:  "cluster",
 			},
-			want: "TRUNCATE TABLE IF EXISTS db.table ON CLUSTER cluster",
+			want: "TRUNCATE TABLE IF EXISTS db.table ON CLUSTER `cluster`",
 		},
 	}
 
@@ -369,7 +369,7 @@ func TestAlterTableModifyTTL(t *testing.T) {
 				TTL:      "ts + INTERVAL 1 DAY",
 				cluster:  "cluster",
 			},
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY TTL ts + INTERVAL 1 DAY SETTINGS materialize_ttl_after_modify = 0",
 		},
 	}
 
@@ -401,7 +401,7 @@ func TestAlterTableDropTTL(t *testing.T) {
 				Table:    "table",
 				cluster:  "cluster",
 			},
-			want: "ALTER TABLE db.table ON CLUSTER cluster REMOVE TTL",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` REMOVE TTL",
 		},
 	}
 
