@@ -24,14 +24,11 @@ Add this step to your image push workflow (after `docker push`):
   if: success()
   run: |
     WEBHOOK_TOKEN="${{ secrets.FLUX_WEBHOOK_TOKEN }}"
-    PAYLOAD='{"type":"generic"}'
-    SIGNATURE="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hex | cut -d' ' -f2)"
 
     curl -X POST \
       "${{ secrets.FLUX_WEBHOOK_URL }}/hook/$WEBHOOK_TOKEN" \
       -H "Content-Type: application/json" \
-      -H "X-Signature: $SIGNATURE" \
-      -d "$PAYLOAD" \
+      -d '{"type":"generic"}' \
       -v
 ```
 
@@ -91,14 +88,11 @@ jobs:
         if: success()
         run: |
           WEBHOOK_TOKEN="${{ secrets.FLUX_WEBHOOK_TOKEN }}"
-          PAYLOAD='{"type":"generic"}'
-          SIGNATURE="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hex | cut -d' ' -f2)"
 
           curl -X POST \
             "${{ secrets.FLUX_WEBHOOK_URL }}/hook/$WEBHOOK_TOKEN" \
             -H "Content-Type: application/json" \
-            -H "X-Signature: $SIGNATURE" \
-            -d "$PAYLOAD" \
+            -d '{"type":"generic"}' \
             --fail-with-body \
             -v
 ```
@@ -127,10 +121,10 @@ After pushing a new image:
 **Webhook returns 404:**
 - Verify `FLUX_WEBHOOK_TOKEN` is correct
 - Check that the Receiver is ready: `kubectl --context <context> -n <flux-namespace> get receiver <receiver-name>`
+- The webhook path is derived from the token, Receiver name, and namespace. Re-read `status.webhookPath` if the Receiver was recreated.
 
-**Signature validation fails:**
-- Ensure payload and HMAC calculation match exactly
-- Verify `X-Signature` header format: `sha256=<hex-digest>`
+**Receiver rejects requests:**
+- The Receiver must be `type: generic`. The `generic-hmac` type requires an `X-Signature` header, which this workflow does not send.
 
 **ImageRepository doesn't scan:**
 - Check Receiver logs: `kubectl --context <context> -n <flux-namespace> logs -l app.kubernetes.io/name=notification-controller`
