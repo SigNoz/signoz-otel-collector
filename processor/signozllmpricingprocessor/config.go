@@ -45,11 +45,8 @@ type PricingRule struct {
 }
 
 type PricingRuleCache struct {
-	// Mode controls how cache tokens are factored into the cost:
-	//   "subtract" — cache read tokens are already counted inside input_tokens;
-	//                billed_input = input_tokens - cache_read.
-	//   "additive" — cache read/write are separate from input_tokens;
-	//                all four buckets are billed independently.
+	// Mode is accepted so existing configs keep loading, but no longer drives
+	// the cost split; see normalize in processor.go.
 	Mode CacheMode `mapstructure:"mode"`
 
 	// Per-million-token prices (USD) for cached reads/writes.

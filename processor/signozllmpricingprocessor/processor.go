@@ -34,7 +34,6 @@ type costs struct {
 type compiledRule struct {
 	name       string
 	pattern    string
-	cacheMode  CacheMode // "", CacheModeSubtract, or CacheModeAdditive
 	in         float64
 	out        float64
 	cacheRead  float64
@@ -74,7 +73,6 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 			rules = append(rules, compiledRule{
 				name:       r.Name,
 				pattern:    p,
-				cacheMode:  r.Cache.Mode,
 				in:         r.In,
 				out:        r.Out,
 				cacheRead:  r.Cache.Read,
@@ -150,7 +148,7 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 		return
 	}
 
-	billed, totalInput := rule.normalize(raw)
+	billed, totalInput := normalize(raw)
 	p.writeAttrs(attrs, p.price(rule, billed))
 	putIntIfKey(attrs, p.outTotalInputAttr, int64(totalInput))
 }
@@ -174,21 +172,17 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 }
 
 // normalize splits raw counters into the buckets the rule prices and counts every
-// input token once.
-func (r *compiledRule) normalize(raw tokens) (billed tokens, totalInput float64) {
-	switch r.cacheMode {
-	case CacheModeAdditive:
-		// Additive mode (e.g. Anthropic): cache_read and cache_creation sit outside input_tokens,
-		// so every bucket is billed and the total is their sum.
-		return raw, raw.input + raw.cacheRead + raw.cacheWrite
-	case CacheModeSubtract:
-		// Subtract mode (e.g. OpenAI, Gemini): cache_read is a slice of input_tokens, so it is
-		// moved out before the input rate applies, and cache writes are not priced per token.
-		return tokens{input: max(raw.input-raw.cacheRead, 0), output: raw.output, cacheRead: raw.cacheRead}, raw.input
-	default:
-		// Unknown mode: input is taken as the whole input and the cache buckets are skipped.
-		return tokens{input: raw.input, output: raw.output}, raw.input
+// input token once. Cache tokens are a subset of input (OTel GenAI, OpenInference)
+// unless they exceed it, which only raw provider usage with disjoint buckets can do.
+func normalize(raw tokens) (billed tokens, totalInput float64) {
+	cached := raw.cacheRead + raw.cacheWrite
+	if cached > raw.input {
+		return raw, raw.input + cached
 	}
+
+	billed = raw
+	billed.input = raw.input - cached
+	return billed, raw.input
 }
 
 // price bills each bucket at the rule's per-million rate.
