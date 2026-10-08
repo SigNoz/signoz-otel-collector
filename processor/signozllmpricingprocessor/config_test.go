@@ -68,6 +68,7 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, "signoz.gen_ai.usage.cache_read.input_tokens.cost", cfg.OutputAttrs.CacheRead)
 		assert.Equal(t, "signoz.gen_ai.usage.cache_write.input_tokens.cost", cfg.OutputAttrs.CacheWrite)
 		assert.Equal(t, "signoz.gen_ai.usage.tokens.cost", cfg.OutputAttrs.Total)
+		assert.Equal(t, "signoz.gen_ai.usage.total_input_tokens", cfg.OutputAttrs.TotalInputTokens)
 	})
 
 	t.Run("minimal", func(t *testing.T) {
@@ -78,6 +79,7 @@ func TestLoadConfig(t *testing.T) {
 		// Optional output attrs are empty — only total is required.
 		assert.Empty(t, cfg.OutputAttrs.In)
 		assert.Empty(t, cfg.OutputAttrs.CacheRead)
+		assert.Empty(t, cfg.OutputAttrs.TotalInputTokens)
 		assert.Equal(t, "signoz.gen_ai.usage.tokens.cost", cfg.OutputAttrs.Total)
 	})
 }
