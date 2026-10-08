@@ -45,6 +45,9 @@ func (p *Processor) ProcessBatch(ctx context.Context, entries []*entry.Entry) er
 
 // normalize log body
 func (p *Processor) transform(entry *entry.Entry) error {
+	if _, stashed := entry.Attributes[constants.OriginalBodyAttributeKey]; stashed {
+		return nil
+	}
 	var parsedValue map[string]any
 	var original any
 	haveOriginal := p.jsonBodyDualIngestion
