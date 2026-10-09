@@ -18,55 +18,36 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/fieldvaluestest"
 )
 
-// metricRowCounter counts the metric rows of each day, and the rows that the
-// layout with link rows would write for the same data: each resource row once
-// with no metric, one link row per metric and resource, and one key row per
-// metric and resource key.
+// metricRowCounter counts the metric rows of each day by kind.
 type metricRowCounter struct {
-	next rowWriter
-
-	seriesRows, resourceRows int
-	resourceOnce             map[string]struct{}
-	links, keys              map[string]struct{}
-	days                     []metricDay
+	next  rowWriter
+	today metricDay
+	days  []metricDay
 }
 
 type metricDay struct {
-	seriesRows, resourceRows, linkLayoutRows int
+	series, resource, link, key int
 }
 
 func (c *metricRowCounter) write(ctx context.Context, rows []row) error {
 	for _, r := range rows {
-		if r.attrsHash != resourceAttrsHash {
-			c.seriesRows++
-			continue
+		switch {
+		case r.attrsHash != resourceAttrsHash:
+			c.today.series++
+		case r.p.name == linkField:
+			c.today.link++
+		case r.metricName != "":
+			c.today.key++
+		default:
+			c.today.resource++
 		}
-		c.resourceRows++
-		c.resourceOnce[fmt.Sprintf("%d|%s|%s", r.resourceHash, r.p.name, r.p.str)] = struct{}{}
-		c.links[fmt.Sprintf("%s|%d", r.metricName, r.resourceHash)] = struct{}{}
-		c.keys[r.metricName+"|"+r.p.name] = struct{}{}
 	}
 	return c.next.write(ctx, rows)
 }
 
-func newMetricRowCounter(next rowWriter) *metricRowCounter {
-	c := &metricRowCounter{next: next}
-	c.reset()
-	return c
-}
-
-func (c *metricRowCounter) reset() {
-	c.seriesRows, c.resourceRows = 0, 0
-	c.resourceOnce, c.links, c.keys = map[string]struct{}{}, map[string]struct{}{}, map[string]struct{}{}
-}
-
 func (c *metricRowCounter) endDay() {
-	c.days = append(c.days, metricDay{
-		seriesRows:     c.seriesRows,
-		resourceRows:   c.resourceRows,
-		linkLayoutRows: len(c.resourceOnce) + len(c.links) + len(c.keys),
-	})
-	c.reset()
+	c.days = append(c.days, c.today)
+	c.today = metricDay{}
 }
 
 func envInt(t *testing.T, name string, def int) int {
@@ -79,18 +60,27 @@ func envInt(t *testing.T, name string, def int) int {
 	return def
 }
 
+// churnLayouts are the pair table, partitioned by week, and two copies of it
+// that get every insert: one with no partitions and one partitioned by day.
+var churnLayouts = []struct{ name, table, partition string }{
+	{"weekly partitions (the table)", "field_values_sets", "toMonday(last_seen)"},
+	{"no partitions", "field_values_sets_flat", ""},
+	{"daily partitions", "field_values_sets_by_day", "toDate(last_seen)"},
+}
+
 // TestPerfChurn writes days of Kubernetes-shaped logs and metrics, where the
-// pods of a share of the deployments are new each day, and measures two costs
+// pods of a share of the deployments are new each day, and measures the costs
 // that a test with the same pods every day cannot show:
 //
-//   - The pair table has no time in its sort key. A read for a short window
-//     reads the rows of every set of the last 30 days. The test compares the
-//     rows read with the rows of the sets active in the window, on the table
-//     and on a copy partitioned by the week of each row.
-//
-//   - Metric resource rows are written per metric. The test counts them, and
-//     the rows of the layout with link rows, and times the read of the values
-//     of a resource key for a metric in both layouts.
+//   - The pair table has no time in its sort key, so a read reads the rows of
+//     every set in its partitions. The test compares the rows read for a day
+//     and a week with the rows of the sets active in them, for the weekly
+//     partitions of the table, no partitions, and daily partitions, and the
+//     merge work and TTL of each.
+//   - Metric resource rows are written once per resource, with link and key
+//     rows per metric. The test counts each kind of row, and times the reads
+//     that use them: the values of a resource key for a metric, the metrics of
+//     a resource, and the keys of a group of metrics.
 //
 // Run it with:
 //
@@ -107,30 +97,22 @@ func TestPerfChurn(t *testing.T) {
 	conn := integrationConn(t)
 	ctx := context.Background()
 	began := time.Now()
+	run := fmt.Sprint(began.Unix())
 
-	// Each copy gets every insert of the pair table, so each row goes to the
-	// partition of its own time. The key view keeps one row per metric, key
-	// and day.
-	queries := []string{
-		`CREATE TABLE signoz_metadata.field_keys_daily
-(signal LowCardinality(String), source LowCardinality(String), metric_name LowCardinality(String), field_context LowCardinality(String),
- field_name LowCardinality(String), field_data_type LowCardinality(String), day Date)
-ENGINE = ReplacingMergeTree PARTITION BY toMonday(day) ORDER BY (signal, source, metric_name, field_name, field_context, field_data_type, day)`,
-		`CREATE MATERIALIZED VIEW signoz_metadata.field_keys_daily_mv TO signoz_metadata.field_keys_daily AS
-SELECT signal, source, scope_metric AS metric_name, toString(field_context) AS field_context, field_name, toString(field_data_type) AS field_data_type,
-    toDate(first_seen, 'UTC') AS day
-FROM signoz_metadata.field_values_sets
-ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
-GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, day`,
-		"SYSTEM STOP TTL MERGES signoz_metadata.field_values_sets",
-	}
+	queries := []string{"SYSTEM STOP TTL MERGES signoz_metadata.field_values_sets"}
 	for _, l := range churnLayouts[1:] {
+		// CREATE TABLE AS keeps the partition key of the table unless the
+		// copy sets its own.
+		engine := "ENGINE = AggregatingMergeTree PARTITION BY tuple()"
+		settings := "SETTINGS allow_nullable_key = 1"
+		if l.partition != "" {
+			engine = "ENGINE = AggregatingMergeTree PARTITION BY " + l.partition
+			settings += ", ttl_only_drop_parts = 1"
+		}
 		queries = append(queries,
-			`CREATE TABLE signoz_metadata.`+l.table+` AS signoz_metadata.field_values_sets
-ENGINE = AggregatingMergeTree PARTITION BY `+l.partition+`
+			`CREATE TABLE signoz_metadata.`+l.table+` AS signoz_metadata.field_values_sets `+engine+`
 ORDER BY (signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, resource_hash, attrs_hash)
-TTL last_seen + toIntervalDay(30)
-SETTINGS allow_nullable_key = 1, ttl_only_drop_parts = 1`,
+TTL last_seen + toIntervalDay(30) `+settings,
 			`CREATE MATERIALIZED VIEW signoz_metadata.`+l.table+`_mv TO signoz_metadata.`+l.table+`
 AS SELECT * FROM signoz_metadata.field_values_sets`,
 			"SYSTEM STOP TTL MERGES signoz_metadata."+l.table,
@@ -144,14 +126,13 @@ AS SELECT * FROM signoz_metadata.field_values_sets`,
 	cfg.Cache.MaxBytes = 256 << 20
 	logs := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
 	metrics := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
-	counter := newMetricRowCounter(metrics.rows)
+	counter := &metricRowCounter{next: metrics.rows}
 	metrics.rows = counter
 
 	cluster := fieldvaluestest.NewCluster(7, pods)
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	first := today.AddDate(0, 0, -days)
 	newPods := 0
-	start := time.Now()
 	for d := 0; d < days; d++ {
 		if d > 0 {
 			newPods += cluster.Roll(float64(percent) / 100)
@@ -169,10 +150,10 @@ AS SELECT * FROM signoz_metadata.field_values_sets`,
 	}
 	flush(t, conn)
 	t.Logf("%d days, %d pods, %d%% of deployments roll each day: %d new pods in all, written in %s",
-		days, cluster.Pods(), percent, newPods, time.Since(start).Round(time.Second))
+		days, cluster.Pods(), percent, newPods, time.Since(began).Round(time.Second))
 
 	var report strings.Builder
-	fmt.Fprintf(&report, "\nItem 11: merges during the load, and parts before OPTIMIZE\n")
+	fmt.Fprintf(&report, "\nMerges during the load, and parts before OPTIMIZE\n")
 	fmt.Fprintf(&report, "| layout | merges | bytes read by merges | bytes written by merges | active parts |\n|---|---|---|---|---|\n")
 	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH LOGS"))
 	for _, l := range churnLayouts {
@@ -184,27 +165,31 @@ FROM system.part_log WHERE event_type = 'MergeParts' AND database = 'signoz_meta
 		fmt.Fprintf(&report, "| %s | %d | %s | %s | %d |\n", l.name, merges, formatBytes(read), formatBytes(written), parts)
 	}
 
-	for _, table := range []string{"field_values_sets", "field_values_sets_weekly", "field_values_sets_by_day", "field_values_daily", "field_keys_daily"} {
+	for _, table := range []string{"field_values_sets", "field_values_sets_flat", "field_values_sets_by_day", "field_values_daily", "field_keys_daily"} {
 		require.NoError(t, conn.Exec(ctx, "OPTIMIZE TABLE signoz_metadata."+table+" FINAL"))
 	}
 
 	end := today.AddDate(0, 0, -1).Add(12 * time.Hour)
-	fmt.Fprintf(&report, "\nItem 11: rows read by related-value reads that end at %s\n", end.Format(time.DateTime))
-	fmt.Fprintf(&report, "| read | window | rows of active sets | rows read, no partitions | rows read, weekly | rows read, daily |\n|---|---|---|---|---|---|\n")
+	fmt.Fprintf(&report, "\nRows read by related-value reads that end at %s\n", end.Format(time.DateTime))
+	fmt.Fprintf(&report, "| read | window | rows of active sets |")
+	for _, l := range churnLayouts {
+		fmt.Fprintf(&report, " rows read, %s |", l.name)
+	}
+	fmt.Fprintf(&report, "\n|---|---|---|---|---|---|\n")
 	for _, q := range churnReads {
 		for _, window := range []time.Duration{24 * time.Hour, 7 * 24 * time.Hour} {
 			from := end.Add(-window)
 			active := countRows(t, conn, q.active, from.Unix(), end.Unix())
 			var read []string
 			for _, l := range churnLayouts {
-				n := readRows(t, conn, fmt.Sprintf("churn-%s-%s-%s-%d", q.name, window, l.table, began.Unix()), strings.ReplaceAll(q.sql, "{table}", l.table), from.Unix(), end.Unix())
+				n := readRows(t, conn, fmt.Sprintf("churn-%s-%s-%s-%s", q.name, window, l.table, run), strings.ReplaceAll(q.sql, "{table}", l.table), from.Unix(), end.Unix())
 				read = append(read, fmt.Sprint(n))
 			}
 			fmt.Fprintf(&report, "| %s | %s | %d | %s |\n", q.name, window, active, strings.Join(read, " | "))
 		}
 	}
 
-	fmt.Fprintf(&report, "\nItem 11: size and TTL, before any TTL merge\n")
+	fmt.Fprintf(&report, "\nSize and TTL, before any TTL merge\n")
 	fmt.Fprintf(&report, "| layout | rows | on disk | partitions | rows past TTL | bytes a TTL merge rewrites | bytes TTL drops whole |\n|---|---|---|---|---|---|---|\n")
 	for _, l := range churnLayouts {
 		var rows, bytes, rewrite, drop, partitions uint64
@@ -223,24 +208,18 @@ FROM system.parts WHERE active AND database = 'signoz_metadata' AND table = ?`, 
 	}
 
 	n := min(7, len(counter.days))
-	fmt.Fprintf(&report, "\nItem 10: metric rows per day, mean of the last %d days\n", n)
-	var last metricDay
+	var mean metricDay
 	for _, d := range counter.days[len(counter.days)-n:] {
-		last.seriesRows += d.seriesRows / n
-		last.resourceRows += d.resourceRows / n
-		last.linkLayoutRows += d.linkLayoutRows / n
+		mean.series += d.series / n
+		mean.resource += d.resource / n
+		mean.link += d.link / n
+		mean.key += d.key / n
 	}
-	fmt.Fprintf(&report, "| series rows | resource rows per metric (now) | resource and link rows (link layout) |\n|---|---|---|\n| %d | %d | %d |\n",
-		last.seriesRows, last.resourceRows, last.linkLayoutRows)
+	fmt.Fprintf(&report, "\nMetric rows per day, mean of the last %d days\n| series | resource | link | key |\n|---|---|---|---|\n| %d | %d | %d | %d |\n",
+		n, mean.series, mean.resource, mean.link, mean.key)
 
-	reportLinkLayoutReads(t, conn, &report, end, fmt.Sprint(began.Unix()))
+	reportMetricReads(t, conn, &report, end, run)
 	t.Log(report.String())
-}
-
-var churnLayouts = []struct{ name, table, partition string }{
-	{"no partitions (now)", "field_values_sets", ""},
-	{"weekly partitions", "field_values_sets_weekly", "toMonday(last_seen)"},
-	{"daily partitions", "field_values_sets_by_day", "toDate(last_seen)"},
 }
 
 type churnRead struct {
@@ -248,8 +227,8 @@ type churnRead struct {
 }
 
 // The reads filter on a resource field and an attribute, as a quick filter
-// does. active counts the rows of the same ranges whose sets were seen in the
-// window.
+// does. active counts, on the copy with no partitions, the rows of the same
+// ranges whose sets were seen in the window.
 var churnReads = []churnRead{
 	{
 		name: "logs http.route where k8s.namespace.name = ns-01 and severity_text = ERROR",
@@ -263,7 +242,7 @@ WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'htt
       WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'severity_text' AND field_context = 'log'
         AND string_value = 'ERROR' AND last_seen >= fromUnixTimestamp($1))
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51`,
-		active: `SELECT count() FROM signoz_metadata.field_values_sets FINAL
+		active: `SELECT count() FROM signoz_metadata.field_values_sets_flat FINAL
 WHERE signal = 'logs' AND source = '' AND metric_name = ''
   AND ((field_name = 'http.route' AND field_context = 'attribute')
     OR (field_name = 'k8s.namespace.name' AND field_context = 'resource' AND string_value = 'ns-01')
@@ -276,16 +255,49 @@ WHERE signal = 'logs' AND source = '' AND metric_name = ''
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'http.server.request.duration.count' AND field_name = 'http.route' AND field_context = 'attribute'
   AND first_seen < fromUnixTimestamp($2) AND last_seen >= fromUnixTimestamp($1)
   AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.{table}
-      WHERE signal = 'metrics' AND source = '' AND metric_name = 'http.server.request.duration.count' AND field_name = 'k8s.namespace.name'
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'k8s.namespace.name'
         AND field_context = 'resource' AND string_value = 'ns-01' AND last_seen >= fromUnixTimestamp($1))
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51`,
-		active: `SELECT count() FROM signoz_metadata.field_values_sets FINAL
-WHERE signal = 'metrics' AND source = '' AND metric_name = 'http.server.request.duration.count'
-  AND ((field_name = 'http.route' AND field_context = 'attribute')
-    OR (field_name = 'k8s.namespace.name' AND field_context = 'resource' AND string_value = 'ns-01'))
+		active: `SELECT count() FROM signoz_metadata.field_values_sets_flat FINAL
+WHERE signal = 'metrics' AND source = ''
+  AND ((metric_name = 'http.server.request.duration.count' AND field_name = 'http.route' AND field_context = 'attribute')
+    OR (metric_name = '' AND field_name = 'k8s.namespace.name' AND field_context = 'resource' AND string_value = 'ns-01'))
   AND last_seen >= fromUnixTimestamp(?) AND first_seen < fromUnixTimestamp(?)`,
 	},
 }
+
+// reportMetricReads times the reads that use link and key rows.
+func reportMetricReads(t *testing.T, conn driver.Conn, report *strings.Builder, end time.Time, run string) {
+	from := end.Add(-7 * 24 * time.Hour).Unix()
+	fmt.Fprintf(report, "\nMetric reads over the last 7 days (median of 5)\n| read | results | rows read | time |\n|---|---|---|---|\n")
+	for _, q := range []struct {
+		name, sql string
+		args      []any
+	}{
+		{"values of k8s.namespace.name for k8s.pod.metric_00", metricResourceValues, []any{"k8s.namespace.name", from, from}},
+		{"values of k8s.pod.name for k8s.pod.metric_00", metricResourceValues, []any{"k8s.pod.name", from, from}},
+		{"metrics where service.name = deploy-001", `SELECT string_value FROM signoz_metadata.field_values_sets
+WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '__name__' AND last_seen >= fromUnixTimestamp($1)
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.field_values_sets
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'service.name' AND string_value = 'deploy-001')
+GROUP BY string_value LIMIT 1001`, []any{from}},
+		{"keys of k8s.* (issue 13042)", `SELECT field_name, field_context FROM signoz_metadata.field_keys_daily
+WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND day >= toDate(fromUnixTimestamp($1), 'UTC')
+GROUP BY field_name, field_context LIMIT 1001`, []any{from}},
+	} {
+		comment := fmt.Sprintf("churn-metric-%s-%s", q.name, run)
+		results := countRows(t, conn, "SELECT count() FROM ("+q.sql+")", q.args...)
+		read := readRows(t, conn, comment, q.sql, q.args...)
+		fmt.Fprintf(report, "| %s | %d | %d | %s |\n", q.name, results, read, readTime(t, conn, comment))
+	}
+}
+
+const metricResourceValues = `SELECT string_value FROM signoz_metadata.field_values_sets
+WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = $1 AND field_context = 'resource' AND last_seen >= fromUnixTimestamp($2)
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.field_values_sets
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '__name__' AND string_value = 'k8s.pod.metric_00'
+        AND last_seen >= fromUnixTimestamp($3))
+GROUP BY string_value ORDER BY uniq(resource_hash) DESC LIMIT 51`
 
 func countRows(t *testing.T, conn driver.Conn, query string, args ...any) uint64 {
 	t.Helper()
@@ -324,95 +336,6 @@ func readTime(t *testing.T, conn driver.Conn, comment string) time.Duration {
 	require.NoError(t, rows.Close())
 	sort.Slice(ms, func(a, b int) bool { return ms[a] < ms[b] })
 	return time.Duration(ms[len(ms)/2]) * time.Millisecond
-}
-
-// reportLinkLayoutReads builds the link layout from the metric resource rows
-// of the table, and compares the read of the values of a resource key for one
-// metric: from the daily view now, and as a join on the link layout.
-func reportLinkLayoutReads(t *testing.T, conn driver.Conn, report *strings.Builder, end time.Time, run string) {
-	ctx := context.Background()
-	for _, q := range []string{
-		`CREATE TABLE signoz_metadata.link_resources (field_name LowCardinality(String), string_value String, resource_hash UInt64 CODEC(ZSTD(1)),
-    first_seen SimpleAggregateFunction(min, DateTime) CODEC(ZSTD(1)), last_seen SimpleAggregateFunction(max, DateTime) CODEC(ZSTD(1)))
-ENGINE = AggregatingMergeTree ORDER BY (field_name, string_value, resource_hash)`,
-		`INSERT INTO signoz_metadata.link_resources SELECT field_name, string_value, resource_hash, min(first_seen), max(last_seen)
-FROM signoz_metadata.field_values_sets WHERE signal = 'metrics' AND attrs_hash = 0 GROUP BY field_name, string_value, resource_hash`,
-		`CREATE TABLE signoz_metadata.link_metrics (metric_name LowCardinality(String), resource_hash UInt64 CODEC(ZSTD(1)),
-    first_seen SimpleAggregateFunction(min, DateTime) CODEC(ZSTD(1)), last_seen SimpleAggregateFunction(max, DateTime) CODEC(ZSTD(1)))
-ENGINE = AggregatingMergeTree ORDER BY (metric_name, resource_hash)`,
-		`INSERT INTO signoz_metadata.link_metrics SELECT metric_name, resource_hash, min(first_seen), max(last_seen)
-FROM signoz_metadata.field_values_sets WHERE signal = 'metrics' AND attrs_hash = 0 GROUP BY metric_name, resource_hash`,
-		"OPTIMIZE TABLE signoz_metadata.link_resources FINAL",
-		"OPTIMIZE TABLE signoz_metadata.link_metrics FINAL",
-	} {
-		require.NoError(t, conn.Exec(ctx, q), q)
-	}
-
-	fmt.Fprintf(report, "\nItem 10: stored metric resource rows after merges\n| layout | rows | on disk |\n|---|---|---|\n")
-	var rows, bytes uint64
-	require.NoError(t, conn.QueryRow(ctx, `SELECT count(), toUInt64((SELECT sum(bytes_on_disk) FROM system.parts WHERE active AND database = 'signoz_metadata' AND table = 'field_values_sets') * count() /
-    (SELECT count() FROM signoz_metadata.field_values_sets))
-FROM signoz_metadata.field_values_sets WHERE signal = 'metrics' AND attrs_hash = 0`).Scan(&rows, &bytes))
-	fmt.Fprintf(report, "| resource rows per metric (now, bytes pro rata) | %d | %s |\n", rows, formatBytes(bytes))
-	require.NoError(t, conn.QueryRow(ctx, `SELECT sum(rows), sum(bytes_on_disk) FROM system.parts
-WHERE active AND database = 'signoz_metadata' AND table IN ('link_resources', 'link_metrics')`).Scan(&rows, &bytes))
-	fmt.Fprintf(report, "| resource rows once and link rows | %d | %s |\n", rows, formatBytes(bytes))
-
-	fmt.Fprintf(report, "\nItem 10: values of a resource key for k8s.pod.metric_00, last 7 days (median of 5)\n")
-	fmt.Fprintf(report, "| key | layout | values | rows read | time |\n|---|---|---|---|---|\n")
-	from := end.Add(-7 * 24 * time.Hour)
-	for _, key := range []string{"k8s.namespace.name", "k8s.pod.name"} {
-		now := `SELECT string_value FROM signoz_metadata.field_values_daily
-WHERE signal = 'metrics' AND source = '' AND metric_name = 'k8s.pod.metric_00' AND field_name = ? AND field_context = 'resource'
-  AND day >= toDate(fromUnixTimestamp(?), 'UTC')
-GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`
-		link := `SELECT string_value FROM signoz_metadata.link_resources
-WHERE field_name = ? AND last_seen >= fromUnixTimestamp(?)
-  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.link_metrics
-      WHERE metric_name = 'k8s.pod.metric_00' AND last_seen >= fromUnixTimestamp(?))
-GROUP BY string_value ORDER BY count() DESC LIMIT 51`
-		values := countRows(t, conn, `SELECT uniqExact(string_value) FROM signoz_metadata.link_resources WHERE field_name = ? AND last_seen >= fromUnixTimestamp(?)`, key, from.Unix())
-		for _, l := range []struct{ name, sql string }{{"daily view (now)", now}, {"join (link layout)", link}} {
-			comment := fmt.Sprintf("churn-values-%s-%s-%s", key, l.name, run)
-			args := []any{key, from.Unix()}
-			if strings.Contains(l.sql, "link_metrics") {
-				args = append(args, from.Unix())
-			}
-			read := readRows(t, conn, comment, l.sql, args...)
-			fmt.Fprintf(report, "| %s | %s | %d | %d | %s |\n", key, l.name, values, read, readTime(t, conn, comment))
-		}
-	}
-
-	fmt.Fprintf(report, "\nIssue 13042: keys of the metrics k8s.*, all days (median of 5)\n| read | from | keys | rows read | time |\n|---|---|---|---|---|\n")
-	for _, q := range []struct{ name, cond string }{
-		{"all keys", "field_name ILIKE '%'"},
-		{"two exact keys", "field_name IN ('k8s.pod.name', 'direction')"},
-	} {
-		for _, table := range []string{"field_values_daily", "field_keys_daily"} {
-			sql := `SELECT field_name, field_context FROM signoz_metadata.` + table + `
-WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND ` + q.cond + `
-GROUP BY field_name, field_context LIMIT 1001`
-			comment := fmt.Sprintf("churn-keys-%s-%s-%s", q.name, table, run)
-			keys := countRows(t, conn, "SELECT count() FROM ("+sql+")")
-			read := readRows(t, conn, comment, sql)
-			fmt.Fprintf(report, "| %s | %s | %d | %d | %s |\n", q.name, table, keys, read, readTime(t, conn, comment))
-		}
-	}
-
-	fmt.Fprintf(report, "\nR2: metric names where service.name = deploy-001 (median of 5)\n| layout | metrics | rows read | time |\n|---|---|---|---|\n")
-	for _, q := range []struct{ name, sql string }{
-		{"pair table (now)", `SELECT DISTINCT metric_name FROM signoz_metadata.field_values_sets
-WHERE signal = 'metrics' AND source = '' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'deploy-001'`},
-		{"daily view (now)", `SELECT DISTINCT metric_name FROM signoz_metadata.field_values_daily
-WHERE signal = 'metrics' AND source = '' AND metric_name != '' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'deploy-001'`},
-		{"link layout", `SELECT DISTINCT metric_name FROM signoz_metadata.link_metrics
-WHERE resource_hash IN (SELECT resource_hash FROM signoz_metadata.link_resources WHERE field_name = 'service.name' AND string_value = 'deploy-001')`},
-	} {
-		comment := fmt.Sprintf("churn-r2-%s-%s", q.name, run)
-		metrics := countRows(t, conn, "SELECT count() FROM ("+q.sql+")")
-		read := readRows(t, conn, comment, q.sql)
-		fmt.Fprintf(report, "| %s | %d | %d | %s |\n", q.name, metrics, read, readTime(t, conn, comment))
-	}
 }
 
 func formatBytes(b uint64) string {
