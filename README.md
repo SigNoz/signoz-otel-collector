@@ -41,7 +41,7 @@ Like any Collector, where your telemetry goes is decided by the exporters in you
 
 [SigNoz](https://signoz.io) is an open-source observability platform built on OpenTelemetry, with logs, metrics, traces, alerts, and dashboards in one place. This collector is the ingestion layer that feeds it.
 
-- Get started with [SigNoz Cloud](https://signoz.io/teams/) for free, or [self-host SigNoz](https://signoz.io/docs/install/self-host/).
+- Get started with [SigNoz Cloud](https://signoz.io/teams/) for totally free, or [self-host SigNoz](https://signoz.io/docs/install/self-host/).
 - Star and explore the main project at [SigNoz/signoz](https://github.com/SigNoz/signoz).
 
 ## Why SigNoz OpenTelemetry Collector?
