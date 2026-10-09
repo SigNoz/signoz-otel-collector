@@ -218,11 +218,33 @@ func TestIntegrationMetricKeysAndSource(t *testing.T) {
 	flush(t, conn)
 
 	keys := queryStrings(t, conn, `SELECT concat(field_context, ':', field_name)
-FROM signoz_metadata.distributed_field_values_daily
+FROM signoz_metadata.distributed_field_keys_daily
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = 'http_requests'
 GROUP BY field_context, field_name`)
 	assert.Equal(t, []string{"attribute:code", "attribute:method", "resource:k8s.pod.name", "resource:service.name", "scope:library.lang"}, keys,
-		"the keys of a metric are the field names in its range")
+		"the key view has the keys of a metric, its resource keys from the key rows")
+	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_keys_daily
+WHERE signal = 'metrics' AND field_name = '__name__' GROUP BY field_name`), "link rows are not keys")
+
+	podValues := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
+WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'k8s.pod.name' AND field_context = 'resource'
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS l
+      WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = '__name__' AND string_value = 'http_requests')
+GROUP BY string_value
+SETTINGS distributed_product_mode = 'local'`)
+	assert.Equal(t, []string{"p1"}, podValues, "the values of a resource key for a metric, through its link rows")
+
+	metrics := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS l
+WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = '__name__'
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
+      WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'service.name' AND string_value = 'checkout')
+GROUP BY string_value
+SETTINGS distributed_product_mode = 'local'`)
+	assert.Equal(t, []string{"http_requests", "latency.count"}, metrics, "the metrics of a resource")
+
+	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
+WHERE signal = 'metrics' AND metric_name != '' AND field_context = 'resource' GROUP BY field_name`),
+		"key rows stay out of the daily view")
 
 	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'metrics' AND source = '' GROUP BY field_name`), "the meter source is its own space")

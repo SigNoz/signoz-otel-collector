@@ -7,11 +7,14 @@ and metric keys:
 - `signoz_metadata.field_values_sets`: one row for each pair of each set (a
   set is the `field = value` pairs of a record, apart from its resource; for
   metrics, a set is one series), and one row for each resource field and
-  value of each resource.
+  value of each resource. The table is partitioned by the week of each row,
+  so reads of a short window skip older weeks and TTL drops whole weeks.
 - `signoz_metadata.field_values_daily`: a view with one row per value per
   day, and the number of sets that hold the value.
+- `signoz_metadata.field_keys_daily`: a view with one row per metric, field
+  and day, for key reads that must not scan values.
 
-Migration 1002 of the schema migrator creates both tables.
+Migration 1002 of the schema migrator creates the tables.
 
 ## Configuration
 
@@ -79,12 +82,27 @@ exporters:
     derives (`http_method`, `response_status_code`, and the rest), and event
     fields outside the hash.
   - Metrics: one set per series, with the id of `time_series_v4`. Histograms
-    and summaries write only their `.count` series. Each metric label gets at
+    and summaries write only their `.count` series. The rows of a resource
+    are written once, with no metric name. A link row (no metric name, the
+    field `__name__`, the metric name as value) ties each metric to each of
+    its resources, and a key row (the metric name, a resource field, no
+    value) gives each metric its resource keys. Each metric label gets at
     least one row per day, so the keys of a metric are complete. Metrics have
     no value limits.
 - **Classification.** Every `refresh_interval`, the writer reads
   `field_values_daily` for the fields over the limit today, and once per day
   for the closed days of the lookback and the fields of yesterday.
+
+## Reads
+
+- Values of a resource field for a metric: the resource rows (no metric
+  name) whose `resource_hash` is in the link rows of the metric.
+- Metrics of a resource: the values of the link rows whose `resource_hash` is
+  in the resource rows that match.
+- Keys of a metric or of a group of metrics: `field_keys_daily`.
+- Reads of distributed tables with `IN` subqueries need
+  `distributed_product_mode = 'local'`, and an alias on each distributed table
+  with the old analyzer.
 
 ## Memory
 

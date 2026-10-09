@@ -93,9 +93,12 @@ func TestMetricsSetIsTheSeries(t *testing.T) {
 	}, setList(rows), "point and scope labels; no __temporality__, __scope.*__ or le rows")
 
 	assert.Equal(t, []string{
-		"http_requests:k8s.pod.name=p1", "http_requests:service.name=checkout",
-		"latency.count:k8s.pod.name=p1", "latency.count:service.name=checkout",
-	}, resourceRows(rows), "resource labels once per metric and resource")
+		"__name__=http_requests*", "__name__=latency.count*",
+		"http_requests:k8s.pod.name=*", "http_requests:service.name=*",
+		"k8s.pod.name=p1",
+		"latency.count:k8s.pod.name=*", "latency.count:service.name=*",
+		"service.name=checkout",
+	}, resourceRows(rows), "the resource once with no metric, a link row per metric, and a key row per metric and resource field")
 
 	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
 	assert.Empty(t, w.take())
@@ -103,8 +106,8 @@ func TestMetricsSetIsTheSeries(t *testing.T) {
 
 func TestMetricsKeysSurviveAFullCache(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
-	// Room for metric a: its series, its label code, its resource, and the
-	// label service.name. Nothing more fits in the exact part.
+	// Room for metric a: its series, its label code, the resource and the link
+	// of a. Nothing more fits in the exact part.
 	e.state.cache.limit = [2]int{4, 10}
 
 	md := pmetric.NewMetrics()
@@ -131,4 +134,42 @@ func TestMetricsKeysSurviveAFullCache(t *testing.T) {
 	assert.ElementsMatch(t, []string{"attribute:code", "resource:service.name"}, keys["a"])
 	assert.ElementsMatch(t, []string{"attribute:code", "attribute:region", "resource:service.name"}, keys["b"],
 		"the series of b do not fit, but each label of b still gets one row, so its keys are complete")
+}
+
+// A resource of many metrics writes its rows once. Each metric adds one link
+// row, and key rows only for fields it has no row for in the window.
+func TestMetricsResourceRowsOnceAcrossMetrics(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	ctx := context.Background()
+	pod := func(name string, metrics ...string) pmetric.Metrics {
+		md := pmetric.NewMetrics()
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("k8s.pod.name", name)
+		rm.Resource().Attributes().PutStr("k8s.namespace.name", "shop")
+		sm := rm.ScopeMetrics().AppendEmpty()
+		for _, m := range metrics {
+			g := sm.Metrics().AppendEmpty()
+			g.SetName(m)
+			g.SetEmptyGauge().DataPoints().AppendEmpty().SetTimestamp(at("10:00"))
+		}
+		return md
+	}
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p1", "cpu", "memory", "disk")))
+	assert.Equal(t, []string{
+		"__name__=cpu*", "__name__=disk*", "__name__=memory*",
+		"cpu:k8s.namespace.name=*", "cpu:k8s.pod.name=*",
+		"disk:k8s.namespace.name=*", "disk:k8s.pod.name=*",
+		"k8s.namespace.name=shop", "k8s.pod.name=p1",
+		"memory:k8s.namespace.name=*", "memory:k8s.pod.name=*",
+	}, resourceRows(w.take()))
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
+	assert.Equal(t, []string{
+		"__name__=cpu*", "__name__=memory*",
+		"k8s.namespace.name=shop", "k8s.pod.name=p2",
+	}, resourceRows(w.take()), "a new pod writes its rows and links; the keys of its metrics are known")
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
+	assert.Empty(t, w.take())
 }
