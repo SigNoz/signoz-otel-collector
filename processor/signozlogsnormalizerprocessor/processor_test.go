@@ -251,6 +251,25 @@ func TestProcessLogsBody(t *testing.T) {
 			expected: map[string]any{"id": int64(9007199254740993), "ratio": 1.5, "ok": true, "none": nil},
 		},
 		{
+			name: "IntegerBeyondInt64_KeptAsExactString",
+			body: `{"uint64_max":18446744073709551615,"beyond_uint64":184467440737095516150,"neg_beyond_int64":-18446744073709551616,"exp":1e3,"float_overflow":1e999}`,
+			expected: map[string]any{
+				"uint64_max":       "18446744073709551615",
+				"beyond_uint64":    "184467440737095516150",
+				"neg_beyond_int64": "-18446744073709551616",
+				"exp":              float64(1000),
+				"float_overflow":   "1e999",
+			},
+		},
+		{
+			name: "IntegerBeyondInt64_NestedInMapsAndArrays_KeptAsExactString",
+			body: `{"metrics":{"cgroup_memory_limit_bytes":18446744073709551615},"arr":[1,18446744073709551615,2.5,{"v":18446744073709551615}]}`,
+			expected: map[string]any{
+				"metrics": map[string]any{"cgroup_memory_limit_bytes": "18446744073709551615"},
+				"arr":     []any{int64(1), "18446744073709551615", 2.5, map[string]any{"v": "18446744073709551615"}},
+			},
+		},
+		{
 			name:     "MapBody_MsgPromoted",
 			body:     map[string]any{"msg": "x", "level": "info"},
 			expected: map[string]any{"message": "x", "level": "info"},

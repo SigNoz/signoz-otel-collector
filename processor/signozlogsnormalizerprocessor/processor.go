@@ -37,7 +37,7 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 		return nil, err
 	}
 	return &normalizeProcessor{
-		json:          sonic.Config{UseInt64: true}.Froze(),
+		json:          sonic.Config{UseNumber: true}.Froze(),
 		bodyEnabled:   cfg.Body.Enabled,
 		messageFields: cfg.Body.MessageFields,
 		telemetry:     t,
@@ -119,7 +119,7 @@ func (p *normalizeProcessor) parseText(body pcommon.Value) bool {
 	if strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}") {
 		var parsed map[string]any
 		if err := p.json.UnmarshalFromString(unquoted, &parsed); err == nil {
-			if err := body.SetEmptyMap().FromRaw(parsed); err == nil {
+			if err := body.SetEmptyMap().FromRaw(utils.MaterializeJSONNumbers(parsed)); err == nil {
 				return true
 			}
 		}
