@@ -74,15 +74,20 @@ type batch struct {
 	out     []pair
 	sampled []pair
 	refs    []resourceRef
-	// lastResourceKey is the resource key of the last metric point. The
-	// points of a metric come together, so one lookup serves all of them.
-	lastResourceKey uint64
+	// lastResource and lastLink are the resource and the link of the last
+	// metric point, and keysChecked holds the metrics and resource field
+	// names whose key rows this batch checked.
+	lastResource int
+	lastLink     uint64
+	keysChecked  map[uint64]struct{}
 }
 
 func newBatchBuffers() *batch {
 	return &batch{
 		pending:      make(map[uint64]cacheClass),
 		pendingAhead: make(map[uint64]struct{}),
+		keysChecked:  make(map[uint64]struct{}),
+		lastResource: -1,
 		owners:       [2]map[uint64][]int{make(map[uint64][]int), make(map[uint64][]int)},
 		stats:        batchStats{leftOut: make(map[leftOutReason]int)},
 	}
@@ -107,7 +112,8 @@ func (b *batch) reset() {
 	clear(b.sampled[:cap(b.sampled)])
 	clear(b.refs)
 	b.refs = b.refs[:0]
-	b.lastResourceKey = 0
+	b.lastResource, b.lastLink = -1, 0
+	clear(b.keysChecked)
 	b.state, b.class = nil, nil
 }
 

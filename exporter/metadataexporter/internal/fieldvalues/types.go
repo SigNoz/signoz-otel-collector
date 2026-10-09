@@ -156,8 +156,8 @@ func pairKey(resourceHash, attrsHash uint64, p *pair) uint64 {
 	return mix64(mix64(resourceHash*0x9e3779b97f4a7c15^attrsHash^'P') ^ p.h)
 }
 
-// nameHash hashes a metric name for resourceKey and labelKey. Logs and traces
-// use the hash of the empty name.
+// nameHash hashes a metric name for resourceKey, linkKey and labelKey. Logs,
+// traces and the resource rows of metrics use the hash of the empty name.
 func nameHash(metricName string) uint64 {
 	return xxhash.Sum64String(metricName)
 }
@@ -168,8 +168,12 @@ func resourceKey(metricNameHash, resourceHash uint64) uint64 {
 	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ resourceHash ^ 'R')
 }
 
-func labelKey(metricNameHash uint64, p *pair) uint64 {
-	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(fieldIDOf(p.ctx, p.name)) ^ 'K')
+func linkKey(metricNameHash, resourceHash uint64) uint64 {
+	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ resourceHash ^ 'L')
+}
+
+func labelKey(metricNameHash uint64, f fieldID) uint64 {
+	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(f) ^ 'K')
 }
 
 // mix64 is the splitmix64 finalizer. It spreads the bits of its input, so

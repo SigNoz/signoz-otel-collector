@@ -189,7 +189,7 @@ WHERE type = 'QueryFinish' AND query_kind = 'Insert' AND event_time >= ?`, since
 
 func truncate(t *testing.T, conn driver.Conn) {
 	t.Helper()
-	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily"} {
+	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily", "field_keys_daily"} {
 		require.NoError(t, conn.Exec(context.Background(), "TRUNCATE TABLE signoz_metadata."+table))
 	}
 }
@@ -242,14 +242,26 @@ WHERE signal = 'traces' AND source = '' AND metric_name = '' AND field_name = 'n
       WHERE signal = 'traces' AND source = '' AND field_name = 'has_error' AND field_context = 'span' AND string_value = 'true')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`},
-	{"metric keys: app_metric_01", `SELECT field_context, field_name FROM signoz_metadata.distributed_field_values_daily
+	{"metric keys: app_metric_01", `SELECT field_context, field_name FROM signoz_metadata.distributed_field_keys_daily
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND day = toDate(now(), 'UTC')
 GROUP BY field_context, field_name`},
 	{"metric label values: app_metric_01 route where service.name = svc-01", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND field_name = 'route' AND field_context = 'attribute'
   AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
-      WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'svc-01')
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'service.name' AND field_context = 'resource' AND string_value = 'svc-01')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
+SETTINGS distributed_product_mode = 'local'`},
+	{"metric resource values: app_metric_01 k8s.pod.name", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
+WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'k8s.pod.name' AND field_context = 'resource'
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS l
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '__name__' AND string_value = 'app_metric_01')
+GROUP BY string_value ORDER BY uniq(resource_hash) DESC LIMIT 51
+SETTINGS distributed_product_mode = 'local'`},
+	{"metric names where service.name = svc-01", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS l
+WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '__name__'
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
+      WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'service.name' AND string_value = 'svc-01')
+GROUP BY string_value LIMIT 1001
 SETTINGS distributed_product_mode = 'local'`},
 }
 
@@ -287,7 +299,7 @@ WHERE type = 'QueryFinish' AND log_comment = ? AND is_initial_query`, comment).S
 func sizeReport(t *testing.T, conn driver.Conn) string {
 	t.Helper()
 	ctx := context.Background()
-	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily"} {
+	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily", "field_keys_daily"} {
 		require.NoError(t, conn.Exec(ctx, "OPTIMIZE TABLE signoz_metadata."+table+" FINAL"))
 	}
 	rows, err := conn.Query(ctx, `SELECT table, sum(rows), formatReadableSize(sum(bytes_on_disk))

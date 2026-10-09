@@ -160,10 +160,12 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Columns:  fieldValuesSetsColumns,
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
-						OrderBy: "(signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, resource_hash, attrs_hash)",
-						TTL:     "last_seen + toIntervalDay(30)",
+						PartitionBy: "toMonday(last_seen)",
+						OrderBy:     "(signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, resource_hash, attrs_hash)",
+						TTL:         "last_seen + toIntervalDay(30)",
 						Settings: TableSettings{
 							{Name: "allow_nullable_key", Value: "1"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
 					},
 				},
@@ -220,10 +222,65 @@ var MetadataMigrations = []SchemaMigrationRecord{
     uniqCombinedState(12)(cityHash64(resource_hash, attrs_hash)) AS holders
 FROM signoz_metadata.field_values_sets
 ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
+WHERE NOT (field_values_sets.metric_name != '' AND field_values_sets.field_context = 'resource')
 GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, string_value, number_value, day`,
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_daily",
+				Columns:  fieldKeysDailyColumns,
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toMonday(day)",
+						OrderBy:     "(signal, source, metric_name, field_name, field_context, field_data_type, day)",
+						TTL:         "day + toIntervalDay(35)",
+						Settings: TableSettings{
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_daily",
+				Columns:  fieldKeysDailyColumns,
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "field_keys_daily",
+					ShardingKey: "rand()",
+				},
+			},
+			CreateMaterializedViewOperation{
+				Database:  "signoz_metadata",
+				ViewName:  "field_keys_daily_mv",
+				DestTable: "field_keys_daily",
+				Query: `SELECT
+    signal,
+    source,
+    scope_metric AS metric_name,
+    field_context,
+    field_name,
+    field_data_type,
+    toDate(first_seen, 'UTC') AS day
+FROM signoz_metadata.field_values_sets
+ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
+WHERE field_values_sets.field_name != '__name__'
+GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, day`,
 			},
 		},
 		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_daily_mv",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_daily",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_daily",
+			},
 			DropTableOperation{
 				Database: "signoz_metadata",
 				Table:    "field_values_daily_mv",
@@ -273,6 +330,16 @@ var fieldValuesSetsColumns = []Column{
 	{Name: "first_seen", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
 	{Name: "last_seen", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
 	{Name: "inserted_at", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+}
+
+var fieldKeysDailyColumns = []Column{
+	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_context", Type: fieldContextColumnType},
+	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_data_type", Type: fieldDataTypeColumnType},
+	{Name: "day", Type: ColumnTypeDate},
 }
 
 var fieldValuesDailyColumns = []Column{
