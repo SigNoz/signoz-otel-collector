@@ -143,4 +143,11 @@ FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:9000 FIELDVALUES_CLICKHOUSE_CLUSTER=<
 FIELDVALUES_PERF=1 FIELDVALUES_PERF_BATCHES=150 FIELDVALUES_PERF_REPEATS=3 \
 FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:9000 FIELDVALUES_CLICKHOUSE_CLUSTER=<cluster> \
   go test -p 1 -run 'TestPerf' -v -timeout 90m ./exporter/metadataexporter/...
+
+# churn test: days of Kubernetes-shaped logs and metrics where deployments roll
+# each day; rows read for short windows, TTL, and the layouts of metric
+# resource rows
+FIELDVALUES_PERF=1 FIELDVALUES_CHURN_DAYS=35 FIELDVALUES_CHURN_PODS=300 FIELDVALUES_CHURN_PERCENT=20 \
+FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:9000 FIELDVALUES_CLICKHOUSE_CLUSTER=<cluster> \
+  go test -run TestPerfChurn -v -timeout 60m ./exporter/metadataexporter/internal/fieldvalues/
 ```
