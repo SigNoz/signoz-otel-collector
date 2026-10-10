@@ -42,7 +42,7 @@ exporters:
         max_outside_pairs_per_resource: 16384
       cache:
         provider: in_memory     # or redis
-        max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit, metrics 3 shares, logs and traces 1
+        max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit
         reserve_share: 0.1
         window: 24h             # each set, pair and resource is written once per window; divides 24h
         pre_write_window: 1h    # 0 disables the spread of new windows and of the daily sample
@@ -118,13 +118,19 @@ exporters:
 
 ## Memory
 
-Each writer (one signal of one exporter) has `max_bytes`, or its share of the
-automatic size: a metrics writer gets 3 shares, a logs or traces writer 1.
-Three quarters go to the key cache: `pkg/timebucketedset` with two buckets,
-one per window. Each bucket has at least 32 MiB. The writer counts the keys of
-each window and stops at 80% of a bucket, before the bucket drops its oldest
-keys: new sets then go to the overflow set (from the reserve), and then pairs
-are left out until the next window.
+Each writer (one signal of one exporter) has `max_bytes`, or an equal share of
+the automatic size. Three quarters go to the key cache: `pkg/timebucketedset`
+with two buckets, one per window. Each bucket has at least 32 MiB. The writer
+counts the keys of each window and stops at 80% of a bucket, before the
+bucket drops its oldest keys: new sets then go to the overflow set (from the
+reserve), and then pairs are left out until the next window.
+
+The writers without `max_bytes` share their keys. Each one keeps half of its
+key cache as its own floor; the other halves make one pool, which the writers
+draw on as they need keys in the window. The signals of a tenant need very
+different numbers of keys, so no fixed split fits all tenants. With 1 GiB of
+automatic memory and three writers, each writer has a floor of 4.5M keys, and
+any one of them can reach 17.9M.
 
 The key cache uses more memory than its share. A bucket keeps its keys outside
 the Go heap (12 bytes per key), and an index of 25 to 40 bytes per key on the

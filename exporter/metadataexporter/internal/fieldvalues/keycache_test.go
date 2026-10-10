@@ -131,3 +131,21 @@ func TestSketchCountsExactlyThenEstimates(t *testing.T) {
 	}
 	assert.InEpsilon(t, 5000, s.estimate(), 0.4)
 }
+
+func TestKeyPoolSharesKeysAboveTheFloors(t *testing.T) {
+	var p keyPool
+	p.size.Store(20)
+	a, b := newTestKeyCache(t), newTestKeyCache(t)
+	a.share(&p, 10, 0)
+	b.share(&p, 10, 0)
+	assert.Equal(t, 30, a.limit[classExact], "the floor and the whole pool")
+
+	a.used[classExact] = 25
+	a.exactUsed.Store(25)
+	assert.True(t, b.room(classExact, 10), "b keeps its floor")
+	assert.True(t, b.room(classExact, 15), "and gets what a left in the pool")
+	assert.False(t, b.room(classExact, 16))
+
+	a.shutdown()
+	assert.True(t, b.room(classExact, 30), "a cache that shuts down gives its keys back")
+}
