@@ -15,6 +15,7 @@ const (
 	IndexTypeTokenBF     IndexType = "tokenbf_v1"
 	IndexTypeNGramBF     IndexType = "ngrambf_v1"
 	IndexTypeMinMax      IndexType = "minmax"
+	IndexTypeBloomFilter IndexType = "bloom_filter"
 	stringBasedIndexExpr           = "lower(assumeNotNull(dynamicElement(%s, '%s')))"
 	numberBasedIndexExpr           = "assumeNotNull(dynamicElement(%s, '%s'))"
 )
