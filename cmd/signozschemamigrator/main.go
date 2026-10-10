@@ -132,6 +132,11 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			}
 			logger.Info("Opened connection")
 
+			var allowDimensionsOutsideSortingKeySettingCount uint64
+			if err := conn.QueryRow(cmd.Context(), `SELECT count() FROM system.merge_tree_settings WHERE name = 'allow_dimensions_outside_sorting_key'`).Scan(&allowDimensionsOutsideSortingKeySettingCount); err != nil {
+				return fmt.Errorf("failed to detect ClickHouse AggregatingMergeTree compatibility settings: %w", err)
+			}
+
 			manager, err := schema_migrator.NewMigrationManager(
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
@@ -139,6 +144,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 				schema_migrator.WithDevelopment(development),
+				schema_migrator.WithAllowDimensionsOutsideSortingKey(allowDimensionsOutsideSortingKeySettingCount > 0),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
@@ -230,6 +236,11 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			}
 			logger.Info("Opened connection")
 
+			var allowDimensionsOutsideSortingKeySettingCount uint64
+			if err := conn.QueryRow(cmd.Context(), `SELECT count() FROM system.merge_tree_settings WHERE name = 'allow_dimensions_outside_sorting_key'`).Scan(&allowDimensionsOutsideSortingKeySettingCount); err != nil {
+				return fmt.Errorf("failed to detect ClickHouse AggregatingMergeTree compatibility settings: %w", err)
+			}
+
 			manager, err := schema_migrator.NewMigrationManager(
 				schema_migrator.WithClusterName(clusterName),
 				schema_migrator.WithReplicationEnabled(replicationEnabled),
@@ -237,6 +248,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 				schema_migrator.WithDevelopment(development),
+				schema_migrator.WithAllowDimensionsOutsideSortingKey(allowDimensionsOutsideSortingKeySettingCount > 0),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
