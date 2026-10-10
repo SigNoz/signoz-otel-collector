@@ -82,6 +82,13 @@ type Config struct {
 
 	// AlwaysInclude names fields that always stay in the hash, with no limits.
 	AlwaysInclude []string `mapstructure:"always_include"`
+
+	// AsyncInsertBusyTimeout turns on async inserts: the server joins the
+	// inserts that arrive in this time into one part per table and shard. The
+	// writer does not wait for the flush, so a failed flush is not seen, and
+	// its keys stay cached with no rows until the window ends. Clusters with
+	// more shards need a longer time. 0 sends sync inserts.
+	AsyncInsertBusyTimeout time.Duration `mapstructure:"async_insert_busy_timeout"`
 }
 
 func DefaultConfig() Config {
@@ -104,6 +111,7 @@ func DefaultConfig() Config {
 			RefreshInterval: 15 * time.Minute,
 			LookbackDays:    7,
 		},
+		AsyncInsertBusyTimeout: time.Second,
 	}
 }
 
@@ -129,6 +137,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Cache.PreWriteWindow < 0 || c.Cache.PreWriteWindow >= c.Cache.Window || (c.Cache.PreWriteWindow > 0 && c.Cache.PreWriteWindow < time.Second) {
 		errs = append(errs, errors.New("field_values.cache: pre_write_window must be 0, or at least 1s and shorter than window"))
+	}
+	if c.AsyncInsertBusyTimeout < 0 {
+		errs = append(errs, errors.New("field_values: async_insert_busy_timeout must be at least 0"))
 	}
 	if c.Classification.RefreshInterval <= 0 {
 		errs = append(errs, errors.New("field_values.classification: refresh_interval must be positive"))

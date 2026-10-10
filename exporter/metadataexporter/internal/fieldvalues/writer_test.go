@@ -15,44 +15,45 @@ import (
 )
 
 func TestMemoryBytes(t *testing.T) {
-	assert.Equal(t, uint64(1<<20), memoryBytes(CacheConfig{MaxBytes: 1 << 20}), "a configured size is used as is")
+	assert.Equal(t, uint64(1<<20), memoryBytes(CacheConfig{MaxBytes: 1 << 20}, 0), "a configured size is used as is")
 
 	previous := debug.SetMemoryLimit(-1)
 	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
 	autoMemory.Lock()
-	writers := autoMemory.writers
-	autoMemory.writers = 4
+	weights := autoMemory.weights
+	autoMemory.weights = 5
 	autoMemory.Unlock()
 	t.Cleanup(func() {
 		autoMemory.Lock()
-		autoMemory.writers = writers
+		autoMemory.weights = weights
 		autoMemory.Unlock()
 	})
-	debug.SetMemoryLimit(3 << 30)
-	assert.Equal(t, uint64((3<<30)/10/4), memoryBytes(CacheConfig{}), "four writers share 10% of the memory limit")
+	debug.SetMemoryLimit(5 << 30)
+	assert.Equal(t, uint64((5<<30)/10*3/5), memoryBytes(CacheConfig{}, 3), "logs, traces and metrics: metrics get 3 of 5 shares of 10% of the memory limit")
+	assert.Equal(t, uint64((5<<30)/10/5), memoryBytes(CacheConfig{}, 1), "logs get 1 share")
 	debug.SetMemoryLimit(256 << 20)
-	assert.Equal(t, uint64(minMemoryBytes/4), memoryBytes(CacheConfig{}), "at least 64 MiB for all writers")
+	assert.Equal(t, uint64(minMemoryBytes/5), memoryBytes(CacheConfig{}, 1), "at least 64 MiB for all writers")
 }
 
 func TestAutoMemoryCountsWritersWithoutASize(t *testing.T) {
 	autoMemory.Lock()
-	before := autoMemory.writers
+	before := autoMemory.weights
 	autoMemory.Unlock()
 	cfg := testConfig()
 	cfg.Cache.MaxBytes = 0
 	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), "logs", "")
 	require.NoError(t, err)
-	a := newWriter(cfg, Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
-	b := newWriter(cfg, Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
+	logs := newWriter(cfg, Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
+	metrics := newWriter(cfg, Settings{Signal: pipeline.SignalMetrics, Logger: zap.NewNop()}, &fakeWriter{}, tel)
 	sized := newWriter(testConfig(), Settings{Signal: pipeline.SignalLogs, Logger: zap.NewNop()}, &fakeWriter{}, tel)
 	autoMemory.Lock()
-	assert.Equal(t, before+2, autoMemory.writers, "a writer with max_bytes takes no share")
+	assert.Equal(t, before+1+3, autoMemory.weights, "a writer with max_bytes takes no share")
 	autoMemory.Unlock()
-	for _, w := range []*Writer{a, b, sized, a} {
+	for _, w := range []*Writer{logs, metrics, sized, logs} {
 		require.NoError(t, w.Shutdown())
 	}
 	autoMemory.Lock()
-	assert.Equal(t, before, autoMemory.writers, "shutdown gives the share back once")
+	assert.Equal(t, before, autoMemory.weights, "shutdown gives the share back once")
 	autoMemory.Unlock()
 }
 

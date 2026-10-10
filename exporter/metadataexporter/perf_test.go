@@ -166,6 +166,7 @@ func runPerf(t *testing.T, conn driver.Conn, dsn string, signal pipeline.Signal,
 	runtime.ReadMemStats(&after)
 	res.heapAfter = after.HeapAlloc
 	require.NoError(t, e.Shutdown(ctx))
+	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH ASYNC INSERT QUEUE"))
 
 	res.attributesRows = countRows(t, conn, "SELECT count() FROM signoz_metadata.attributes_metadata")
 	res.fieldValuesRows = countRows(t, conn, "SELECT count() FROM signoz_metadata.field_values_sets")

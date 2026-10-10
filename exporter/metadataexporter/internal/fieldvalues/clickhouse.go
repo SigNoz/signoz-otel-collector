@@ -2,8 +2,10 @@ package fieldvalues
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
@@ -17,10 +19,39 @@ type clickhouseWriter struct {
 	conn   driver.Conn
 	signal string
 	source string
+	// asyncTimeout is the busy timeout of async inserts, or 0 for sync
+	// inserts.
+	asyncTimeout time.Duration
+	settingsOnce sync.Once
+	settings     clickhouse.Settings
+}
+
+// insertSettings turns on async inserts that the writer does not wait for:
+// the server joins the inserts of asyncTimeout into one part per table. The
+// adaptive timeout of ClickHouse 24.3 and later would flush sooner under a
+// low load, so it is turned off where it exists.
+func (w *clickhouseWriter) insertSettings() clickhouse.Settings {
+	w.settingsOnce.Do(func() {
+		if w.asyncTimeout <= 0 {
+			return
+		}
+		w.settings = clickhouse.Settings{
+			"async_insert":                 1,
+			"wait_for_async_insert":        0,
+			"async_insert_busy_timeout_ms": w.asyncTimeout.Milliseconds(),
+		}
+		if v, err := w.conn.ServerVersion(); err == nil && (v.Version.Major > 24 || (v.Version.Major == 24 && v.Version.Minor >= 3)) {
+			w.settings["async_insert_use_adaptive_busy_timeout"] = 0
+		}
+	})
+	return w.settings
 }
 
 func (w *clickhouseWriter) write(ctx context.Context, rows []row) error {
-	stmt, err := w.conn.PrepareBatch(ctx, insertQuery, driver.WithReleaseConnection())
+	if settings := w.insertSettings(); settings != nil {
+		ctx = clickhouse.Context(ctx, clickhouse.WithSettings(settings))
+	}
+	stmt, err := w.conn.PrepareBatch(ctx, insertQuery)
 	if err != nil {
 		return err
 	}

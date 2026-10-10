@@ -29,6 +29,10 @@ const (
 	futureToleranceMillis = uint64(5 * 60 * 1000)
 )
 
+// serviceName always stays in the resource identity, with no limit: most
+// reads filter on it.
+const serviceName = "service.name"
+
 type sampleRef struct {
 	st *fieldState
 	vh uint64
@@ -54,6 +58,9 @@ type batch struct {
 	nowMillis     uint64
 	// preWriteMillis is the length of the pre-write window, or 0.
 	preWriteMillis uint64
+	// metrics keeps a metric label with no field place in the set, as the
+	// labels of a metric are its keys.
+	metrics bool
 
 	rows         []row
 	pending      map[uint64]cacheClass
@@ -235,6 +242,9 @@ func (b *batch) decide(p *pair, resource bool) mode {
 			return modeSkip
 		}
 	}
+	if resource && p.name == serviceName {
+		return modeInHash
+	}
 	if len(b.alwaysInclude) > 0 {
 		if _, ok := b.alwaysInclude[p.name]; ok {
 			return modeInHash
@@ -243,6 +253,9 @@ func (b *batch) decide(p *pair, resource bool) mode {
 	tr := b.state.tracker
 	st := tr.state(p.field)
 	if st == nil {
+		if b.metrics {
+			return modeInHash
+		}
 		b.leaveOut(reasonFieldPlaces, 1)
 		return modeSkip
 	}
@@ -251,6 +264,7 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		limit = int(b.limits.MaxResourceFieldValues)
 	}
 
+	passing := false
 	if !st.over && !b.class.isOver(p.field) {
 		if st.values.has(p.vh) {
 			return modeInHash
@@ -264,6 +278,7 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		// This value passes the limit: it is written first, and the field
 		// leaves the hash on this collector for the rest of the day.
 		st.over = true
+		passing = true
 	}
 	if resource {
 		if !st.spent {
@@ -271,12 +286,14 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		}
 		return modeOutside
 	}
-	return b.sample(st, p.vh)
+	return b.sample(st, p.vh, passing)
 }
 
 // sample takes a value of a field over the limit into the daily sample, up to
-// the limit plus one values per day.
-func (b *batch) sample(st *fieldState, vh uint64) mode {
+// the limit plus one values per day. The value that passes the limit is not
+// held back by the spread of the sample, so field_values_daily shows the
+// field over the limit at once.
+func (b *batch) sample(st *fieldState, vh uint64, passing bool) mode {
 	tr := b.state.tracker
 	switch {
 	case st.spent:
@@ -288,7 +305,7 @@ func (b *batch) sample(st *fieldState, vh uint64) mode {
 		tr.spend(st)
 		b.leaveOut(reasonSampleBudget, 1)
 		return modeSkip
-	case !b.sampleDue(st):
+	case !passing && !b.sampleDue(st):
 		return modeSkip
 	case !tr.add(st, vh):
 		b.leaveOut(reasonTrackerFull, 1)

@@ -91,14 +91,21 @@ type pair struct {
 }
 
 func newPair(ctx fieldContext, name string, typ dataType, str string, num float64) pair {
-	p := pair{ctx: ctx, typ: typ, name: name, str: str, num: num, field: fieldIDOf(ctx, name)}
-	if typ == typeNumber {
-		p.vh = mix64(math.Float64bits(num) ^ uint64(typ)<<56)
+	p := pair{ctx: ctx, typ: typ, name: name, str: str, num: num}
+	p.setHashes()
+	return p
+}
+
+// setHashes computes the hashes of a pair. Metric labels are made without
+// them, and get them only for a new series.
+func (p *pair) setHashes() {
+	p.field = fieldIDOf(p.ctx, p.name)
+	if p.typ == typeNumber {
+		p.vh = mix64(math.Float64bits(p.num) ^ uint64(p.typ)<<56)
 	} else {
-		p.vh = mix64(xxhash.Sum64String(str) ^ uint64(typ)<<56)
+		p.vh = mix64(xxhash.Sum64String(p.str) ^ uint64(p.typ)<<56)
 	}
 	p.h = mix64(uint64(p.field) ^ p.vh*0xff51afd7ed558ccd)
-	return p
 }
 
 func stringPair(ctx fieldContext, name, value string) pair {

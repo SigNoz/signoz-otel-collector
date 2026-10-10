@@ -82,7 +82,8 @@ var churnLayouts = []struct{ name, table, partition string }{
 //     that use them: the values of a resource key for a metric, the metrics of
 //     a resource, and the keys of a group of metrics.
 //
-// Run it with:
+// The test reads the local tables, so it needs a cluster with one shard. Run
+// it with:
 //
 //	FIELDVALUES_PERF=1 FIELDVALUES_CHURN_DAYS=35 FIELDVALUES_CHURN_PODS=300 FIELDVALUES_CHURN_PERCENT=20 \
 //	FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:19000 FIELDVALUES_CLICKHOUSE_CLUSTER=c1 \

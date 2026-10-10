@@ -69,9 +69,18 @@ func integrationConn(t *testing.T) driver.Conn {
 	return conn
 }
 
+// flush sends the async inserts on to the shards, and the shards' inserts on
+// to the tables. The inserts that the distributed table sends to a shard keep
+// the async settings, so the shard queues them again.
 func flush(t *testing.T, conn driver.Conn) {
 	t.Helper()
-	require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_field_values_sets"))
+	for _, q := range []string{
+		"SYSTEM FLUSH ASYNC INSERT QUEUE",
+		"SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_field_values_sets",
+		"SYSTEM FLUSH ASYNC INSERT QUEUE",
+	} {
+		require.NoError(t, conn.Exec(context.Background(), q))
+	}
 }
 
 func queryStrings(t *testing.T, conn driver.Conn, query string, args ...any) []string {
@@ -175,8 +184,9 @@ func TestIntegrationClassifierFindsFieldsOverTheLimit(t *testing.T) {
 	cfg := testConfig()
 	cfg.Limits.MaxRecordFieldValues = 3
 	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
-	now := time.Now().UTC().Truncate(time.Minute)
-	setNow(e, now)
+	// Noon of today, so the classifier reads today's rows, and the time does
+	// not fall in the spread of the daily sample.
+	setNow(e, time.Now().UTC().Truncate(24*time.Hour).Add(12*time.Hour))
 
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
@@ -312,4 +322,27 @@ FROM signoz_metadata.field_values_sets WHERE field_name = 'http.method' GROUP BY
 	assert.Equal(t, []string{"GET 2026-09-22", "GET 2026-09-23", "PUT 2026-09-23"},
 		queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(day)) FROM signoz_metadata.field_values_daily
 WHERE field_name = 'http.method' GROUP BY string_value, day ORDER BY string_value, day`))
+}
+
+func TestIntegrationInsertsAreAsync(t *testing.T) {
+	conn := integrationConn(t)
+	e := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
+	setNow(e, testDay)
+	since := time.Now().UnixMicro()
+	require.NoError(t, e.WriteLogs(context.Background(), exampleLogs()))
+	flush(t, conn)
+	require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH LOGS"))
+
+	// query_log lists only the settings that differ from the defaults of the
+	// server.
+	inserts := queryStrings(t, conn, `SELECT concat(
+    if(Settings['async_insert'] = '', (SELECT value FROM system.settings WHERE name = 'async_insert'), Settings['async_insert']), ' ',
+    Settings['wait_for_async_insert'], ' ', Settings['async_insert_busy_timeout_max_ms'])
+FROM system.query_log
+WHERE type = 'QueryFinish' AND query_kind = 'Insert' AND is_initial_query AND event_time_microseconds >= fromUnixTimestamp64Micro(?)
+  AND has(tables, 'signoz_metadata.distributed_field_values_sets')`, since)
+	assert.Equal(t, []string{"1 0 1000"}, inserts, "one insert for one push, async, with no wait and a busy timeout of 1 s")
+	var rows uint64
+	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
+	assert.Equal(t, uint64(14), rows)
 }

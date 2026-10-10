@@ -65,7 +65,9 @@ func integrationSchema(t *testing.T) (driver.Conn, string) {
 func countRows(t *testing.T, conn driver.Conn, query string) uint64 {
 	t.Helper()
 	ctx := context.Background()
+	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH ASYNC INSERT QUEUE"))
 	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_field_values_sets"))
+	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH ASYNC INSERT QUEUE"))
 	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_attributes_metadata"))
 	var n uint64
 	require.NoError(t, conn.QueryRow(ctx, query).Scan(&n))
