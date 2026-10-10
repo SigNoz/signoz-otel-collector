@@ -335,7 +335,7 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				},
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
-						OrderBy:     "(temporality, metric_name, attr_name, attr_type, attr_datatype, attr_string_value)",
+						OrderBy:     "(temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value)",
 						PartitionBy: "toDate(last_reported_unix_milli / 1000)",
 						TTL:         "toDateTime(last_reported_unix_milli / 1000) + toIntervalSecond(2592000)",
 						Settings: []TableSetting{
