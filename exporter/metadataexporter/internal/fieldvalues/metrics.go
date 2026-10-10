@@ -210,16 +210,7 @@ func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, re
 	rh := res.hash
 	sk := setKey(rh, s.id)
 	if known, ahead := b.lookup(sk); !known {
-		if b.room(classExact) {
-			for i := range labels {
-				b.emit(sk, s.name, &labels[i], rh, s.id, true, seen)
-			}
-			b.remember(sk, classExact)
-			b.rememberLabels(s.nameHash, labels)
-		} else {
-			b.leaveOut(reasonCacheFull, 1)
-			b.keepLabels(s, labels, rh, s.id, seen)
-		}
+		b.newSeries(s, labels, rh, sk, seen)
 	} else if ahead {
 		b.emitAhead(sk, s.name, labels, rh, s.id, true)
 	}
@@ -257,6 +248,66 @@ func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, re
 		b.emitAhead(lk, "", []pair{link}, rh, resourceAttrsHash, false)
 	}
 	b.resourceKeys(s, res, resourcePairs, seen)
+}
+
+// newSeries writes a series that the window does not know. Its labels follow
+// the value rules of logs and traces. When all labels stay in the set, the
+// set is the series, with the id of time_series_v4. When a label leaves the
+// set, the set is the labels that stay, and the series is not cached: a label
+// with a value per point would fill the cache with series.
+func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64) {
+	in, samples, out := b.in[:0], b.sampled[:0], b.out[:0]
+	for i := range labels {
+		p := &labels[i]
+		if p.field == 0 {
+			p.setHashes()
+		}
+		switch b.decide(p, false) {
+		case modeInHash:
+			in = append(in, *p)
+		case modeSample:
+			samples = append(samples, *p)
+		default:
+			if len(p.str) <= b.limits.MaxValueBytes {
+				out = append(out, *p)
+			}
+		}
+	}
+	b.in, b.sampled, b.out = in, samples, out
+	if len(in) == len(labels) {
+		b.seriesSet(s, in, rh, sk, s.id, seen)
+		return
+	}
+	ah := mix64(setHash(in) ^ s.nameHash*0x9e3779b97f4a7c15)
+	if ah <= overflowAttrsHash {
+		ah += 2
+	}
+	ck := setKey(rh, ah)
+	if known, ahead := b.lookup(ck); !known {
+		b.seriesSet(s, in, rh, ck, ah, seen)
+	} else if ahead {
+		b.emitAhead(ck, s.name, in, rh, ah, true)
+	}
+	for i := range samples {
+		b.emit(0, s.name, &samples[i], rh, ah, false, seen)
+	}
+	b.rememberLabels(s.nameHash, samples)
+	b.keepLabels(s, out, rh, ah, false, seen)
+}
+
+// seriesSet writes the rows of a new set of a metric: the series, or the
+// labels of a series that stay in the set.
+func (b *batch) seriesSet(s *preparedSeries, in []pair, rh, k, ah, seen uint64) {
+	if !b.room(classExact) {
+		b.leaveOut(reasonCacheFull, 1)
+		b.keepLabels(s, in, rh, ah, true, seen)
+		return
+	}
+	for i := range in {
+		b.emit(k, s.name, &in[i], rh, ah, true, seen)
+	}
+	b.remember(k, classExact)
+	b.rememberLabels(s.nameHash, in)
 }
 
 // resourceKeys writes a key row for each resource field of a metric that has
@@ -301,12 +352,12 @@ func (b *batch) rememberLabels(metricNameHash uint64, labels []pair) {
 	}
 }
 
-func (b *batch) keepLabels(s *preparedSeries, labels []pair, resourceHash, attrsHash uint64, seen uint64) {
+func (b *batch) keepLabels(s *preparedSeries, labels []pair, resourceHash, attrsHash uint64, inHash bool, seen uint64) {
 	for i := range labels {
 		k := labelKey(s.nameHash, fieldIDOf(labels[i].ctx, labels[i].name))
 		if known, ahead := b.lookup(k); known {
 			if ahead {
-				b.emitAhead(k, s.name, labels[i:i+1], resourceHash, attrsHash, true)
+				b.emitAhead(k, s.name, labels[i:i+1], resourceHash, attrsHash, inHash)
 			}
 			continue
 		}
@@ -314,7 +365,7 @@ func (b *batch) keepLabels(s *preparedSeries, labels []pair, resourceHash, attrs
 			b.leaveOut(reasonCacheFull, 1)
 			continue
 		}
-		b.emit(k, s.name, &labels[i], resourceHash, attrsHash, true, seen)
+		b.emit(k, s.name, &labels[i], resourceHash, attrsHash, inHash, seen)
 		b.remember(k, classReserve)
 	}
 }

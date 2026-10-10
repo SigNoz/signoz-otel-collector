@@ -2,6 +2,7 @@ package fieldvalues
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -195,7 +196,7 @@ func TestLogsValueRules(t *testing.T) {
 	e, w := newTestExporter(t, cfg, pipeline.SignalLogs)
 	ctx := context.Background()
 
-	ld := logsOf(map[string]any{"service.name": "api"},
+	ld := logsOf(map[string]any{"host.name": "api"},
 		logRecord{"10:00", map[string]any{"short": "ok", "long": "longer than eight", "empty": "", "count": 3, "ok": true, "extra": "x"}},
 	)
 	b := func() batchStats {
@@ -206,7 +207,7 @@ func TestLogsValueRules(t *testing.T) {
 		return b.stats
 	}()
 	assert.Equal(t, 1, b.leftOut[reasonValueLength])
-	assert.Equal(t, 1, b.leftOut[reasonFieldPlaces], "service.name and three of the four record fields take the 4 places; the last field has none")
+	assert.Equal(t, 1, b.leftOut[reasonFieldPlaces], "host.name and three of the four record fields take the 4 places; the last field has none")
 
 	e2, w2 := newTestExporter(t, testConfig(), pipeline.SignalLogs)
 	require.NoError(t, e2.WriteLogs(ctx, logsOf(map[string]any{"service.name": "api"},
@@ -272,4 +273,40 @@ func TestLogsPairsOutsideTheHashAreBoundedPerResource(t *testing.T) {
 	}
 	assert.Equal(t, []string{"http.method=GET", "url.path=/c*", "url.path=/d*", "url.path=/e*"}, coarse, "3 pairs outside the hash fit in the step")
 	assert.Equal(t, []string{"url.path=/f*", "url.path=/g*"}, overflow, "the rest go into the overflow set")
+}
+
+// service.name stays in the resource identity at any number of values: most
+// reads filter on it.
+func TestLogsServiceNameHasNoLimit(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxResourceFieldValues = 2
+	e, w := newTestExporter(t, cfg, pipeline.SignalLogs)
+	for _, name := range []string{"s1", "s2", "s3", "s4"} {
+		require.NoError(t, e.WriteLogs(context.Background(), logsOf(map[string]any{"service.name": name}, logRecord{"10:00", map[string]any{"a": "1"}})))
+	}
+	assert.Equal(t, []string{"service.name=s1", "service.name=s2", "service.name=s3", "service.name=s4"}, resourceRows(w.take()),
+		"each value is a resource of its own")
+}
+
+// The value that passes the limit is written at once, also in the first hour
+// of the day, so that field_values_daily shows the field over the limit.
+func TestLogsValueThatPassesTheLimitIsNotHeldBack(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 2
+	e, w := newTestExporter(t, cfg, pipeline.SignalLogs)
+	now := testDay.Truncate(24 * time.Hour).Add(10 * time.Minute)
+	setNow(e, now)
+	ld := logsOf(checkout)
+	for _, u := range []string{"u1", "u2", "u3", "u4"} {
+		addRecord(ld, now, map[string]any{"user.id": u})
+	}
+	require.NoError(t, e.WriteLogs(context.Background(), ld))
+	var values []string
+	for _, r := range w.take() {
+		if r.p.name == "user.id" {
+			values = append(values, describe(r.p))
+		}
+	}
+	sort.Strings(values)
+	assert.Equal(t, []string{"user.id=u1", "user.id=u2", "user.id=u3"}, values, "u3 passes the limit and is written; u4 waits for the spread")
 }

@@ -42,7 +42,7 @@ exporters:
         max_outside_pairs_per_resource: 16384
       cache:
         provider: in_memory     # or redis
-        max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit
+        max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit, metrics 3 shares, logs and traces 1
         reserve_share: 0.1
         window: 24h             # each set, pair and resource is written once per window; divides 24h
         pre_write_window: 1h    # 0 disables the spread of new windows and of the daily sample
@@ -50,6 +50,7 @@ exporters:
         refresh_interval: 15m
         lookback_days: 7
       always_include: []
+      async_insert_busy_timeout: 1s   # 0 sends sync inserts
 ```
 
 ## What the writer does
@@ -61,6 +62,8 @@ exporters:
 - **Resources.** The resource fields with up to `max_resource_field_values`
   values per day make the identity of a resource. A resource field over the
   limit leaves the identity, but all its values are still written.
+  `service.name` has no limit: it always stays in the identity, because most
+  reads filter on it.
 - **Limits per resource.** When a resource reaches `max_sets_per_resource` new
   sets in a step of a window, the field with the most values leaves its hash
   (a coarse set). The last step is one overflow set per resource. Pairs
@@ -82,13 +85,22 @@ exporters:
     derives (`http_method`, `response_status_code`, and the rest), and event
     fields outside the hash.
   - Metrics: one set per series, with the id of `time_series_v4`. Histograms
-    and summaries write only their `.count` series. The rows of a resource
-    are written once, with no metric name. A link row (no metric name, the
-    field `__name__`, the metric name as value) ties each metric to each of
-    its resources, and a key row (the metric name, a resource field, no
-    value) gives each metric its resource keys. Each metric label gets at
-    least one row per day, so the keys of a metric are complete. Metrics have
-    no value limits.
+    and summaries write only their `.count` series. The labels of a new
+    series follow the value rules of logs and traces: a label with more than
+    `max_record_field_values` values leaves the set, which is then the labels
+    that stay, and keeps a daily sample. Such series are not cached, so a
+    label with a value per point cannot fill the cache. The rows of a
+    resource are written once, with no metric name. A link row (no metric
+    name, the field `__name__`, the metric name as value) ties each metric to
+    each of its resources, and a key row (the metric name, a resource field,
+    no value) gives each metric its resource keys. Each metric label gets at
+    least one row per day, so the keys of a metric are complete.
+- **Inserts.** One insert per push, async by default: the server joins the
+  inserts of `async_insert_busy_timeout` into one part per table and shard,
+  and the shards join the inserts that the distributed table sends them. The
+  writer does not wait for the flush, so the export does not wait either; a
+  failed flush is not seen, and its keys stay cached with no rows until the
+  window ends. Clusters with more shards need a longer timeout.
 - **Classification.** Every `refresh_interval`, the writer reads
   `field_values_daily` for the fields over the limit today, and once per day
   for the closed days of the lookback and the fields of yesterday.
@@ -107,13 +119,19 @@ exporters:
 ## Memory
 
 Each writer (one signal of one exporter) has `max_bytes`, or its share of the
-automatic size. Three quarters go to the key cache: `pkg/timebucketedset` with
-two buckets, the window and the next one. Each bucket has at least 32 MiB, so
-a writer uses at least 64 MiB for its keys. This memory is outside the Go
-heap, so `GOMEMLIMIT` does not see it. The writer counts the keys of each
-window and stops at 80% of a bucket, before the bucket drops its oldest keys:
-new sets then go to the overflow set (from the reserve), and then pairs are
-left out until the next window.
+automatic size: a metrics writer gets 3 shares, a logs or traces writer 1.
+Three quarters go to the key cache: `pkg/timebucketedset` with two buckets,
+one per window. Each bucket has at least 32 MiB. The writer counts the keys of
+each window and stops at 80% of a bucket, before the bucket drops its oldest
+keys: new sets then go to the overflow set (from the reserve), and then pairs
+are left out until the next window.
+
+The key cache uses more memory than its share. A bucket keeps its keys outside
+the Go heap (12 bytes per key), and an index of 25 to 40 bytes per key on the
+Go heap. Both buckets stay full all day: the bucket of the last window lives
+until the bucket of the next window starts. Measured, a key cache share of
+64 MiB uses about 220 MiB, and 192 MiB about 510 MiB. Plan about 3 times the
+key cache share.
 
 The last quarter is for the value tracker (8 to 16 bytes per value) and the
 resource states. The values of a field are freed when the field passes its

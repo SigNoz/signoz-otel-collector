@@ -2,6 +2,7 @@ package fieldvalues
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -171,5 +172,39 @@ func TestMetricsResourceRowsOnceAcrossMetrics(t *testing.T) {
 	}, resourceRows(w.take()), "a new pod writes its rows and links; the keys of its metrics are known")
 
 	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
+	assert.Empty(t, w.take())
+}
+
+// A label with a value per point makes each point a new series. Past the
+// limit, the label leaves the set: the series of a route become one set, the
+// label keeps a daily sample, and the series are not cached.
+func TestMetricsLabelOverTheLimitLeavesTheSet(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 3
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "checkout")
+	m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("requests")
+	points := m.SetEmptySum().DataPoints()
+	for i := 1; i <= 10; i++ {
+		dp := points.AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		dp.Attributes().PutStr("route", "/cart")
+		dp.Attributes().PutStr("request_id", fmt.Sprintf("r%02d", i))
+	}
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+
+	assert.Equal(t, []string{
+		"{request_id=r01, route=/cart}",
+		"{request_id=r02, route=/cart}",
+		"{request_id=r03, route=/cart}",
+		"{request_id=r04*, route=/cart}",
+	}, setList(w.take()), "3 series in full; r04 passes the limit into the set of /cart; r05 on are past the sample budget")
+	assert.Equal(t, 9, e.state.cache.used[classExact],
+		"3 series, 1 coarse set, the resource, its link, its key row, and the keys of route and request_id; the series past the limit are not cached")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
 	assert.Empty(t, w.take())
 }

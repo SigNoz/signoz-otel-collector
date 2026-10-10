@@ -29,9 +29,13 @@ type recordsInput struct {
 	records   []preparedRecord
 }
 
-// maxPooledPairs keeps a very large input out of the pool, so that one large
-// push does not hold its memory after it is done.
-const maxPooledPairs = 1 << 20
+// maxPooledPairs and maxPooledRows keep a large input or batch out of the
+// pools, so that a large push does not hold its memory after it is done:
+// 65,536 pairs are 4.5 MiB, and 16,384 rows 1.9 MiB.
+const (
+	maxPooledPairs = 1 << 16
+	maxPooledRows  = 1 << 14
+)
 
 var recordsPool = sync.Pool{New: func() any { return &recordsInput{} }}
 
