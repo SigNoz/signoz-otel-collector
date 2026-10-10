@@ -33,12 +33,23 @@ const (
 	sharedTimeout = 2 * time.Second
 )
 
-// autoMemory counts the writers of the process without max_bytes, which share
-// the automatic memory. The collector creates all exporters before the first
-// push, so each writer sizes its memory at its first push.
+// autoMemory sums the weights of the writers of the process without
+// max_bytes, which share the automatic memory by weight. The collector creates
+// all exporters before the first push, so each writer sizes its memory at its
+// first push.
 var autoMemory struct {
 	sync.Mutex
-	writers int
+	weights uint64
+}
+
+// memoryWeight is the share of a writer in the automatic memory. A metrics
+// writer holds a key per series and per link, several times the keys of a
+// logs or traces writer.
+func memoryWeight(signal pipeline.Signal) uint64 {
+	if signal == pipeline.SignalMetrics {
+		return 3
+	}
+	return 1
 }
 
 // Settings are what the metadata exporter gives the writer.
@@ -87,7 +98,7 @@ type Writer struct {
 	now            func() time.Time
 	widthMillis    uint64
 	preWriteMillis uint64
-	autoMemory     bool
+	autoWeight     uint64
 
 	mu      sync.Mutex
 	state   *signalState
@@ -109,7 +120,7 @@ func New(cfg Config, set Settings) (*Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows := &clickhouseWriter{conn: set.Conn, signal: set.Signal.String(), source: cfg.Source}
+	rows := &clickhouseWriter{conn: set.Conn, signal: set.Signal.String(), source: cfg.Source, asyncTimeout: cfg.AsyncInsertBusyTimeout}
 	w := newWriter(cfg, set, rows, tel)
 	w.classifier = &classifier{
 		conn:          set.Conn,
@@ -151,18 +162,18 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	}
 	w.batches.New = func() any { return newBatchBuffers() }
 	if cfg.Cache.MaxBytes == 0 {
+		w.autoWeight = memoryWeight(set.Signal)
 		autoMemory.Lock()
-		autoMemory.writers++
+		autoMemory.weights += w.autoWeight
 		autoMemory.Unlock()
-		w.autoMemory = true
 	}
 	return w
 }
 
-// memoryBytes is the memory of one writer: max_bytes, or its share of 10% of
-// the Go memory limit, between 64 MiB and 1 GiB, or of 256 MiB when no limit
-// is set.
-func memoryBytes(cfg CacheConfig) uint64 {
+// memoryBytes is the memory of one writer: max_bytes, or its share by weight
+// of 10% of the Go memory limit, between 64 MiB and 1 GiB, or of 256 MiB when
+// no limit is set.
+func memoryBytes(cfg CacheConfig, weight uint64) uint64 {
 	if cfg.MaxBytes > 0 {
 		return cfg.MaxBytes
 	}
@@ -171,16 +182,16 @@ func memoryBytes(cfg CacheConfig) uint64 {
 		total = min(max(uint64(limit)/10, minMemoryBytes), maxMemoryBytes)
 	}
 	autoMemory.Lock()
-	writers := max(autoMemory.writers, 1)
+	weights := max(autoMemory.weights, weight)
 	autoMemory.Unlock()
-	return total / uint64(writers)
+	return total * weight / weights
 }
 
 // allocate makes the key cache with three quarters of the memory, and at
 // least the smallest buckets of pkg/timebucketedset. The value tracker and
 // the resource states get the rest.
 func (w *Writer) allocate() error {
-	total := memoryBytes(w.cfg.Cache)
+	total := memoryBytes(w.cfg.Cache, w.autoWeight)
 	cacheMemory := total / 4 * 3
 	cache, err := newKeyCache(w.cfg.Cache.Window, w.cfg.Cache.PreWriteWindow, cacheMemory, w.cfg.Cache.ReserveShare, w.telemetry,
 		attribute.String("exporter", w.exporterID),
@@ -204,10 +215,9 @@ func (w *Writer) allocate() error {
 	return nil
 }
 
-// Start begins the reads of field_values_daily. Metrics have no value limits,
-// so they need no reads.
+// Start begins the reads of field_values_daily.
 func (w *Writer) Start() {
-	if w.signal == pipeline.SignalMetrics || w.classifier == nil {
+	if w.classifier == nil {
 		return
 	}
 	w.wg.Add(1)
@@ -217,9 +227,9 @@ func (w *Writer) Start() {
 func (w *Writer) Shutdown() error {
 	w.stopOnce.Do(func() {
 		close(w.stop)
-		if w.autoMemory {
+		if w.autoWeight > 0 {
 			autoMemory.Lock()
-			autoMemory.writers--
+			autoMemory.weights -= w.autoWeight
 			autoMemory.Unlock()
 		}
 	})
@@ -464,10 +474,14 @@ func (w *Writer) newBatch() *batch {
 	b.class = w.class.Load()
 	b.nowMillis = now
 	b.preWriteMillis = w.preWriteMillis
+	b.metrics = w.signal == pipeline.SignalMetrics
 	return b
 }
 
 func (w *Writer) release(b *batch) {
+	if cap(b.rows) > maxPooledRows {
+		return
+	}
 	b.reset()
 	w.batches.Put(b)
 }
