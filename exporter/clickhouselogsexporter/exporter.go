@@ -517,6 +517,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	resourcesSeen := newResourcesSeenMap()
 	metrics := map[string]usage.Metric{}
 	deduper := tagdedup.New()
+	var pendingAttributeKeys, pendingResourceFingerprints []string
 
 	// records channel and limiter
 	recordStream := make(chan *Record, cap(e.limiter))
@@ -551,17 +552,17 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					return nil
 				}
 				// tags for resource/scope/attrs
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper); err != nil {
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper, &pendingAttributeKeys); err != nil {
 					return err
 				}
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys, deduper); err != nil {
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeScope, rec.scopeMap, shouldSkipKeys, deduper, &pendingAttributeKeys); err != nil {
 					return err
 				}
-				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys, deduper); err != nil {
+				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeAttribute, rec.attrsMap, shouldSkipKeys, deduper, &pendingAttributeKeys); err != nil {
 					return err
 				}
 				// log fields
-				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper)
+				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper, &pendingAttributeKeys)
 
 				// append main log row
 				args := []any{
@@ -743,7 +744,7 @@ producerIteration:
 		); err != nil {
 			return err
 		}
-		e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+		pendingResourceFingerprints = append(pendingResourceFingerprints, key)
 		return nil
 	})
 	if err != nil {
@@ -781,6 +782,14 @@ producerIteration:
 		if r := <-chErr; r != nil {
 			return fmt.Errorf("StatementSend:%w", r)
 		}
+	}
+
+	// a key cached for a failed send makes the retry skip the row
+	for _, key := range pendingResourceFingerprints {
+		e.rfCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
+	}
+	for _, key := range pendingAttributeKeys {
+		e.keysCache.Set(key, struct{}{}, ttlcache.DefaultTTL)
 	}
 
 	duration := time.Since(start)
@@ -851,6 +860,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 	tagType utils.TagType,
 	datatype utils.FieldDataType,
 	deduper *tagdedup.Deduper,
+	pendingKeys *[]string,
 ) {
 	if keycheck.IsRandomKey(key) {
 		return
@@ -879,7 +889,7 @@ func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
 			datatype,
 		)
 	}
-	e.keysCache.Set(cacheKey, struct{}{}, ttlcache.DefaultTTL)
+	*pendingKeys = append(*pendingKeys, cacheKey)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToTagStatement(
@@ -890,6 +900,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	attrs attributeMap,
 	shouldSkipKeys map[string]shouldSkipKey,
 	deduper *tagdedup.Deduper,
+	pendingKeys *[]string,
 ) error {
 	unixMilli := (time.Now().UnixMilli() / 3600000) * 3600000
 	for attrKey, attrVal := range attrs.StringData {
@@ -899,7 +910,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if deduper.SeenValueID(tagdedup.ValueID(attrKey, tagType, utils.FieldDataTypeString, attrVal, 0)) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString, deduper)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, attrKey, tagType, utils.FieldDataTypeString, deduper, pendingKeys)
 		if len(attrVal) > common.MaxAttributeValueLength {
 			e.logger.Debug("attribute value length exceeds the limit", zap.String("key", attrKey))
 			continue
@@ -930,7 +941,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if deduper.SeenValueID(tagdedup.ValueID(numKey, tagType, utils.FieldDataTypeFloat64, "", numVal)) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64, deduper)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, numKey, tagType, utils.FieldDataTypeFloat64, deduper, pendingKeys)
 		key := utils.MakeKeyForAttributeKeys(numKey, tagType, utils.FieldDataTypeFloat64)
 		if _, ok := shouldSkipKeys[key]; ok {
 			e.logger.Debug("key has been skipped", zap.String("key", key))
@@ -955,7 +966,7 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 		if deduper.SeenValueID(tagdedup.ValueID(boolKey, tagType, utils.FieldDataTypeBool, "", 0)) {
 			continue
 		}
-		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool, deduper)
+		e.addAttrsToAttributeKeysStatement(attributeKeysStmt, resourceKeysStmt, boolKey, tagType, utils.FieldDataTypeBool, deduper, pendingKeys)
 
 		key := utils.MakeKeyForAttributeKeys(boolKey, tagType, utils.FieldDataTypeBool)
 		if _, ok := shouldSkipKeys[key]; ok {
