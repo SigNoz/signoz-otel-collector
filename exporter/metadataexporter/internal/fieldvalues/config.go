@@ -42,10 +42,10 @@ type LimitsConfig struct {
 type CacheConfig struct {
 	Provider CacheProvider `mapstructure:"provider"`
 	// MaxBytes is the memory of one writer (one signal of one exporter): three
-	// quarters for the key cache, at least 64 MiB outside the Go heap, and one
-	// quarter for the value tracker and the resource states. With 0, the
-	// writers of the process share 10% of the Go memory limit, between 64 MiB
-	// and 1 GiB, or 256 MiB without a limit.
+	// quarters for the key cache and one quarter for the value tracker and the
+	// resource states. With 0, the writers of the process share 10% of the Go
+	// memory limit, between 64 MiB and 1 GiB, or 256 MiB without a limit, and
+	// share their key caches above a floor each.
 	MaxBytes uint64 `mapstructure:"max_bytes"`
 	// ReserveShare is the share of the local cache kept for overflow sets and
 	// metric labels.
