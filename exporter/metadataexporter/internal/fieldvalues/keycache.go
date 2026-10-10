@@ -2,6 +2,9 @@ package fieldvalues
 
 import (
 	"encoding/binary"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -48,6 +51,67 @@ type keyCache struct {
 	used   [2]int
 	// nextUsed counts the keys written ahead for the next window.
 	nextUsed int
+	// pool, floor and exactUsed share keys with the caches of other writers:
+	// the exact part may pass its floor while the pool has room. exactUsed is
+	// used[classExact], for the other caches of the pool to read.
+	pool      *keyPool
+	floor     int
+	exactUsed atomic.Int64
+}
+
+// keyPool lets the key caches of the writers with no max_bytes share their
+// keys. Each cache has a floor of its own. Above the floors, the caches draw
+// on one pool as they need keys in the window, so the signal with the most
+// sets gets the most keys, on each tenant.
+type keyPool struct {
+	size   atomic.Int64
+	mu     sync.Mutex
+	caches atomic.Pointer[[]*keyCache]
+}
+
+func (p *keyPool) add(c *keyCache) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var caches []*keyCache
+	if old := p.caches.Load(); old != nil {
+		caches = slices.Clone(*old)
+	}
+	caches = append(caches, c)
+	p.caches.Store(&caches)
+}
+
+func (p *keyPool) remove(c *keyCache) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	old := p.caches.Load()
+	if old == nil {
+		return
+	}
+	caches := slices.DeleteFunc(slices.Clone(*old), func(o *keyCache) bool { return o == c })
+	p.caches.Store(&caches)
+}
+
+// allows reports whether a cache may hold want keys in its exact part: within
+// its floor, or above it while the pool has room.
+func (p *keyPool) allows(c *keyCache, want int) bool {
+	drawn := want - c.floor
+	if drawn <= 0 {
+		return true
+	}
+	if caches := p.caches.Load(); caches != nil {
+		for _, o := range *caches {
+			if o != c {
+				drawn += max(0, int(o.exactUsed.Load())-o.floor)
+			}
+		}
+	}
+	return int64(drawn) <= p.size.Load()
+}
+
+// windowKeys is the number of keys of a window that maxBytes of key cache
+// holds.
+func windowKeys(maxBytes uint64) int {
+	return int(float64(maxBytes/cacheBuckets/keyEntryBytes) * maxFill)
 }
 
 func newKeyCache(width, preWrite time.Duration, maxBytes uint64, reserveShare float64, settings component.TelemetrySettings, identifiers ...attribute.KeyValue) (*keyCache, error) {
@@ -92,17 +156,34 @@ func (c *keyCache) rotate(window uint64) {
 	c.window = window
 	c.used = [2]int{carried, 0}
 	c.nextUsed = 0
+	c.exactUsed.Store(int64(carried))
+}
+
+// share makes the cache draw on a pool: its own floor of keys, of which the
+// reserve is a part, and the exact part may grow by the size of the pool.
+func (c *keyCache) share(p *keyPool, floor int, reserveShare float64) {
+	reserve := int(float64(floor) * reserveShare)
+	c.pool = p
+	c.floor = floor - reserve
+	c.limit = [2]int{floor - reserve + int(p.size.Load()), reserve}
+	p.add(c)
 }
 
 // room reports whether n more keys of the class fit in the current window.
 func (c *keyCache) room(class cacheClass, n int) bool {
-	return c.used[class]+n <= c.limit[class]
+	if c.used[class]+n > c.limit[class] {
+		return false
+	}
+	return class != classExact || c.pool == nil || c.pool.allows(c, c.used[classExact]+n)
 }
 
 // roomNext reports whether n more keys can be written ahead for the next
 // window.
 func (c *keyCache) roomNext(n int) bool {
-	return c.nextUsed+n <= c.limit[classExact]
+	if c.nextUsed+n > c.limit[classExact] {
+		return false
+	}
+	return c.pool == nil || c.pool.allows(c, c.nextUsed+n)
 }
 
 // apply stores the keys of a written batch of the window that starts at
@@ -133,6 +214,7 @@ func (c *keyCache) apply(window uint64, keys map[uint64]cacheClass, ahead map[ui
 	case c.window - c.width:
 		c.used[classExact] += len(ahead)
 	}
+	c.exactUsed.Store(int64(c.used[classExact]))
 }
 
 // capacity is the number of keys of a window that each class can hold.
@@ -141,5 +223,8 @@ func (c *keyCache) capacity() (exact, reserve int) {
 }
 
 func (c *keyCache) shutdown() {
+	if c.pool != nil {
+		c.pool.remove(c)
+	}
 	c.set.Shutdown()
 }

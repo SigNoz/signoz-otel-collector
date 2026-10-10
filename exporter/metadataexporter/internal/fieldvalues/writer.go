@@ -33,24 +33,19 @@ const (
 	sharedTimeout = 2 * time.Second
 )
 
-// autoMemory sums the weights of the writers of the process without
-// max_bytes, which share the automatic memory by weight. The collector creates
-// all exporters before the first push, so each writer sizes its memory at its
-// first push.
+// autoMemory counts the writers of the process without max_bytes, which share
+// the automatic memory. The collector creates all exporters before the first
+// push, so each writer sizes its memory at its first push.
 var autoMemory struct {
 	sync.Mutex
-	weights uint64
+	writers int
 }
 
-// memoryWeight is the share of a writer in the automatic memory. A metrics
-// writer holds a key per series and per link, several times the keys of a
-// logs or traces writer.
-func memoryWeight(signal pipeline.Signal) uint64 {
-	if signal == pipeline.SignalMetrics {
-		return 3
-	}
-	return 1
-}
+// autoPool is the key pool of the writers without max_bytes. Each writer gets
+// half of its equal share of key cache as its own floor; the other halves
+// make the pool, which the writers draw on as they need keys. The signals of
+// a tenant need very different numbers of keys, and the need changes.
+var autoPool keyPool
 
 // Settings are what the metadata exporter gives the writer.
 type Settings struct {
@@ -98,7 +93,7 @@ type Writer struct {
 	now            func() time.Time
 	widthMillis    uint64
 	preWriteMillis uint64
-	autoWeight     uint64
+	autoMemory     bool
 
 	mu      sync.Mutex
 	state   *signalState
@@ -162,43 +157,59 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	}
 	w.batches.New = func() any { return newBatchBuffers() }
 	if cfg.Cache.MaxBytes == 0 {
-		w.autoWeight = memoryWeight(set.Signal)
 		autoMemory.Lock()
-		autoMemory.weights += w.autoWeight
+		autoMemory.writers++
 		autoMemory.Unlock()
+		w.autoMemory = true
 	}
 	return w
 }
 
-// memoryBytes is the memory of one writer: max_bytes, or its share by weight
-// of 10% of the Go memory limit, between 64 MiB and 1 GiB, or of 256 MiB when
-// no limit is set.
-func memoryBytes(cfg CacheConfig, weight uint64) uint64 {
+// autoTotal is the automatic memory of the process: 10% of the Go memory
+// limit, between 64 MiB and 1 GiB, or 256 MiB when no limit is set.
+func autoTotal() uint64 {
+	if limit := debug.SetMemoryLimit(-1); limit > 0 && limit != math.MaxInt64 {
+		return min(max(uint64(limit)/10, minMemoryBytes), maxMemoryBytes)
+	}
+	return defaultMemoryBytes
+}
+
+// memoryBytes is the memory of one writer: max_bytes, or an equal share of
+// the automatic memory.
+func memoryBytes(cfg CacheConfig) uint64 {
 	if cfg.MaxBytes > 0 {
 		return cfg.MaxBytes
 	}
-	total := uint64(defaultMemoryBytes)
-	if limit := debug.SetMemoryLimit(-1); limit > 0 && limit != math.MaxInt64 {
-		total = min(max(uint64(limit)/10, minMemoryBytes), maxMemoryBytes)
-	}
 	autoMemory.Lock()
-	weights := max(autoMemory.weights, weight)
+	writers := max(autoMemory.writers, 1)
 	autoMemory.Unlock()
-	return total * weight / weights
+	return autoTotal() / uint64(writers)
 }
 
 // allocate makes the key cache with three quarters of the memory, and at
 // least the smallest buckets of pkg/timebucketedset. The value tracker and
-// the resource states get the rest.
+// the resource states get the rest. A writer without max_bytes keeps half of
+// its key cache as its floor and shares the other half in autoPool, so its
+// cache is sized for its floor and the whole pool. The package allocates as
+// keys arrive, and the pool bounds the keys of all writers.
 func (w *Writer) allocate() error {
-	total := memoryBytes(w.cfg.Cache, w.autoWeight)
+	total := memoryBytes(w.cfg.Cache)
 	cacheMemory := total / 4 * 3
-	cache, err := newKeyCache(w.cfg.Cache.Window, w.cfg.Cache.PreWriteWindow, cacheMemory, w.cfg.Cache.ReserveShare, w.telemetry,
+	cacheBytes, poolMemory := cacheMemory, uint64(0)
+	if w.autoMemory {
+		poolMemory = autoTotal() / 8 * 3
+		cacheBytes = cacheMemory/2 + poolMemory
+	}
+	cache, err := newKeyCache(w.cfg.Cache.Window, w.cfg.Cache.PreWriteWindow, cacheBytes, w.cfg.Cache.ReserveShare, w.telemetry,
 		attribute.String("exporter", w.exporterID),
 		attribute.String("signal", w.signal.String()),
 		attribute.String("source", w.cfg.Source))
 	if err != nil {
 		return err
+	}
+	if w.autoMemory {
+		autoPool.size.Store(int64(windowKeys(poolMemory)))
+		cache.share(&autoPool, windowKeys(cacheMemory/2), w.cfg.Cache.ReserveShare)
 	}
 	w.state.cache = cache
 	w.state.budget.limit = int(total - cacheMemory)
@@ -211,7 +222,8 @@ func (w *Writer) allocate() error {
 		zap.String("signal", w.signal.String()),
 		zap.String("source", w.cfg.Source),
 		zap.String("shared", string(w.cfg.Cache.Provider)),
-		zap.Uint64("bytes", max(cacheMemory, cacheBuckets*minBucketBytes)+total-cacheMemory))
+		zap.Uint64("bytes", max(cacheMemory, cacheBuckets*minBucketBytes)+total-cacheMemory),
+		zap.Uint64("shared_key_cache_bytes", poolMemory))
 	return nil
 }
 
@@ -227,9 +239,9 @@ func (w *Writer) Start() {
 func (w *Writer) Shutdown() error {
 	w.stopOnce.Do(func() {
 		close(w.stop)
-		if w.autoWeight > 0 {
+		if w.autoMemory {
 			autoMemory.Lock()
-			autoMemory.weights -= w.autoWeight
+			autoMemory.writers--
 			autoMemory.Unlock()
 		}
 	})
