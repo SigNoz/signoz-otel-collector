@@ -53,21 +53,15 @@ func main() {
 			})
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			collectorConfig := config.Collector.Config
+			baseConfigs := config.Collector.Config
 			managerConfig := config.Collector.ManagerConfig
 			copyPath := config.Collector.CopyPath
-			if managerConfig != "" {
-				if err := copyConfigFile(collectorConfig, copyPath); err != nil {
-					logger.Fatal("Failed to copy config file %v", zap.Error(err))
-				}
-				collectorConfig = copyPath
-			}
 
 			ctx := context.Background()
 
 			coll := signozcol.New(
 				signozcol.WrappedCollectorSettings{
-					ConfigPaths:  []string{collectorConfig},
+					ConfigPaths:  baseConfigs,
 					Version:      constants.Version,
 					Desc:         constants.Desc,
 					LoggingOpts:  []zap.Option{zap.WithCaller(true)},
@@ -76,7 +70,7 @@ func main() {
 				},
 			)
 
-			svc, err := service.New(coll, logger, managerConfig, collectorConfig)
+			svc, err := service.New(coll, logger, managerConfig, baseConfigs, copyPath)
 			if err != nil {
 				logger.Fatal("failed to create collector service:", zap.Error(err))
 			}
