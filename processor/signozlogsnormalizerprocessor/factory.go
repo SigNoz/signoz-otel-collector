@@ -23,7 +23,7 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}
+	return &Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, Fields: []string{"log", "msg"}}}
 }
 
 func createLogsProcessor(

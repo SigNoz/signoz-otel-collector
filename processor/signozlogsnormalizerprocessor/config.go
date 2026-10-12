@@ -19,8 +19,8 @@ type OpAMPConfig struct {
 }
 
 type BodyConfig struct {
-	Enabled       bool     `mapstructure:"enabled"`
-	MessageFields []string `mapstructure:"message_fields"`
+	Enabled bool     `mapstructure:"enabled"`
+	Fields  []string `mapstructure:"fields"`
 }
 
 func (c *Config) Validate() error {

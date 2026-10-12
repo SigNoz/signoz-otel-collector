@@ -4,7 +4,7 @@ signozlogsnormalizer/body_disabled:
     enabled: false
 signozlogsnormalizer/fields:
   body:
-    message_fields: [text]
+    fields: [text]
 signozlogsnormalizer/unknown:
   body:
     unknown_key: true
