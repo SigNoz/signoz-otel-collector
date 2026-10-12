@@ -23,7 +23,7 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}
+	return &Config{Position: PositionFirst, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}
 }
 
 func createLogsProcessor(

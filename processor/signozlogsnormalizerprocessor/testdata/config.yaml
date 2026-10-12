@@ -8,3 +8,7 @@ signozlogsnormalizer/fields:
 signozlogsnormalizer/unknown:
   body:
     unknown_key: true
+signozlogsnormalizer/last:
+  position: last
+signozlogsnormalizer/bad_position:
+  position: middle
