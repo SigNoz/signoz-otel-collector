@@ -1,0 +1,84 @@
+type: signozlogsnormalizer
+github_project: SigNoz/signoz-otel-collector
+
+status:
+  class: processor
+  stability:
+    alpha: [logs]
+
+attributes:
+  body:
+    description: Body type as received. json is a text body parsed as a JSON object.
+    type: string
+    enum: [json, text, map, other]
+  field:
+    description: Configured message field the message was promoted from.
+    type: string
+
+telemetry:
+  metrics:
+    signozlogsnormalizer.message.flattenings:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Object messages lifted to the top level of the body.
+      unit: "{message}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+
+    signozlogsnormalizer.message.nested_promotions:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Flattened messages whose own message field became the message.
+      unit: "{message}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+
+    signozlogsnormalizer.message.promotions:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Messages promoted from a configured message field, by field.
+      unit: "{message}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+      attributes: [field]
+
+    signozlogsnormalizer.message.stringifications:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Messages neither text nor an object, stringified on storage by the typed body_v2.message path.
+      unit: "{message}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+
+    signozlogsnormalizer.records:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Log records normalized, by body type.
+      unit: "{record}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+      attributes: [body]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true

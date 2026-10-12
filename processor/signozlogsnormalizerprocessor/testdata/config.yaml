@@ -1,0 +1,10 @@
+signozlogsnormalizer:
+signozlogsnormalizer/body_disabled:
+  body:
+    enabled: false
+signozlogsnormalizer/fields:
+  body:
+    message_fields: [text]
+signozlogsnormalizer/unknown:
+  body:
+    unknown_key: true

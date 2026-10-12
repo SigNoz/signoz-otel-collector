@@ -3,6 +3,7 @@ package v1
 import (
 	"testing"
 
+	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -40,6 +41,25 @@ func TestLogsSizeWithExcludedSigNozResources(t *testing.T) {
 	size := meter.Size(logs)
 	// 8 * [ 10(key) + 20(value) + 5("":"") ] + 2({}) + 7(,)
 	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100), size)
+}
+
+func TestLogsSizeWithExcludedSigNozInternalAttrs(t *testing.T) {
+	logs := plogsgen.Generate(
+		plogsgen.WithLogRecordCount(10),
+		plogsgen.WithResourceAttributeCount(8),
+		// 100 bytes
+		plogsgen.WithBody("Lorem ipsum dolor sit amet consectetur adipiscing elit, enim suscipit nullam aenean mattis senectus."),
+		// 20 bytes
+		plogsgen.WithResourceAttributeStringValue("Lorem ipsum euismod."),
+	)
+	record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	record.Attributes().PutStr(constants.OriginalBodyAttributeKey, `{"msg":"Lorem ipsum dolor sit amet consectetur adipiscing elit"}`)
+
+	meter := NewLogs(zap.NewNop())
+	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100), meter.Size(logs))
+
+	record.Attributes().PutStr("k", "v")
+	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100)+7, meter.Size(logs))
 }
 
 func benchmarkLogsSize(b *testing.B, expectedSize int, options ...plogsgen.GenerationOption) {
