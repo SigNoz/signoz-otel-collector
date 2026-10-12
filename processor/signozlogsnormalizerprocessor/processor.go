@@ -32,14 +32,14 @@ type messageOutcome struct {
 }
 
 func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*normalizeProcessor, error) {
-	t, err := newTelemetry(set, cfg.Body.MessageFields)
+	t, err := newTelemetry(set, cfg.Body.Fields)
 	if err != nil {
 		return nil, err
 	}
 	return &normalizeProcessor{
 		json:          sonic.Config{UseInt64: true}.Froze(),
 		bodyEnabled:   cfg.Body.Enabled,
-		messageFields: cfg.Body.MessageFields,
+		messageFields: cfg.Body.Fields,
 		telemetry:     t,
 	}, nil
 }

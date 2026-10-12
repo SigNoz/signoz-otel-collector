@@ -569,9 +569,9 @@ func BenchmarkProcessLogs(b *testing.B) {
 	}
 }
 
-func TestCustomMessageFields(t *testing.T) {
+func TestCustomFields(t *testing.T) {
 	cfg := testConfig()
-	cfg.Body.MessageFields = []string{"text"}
+	cfg.Body.Fields = []string{"text"}
 	p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
 	require.NoError(t, err)
 
