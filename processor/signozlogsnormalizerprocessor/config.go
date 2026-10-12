@@ -2,16 +2,16 @@ package signozlogsnormalizerprocessor
 
 import "fmt"
 
-type Position string
+type UserPipelines string
 
 const (
-	PositionFirst Position = "first"
-	PositionLast  Position = "last"
+	UserPipelinesAfter  UserPipelines = "after"
+	UserPipelinesBefore UserPipelines = "before"
 )
 
 type Config struct {
-	Position Position   `mapstructure:"position"`
-	Body     BodyConfig `mapstructure:"body"`
+	UserPipelines UserPipelines `mapstructure:"user_pipelines"`
+	Body          BodyConfig    `mapstructure:"body"`
 }
 
 type BodyConfig struct {
@@ -20,10 +20,10 @@ type BodyConfig struct {
 }
 
 func (c *Config) Validate() error {
-	switch c.Position {
-	case PositionFirst, PositionLast:
+	switch c.UserPipelines {
+	case UserPipelinesAfter, UserPipelinesBefore:
 		return nil
 	default:
-		return fmt.Errorf("invalid position %q: must be %q or %q", c.Position, PositionFirst, PositionLast)
+		return fmt.Errorf("invalid user_pipelines %q: must be %q or %q", c.UserPipelines, UserPipelinesAfter, UserPipelinesBefore)
 	}
 }
