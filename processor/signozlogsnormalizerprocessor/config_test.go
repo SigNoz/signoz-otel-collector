@@ -22,11 +22,11 @@ func TestLoadConfig(t *testing.T) {
 		expected  Config
 		expectErr bool
 	}{
-		{name: "Default_BodyEnabled", id: component.NewID(factory.Type()), expected: Config{UserPipelines: UserPipelinesAfter, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
-		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: Config{UserPipelines: UserPipelinesAfter, Body: BodyConfig{MessageFields: []string{"log", "msg"}}}},
-		{name: "BodyCustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{UserPipelines: UserPipelinesAfter, Body: BodyConfig{Enabled: true, MessageFields: []string{"text"}}}},
-		{name: "UserPipelinesBefore", id: component.NewIDWithName(factory.Type(), "user_pipelines_before"), expected: Config{UserPipelines: UserPipelinesBefore, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
-		{name: "InvalidUserPipelines_Rejected", id: component.NewIDWithName(factory.Type(), "bad_user_pipelines"), expectErr: true},
+		{name: "Default_BodyEnabled", id: component.NewID(factory.Type()), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
+		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{MessageFields: []string{"log", "msg"}}}},
+		{name: "BodyCustomMessageFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, MessageFields: []string{"text"}}}},
+		{name: "OpAMPPositionBefore", id: component.NewIDWithName(factory.Type(), "opamp_position_before"), expected: Config{OpAMP: OpAMPConfig{Position: PositionBefore}, Body: BodyConfig{Enabled: true, MessageFields: []string{"log", "msg"}}}},
+		{name: "InvalidOpAMPPosition_Rejected", id: component.NewIDWithName(factory.Type(), "bad_opamp_position"), expectErr: true},
 		{name: "UnknownKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
 	}
 	for _, testCase := range testCases {

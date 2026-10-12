@@ -2,16 +2,20 @@ package signozlogsnormalizerprocessor
 
 import "fmt"
 
-type UserPipelines string
+type Position string
 
 const (
-	UserPipelinesAfter  UserPipelines = "after"
-	UserPipelinesBefore UserPipelines = "before"
+	PositionAfter  Position = "after"
+	PositionBefore Position = "before"
 )
 
 type Config struct {
-	UserPipelines UserPipelines `mapstructure:"user_pipelines"`
-	Body          BodyConfig    `mapstructure:"body"`
+	OpAMP OpAMPConfig `mapstructure:"opamp"`
+	Body  BodyConfig  `mapstructure:"body"`
+}
+
+type OpAMPConfig struct {
+	Position Position `mapstructure:"position"`
 }
 
 type BodyConfig struct {
@@ -20,10 +24,10 @@ type BodyConfig struct {
 }
 
 func (c *Config) Validate() error {
-	switch c.UserPipelines {
-	case UserPipelinesAfter, UserPipelinesBefore:
+	switch c.OpAMP.Position {
+	case PositionAfter, PositionBefore:
 		return nil
 	default:
-		return fmt.Errorf("invalid user_pipelines %q: must be %q or %q", c.UserPipelines, UserPipelinesAfter, UserPipelinesBefore)
+		return fmt.Errorf("invalid opamp.position %q: must be %q or %q", c.OpAMP.Position, PositionAfter, PositionBefore)
 	}
 }

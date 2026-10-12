@@ -8,7 +8,9 @@ signozlogsnormalizer/fields:
 signozlogsnormalizer/unknown:
   body:
     unknown_key: true
-signozlogsnormalizer/user_pipelines_before:
-  user_pipelines: before
-signozlogsnormalizer/bad_user_pipelines:
-  user_pipelines: middle
+signozlogsnormalizer/opamp_position_before:
+  opamp:
+    position: before
+signozlogsnormalizer/bad_opamp_position:
+  opamp:
+    position: middle
