@@ -200,7 +200,7 @@ var (
 					Engine: MergeTree{
 						PartitionBy: "(toDate(timestamp / 1000000000), _retention_days, _retention_days_cold)",
 						OrderBy:     "(ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)",
-						TTL:         "toDateTime(timestamp / 1000000000) + toIntervalDay(_retention_days)",
+						TTL:         "toDateTime(timestamp / 1000000000) + toIntervalDay(if(_retention_days = 0, 30, _retention_days))",
 						Settings: TableSettings{
 							{Name: "index_granularity", Value: "8192"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -278,7 +278,7 @@ var (
 						MergeTree: MergeTree{
 							PartitionBy: "(toDate(seen_at_ts_bucket_start), _retention_days, _retention_days_cold)",
 							OrderBy:     "(labels, fingerprint, seen_at_ts_bucket_start)",
-							TTL:         "toDateTime(seen_at_ts_bucket_start) + toIntervalDay(_retention_days) + toIntervalSecond(1800)",
+							TTL:         "toDateTime(seen_at_ts_bucket_start) + toIntervalDay(if(_retention_days = 0, 30, _retention_days)) + toIntervalSecond(1800)",
 							Settings: TableSettings{
 								{Name: "ttl_only_drop_parts", Value: "1"},
 								{Name: "index_granularity", Value: "8192"},
