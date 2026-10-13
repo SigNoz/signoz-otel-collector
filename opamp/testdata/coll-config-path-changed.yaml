@@ -32,5 +32,7 @@ service:
             receivers:
                 - otlp
     telemetry:
+        metrics:
+            level: none
         resource:
             service.instance.id: opamp/testdata/coll-config-path.yaml

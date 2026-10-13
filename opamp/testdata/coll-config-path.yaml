@@ -1,5 +1,6 @@
 exporters:
     debug: null
+    nop: {}
     prometheus:
         endpoint: 0.0.0.0:8889
 extensions:
@@ -9,6 +10,7 @@ processors:
         send_batch_size: 10000
         timeout: 10s
 receivers:
+    nop: {}
     otlp:
         protocols:
             grpc: null
@@ -19,18 +21,16 @@ service:
     pipelines:
         metrics:
             exporters:
-                - debug
-            processors:
-                - batch
+                - nop
             receivers:
-                - otlp
+                - nop
         traces:
             exporters:
-                - logging
-            processors:
-                - batch
+                - nop
             receivers:
-                - otlp
+                - nop
     telemetry:
+        metrics:
+            level: none
         resource:
             service.instance.id: opamp/testdata/coll-config-path.yaml

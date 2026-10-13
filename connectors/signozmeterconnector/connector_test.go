@@ -58,9 +58,8 @@ func TestTracesToMetrics(t *testing.T) {
 			assert.NoError(t, conn.ConsumeTraces(context.Background(), testSpans))
 
 			// Wait for the metrics to be flushed based on the MetricsFlushInterval
-			time.Sleep(tc.cfg.MetricsFlushInterval * 2)
 			// only 2 metrics for span size and span count will be exported
-			assert.Equal(t, 2, sink.DataPointCount())
+			assert.Eventually(t, func() bool { return sink.DataPointCount() == 2 }, time.Second, tc.cfg.MetricsFlushInterval)
 
 		})
 	}
@@ -108,9 +107,8 @@ func TestMetricsToMetrics(t *testing.T) {
 			assert.NoError(t, conn.ConsumeMetrics(context.Background(), testMetrics))
 
 			// Wait for the metrics to be flushed based on the MetricsFlushInterval
-			time.Sleep(tc.cfg.MetricsFlushInterval * 2)
 			// only 2 metrics for span size and span count will be exported
-			assert.Equal(t, 2, sink.DataPointCount())
+			assert.Eventually(t, func() bool { return sink.DataPointCount() == 2 }, time.Second, tc.cfg.MetricsFlushInterval)
 
 		})
 	}
@@ -154,9 +152,8 @@ func TestLogsToMetrics(t *testing.T) {
 			assert.NoError(t, conn.ConsumeLogs(context.Background(), testSpans))
 
 			// Wait for the metrics to be flushed based on the MetricsFlushInterval
-			time.Sleep(tc.cfg.MetricsFlushInterval * 2)
 			// only 2 metrics for span size and span count will be exported
-			assert.Equal(t, 2, sink.DataPointCount())
+			assert.Eventually(t, func() bool { return sink.DataPointCount() == 2 }, time.Second, tc.cfg.MetricsFlushInterval)
 
 		})
 	}

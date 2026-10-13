@@ -23,5 +23,7 @@ service:
       processors: [batch]
       exporters: [debug]
   telemetry:
+      metrics:
+          level: none
       resource:
           service.instance.id: "signozcol/testdata/config.yaml"
