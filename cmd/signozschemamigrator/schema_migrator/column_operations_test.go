@@ -24,7 +24,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: ColumnTypeString,
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col String",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-codec",
@@ -37,7 +37,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Codec: "ZSTD(5)",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String CODEC(ZSTD(5))",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col String CODEC(ZSTD(5))",
 		},
 		{
 			name: "col-with-name-and-type-without-cluster",
@@ -62,7 +62,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "'default'",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String DEFAULT 'default'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col String DEFAULT 'default'",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-int-value",
@@ -75,7 +75,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "1",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Int64 DEFAULT 1",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Int64 DEFAULT 1",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-float-value",
@@ -88,7 +88,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "1.1",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Float64 DEFAULT 1.1",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Float64 DEFAULT 1.1",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-bool-value",
@@ -101,7 +101,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "true",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Bool DEFAULT true",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Bool DEFAULT true",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-date-value",
@@ -114,7 +114,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "'2021-01-01'",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Date DEFAULT '2021-01-01'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Date DEFAULT '2021-01-01'",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-uuid-value",
@@ -127,7 +127,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "uuid_nil()", // no such function in clickhouse but shows any expression can be passed as default value
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col UUID DEFAULT uuid_nil()",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col UUID DEFAULT uuid_nil()",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-default-ip-value",
@@ -140,7 +140,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "'127.0.0.1'",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col IPv4 DEFAULT '127.0.0.1'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col IPv4 DEFAULT '127.0.0.1'",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-array-type",
@@ -152,7 +152,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: ArrayColumnType{ColumnTypeInt32},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Array(Int32)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Array(Int32)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-array-type-with-default",
@@ -165,7 +165,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "[1, 2, 3]",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Array(Int32) DEFAULT [1, 2, 3]",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Array(Int32) DEFAULT [1, 2, 3]",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-array-type-with-default-and-array-type",
@@ -178,7 +178,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "[[1, 2, 3], [4, 5, 6]]",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Array(Array(Int32)) DEFAULT [[1, 2, 3], [4, 5, 6]]",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Array(Array(Int32)) DEFAULT [[1, 2, 3], [4, 5, 6]]",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-map-type",
@@ -190,7 +190,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: MapColumnType{ColumnTypeInt32, ColumnTypeString},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Map(Int32, String)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Map(Int32, String)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-map-type-with-default",
@@ -203,7 +203,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "{1: 'a', 2: 'b'}",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Map(Int32, String) DEFAULT {1: 'a', 2: 'b'}",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Map(Int32, String) DEFAULT {1: 'a', 2: 'b'}",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-tuple-type",
@@ -215,7 +215,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: TupleColumnType{[]ColumnType{ColumnTypeBool, ColumnTypeString}},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Tuple(Bool, String)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Tuple(Bool, String)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-low-cardinality-type",
@@ -227,7 +227,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: LowCardinalityColumnType{ColumnTypeString},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col LowCardinality(String)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col LowCardinality(String)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-low-cardinality-type-with-default",
@@ -240,7 +240,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "'default'",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col LowCardinality(String) DEFAULT 'default'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col LowCardinality(String) DEFAULT 'default'",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-json-type",
@@ -252,7 +252,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: JSONColumnType{},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col JSON()",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col JSON()",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-json-type-with-params",
@@ -264,7 +264,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer(uint(10)), MaxDynamicTypes: utils.ToPointer(uint(2))},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col JSON(max_dynamic_paths=10, max_dynamic_types=2)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col JSON(max_dynamic_paths=10, max_dynamic_types=2)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-nullable-type",
@@ -276,7 +276,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: NullableColumnType{ColumnTypeString},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Nullable(String)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Nullable(String)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-nullable-type-with-default",
@@ -289,7 +289,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "'default'",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Nullable(String) DEFAULT 'default'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col Nullable(String) DEFAULT 'default'",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-simple-aggregate-function-type",
@@ -301,7 +301,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: SimpleAggregateFunction{"Sum", []ColumnType{ColumnTypeInt32}},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col SimpleAggregateFunction(Sum, Int32)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col SimpleAggregateFunction(Sum, Int32)",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-simple-aggregate-function-type-with-default",
@@ -314,7 +314,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Default: "1",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col SimpleAggregateFunction(Sum, Int32) DEFAULT 1",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col SimpleAggregateFunction(Sum, Int32) DEFAULT 1",
 		},
 		{
 			name: "col-with-name-and-type-and-cluster-and-aggregate-function-type",
@@ -326,7 +326,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Type: AggregateFunction{"Sum", []ColumnType{ColumnTypeInt32}},
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col AggregateFunction(Sum, Int32)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col AggregateFunction(Sum, Int32)",
 		},
 		{
 			name: "col-with-alias",
@@ -339,7 +339,7 @@ func TestAlterTableAddColumn(t *testing.T) {
 					Alias: "maincol",
 				},
 			}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col String ALIAS maincol",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` ADD COLUMN IF NOT EXISTS col String ALIAS maincol",
 		},
 	}
 
@@ -364,7 +364,7 @@ func TestAlterTableDropColumn(t *testing.T) {
 		{
 			name: "drop-column-with-cluster",
 			op:   AlterTableDropColumn{Database: "db", Table: "table", Column: Column{Name: "col"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster DROP COLUMN IF EXISTS col",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` DROP COLUMN IF EXISTS col",
 		},
 	}
 
@@ -389,32 +389,32 @@ func TestAlterTableModifyColumn(t *testing.T) {
 		{
 			name: "modify-column-type-with-cluster",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", Type: ColumnTypeIPv4}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col IPv4",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col IPv4",
 		},
 		{
 			name: "modify-column-type-with-default",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", Type: ColumnTypeIPv4, Default: "'127.0.0.1'"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col IPv4 DEFAULT '127.0.0.1'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col IPv4 DEFAULT '127.0.0.1'",
 		},
 		{
 			name: "modify-column-default",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", Default: "'127.0.0.1'"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col DEFAULT '127.0.0.1'",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col DEFAULT '127.0.0.1'",
 		},
 		{
 			name: "modify-column-compression-codec",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", Codec: "ZSTD"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col CODEC(ZSTD)",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col CODEC(ZSTD)",
 		},
 		{
 			name: "modify-column-ttl",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", TTL: "d + INTERVAL 1 DAY"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col TTL d + INTERVAL 1 DAY",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col TTL d + INTERVAL 1 DAY",
 		},
 		{
 			name: "modify-column-settings",
 			op:   AlterTableModifyColumn{Database: "db", Table: "table", Column: Column{Name: "col", Settings: ColumnSettings{ColumnSetting{Name: "min_compress_block_size", Value: "16777216"}}}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col SETTINGS min_compress_block_size = 16777216",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col SETTINGS min_compress_block_size = 16777216",
 		},
 	}
 
@@ -434,27 +434,27 @@ func TestAlterTableModifyColumnRemove(t *testing.T) {
 		{
 			name: "remove-column-property-ttl",
 			op:   AlterTableModifyColumnRemove{Database: "db", Table: "table", Column: Column{Name: "col"}, Property: ColumnPropertyTTL}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col REMOVE TTL",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col REMOVE TTL",
 		},
 		{
 			name: "remove-column-property-codec",
 			op:   AlterTableModifyColumnRemove{Database: "db", Table: "table", Column: Column{Name: "col"}, Property: ColumnPropertyCodec}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col REMOVE CODEC",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col REMOVE CODEC",
 		},
 		{
 			name: "remove-column-property-default",
 			op:   AlterTableModifyColumnRemove{Database: "db", Table: "table", Column: Column{Name: "col"}, Property: ColumnPropertyDefault}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col REMOVE DEFAULT",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col REMOVE DEFAULT",
 		},
 		{
 			name: "remove-column-property-settings",
 			op:   AlterTableModifyColumnRemove{Database: "db", Table: "table", Column: Column{Name: "col"}, Property: ColumnPropertySettings}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col REMOVE SETTINGS",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col REMOVE SETTINGS",
 		},
 		{
 			name: "remove-column-property-materialized",
 			op:   AlterTableModifyColumnRemove{Database: "db", Table: "table", Column: Column{Name: "col"}, Property: ColumnPropertyMaterialized}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MODIFY COLUMN IF EXISTS col REMOVE MATERIALIZED",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MODIFY COLUMN IF EXISTS col REMOVE MATERIALIZED",
 		},
 	}
 
@@ -479,7 +479,7 @@ func TestAlterTableMaterializeColumn(t *testing.T) {
 		{
 			name: "materialize-column-with-cluster",
 			op:   AlterTableMaterializeColumn{Database: "db", Table: "table", Column: Column{Name: "col"}}.OnCluster("cluster"),
-			want: "ALTER TABLE db.table ON CLUSTER cluster MATERIALIZE COLUMN col",
+			want: "ALTER TABLE db.table ON CLUSTER `cluster` MATERIALIZE COLUMN col",
 		},
 	}
 

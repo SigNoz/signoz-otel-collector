@@ -1,5 +1,14 @@
 package schemamigrator
 
+import "fmt"
+
+// EscapeClusterName returns the cluster name escaped with backticks for use in SQL.
+// ClickHouse requires backtick escaping for cluster names that contain special
+// characters like hyphens (e.g., `dev-signoz`).
+func EscapeClusterName(cluster string) string {
+	return fmt.Sprintf("`%s`", cluster)
+}
+
 // Operation is the interface that all operations must implement.
 // An Operation that is not mutation, idempotent and lightweight is expected
 // to complete almost immediately given there are no blocking items in the
