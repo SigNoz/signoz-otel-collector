@@ -27,9 +27,9 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/chjson"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
-	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"go.opencensus.io/stats"
@@ -203,16 +203,25 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 	}
 	defer func() { _ = statement.Close() }()
 
+	batchAttrPaths := make(map[string]struct{})
 	for _, span := range batchSpans {
 
 		if len(span.ResourcesString) > 100 {
 			w.logger.Warn("resourcemap exceeded the limit of 100 keys")
 		}
 
-		marshalledScope, err := json.Marshal(span.Scope)
-		if err != nil {
-			w.logger.Warn("error marshalling instrumentation scope", zap.String("span_id", span.SpanId))
+		if chjson.ExceedsPathBudget(span.Attributes, batchAttrPaths, chjson.DefaultPathBudgetPerBatch) {
+			if err = statement.Send(); err != nil {
+				return fmt.Errorf("could not send chunked batch to index table: %w", err)
+			}
+			_ = statement.Close()
+			statement, err = w.db.PrepareBatch(ctx, fmt.Sprintf(insertTraceSQLTemplateV2, w.traceDatabase, w.indexTableV3), driver.WithReleaseConnection())
+			if err != nil {
+				return fmt.Errorf("could not prepare chunked batch for index table: %w", err)
+			}
+			clear(batchAttrPaths)
 		}
+		chjson.RecordPaths(span.Attributes, batchAttrPaths)
 
 		err = statement.Append(
 			span.TsBucketStart,
@@ -237,7 +246,7 @@ func (w *SpanWriter) writeIndexBatchV3(ctx context.Context, batchSpans []*SpanV3
 			span.AttributesPromoted,
 			span.ResourcesString,
 			span.ResourcesString,
-			marshalledScope,
+			span.Scope.chJSON(),
 			span.Events,
 			span.References,
 

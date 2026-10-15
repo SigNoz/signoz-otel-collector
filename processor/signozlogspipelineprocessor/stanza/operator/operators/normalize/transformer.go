@@ -98,7 +98,7 @@ func (p *Processor) processTextLogs(str string) map[string]any {
 		dec := p.Config.Froze().NewDecoder(strings.NewReader(unquoted))
 		err := dec.Decode(&output)
 		if err == nil { // successfully decoded as JSON; return as is
-			return output
+			return utils.MaterializeJSONNumbers(output)
 		}
 	}
 	output[MessageField] = str
