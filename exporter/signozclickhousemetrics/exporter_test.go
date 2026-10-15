@@ -2,6 +2,7 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -20,6 +21,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
+	"go.opentelemetry.io/collector/exporter/exportertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
@@ -1225,5 +1227,66 @@ func Test_shutdown(t *testing.T) {
 	close(errChan)
 	for ok := range errChan {
 		assert.Error(t, ok)
+	}
+}
+
+func newTimeBucketedSetExporter(t *testing.T, enabled bool, opts ...ExporterOption) *clickhouseMetricsExporter {
+	t.Helper()
+	cfg := &Config{MetadataWriteSampleRatio: 1}
+	cfg.TimeBucketedSet.Enabled = enabled
+	cfg.TimeBucketedSet.MaxBucketSize = 32 << 20
+	cfg.TimeBucketedSet.PreWriteWindow = 15 * time.Minute
+	exp, err := NewClickHouseExporter(append([]ExporterOption{
+		WithLogger(zap.NewNop()),
+		WithConfig(cfg),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+		WithSettings(exportertest.NewNopSettings(internalmetadata.Type)),
+	}, opts...)...)
+	require.NoError(t, err)
+	return exp
+}
+
+func Test_writeBatchMarksSeriesOnlyAfterSend(t *testing.T) {
+	testCases := []struct {
+		name                string
+		enabled             bool
+		sendErr             error
+		wantTsOnSecondBatch int
+	}{
+		{name: "Disabled_SecondBatchPlansEveryRow", wantTsOnSecondBatch: 1},
+		{name: "Enabled_SendSucceeds_SecondBatchSkipsAppliedSeries", enabled: true, wantTsOnSecondBatch: 0},
+		{name: "Enabled_SendFails_SecondBatchReplansSeries", enabled: true, sendErr: errors.New("send failed"), wantTsOnSecondBatch: 1},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			conn, err := cmock.NewClickHouseNative(nil)
+			require.NoError(t, err)
+			conn.MatchExpectationsInOrder(false)
+			conn.ExpectPrepareBatch(fmt.Sprintf(samplesSQLTmpl, "", ""))
+			timeSeriesBatch := conn.ExpectPrepareBatch(fmt.Sprintf(timeSeriesSQLTmpl, "", ""))
+			if testCase.sendErr != nil {
+				timeSeriesBatch.ExpectSend().WillReturnError(testCase.sendErr)
+			}
+			conn.ExpectPrepareBatch(fmt.Sprintf(expHistSQLTmpl, "", ""))
+			conn.ExpectPrepareBatch(fmt.Sprintf(metadataSQLTmpl, "", ""))
+
+			exp := newTimeBucketedSetExporter(t, testCase.enabled, WithConn(conn))
+
+			metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+			first := exp.prepareBatch(context.Background(), metrics)
+			require.Len(t, first.ts, 1)
+			assert.Equal(t, testCase.enabled, first.ts[0].writeCurrent)
+
+			err = exp.writeBatch(context.Background(), first)
+			if testCase.sendErr != nil {
+				require.ErrorIs(t, err, testCase.sendErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			second := exp.prepareBatch(context.Background(), metrics)
+			assert.Equal(t, 1, len(second.samples))
+			assert.Equal(t, testCase.wantTsOnSecondBatch, len(second.ts))
+		})
 	}
 }
