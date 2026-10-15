@@ -486,3 +486,25 @@ func TestCreateTableReplacingMergeTreeWithVersion(t *testing.T) {
 	replicated := op.WithReplication()
 	require.Equal(t, "CREATE TABLE IF NOT EXISTS db.table (id Int16, updated_at DateTime64(3)) ENGINE = ReplicatedReplacingMergeTree(updated_at) ORDER BY id", replicated.ToSQL())
 }
+
+func TestAggregatingMergeTreeCompatibilitySetting(t *testing.T) {
+	newOperation := func() Operation {
+		return CreateTableOperation{
+			Database: "db",
+			Table:    "table",
+			Columns: []Column{
+				{Name: "key", Type: ColumnTypeUInt64},
+				{Name: "dimension", Type: ColumnTypeString},
+			},
+			Engine: AggregatingMergeTree{MergeTree: MergeTree{OrderBy: "key"}},
+		}.OnCluster("cluster")
+	}
+
+	unsupported := newOperation()
+	(&MigrationManager{}).applyCompatibilitySettings(unsupported)
+	require.NotContains(t, unsupported.ToSQL(), "allow_dimensions_outside_sorting_key")
+
+	supported := newOperation()
+	(&MigrationManager{allowDimensionsOutsideSortingKey: true}).applyCompatibilitySettings(supported)
+	require.Contains(t, supported.ToSQL(), "SETTINGS allow_dimensions_outside_sorting_key = 1")
+}
