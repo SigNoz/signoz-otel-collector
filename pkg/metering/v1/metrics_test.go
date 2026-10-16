@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"math"
 	"regexp"
 	"testing"
 
@@ -81,6 +82,74 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 	meter := NewMetrics(zap.NewNop())
 
 	assert.Equal(t, 30, meter.Count(md))
+}
+
+func TestMetrics_CountSkipsNaNPoints(t *testing.T) {
+	testCases := []struct {
+		name     string
+		build    func(m pmetric.Metric)
+		expected int
+	}{
+		{
+			name: "Gauge",
+			build: func(m pmetric.Metric) {
+				dps := m.SetEmptyGauge().DataPoints()
+				dps.AppendEmpty().SetDoubleValue(math.NaN())
+				dps.AppendEmpty().SetDoubleValue(1)
+			},
+			expected: 1,
+		},
+		{
+			name: "Sum",
+			build: func(m pmetric.Metric) {
+				dps := m.SetEmptySum().DataPoints()
+				dps.AppendEmpty().SetDoubleValue(math.NaN())
+				dps.AppendEmpty().SetIntValue(1)
+			},
+			expected: 1,
+		},
+		{
+			name: "Histogram",
+			build: func(m pmetric.Metric) {
+				dps := m.SetEmptyHistogram().DataPoints()
+				for _, set := range []func(pmetric.HistogramDataPoint){
+					func(dp pmetric.HistogramDataPoint) { dp.SetSum(math.NaN()) },
+					func(dp pmetric.HistogramDataPoint) { dp.SetMin(math.NaN()) },
+					func(dp pmetric.HistogramDataPoint) { dp.SetMax(math.NaN()) },
+					func(dp pmetric.HistogramDataPoint) { dp.SetSum(1) },
+				} {
+					dp := dps.AppendEmpty()
+					dp.ExplicitBounds().FromRaw([]float64{1})
+					dp.BucketCounts().FromRaw([]uint64{1, 1})
+					set(dp)
+				}
+			},
+			expected: 4,
+		},
+		{
+			name: "Summary",
+			build: func(m pmetric.Metric) {
+				dps := m.SetEmptySummary().DataPoints()
+				dps.AppendEmpty().SetSum(math.NaN())
+				dps.AppendEmpty().QuantileValues().AppendEmpty().SetValue(math.NaN())
+				dps.AppendEmpty().QuantileValues().AppendEmpty().SetValue(1)
+			},
+			expected: 3,
+		},
+	}
+
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetric.NewMetrics()
+			m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			m.SetName("test.metric")
+			testCase.build(m)
+
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
 }
 
 func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
