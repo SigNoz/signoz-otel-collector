@@ -88,18 +88,18 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 		{
 			name:  "WithoutNaN",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20},
-			// 6 data points * 20 buckets = 120
+			// 6 data points * (20 buckets + le=+Inf) = 126
 			// 6 data points * 4 (sum,count,min,max) metrics = 24
-			// total -> 120 + 24 = 144
-			expected: 144,
+			// total -> 126 + 24 = 150
+			expected: 150,
 		},
 		{
 			name:  "WithNaN",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20, HistogramNanValuesCount: 2},
-			// (6 - 2 NaN) data points * 20 buckets = 80
+			// (6 - 2 NaN) data points * (20 buckets + le=+Inf) = 84
 			// (6 - 2 NaN) data points * 4 (sum,count,min,max) metrics = 16
-			// total -> 80 + 16 = 96
-			expected: 96,
+			// total -> 84 + 16 = 100
+			expected: 100,
 		},
 	}
 
@@ -108,6 +108,48 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
+}
+
+func TestMetrics_CountHistogramBuckets(t *testing.T) {
+	testCases := []struct {
+		name         string
+		bounds       []float64
+		bucketCounts []uint64
+		expected     int
+	}{
+		{
+			name:         "WellFormed",
+			bounds:       []float64{0.5, 1},
+			bucketCounts: []uint64{1, 1, 1},
+			expected:     5,
+		},
+		{
+			name:     "NoBuckets",
+			expected: 3,
+		},
+		{
+			name:     "BoundsWithoutCounts",
+			bounds:   []float64{100, 1000},
+			expected: 3,
+		},
+	}
+
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetric.NewMetrics()
+			m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+			m.SetName("db.query.duration")
+			dp := m.SetEmptyHistogram().DataPoints().AppendEmpty()
+			dp.SetCount(3)
+			dp.SetSum(1.5)
+			dp.ExplicitBounds().FromRaw(testCase.bounds)
+			dp.BucketCounts().FromRaw(testCase.bucketCounts)
+
 			assert.Equal(t, testCase.expected, meter.Count(md))
 		})
 	}
