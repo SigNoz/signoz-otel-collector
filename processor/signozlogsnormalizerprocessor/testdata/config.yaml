@@ -10,9 +10,9 @@ signozlogsnormalizer/fields:
     fields: [sev]
   scope_name:
     fields: [logger, scope.name]
-signozlogsnormalizer/fields_copy:
+signozlogsnormalizer/fields_move:
   trace_id:
-    move: false
+    action: move
 signozlogsnormalizer/fields_empty:
   severity_text:
     fields: []
@@ -28,3 +28,6 @@ signozlogsnormalizer/opamp_position_before:
 signozlogsnormalizer/bad_opamp_position:
   opamp:
     position: middle
+signozlogsnormalizer/bad_action:
+  span_id:
+    action: rename

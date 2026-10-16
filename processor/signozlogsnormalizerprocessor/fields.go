@@ -95,7 +95,7 @@ func newFieldNames(c *Config) fieldNames {
 }
 
 func (f *fieldNames) add(t target, c FieldConfig) {
-	f.move[t] = c.Move
+	f.move[t] = c.Action == ActionMove
 	for _, name := range c.Fields {
 		field := normalizeFieldName(name)
 		if field == "" || f.knows(t, field) {

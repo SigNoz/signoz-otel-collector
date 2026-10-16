@@ -39,7 +39,8 @@ func TestLoadConfig(t *testing.T) {
 				c.ScopeName.Fields = []string{"logger", "scope.name"}
 			}),
 		},
-		{name: "FieldCopy_OthersMove", id: component.NewIDWithName(factory.Type(), "fields_copy"), expected: withDefaults(func(c *Config) { c.TraceID.Move = false })},
+		{name: "FieldMove_OthersCopy", id: component.NewIDWithName(factory.Type(), "fields_move"), expected: withDefaults(func(c *Config) { c.TraceID.Action = ActionMove })},
+		{name: "InvalidAction_Rejected", id: component.NewIDWithName(factory.Type(), "bad_action"), expectErr: true},
 		{name: "FieldsEmptyList_KeptEmpty", id: component.NewIDWithName(factory.Type(), "fields_empty"), expected: withDefaults(func(c *Config) { c.SeverityText.Fields = []string{} })},
 		{name: "OpAMPPositionBefore", id: component.NewIDWithName(factory.Type(), "opamp_position_before"), expected: withDefaults(func(c *Config) { c.OpAMP.Position = PositionBefore })},
 		{name: "InvalidOpAMPPosition_Rejected", id: component.NewIDWithName(factory.Type(), "bad_opamp_position"), expectErr: true},

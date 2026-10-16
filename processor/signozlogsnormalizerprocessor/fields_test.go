@@ -30,6 +30,12 @@ func fieldConfigs(c *Config) []*FieldConfig {
 	return []*FieldConfig{&c.SeverityNumber, &c.SeverityText, &c.TraceID, &c.SpanID, &c.ScopeName, &c.ScopeVersion}
 }
 
+func moveAll(c *Config) {
+	for _, field := range fieldConfigs(c) {
+		field.Action = ActionMove
+	}
+}
+
 func disableFields(c *Config) {
 	for _, field := range fieldConfigs(c) {
 		field.Fields = nil
@@ -339,12 +345,7 @@ func TestFieldsMove(t *testing.T) {
 		wantResource map[string]any
 	}{
 		{
-			name: "MoveDisabled_Copied",
-			mutate: func(c *Config) {
-				for _, field := range fieldConfigs(c) {
-					field.Move = false
-				}
-			},
+			name: "Default_Copied",
 			in: input{
 				body: map[string]any{
 					"level":         "info",
@@ -367,7 +368,8 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name: "MoveDefault_BodyAndAttributesRemoved",
+			name:   "MoveAll_BodyAndAttributesRemoved",
+			mutate: moveAll,
 			in: input{
 				body: map[string]any{
 					"level":         "info",
@@ -384,8 +386,11 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name:   "TraceIDMoveDisabled_TraceIDCopied_OthersMoved",
-			mutate: func(c *Config) { c.TraceID.Move = false },
+			name: "MoveAll_TraceIDCopy_TraceIDCopied_OthersMoved",
+			mutate: func(c *Config) {
+				moveAll(c)
+				c.TraceID.Action = ActionCopy
+			},
 			in: input{
 				body: map[string]any{"level": "info", "trace_id": "abababababababababababababababab"},
 			},
@@ -395,7 +400,8 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name:         "MoveDefault_LosingCandidateKept",
+			name:         "MoveAll_LosingCandidateKept",
+			mutate:       moveAll,
 			in:           input{body: map[string]any{"severity": "warn", "level": "error"}},
 			wantBody:     map[string]any{"level": "error"},
 			wantAttrs:    map[string]any{},
@@ -403,7 +409,8 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name:         "MoveDefault_UnparsableKept",
+			name:         "MoveAll_UnparsableKept",
+			mutate:       moveAll,
 			in:           input{body: map[string]any{"trace_id": "nothex", "severity_number": int64(99)}},
 			wantBody:     map[string]any{"trace_id": "nothex", "severity_number": int64(99)},
 			wantAttrs:    map[string]any{},
@@ -411,7 +418,8 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name: "MoveDefault_RecordValueSet_Kept",
+			name:   "MoveAll_RecordValueSet_Kept",
+			mutate: moveAll,
 			in: input{
 				body:  map[string]any{"trace_id": "efefefefefefefefefefefefefefefef"},
 				setup: func(lr plog.LogRecord) { lr.SetTraceID(pcommon.TraceID{1}) },
@@ -422,7 +430,8 @@ func TestFieldsMove(t *testing.T) {
 			wantResource: map[string]any{},
 		},
 		{
-			name: "MoveDefault_ScopeAndResourceKept",
+			name:   "MoveAll_ScopeAndResourceKept",
+			mutate: moveAll,
 			in: input{
 				scope:    map[string]any{"level": "debug"},
 				resource: map[string]any{"scope.name": "billing"},
@@ -527,8 +536,8 @@ func TestScopeRegrouping(t *testing.T) {
 			}},
 			expected: []scopeGroup{
 				{name: "", bodies: []any{map[string]any{"id": int64(2)}}},
-				{name: "a", bodies: []any{map[string]any{"id": int64(1)}, map[string]any{"id": int64(4)}}},
-				{name: "b", bodies: []any{map[string]any{"id": int64(3)}}},
+				{name: "a", bodies: []any{map[string]any{"scope_name": "a", "id": int64(1)}, map[string]any{"scope_name": "a", "id": int64(4)}}},
+				{name: "b", bodies: []any{map[string]any{"scope_name": "b", "id": int64(3)}}},
 			},
 		},
 		{
@@ -537,7 +546,7 @@ func TestScopeRegrouping(t *testing.T) {
 			input:     [][]any{{map[string]any{"scope_name": "inventory"}}, {"plain line"}},
 			expected: []scopeGroup{
 				{name: "", bodies: []any{"plain line"}},
-				{name: "inventory", bodies: []any{map[string]any{}}},
+				{name: "inventory", bodies: []any{map[string]any{"scope_name": "inventory"}}},
 			},
 		},
 	}
@@ -649,14 +658,14 @@ func TestBodyDisabled(t *testing.T) {
 			body:      "level=error",
 			attrs:     map[string]any{"level": "info"},
 			wantText:  "info",
-			wantAttrs: map[string]any{},
+			wantAttrs: map[string]any{"level": "info"},
 		},
 		{
 			name:      "InvalidJSONBody_AttributesSearched",
 			body:      `{"level":"error",}`,
 			attrs:     map[string]any{"severity": "warn"},
 			wantText:  "warn",
-			wantAttrs: map[string]any{},
+			wantAttrs: map[string]any{"severity": "warn"},
 		},
 	}
 
@@ -727,14 +736,14 @@ func TestBodyAndFields(t *testing.T) {
 			attrs:     map[string]any{"level": "info"},
 			wantText:  "error",
 			wantTrace: pcommon.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			wantBody:  map[string]any{"message": "boom"},
+			wantBody:  map[string]any{"level": "error", "message": "boom", "trace_id": "0102030405060708090a0b0c0d0e0f10"},
 			wantStash: `{"level":"error","msg":"boom","trace_id":"0102030405060708090a0b0c0d0e0f10"}`,
 		},
 		{
 			name:      "FlattenedMessage_Inferred",
 			body:      `{"message":{"level":"warn","text":"x"}}`,
 			wantText:  "warn",
-			wantBody:  map[string]any{"text": "x"},
+			wantBody:  map[string]any{"level": "warn", "text": "x"},
 			wantStash: `{"message":{"level":"warn","text":"x"}}`,
 		},
 		{
