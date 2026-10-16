@@ -12,11 +12,32 @@ attributes:
     type: string
     enum: [json, text, map, other]
   field:
-    description: Configured message field the message was promoted from.
+    description: Configured field name a message was promoted from or a value was inferred from; for a derived value, the target it was derived from.
     type: string
+  source:
+    description: Where the value was found. derived is a severity half filled from the other half.
+    type: string
+    enum: [body, attributes, scope, resource, derived]
+  target:
+    description: Top level log record field inferred.
+    type: string
+    enum: [severity_number, severity_text, trace_id, span_id, scope_name, scope_version]
 
 telemetry:
   metrics:
+    signozlogsnormalizer.field.inferences:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Top level fields inferred, by target, the field read and where it was found.
+      unit: "{field}"
+      sum:
+        value_type: int
+        monotonic: true
+        async: true
+      attributes: [target, field, source]
+
     signozlogsnormalizer.message.flattenings:
       enabled: true
       stability:

@@ -10,8 +10,14 @@ const (
 )
 
 type Config struct {
-	OpAMP OpAMPConfig `mapstructure:"opamp"`
-	Body  BodyConfig  `mapstructure:"body"`
+	OpAMP          OpAMPConfig `mapstructure:"opamp"`
+	Body           BodyConfig  `mapstructure:"body"`
+	SeverityNumber FieldConfig `mapstructure:"severity_number"`
+	SeverityText   FieldConfig `mapstructure:"severity_text"`
+	TraceID        FieldConfig `mapstructure:"trace_id"`
+	SpanID         FieldConfig `mapstructure:"span_id"`
+	ScopeName      FieldConfig `mapstructure:"scope_name"`
+	ScopeVersion   FieldConfig `mapstructure:"scope_version"`
 }
 
 type OpAMPConfig struct {
@@ -21,6 +27,11 @@ type OpAMPConfig struct {
 type BodyConfig struct {
 	Enabled bool     `mapstructure:"enabled"`
 	Fields  []string `mapstructure:"fields"`
+}
+
+type FieldConfig struct {
+	Fields []string `mapstructure:"fields"`
+	Move   bool     `mapstructure:"move"`
 }
 
 func (c *Config) Validate() error {

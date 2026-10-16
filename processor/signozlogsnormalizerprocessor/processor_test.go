@@ -183,7 +183,7 @@ func TestProcessLogsBody(t *testing.T) {
 		{
 			name:     "JSONString_MsgPromoted",
 			body:     `{"msg": "test message", "level": "info"}`,
-			expected: map[string]any{"message": "test message", "level": "info"},
+			expected: map[string]any{"message": "test message"},
 		},
 		{
 			name:     "Text_WrappedInMessage",
@@ -253,7 +253,7 @@ func TestProcessLogsBody(t *testing.T) {
 		{
 			name:     "MapBody_MsgPromoted",
 			body:     map[string]any{"msg": "x", "level": "info"},
-			expected: map[string]any{"message": "x", "level": "info"},
+			expected: map[string]any{"message": "x"},
 		},
 		{
 			name:     "IntBody_WrappedInMessage",
@@ -314,7 +314,7 @@ func TestStashOriginalBody(t *testing.T) {
 		{
 			name:          "JSONString_StashedByteExact",
 			body:          `{"msg": "hi",   "level": "info"}`,
-			expectedBody:  map[string]any{"message": "hi", "level": "info"},
+			expectedBody:  map[string]any{"message": "hi"},
 			expectedStash: `{"msg": "hi",   "level": "info"}`,
 		},
 		{
@@ -350,25 +350,25 @@ func TestStashOriginalBody(t *testing.T) {
 		{
 			name:          "MapBody_Unmutated_StashedAsLegacyJSON",
 			body:          map[string]any{"message": "x", "level": "info"},
-			expectedBody:  map[string]any{"message": "x", "level": "info"},
+			expectedBody:  map[string]any{"message": "x"},
 			expectedStash: `{"level":"info","message":"x"}`,
 		},
 		{
 			name:          "MapBody_MsgPromoted_StashedAsLegacyJSON",
 			body:          map[string]any{"msg": "x", "level": "info"},
-			expectedBody:  map[string]any{"message": "x", "level": "info"},
+			expectedBody:  map[string]any{"message": "x"},
 			expectedStash: `{"level":"info","msg":"x"}`,
 		},
 		{
 			name:          "MapBody_MessageNil_StashedAsLegacyJSON",
 			body:          map[string]any{"message": nil, "level": "info"},
-			expectedBody:  map[string]any{"level": "info"},
+			expectedBody:  map[string]any{},
 			expectedStash: `{"level":"info","message":null}`,
 		},
 		{
 			name:          "MapBody_MessageMapFlattened_StashedAsLegacyJSON",
 			body:          map[string]any{"message": map[string]any{"a": "b"}, "level": "info"},
-			expectedBody:  map[string]any{"a": "b", "level": "info"},
+			expectedBody:  map[string]any{"a": "b"},
 			expectedStash: `{"level":"info","message":{"a":"b"}}`,
 		},
 	}
