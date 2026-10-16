@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"math"
 	"regexp"
 	"testing"
 
@@ -81,6 +82,79 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 	meter := NewMetrics(zap.NewNop())
 
 	assert.Equal(t, 30, meter.Count(md))
+}
+
+func TestMetrics_CountSkipsNaNPoints(t *testing.T) {
+	testCases := []struct {
+		metricType  pmetric.MetricType
+		nanPoints   int
+		validPoints int
+		expected    int
+	}{
+		{metricType: pmetric.MetricTypeGauge, nanPoints: 3, validPoints: 4, expected: 4},
+		{metricType: pmetric.MetricTypeSum, nanPoints: 3, validPoints: 4, expected: 4},
+		// 2 buckets + count + one of sum/min/max per point
+		{metricType: pmetric.MetricTypeHistogram, nanPoints: 3, validPoints: 4, expected: 16},
+		// 1 quantile + count + sum per point
+		{metricType: pmetric.MetricTypeSummary, nanPoints: 2, validPoints: 4, expected: 12},
+	}
+
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.metricType.String(), func(t *testing.T) {
+			md := generateMetricsWithNaN(testCase.metricType, testCase.nanPoints, testCase.validPoints)
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
+}
+
+func generateMetricsWithNaN(metricType pmetric.MetricType, nanPoints, validPoints int) pmetric.Metrics {
+	md := pmetric.NewMetrics()
+	m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("test.metric")
+
+	var numberDps pmetric.NumberDataPointSlice
+	switch metricType {
+	case pmetric.MetricTypeGauge:
+		numberDps = m.SetEmptyGauge().DataPoints()
+	case pmetric.MetricTypeSum:
+		numberDps = m.SetEmptySum().DataPoints()
+	case pmetric.MetricTypeHistogram:
+		m.SetEmptyHistogram()
+	case pmetric.MetricTypeSummary:
+		m.SetEmptySummary()
+	}
+
+	for i := range nanPoints + validPoints {
+		isNaN := i < nanPoints
+		value := 1.0
+		if isNaN {
+			value = math.NaN()
+		}
+
+		switch metricType {
+		case pmetric.MetricTypeGauge, pmetric.MetricTypeSum:
+			dp := numberDps.AppendEmpty()
+			if !isNaN && i%2 == 1 {
+				dp.SetIntValue(1)
+			} else {
+				dp.SetDoubleValue(value)
+			}
+		case pmetric.MetricTypeHistogram:
+			dp := m.Histogram().DataPoints().AppendEmpty()
+			dp.ExplicitBounds().FromRaw([]float64{1})
+			dp.BucketCounts().FromRaw([]uint64{1, 1})
+			[]func(float64){dp.SetSum, dp.SetMin, dp.SetMax}[i%3](value)
+		case pmetric.MetricTypeSummary:
+			dp := m.Summary().DataPoints().AppendEmpty()
+			q := dp.QuantileValues().AppendEmpty()
+			q.SetValue(1)
+			[]func(float64){dp.SetSum, q.SetValue}[i%2](value)
+		}
+	}
+
+	return md
 }
 
 func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
