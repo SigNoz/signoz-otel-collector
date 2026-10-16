@@ -72,13 +72,13 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 
 			switch metric.Type() {
 			case pmetric.MetricTypeGauge:
-				count += countNumberSamples(metric.Gauge().DataPoints())
+				count += meter.countNumberSamples(metric.Gauge().DataPoints())
 			case pmetric.MetricTypeSum:
-				count += countNumberSamples(metric.Sum().DataPoints())
+				count += meter.countNumberSamples(metric.Sum().DataPoints())
 			case pmetric.MetricTypeHistogram:
-				count += countHistogramSamples(metric.Histogram().DataPoints())
+				count += meter.countHistogramSamples(metric.Histogram().DataPoints())
 			case pmetric.MetricTypeSummary:
-				count += countSummarySamples(metric.Summary().DataPoints())
+				count += meter.countSummarySamples(metric.Summary().DataPoints())
 			case pmetric.MetricTypeExponentialHistogram:
 				// Intentionally not counted. Exp histograms aren't billable on Cloud yet,
 				// and counting each bucket as a sample would explode the count.
@@ -92,7 +92,7 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 	return count
 }
 
-func countNumberSamples(dps pmetric.NumberDataPointSlice) int {
+func (meter *metrics) countNumberSamples(dps pmetric.NumberDataPointSlice) int {
 	count := 0
 	for i := range dps.Len() {
 		if !math.IsNaN(dps.At(i).DoubleValue()) {
@@ -102,7 +102,7 @@ func countNumberSamples(dps pmetric.NumberDataPointSlice) int {
 	return count
 }
 
-func countHistogramSamples(dps pmetric.HistogramDataPointSlice) int {
+func (meter *metrics) countHistogramSamples(dps pmetric.HistogramDataPointSlice) int {
 	count := 0
 	for i := range dps.Len() {
 		dp := dps.At(i)
@@ -125,27 +125,23 @@ func countHistogramSamples(dps pmetric.HistogramDataPointSlice) int {
 	return count
 }
 
-func countSummarySamples(dps pmetric.SummaryDataPointSlice) int {
+func (meter *metrics) countSummarySamples(dps pmetric.SummaryDataPointSlice) int {
 	count := 0
 	for i := range dps.Len() {
 		dp := dps.At(i)
-		if summaryHasNaN(dp) {
+		quantiles := dp.QuantileValues()
+		hasNaN := math.IsNaN(dp.Sum())
+		for j := range quantiles.Len() {
+			if math.IsNaN(quantiles.At(j).Value()) {
+				hasNaN = true
+				break
+			}
+		}
+		if hasNaN {
 			continue
 		}
-		count += dp.QuantileValues().Len()
+		count += quantiles.Len()
 		count += 2 // count,sum metrics
 	}
 	return count
-}
-
-func summaryHasNaN(dp pmetric.SummaryDataPoint) bool {
-	if math.IsNaN(dp.Sum()) {
-		return true
-	}
-	for i := range dp.QuantileValues().Len() {
-		if math.IsNaN(dp.QuantileValues().At(i).Value()) {
-			return true
-		}
-	}
-	return false
 }
