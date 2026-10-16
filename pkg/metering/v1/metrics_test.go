@@ -70,15 +70,18 @@ func TestMetrics_CountHistogramBuckets(t *testing.T) {
 			name:         "WellFormed",
 			bounds:       []float64{0.5, 1},
 			bucketCounts: []uint64{1, 1, 1},
-			expected:     5,
+			// 2 bounds + le=+Inf + count (1) + sum (1) = 5
+			expected: 5,
 		},
 		{
-			name:     "NoBuckets",
+			name: "NoBuckets",
+			// le=+Inf + count (1) + sum (1) = 3
 			expected: 3,
 		},
 		{
-			name:     "BoundsWithoutCounts",
-			bounds:   []float64{100, 1000},
+			name:   "BoundsWithoutCounts",
+			bounds: []float64{100, 1000},
+			// bounds without counts aren't written, so le=+Inf + count (1) + sum (1) = 3
 			expected: 3,
 		},
 	}
