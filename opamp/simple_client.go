@@ -24,7 +24,9 @@ func NewSimpleClient(coll *signozcol.WrappedCollector, logger *zap.Logger) *simp
 
 func (c *simpleClient) Start(ctx context.Context) error {
 	c.logger.Info("Starting simple client")
-	err := c.coll.Run(ctx)
+	// Use a background context for the collector so that opamp connection failures
+	// don't cancel the collector's context
+	err := c.coll.Run(context.Background())
 	if err != nil {
 		return err
 	}
