@@ -53,10 +53,12 @@ type keyCache struct {
 	nextUsed int
 	// pool, floor and exactUsed share keys with the caches of other writers:
 	// the exact part may pass its floor while the pool has room. exactUsed is
-	// used[classExact], for the other caches of the pool to read.
-	pool      *keyPool
-	floor     int
-	exactUsed atomic.Int64
+	// used[classExact], and exactWindow its window, for the other caches of
+	// the pool to read.
+	pool        *keyPool
+	floor       int
+	exactUsed   atomic.Int64
+	exactWindow atomic.Uint64
 }
 
 // keyPool lets the key caches of the writers with no max_bytes share their
@@ -92,7 +94,9 @@ func (p *keyPool) remove(c *keyCache) {
 }
 
 // allows reports whether a cache may hold want keys in its exact part: within
-// its floor, or above it while the pool has room.
+// its floor, or above it while the pool has room. A cache rotates only at a
+// push, so the draw of a cache that is still in an earlier window (a signal
+// that stopped) does not count.
 func (p *keyPool) allows(c *keyCache, want int) bool {
 	drawn := want - c.floor
 	if drawn <= 0 {
@@ -100,7 +104,7 @@ func (p *keyPool) allows(c *keyCache, want int) bool {
 	}
 	if caches := p.caches.Load(); caches != nil {
 		for _, o := range *caches {
-			if o != c {
+			if o != c && o.exactWindow.Load() == c.window {
 				drawn += max(0, int(o.exactUsed.Load())-o.floor)
 			}
 		}
@@ -157,6 +161,7 @@ func (c *keyCache) rotate(window uint64) {
 	c.used = [2]int{carried, 0}
 	c.nextUsed = 0
 	c.exactUsed.Store(int64(carried))
+	c.exactWindow.Store(window)
 }
 
 // share makes the cache draw on a pool: its own floor of keys, of which the

@@ -205,6 +205,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
 						TTL:         "day + toIntervalDay(35)",
 						Settings: TableSettings{
 							{Name: "allow_nullable_key", Value: "1"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
 					},
 				},
