@@ -94,10 +94,10 @@ exporters:
     Such series are not cached, so a label with a value per point cannot fill
     the cache. The rows of a resource are written once, with no metric name. A
     link row (no metric name, the field `__name__`, the metric name as value)
-    ties each metric to each of its resources, and a key row (the metric name,
-    a resource field, no value) gives each metric its resource keys. Each
-    metric label gets at least one row per day, so the keys of a metric are
-    complete.
+    ties each metric to each of its resources and stays out of the views, and
+    a key row (the metric name, a resource field, no value) gives each metric
+    its resource keys. Each metric label gets at least one row per day, so the
+    keys of a metric are complete.
 - **Inserts.** One insert per push, async by default: the server joins the
   inserts of `async_insert_busy_timeout` into one part per table and shard,
   and the shards join the inserts that the distributed table sends them. The

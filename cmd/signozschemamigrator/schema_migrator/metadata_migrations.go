@@ -238,6 +238,7 @@ var MetadataMigrations = []SchemaMigrationRecord{
 FROM signoz_metadata.field_values_sets
 ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
 WHERE NOT (field_values_sets.metric_name != '' AND field_values_sets.field_context = 'resource')
+  AND field_values_sets.field_name != '__name__'
 GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, string_value, number_value, day`,
 			},
 			CreateTableOperation{
