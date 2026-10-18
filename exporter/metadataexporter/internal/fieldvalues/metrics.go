@@ -21,13 +21,14 @@ const linkField = "__name__"
 // metricResource is a resource of the input. keys identifies the names of its
 // fields, for the key rows of its metrics.
 type metricResource struct {
-	hash uint64
 	keys uint64
 	pairRange
 }
 
 // preparedSeries is one point: its series name and id, and its labels in
-// pairs[lo:hi], the point labels first and then the scope labels.
+// pairs[lo:hi], the point labels first and then the scope labels. The id does
+// not include the resource: under the writer lock, the series joins the
+// identity of its resource, which the value rules can make coarse.
 type preparedSeries struct {
 	name     string
 	nameHash uint64
@@ -61,10 +62,10 @@ func putMetricsInput(in *metricsInput) {
 	metricsPool.Put(in)
 }
 
-// addMetrics prepares one set per series, with the id of time_series_v4: the
-// fingerprint chain of resource, scope and point attributes, with the metric
-// name added last. Histograms and summaries write only their .count series,
-// which has no le or quantile label. Metrics have no value limits.
+// addMetrics prepares one set per series, with an id from the fingerprint
+// chain of scope and point attributes, with the metric name added last.
+// Histograms and summaries write only their .count series, which has no le or
+// quantile label.
 func (in *metricsInput) addMetrics(md pmetric.Metrics) {
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
@@ -77,11 +78,11 @@ func (in *metricsInput) addMetrics(md pmetric.Metrics) {
 		for i := lo; i < len(in.pairs); i++ {
 			keys += uint64(in.pairs[i].field)
 		}
-		in.resources = append(in.resources, metricResource{hash: resourceFP.Hash(), keys: mix64(keys), pairRange: pairRange{lo: lo, hi: len(in.pairs)}})
+		in.resources = append(in.resources, metricResource{keys: mix64(keys), pairRange: pairRange{lo: lo, hi: len(in.pairs)}})
 		sms := rm.ScopeMetrics()
 		for j := 0; j < sms.Len(); j++ {
 			sm := sms.At(j)
-			scopeFP := fingerprint.NewFingerprint(fingerprint.ScopeFingerprintType, resourceFP.Hash(), sm.Scope().Attributes(), map[string]string{
+			scopeFP := fingerprint.NewFingerprint(fingerprint.ScopeFingerprintType, fingerprint.InitialOffset, sm.Scope().Attributes(), map[string]string{
 				"__scope.name__":       sm.Scope().Name(),
 				"__scope.version__":    sm.Scope().Version(),
 				"__scope.schema_url__": sm.SchemaUrl(),
@@ -200,36 +201,26 @@ func (b *batch) addSeries(in *metricsInput) {
 	}
 }
 
-// series writes the rows of one point: the series set, the resource rows once
-// per resource with no metric name, a link row per metric and resource, and
-// a key row per metric and resource field, so that the keys of a metric are
-// complete. The points of a resource come together, so the resource and the
+// series writes the rows of one point: the resource rows with no metric name,
+// as for logs and traces, the series set, a link row per metric and resource,
+// and a key row per metric and resource field, so that the keys of a metric
+// are complete. The resource is its identity: when a resource field is over
+// the limit, the series of the resources that differ only in that field are
+// one series. The points of a resource come together, so the resource and the
 // link are looked up once for a run of points.
 func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, resourcePairs []pair) {
 	seen := b.seenMillis(s.ts, 0)
-	rh := res.hash
+	if s.resource != b.lastResource {
+		b.lastResource = s.resource
+		b.lastResourceHash = b.resourceRows(resourcePairs, seen)
+		b.lastLink = 0
+	}
+	rh := b.lastResourceHash
 	sk := setKey(rh, s.id)
 	if known, ahead := b.lookup(sk); !known {
 		b.newSeries(s, labels, rh, sk, seen)
 	} else if ahead {
 		b.emitAhead(sk, s.name, labels, rh, s.id, true)
-	}
-	if s.resource != b.lastResource {
-		b.lastResource = s.resource
-		b.lastLink = 0
-		rk := resourceKey(emptyNameHash, rh)
-		if known, ahead := b.lookup(rk); !known {
-			if class, ok := b.classFor(); ok {
-				for i := range resourcePairs {
-					b.emit(rk, "", &resourcePairs[i], rh, resourceAttrsHash, true, seen)
-				}
-				b.remember(rk, class)
-			} else {
-				b.leaveOut(reasonCacheFull, len(resourcePairs))
-			}
-		} else if ahead {
-			b.emitAhead(rk, "", resourcePairs, rh, resourceAttrsHash, true)
-		}
 	}
 	lk := linkKey(s.nameHash, rh)
 	if lk == b.lastLink {
@@ -247,14 +238,14 @@ func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, re
 	} else if ahead {
 		b.emitAhead(lk, "", []pair{link}, rh, resourceAttrsHash, false)
 	}
-	b.resourceKeys(s, res, resourcePairs, seen)
+	b.resourceKeys(s, res, resourcePairs, rh, seen)
 }
 
 // newSeries writes a series that the window does not know. Its labels follow
 // the value rules of logs and traces. When all labels stay in the set, the
-// set is the series, with the id of time_series_v4. When a label leaves the
-// set, the set is the labels that stay, and the series is not cached: a label
-// with a value per point would fill the cache with series.
+// set is the series. When a label leaves the set, the set is the labels that
+// stay, and the series is not cached: a label with a value per point would
+// fill the cache with series.
 func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64) {
 	in, samples, out := b.in[:0], b.sampled[:0], b.out[:0]
 	for i := range labels {
@@ -314,7 +305,7 @@ func (b *batch) seriesSet(s *preparedSeries, in []pair, rh, k, ah, seen uint64) 
 // none in the window. A key row has the metric name, the field and no value.
 // It is checked once per batch for a metric and the field names of a
 // resource, as most resources of a metric have the same fields.
-func (b *batch) resourceKeys(s *preparedSeries, res *metricResource, resourcePairs []pair, seen uint64) {
+func (b *batch) resourceKeys(s *preparedSeries, res *metricResource, resourcePairs []pair, rh, seen uint64) {
 	checked := mix64(s.nameHash ^ res.keys)
 	if _, ok := b.keysChecked[checked]; ok {
 		return
@@ -325,13 +316,13 @@ func (b *batch) resourceKeys(s *preparedSeries, res *metricResource, resourcePai
 		key := pair{ctx: contextResource, typ: typeString, name: resourcePairs[i].name}
 		if known, ahead := b.lookup(k); !known {
 			if class, ok := b.classFor(); ok {
-				b.emit(k, s.name, &key, res.hash, resourceAttrsHash, false, seen)
+				b.emit(k, s.name, &key, rh, resourceAttrsHash, false, seen)
 				b.remember(k, class)
 			} else {
 				b.leaveOut(reasonCacheFull, 1)
 			}
 		} else if ahead {
-			b.emitAhead(k, s.name, []pair{key}, res.hash, resourceAttrsHash, false)
+			b.emitAhead(k, s.name, []pair{key}, rh, resourceAttrsHash, false)
 		}
 	}
 }

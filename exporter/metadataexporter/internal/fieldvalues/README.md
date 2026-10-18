@@ -84,17 +84,20 @@ exporters:
   - Traces: attributes, span fields, the fields that the traces exporter
     derives (`http_method`, `response_status_code`, and the rest), and event
     fields outside the hash.
-  - Metrics: one set per series, with the id of `time_series_v4`. Histograms
-    and summaries write only their `.count` series. The labels of a new
-    series follow the value rules of logs and traces: a label with more than
-    `max_record_field_values` values leaves the set, which is then the labels
-    that stay, and keeps a daily sample. Such series are not cached, so a
-    label with a value per point cannot fill the cache. The rows of a
-    resource are written once, with no metric name. A link row (no metric
-    name, the field `__name__`, the metric name as value) ties each metric to
-    each of its resources, and a key row (the metric name, a resource field,
-    no value) gives each metric its resource keys. Each metric label gets at
-    least one row per day, so the keys of a metric are complete.
+  - Metrics: one set per series of a resource identity. A resource field over
+    the limit leaves the identity as for logs and traces, so the series of the
+    resources that differ only in that field (one resource per process, for
+    example) are one series. Histograms and summaries write only their
+    `.count` series. The labels of a new series follow the value rules of logs
+    and traces: a label with more than `max_record_field_values` values leaves
+    the set, which is then the labels that stay, and keeps a daily sample.
+    Such series are not cached, so a label with a value per point cannot fill
+    the cache. The rows of a resource are written once, with no metric name. A
+    link row (no metric name, the field `__name__`, the metric name as value)
+    ties each metric to each of its resources, and a key row (the metric name,
+    a resource field, no value) gives each metric its resource keys. Each
+    metric label gets at least one row per day, so the keys of a metric are
+    complete.
 - **Inserts.** One insert per push, async by default: the server joins the
   inserts of `async_insert_busy_timeout` into one part per table and shard,
   and the shards join the inserts that the distributed table sends them. The
