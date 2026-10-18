@@ -1,0 +1,16 @@
+signozlogsnormalizer:
+signozlogsnormalizer/body_disabled:
+  body:
+    enabled: false
+signozlogsnormalizer/fields:
+  body:
+    fields: [text]
+signozlogsnormalizer/unknown:
+  body:
+    unknown_key: true
+signozlogsnormalizer/opamp_position_before:
+  opamp:
+    position: before
+signozlogsnormalizer/bad_opamp_position:
+  opamp:
+    position: middle

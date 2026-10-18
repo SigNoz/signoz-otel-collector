@@ -2194,5 +2194,72 @@ var TracesMigrations = []SchemaMigrationRecord{
 			},
 		},
 	},
+	{
+		MigrationID: 1018,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_attributes_http_route",
+					Expression:  "attributes.http.route::String",
+					Type:        "bloom_filter",
+					Granularity: 4,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_attributes_rpc_method",
+					Expression:  "attributes.rpc.method::String",
+					Type:        "bloom_filter",
+					Granularity: 4,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_attributes_gen_ai_request_model",
+					Expression:  "attributes.gen_ai.request.model::String",
+					Type:        "bloom_filter",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index: Index{
+					Name:        "idx_attributes_gen_ai_provider_name",
+					Expression:  "attributes.gen_ai.provider.name::String",
+					Type:        "bloom_filter",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_attributes_http_route"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_attributes_rpc_method"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_attributes_gen_ai_request_model"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_traces",
+				Table:    "signoz_index_v3",
+				Index:    Index{Name: "idx_attributes_gen_ai_provider_name"},
+			},
+		},
+	},
 	// add new new migration to test file for sync/async check as well
 }

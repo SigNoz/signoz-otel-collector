@@ -12,6 +12,9 @@ extensions:
 exporters:
   debug:
 service:
+  telemetry:
+    metrics:
+      level: none
   extensions: [zpages]
   pipelines:
     traces:
