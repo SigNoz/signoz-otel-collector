@@ -14,7 +14,7 @@ and metric keys:
 - `signoz_metadata.field_keys_daily`: a view with one row per metric, field
   and day, for key reads that must not scan values.
 
-Migration 1002 of the schema migrator creates the tables.
+Migration 1003 of the schema migrator creates the tables.
 
 ## Configuration
 

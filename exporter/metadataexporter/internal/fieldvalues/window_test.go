@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pipeline"
+
+	"github.com/SigNoz/signoz-otel-collector/constants"
 )
 
 var (
@@ -255,7 +257,7 @@ func TestSpentFieldGivesItsMemoryBack(t *testing.T) {
 func TestOriginalBodyAttributeIsNotAField(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalLogs)
 	require.NoError(t, e.WriteLogs(context.Background(), logsOf(checkout,
-		logRecord{"10:00", map[string]any{"__signoz_original_body__": "{}", "a": "1"}})))
+		logRecord{"10:00", map[string]any{constants.OriginalBodyAttributeKey: "{}", "a": "1"}})))
 	assert.Equal(t, []string{"{a=1}"}, setList(w.take()))
 }
 
