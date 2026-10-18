@@ -235,6 +235,8 @@ GROUP BY field_context, field_name`)
 		"the key view has the keys of a metric, its resource keys from the key rows")
 	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_keys_daily
 WHERE signal = 'metrics' AND field_name = '__name__' GROUP BY field_name`), "link rows are not keys")
+	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
+WHERE signal = 'metrics' AND field_name = '__name__' GROUP BY field_name`), "link rows are not values")
 
 	podValues := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'k8s.pod.name' AND field_context = 'resource'
