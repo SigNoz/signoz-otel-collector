@@ -149,3 +149,22 @@ func TestKeyPoolSharesKeysAboveTheFloors(t *testing.T) {
 	a.shutdown()
 	assert.True(t, b.room(classExact, 30), "a cache that shuts down gives its keys back")
 }
+
+// A signal that stops gets no push, so its cache stays in the last window. Its
+// draw must not hold the pool in the new window.
+func TestKeyPoolIgnoresTheDrawOfAnEarlierWindow(t *testing.T) {
+	var p keyPool
+	p.size.Store(20)
+	stopped, active := newTestKeyCache(t), newTestKeyCache(t)
+	stopped.share(&p, 10, 0)
+	active.share(&p, 10, 0)
+	day := 20000 * dayMillis
+	stopped.rotate(day)
+	active.rotate(day)
+	stopped.used[classExact] = 30
+	stopped.exactUsed.Store(30)
+	assert.False(t, active.room(classExact, 11), "in the same window, the pool is taken")
+
+	active.rotate(day + dayMillis)
+	assert.True(t, active.room(classExact, 30), "in the next window, the stopped signal holds nothing")
+}
