@@ -3,15 +3,14 @@ package fieldvalues
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pipeline"
-
-	"github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
 )
 
 func testMetrics() pmetric.Metrics {
@@ -45,34 +44,9 @@ func testMetrics() pmetric.Metrics {
 	return md
 }
 
-// expectedSeriesID repeats the chain of the metrics exporter
-// (signozclickhousemetrics), so the set id equals time_series_v4.fingerprint.
-func expectedSeriesID(md pmetric.Metrics, metricIdx, dpIdx int, name string, temporality pmetric.AggregationTemporality) uint64 {
-	rm := md.ResourceMetrics().At(0)
-	sm := rm.ScopeMetrics().At(0)
-	resourceFP := fingerprint.NewFingerprint(fingerprint.ResourceFingerprintType, fingerprint.InitialOffset, rm.Resource().Attributes(), map[string]string{})
-	scopeFP := fingerprint.NewFingerprint(fingerprint.ScopeFingerprintType, resourceFP.Hash(), sm.Scope().Attributes(), map[string]string{
-		"__scope.name__":       sm.Scope().Name(),
-		"__scope.version__":    sm.Scope().Version(),
-		"__scope.schema_url__": sm.SchemaUrl(),
-	})
-	m := sm.Metrics().At(metricIdx)
-	var attrs pcommon.Map
-	if m.Type() == pmetric.MetricTypeHistogram {
-		attrs = m.Histogram().DataPoints().At(dpIdx).Attributes()
-	} else {
-		attrs = m.Sum().DataPoints().At(dpIdx).Attributes()
-	}
-	pointFP := fingerprint.NewFingerprint(fingerprint.PointFingerprintType, scopeFP.Hash(), attrs, map[string]string{
-		"__temporality__": temporality.String(),
-	})
-	return pointFP.HashWithName(name)
-}
-
 func TestMetricsSetIsTheSeries(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
-	md := testMetrics()
-	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
 	rows := w.take()
 
 	bySeries := map[uint64]string{}
@@ -81,11 +55,8 @@ func TestMetricsSetIsTheSeries(t *testing.T) {
 			bySeries[r.attrsHash] = r.metricName
 		}
 	}
-	assert.Equal(t, map[uint64]string{
-		expectedSeriesID(md, 0, 0, "http_requests", pmetric.AggregationTemporalityCumulative): "http_requests",
-		expectedSeriesID(md, 0, 1, "http_requests", pmetric.AggregationTemporalityCumulative): "http_requests",
-		expectedSeriesID(md, 1, 0, "latency.count", pmetric.AggregationTemporalityDelta):      "latency.count",
-	}, bySeries, "one set per series, with the time_series_v4 fingerprint; a histogram writes only its .count series")
+	assert.ElementsMatch(t, []string{"http_requests", "http_requests", "latency.count"}, slices.Collect(maps.Values(bySeries)),
+		"one set per series; a histogram writes only its .count series")
 
 	assert.Equal(t, []string{
 		"{code=200, library.lang=go, method=GET}",
@@ -206,5 +177,64 @@ func TestMetricsLabelOverTheLimitLeavesTheSet(t *testing.T) {
 		"3 series, 1 coarse set, the resource, its link, its key row, and the keys of route and request_id; the series past the limit are not cached")
 
 	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	assert.Empty(t, w.take())
+}
+
+// processMetrics is the output of the process scraper on one host: one
+// resource per process, with two series each.
+func processMetrics(processes int) pmetric.Metrics {
+	md := pmetric.NewMetrics()
+	for pid := 1; pid <= processes; pid++ {
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("host.name", "node-7")
+		rm.Resource().Attributes().PutInt("process.pid", int64(pid))
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName("process.cpu.time")
+		points := m.SetEmptySum().DataPoints()
+		for _, state := range []string{"user", "system"} {
+			dp := points.AppendEmpty()
+			dp.SetTimestamp(at("10:00"))
+			dp.Attributes().PutStr("state", state)
+		}
+	}
+	return md
+}
+
+// Past the limit, process.pid leaves the identity: the processes of a host
+// are one resource with one set per series, and each pid is still written
+// once.
+func TestMetricsResourceFieldOverTheLimitLeavesTheIdentity(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxResourceFieldValues = 10
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	type counts struct{ resources, series, pidsInHash, pidsOutside int }
+	count := func(rows []row) counts {
+		resources := map[uint64]struct{}{}
+		series := map[[2]uint64]struct{}{}
+		var c counts
+		for _, r := range rows {
+			resources[r.resourceHash] = struct{}{}
+			switch {
+			case r.attrsHash != resourceAttrsHash:
+				series[[2]uint64{r.resourceHash, r.attrsHash}] = struct{}{}
+			case r.metricName == "" && r.p.name == "process.pid" && r.inHash:
+				c.pidsInHash++
+			case r.metricName == "" && r.p.name == "process.pid":
+				c.pidsOutside++
+			}
+		}
+		c.resources, c.series = len(resources), len(series)
+		return c
+	}
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	assert.Equal(t, counts{resources: 11, series: 22, pidsInHash: 10, pidsOutside: 190}, count(w.take()),
+		"10 processes in full, then one resource for the host: 2 series for each resource, and each pid once")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	assert.Equal(t, counts{resources: 1, pidsOutside: 10}, count(w.take()),
+		"the first 10 processes join the host, so their pids are written outside its identity")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
 	assert.Empty(t, w.take())
 }

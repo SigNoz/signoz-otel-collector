@@ -264,6 +264,33 @@ WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_nam
 	assert.Equal(t, []string{"200", "500"}, allMetrics, "the view also writes each metrics row under the empty metric name")
 }
 
+// A resource field over the limit leaves the identity of the metric resources,
+// and the reads through the link rows still give all of its values.
+func TestIntegrationMetricResourceFieldOverTheLimit(t *testing.T) {
+	conn := integrationConn(t)
+	cfg := testConfig()
+	cfg.Limits.MaxResourceFieldValues = 10
+	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
+	setNow(e, testDay)
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	flush(t, conn)
+
+	pids := queryStrings(t, conn, `SELECT toString(uniqExact(string_value)) FROM signoz_metadata.distributed_field_values_sets AS v
+WHERE signal = 'metrics' AND metric_name = '' AND field_name = 'process.pid' AND field_context = 'resource'
+  AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS l
+      WHERE signal = 'metrics' AND metric_name = '' AND field_name = '__name__' AND string_value = 'process.cpu.time')
+SETTINGS distributed_product_mode = 'local'`)
+	assert.Equal(t, []string{"200"}, pids, "the pids of a metric, through its link rows")
+
+	resources := queryStrings(t, conn, `SELECT toString(uniqExact(resource_hash)) FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'metrics' AND metric_name = 'process.cpu.time'`)
+	assert.Equal(t, []string{"11"}, resources, "10 processes in full, then one resource for the host")
+
+	daily := queryStrings(t, conn, `SELECT toString(uniqExact(string_value)) FROM signoz_metadata.distributed_field_values_daily
+WHERE signal = 'metrics' AND metric_name = '' AND field_name = 'process.pid'`)
+	assert.Equal(t, []string{"200"}, daily)
+}
+
 func TestIntegrationSharedCacheWritesEachRowOnce(t *testing.T) {
 	conn := integrationConn(t)
 	shared := newMapCache()

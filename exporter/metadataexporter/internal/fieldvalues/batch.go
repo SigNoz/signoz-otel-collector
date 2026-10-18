@@ -81,12 +81,13 @@ type batch struct {
 	out     []pair
 	sampled []pair
 	refs    []resourceRef
-	// lastResource and lastLink are the resource and the link of the last
-	// metric point, and keysChecked holds the metrics and resource field
-	// names whose key rows this batch checked.
-	lastResource int
-	lastLink     uint64
-	keysChecked  map[uint64]struct{}
+	// lastResource, lastResourceHash and lastLink are the resource, its
+	// identity and the link of the last metric point, and keysChecked holds
+	// the metrics and resource field names whose key rows this batch checked.
+	lastResource     int
+	lastResourceHash uint64
+	lastLink         uint64
+	keysChecked      map[uint64]struct{}
 }
 
 func newBatchBuffers() *batch {
@@ -119,7 +120,7 @@ func (b *batch) reset() {
 	clear(b.sampled[:cap(b.sampled)])
 	clear(b.refs)
 	b.refs = b.refs[:0]
-	b.lastResource, b.lastLink = -1, 0
+	b.lastResource, b.lastResourceHash, b.lastLink = -1, 0, 0
 	clear(b.keysChecked)
 	b.state, b.class = nil, nil
 }
@@ -327,10 +328,21 @@ func (b *batch) sampleDue(st *fieldState) bool {
 	return uint64(st.values.len()+1)*b.preWriteMillis <= budget*elapsed
 }
 
-// resource writes the rows of a resource and returns its identity. The fields
-// in the identity are written once per resource per window; the values of the
-// resource fields outside the identity are written once per value.
+// resource writes the rows of the resource of a log record or span, and
+// returns its identity with its state.
 func (b *batch) resource(pairs []pair, seen uint64) resourceRef {
+	rh := b.resourceRows(pairs, seen)
+	rs := b.state.resources.get(rh)
+	if rs == nil {
+		b.stats.resourcesUntracked++
+	}
+	return resourceRef{hash: rh, state: rs, ready: true}
+}
+
+// resourceRows writes the rows of a resource and returns its identity. The
+// fields in the identity are written once per resource per window; the values
+// of the resource fields outside the identity are written once per value.
+func (b *batch) resourceRows(pairs []pair, seen uint64) uint64 {
 	identity, outside := b.in[:0], b.out[:0]
 	for i := range pairs {
 		switch b.decide(&pairs[i], true) {
@@ -370,11 +382,7 @@ func (b *batch) resource(pairs []pair, seen uint64) resourceRef {
 			b.leaveOut(reasonCacheFull, 1)
 		}
 	}
-	rs := b.state.resources.get(rh)
-	if rs == nil {
-		b.stats.resourcesUntracked++
-	}
-	return resourceRef{hash: rh, state: rs, ready: true}
+	return rh
 }
 
 // record writes the rows of one log record or span. recordPairs may enter the
