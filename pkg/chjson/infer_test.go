@@ -81,7 +81,7 @@ func TestFromPcommonMapInferredTypes(t *testing.T) {
 		fill func(m pcommon.Map)
 		// textFails: ClickHouse rejects this body as JSON text; want is the typed insert's behavior.
 		textFails bool
-		// deviates: date-like strings stay String instead of ClickHouse's Date/DateTime inference.
+		// deviates: date-like strings stay String, as with date inference off on the exporter connection.
 		deviates bool
 		want     string
 	}{

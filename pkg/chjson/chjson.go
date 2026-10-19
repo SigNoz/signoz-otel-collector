@@ -42,9 +42,10 @@ func (l Limits) nested() Limits {
 	return Limits{MaxDynamicTypes: l.MaxDynamicTypes / 2, MaxDynamicPaths: l.MaxDynamicPaths / 4}
 }
 
-// FromPcommonMap stores every value with the type ClickHouse infers when parsing the map's JSON text,
-// except that date-like strings stay String. Where that text fails to insert, the first duplicate
-// path wins, integers beyond UInt64 stay Float64, and NaN/Inf become null.
+// FromPcommonMap stores every value with the type ClickHouse infers when parsing the map's JSON text
+// with input_format_try_infer_dates and input_format_try_infer_datetimes off. Where that text fails to
+// insert, integers beyond UInt64 stay Float64, NaN/Inf become null, and a duplicate path keeps its
+// first non-null value.
 func FromPcommonMap(m pcommon.Map, limits Limits, typedStringPaths map[string]struct{}) *chcol.JSON {
 	obj := chcol.NewJSON()
 	for k, v := range m.All() {
