@@ -3,11 +3,10 @@
 package metadataexporter
 
 import (
-	"testing"
-
 	"go.uber.org/goleak"
+	"testing"
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"))
+	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"), goleak.IgnoreTopFunction("github.com/ClickHouse/clickhouse-go/v2.(*clickhouse).startAutoCloseIdleConnections"))
 }
