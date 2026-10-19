@@ -120,7 +120,38 @@ func isComplete(t *chType) bool {
 	return true
 }
 
-// inferValueType mirrors elementToDataTypeImpl on the JSON text encoding/json produces for v.
+// collapse returns the common type of structurally equal types. An integer stays negative if any
+// collapsed value was negative, so a negative value is never widened to UInt64.
+func collapse(types []*chType) *chType {
+	last := types[len(types)-1]
+	switch last.id {
+	case tInt64:
+		for _, t := range types {
+			if t.negative {
+				return int64Type(true)
+			}
+		}
+	case tNullable, tArray:
+		nested := make([]*chType, len(types))
+		for i, t := range types {
+			nested[i] = t.nested
+		}
+		return &chType{id: last.id, nested: collapse(nested)}
+	case tTuple:
+		elems := make([]*chType, len(last.elems))
+		for e := range last.elems {
+			column := make([]*chType, len(types))
+			for i, t := range types {
+				column[i] = t.elems[e]
+			}
+			elems[e] = collapse(column)
+		}
+		return tupleOf(elems)
+	}
+	return last
+}
+
+// inferValueType infers from the JSON text encoding/json produces for v.
 func inferValueType(v pcommon.Value) *chType {
 	switch v.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
@@ -134,30 +165,34 @@ func inferValueType(v pcommon.Value) *chType {
 	case pcommon.ValueTypeMap:
 		return objectType
 	case pcommon.ValueTypeSlice:
-		types := make([]*chType, 0, v.Slice().Len())
-		for _, el := range v.Slice().All() {
-			types = append(types, inferValueType(el))
-		}
-		if len(types) == 0 {
-			return arrayOf(nothingType)
-		}
-		if allEqual(types) {
-			return arrayOf(types[len(types)-1])
-		}
-		for _, t := range types {
-			if !isComplete(t) {
-				return tupleOf(types)
-			}
-		}
-		transformed := cloneTypes(types)
-		transformInferredTypes(transformed)
-		if allEqual(transformed) {
-			return arrayOf(transformed[len(transformed)-1])
-		}
-		return tupleOf(types)
+		return inferArrayType(v.Slice())
 	default:
 		return makeNullable(nothingType)
 	}
+}
+
+func inferArrayType(s pcommon.Slice) *chType {
+	types := make([]*chType, 0, s.Len())
+	for _, el := range s.All() {
+		types = append(types, inferValueType(el))
+	}
+	if len(types) == 0 {
+		return arrayOf(nothingType)
+	}
+	if allEqual(types) {
+		return arrayOf(collapse(types))
+	}
+	for _, t := range types {
+		if !isComplete(t) {
+			return tupleOf(types)
+		}
+	}
+	transformed := cloneTypes(types)
+	transformTypesRecursively(transformed)
+	if allEqual(transformed) {
+		return arrayOf(collapse(transformed))
+	}
+	return tupleOf(types)
 }
 
 // doubleLiteralType follows the JSON text: encoding/json writes integral doubles below 1e21 without a
@@ -177,9 +212,8 @@ func doubleLiteralType(f float64) *chType {
 	}
 }
 
-// elementType mirrors DynamicNode::elementToDataType followed by removeNullable.
 func elementType(v pcommon.Value) *chType {
-	t := finalizeType(inferValueType(v), false)
+	t := transformFinalType(inferValueType(v), false)
 	if t.id == tNullable || t.id == tArray || t.id == tTuple {
 		t = makeNullableRecursively(t)
 	}
@@ -201,10 +235,6 @@ func makeNullableRecursively(t *chType) *chType {
 	default:
 		return makeNullable(t)
 	}
-}
-
-func transformInferredTypes(types []*chType) {
-	transformTypesRecursively(types)
 }
 
 func transformTypesRecursively(types []*chType) {
@@ -272,60 +302,81 @@ func tupleSizesEqual(types []*chType) bool {
 }
 
 func transformSimpleTypes(types []*chType) {
-	// transformNothingSimpleTypes: Nothing takes the first other type.
-	if idx := typeIndexes(types); idx[tNothing] && len(idx) > 1 {
-		var first *chType
-		for _, t := range types {
-			if !isNothing(t) {
-				first = t
-				break
-			}
-		}
-		for i, t := range types {
-			if isNothing(t) {
-				types[i] = first
-			}
+	transformNothingSimpleTypes(types)
+	transformIntegers(types)
+	transformIntegersAndFloatsToFloats(types)
+	transformBoolsAndNumbersToNumbers(types)
+	transformBoolsAndStringsToString(types)
+}
+
+// transformNothingSimpleTypes replaces Nothing with the first other type.
+func transformNothingSimpleTypes(types []*chType) {
+	idx := typeIndexes(types)
+	if !idx[tNothing] || len(idx) == 1 {
+		return
+	}
+	var first *chType
+	for _, t := range types {
+		if !isNothing(t) {
+			first = t
+			break
 		}
 	}
-	// transformIntegers: with UInt64 present, non-negative Int64 become UInt64.
-	if idx := typeIndexes(types); idx[tInt64] && idx[tUInt64] {
-		for i, t := range types {
-			if t.id == tInt64 && !t.negative {
-				types[i] = uint64Type
-			}
+	for i, t := range types {
+		if isNothing(t) {
+			types[i] = first
 		}
 	}
-	// transformIntegersAndFloatsToFloats.
-	if idx := typeIndexes(types); idx[tFloat64] && (idx[tInt64] || idx[tUInt64]) {
-		for i, t := range types {
-			if t.id == tInt64 || t.id == tUInt64 {
-				types[i] = float64Type
-			}
+}
+
+func transformIntegers(types []*chType) {
+	if idx := typeIndexes(types); !idx[tInt64] || !idx[tUInt64] {
+		return
+	}
+	for i, t := range types {
+		if t.id == tInt64 && !t.negative {
+			types[i] = uint64Type
 		}
 	}
-	// transformBoolsAndNumbersToNumbers (input_format_json_read_bools_as_numbers).
-	if idx := typeIndexes(types); idx[tBool] && (idx[tInt64] || idx[tUInt64] || idx[tFloat64]) {
-		var to *chType
-		switch {
-		case idx[tInt64]:
-			to = int64Type(false)
-		case idx[tUInt64]:
-			to = uint64Type
-		default:
-			to = float64Type
-		}
-		for i, t := range types {
-			if t.id == tBool {
-				types[i] = to
-			}
+}
+
+func transformIntegersAndFloatsToFloats(types []*chType) {
+	if idx := typeIndexes(types); !idx[tFloat64] || (!idx[tInt64] && !idx[tUInt64]) {
+		return
+	}
+	for i, t := range types {
+		if t.id == tInt64 || t.id == tUInt64 {
+			types[i] = float64Type
 		}
 	}
-	// transformJSONBoolsAndStringsToString (input_format_json_read_bools_as_strings).
-	if idx := typeIndexes(types); idx[tBool] && idx[tString] {
-		for i, t := range types {
-			if t.id == tBool {
-				types[i] = stringType
-			}
+}
+
+func transformBoolsAndNumbersToNumbers(types []*chType) {
+	idx := typeIndexes(types)
+	if !idx[tBool] || (!idx[tInt64] && !idx[tUInt64] && !idx[tFloat64]) {
+		return
+	}
+	to := float64Type
+	switch {
+	case idx[tInt64]:
+		to = int64Type(false)
+	case idx[tUInt64]:
+		to = uint64Type
+	}
+	for i, t := range types {
+		if t.id == tBool {
+			types[i] = to
+		}
+	}
+}
+
+func transformBoolsAndStringsToString(types []*chType) {
+	if idx := typeIndexes(types); !idx[tBool] || !idx[tString] {
+		return
+	}
+	for i, t := range types {
+		if t.id == tBool {
+			types[i] = stringType
 		}
 	}
 }
@@ -333,16 +384,35 @@ func transformSimpleTypes(types []*chType) {
 // transformComplexTypes keeps idx the way ClickHouse maintains type_indexes: tuples turned into arrays
 // do not add Array to it.
 func transformComplexTypes(types []*chType, idx idxSet) {
-	// transformNullableTypes.
-	if idx[tNullable] {
-		for i, t := range types {
-			if canBeInsideNullable(t) {
-				types[i] = makeNullable(t)
-			}
-		}
+	if transformNullableTypes(types, idx) {
 		idx = typeIndexes(types)
 	}
-	// transformNothingComplexTypes: Nothing/Nullable(Nothing) take the last other type.
+	if transformNothingComplexTypes(types) {
+		idx = typeIndexes(types)
+	}
+	if !idx[tTuple] || transformTuplesWithEqualElementsToArrays(types) {
+		return
+	}
+	if transformTuplesAndArraysToArrays(types, idx) {
+		return
+	}
+	transformTuplesAndArraysToArrayOfDynamic(types)
+}
+
+func transformNullableTypes(types []*chType, idx idxSet) bool {
+	if !idx[tNullable] {
+		return false
+	}
+	for i, t := range types {
+		if canBeInsideNullable(t) {
+			types[i] = makeNullable(t)
+		}
+	}
+	return true
+}
+
+// transformNothingComplexTypes replaces Nothing and Nullable(Nothing) with the last other type.
+func transformNothingComplexTypes(types []*chType) bool {
 	var last *chType
 	haveNothing := false
 	for _, t := range types {
@@ -352,33 +422,33 @@ func transformComplexTypes(types []*chType, idx idxSet) {
 			last = t
 		}
 	}
-	if haveNothing && last != nil {
-		for i, t := range types {
-			if isNothing(removeNullable(t)) {
-				types[i] = last
-			}
+	if !haveNothing || last == nil {
+		return false
+	}
+	for i, t := range types {
+		if isNothing(removeNullable(t)) {
+			types[i] = last
 		}
-		idx = typeIndexes(types)
 	}
-	if !idx[tTuple] {
-		return
-	}
-	// transformTuplesWithEqualNestedTypesToArrays.
-	allConverted := true
+	return true
+}
+
+func transformTuplesWithEqualElementsToArrays(types []*chType) (allConverted bool) {
+	allConverted = true
 	for i, t := range types {
 		if t.id != tTuple {
 			continue
 		}
 		if allEqual(t.elems) {
-			types[i] = arrayOf(t.elems[len(t.elems)-1])
+			types[i] = arrayOf(collapse(t.elems))
 		} else {
 			allConverted = false
 		}
 	}
-	if allConverted {
-		return
-	}
-	// transformJSONTuplesAndArraysToArrays.
+	return allConverted
+}
+
+func transformTuplesAndArraysToArrays(types []*chType, idx idxSet) bool {
 	sizesEqual, size := true, -1
 	for _, t := range types {
 		if t.id == tTuple {
@@ -389,28 +459,32 @@ func transformComplexTypes(types []*chType, idx idxSet) {
 			}
 		}
 	}
-	if idx[tArray] || sizesEqual {
-		var nested []*chType
-		for _, t := range types {
-			switch t.id {
-			case tArray:
-				nested = append(nested, t.nested)
-			case tTuple:
-				nested = append(nested, t.elems...)
-			}
-		}
-		transformInferredTypes(nested)
-		if allEqual(nested) {
-			common := nested[len(nested)-1]
-			for i, t := range types {
-				if t.id == tArray || t.id == tTuple {
-					types[i] = arrayOf(common)
-				}
-			}
-			return
+	if !idx[tArray] && !sizesEqual {
+		return false
+	}
+	var nested []*chType
+	for _, t := range types {
+		switch t.id {
+		case tArray:
+			nested = append(nested, t.nested)
+		case tTuple:
+			nested = append(nested, t.elems...)
 		}
 	}
-	// transformUnnamedTuplesAndArraysToArrayOfDynamic.
+	transformTypesRecursively(nested)
+	if !allEqual(nested) {
+		return false
+	}
+	common := collapse(nested)
+	for i, t := range types {
+		if t.id == tArray || t.id == tTuple {
+			types[i] = arrayOf(common)
+		}
+	}
+	return true
+}
+
+func transformTuplesAndArraysToArrayOfDynamic(types []*chType) {
 	for i, t := range types {
 		if t.id == tArray || t.id == tTuple {
 			types[i] = arrayOf(dynamicType)
@@ -418,8 +492,9 @@ func transformComplexTypes(types []*chType, idx idxSet) {
 	}
 }
 
-// finalizeType mirrors transformFinalInferredJSONTypeIfNeededImpl.
-func finalizeType(t *chType, keepNothing bool) *chType {
+// transformFinalType resolves leftover tuples to arrays and Nothing to String; keepNothing defers the
+// latter while it is still unknown whether a tuple becomes an array.
+func transformFinalType(t *chType, keepNothing bool) *chType {
 	switch t.id {
 	case tNothing:
 		if keepNothing {
@@ -427,22 +502,22 @@ func finalizeType(t *chType, keepNothing bool) *chType {
 		}
 		return stringType
 	case tNullable:
-		return makeNullable(finalizeType(t.nested, keepNothing))
+		return makeNullable(transformFinalType(t.nested, keepNothing))
 	case tArray:
-		return arrayOf(finalizeType(t.nested, keepNothing))
+		return arrayOf(transformFinalType(t.nested, keepNothing))
 	case tTuple:
 		transformed := cloneTypes(t.elems)
-		transformInferredTypes(transformed)
+		transformTypesRecursively(transformed)
 		if allEqual(transformed) {
-			return finalizeType(arrayOf(transformed[len(transformed)-1]), false)
+			return transformFinalType(arrayOf(collapse(transformed)), false)
 		}
 		finalized := make([]*chType, len(t.elems))
 		for i, e := range t.elems {
-			finalized[i] = finalizeType(e, true)
+			finalized[i] = transformFinalType(e, true)
 		}
-		transformInferredTypes(finalized)
+		transformTypesRecursively(finalized)
 		if allEqual(finalized) {
-			return arrayOf(finalized[len(finalized)-1])
+			return arrayOf(collapse(finalized))
 		}
 		return arrayOf(dynamicType)
 	default:

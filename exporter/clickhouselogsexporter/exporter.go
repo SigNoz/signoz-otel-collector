@@ -27,7 +27,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
@@ -63,6 +62,7 @@ const (
 	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
 	bodyNonMapKey                    = "message"
+	clickHouseIncorrectData          = 117
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
 		labels,
@@ -128,6 +128,8 @@ var bodyV2TypedStringPaths = map[string]struct{}{
 
 var bodyV2Limits = chjson.Limits{MaxDynamicTypes: chjson.DefaultLimits.MaxDynamicTypes, MaxDynamicPaths: 0}
 
+var emptyBodyJSON = pcommon.NewMap()
+
 type shouldSkipKey struct {
 	TagKey      string `ch:"tag_key"`
 	TagType     string `ch:"tag_type"`
@@ -156,10 +158,13 @@ type Record struct {
 	severityText     string
 	severityNum      uint8
 	body             string
-	bodyJSON         *chcol.JSON
-	bodyJSONPromoted *chcol.JSON
+	bodyJSON         string
+	bodyJSONPromoted string
 	scopeName        string
 	scopeVersion     string
+	// body maps, inserted as typed JSON only when ClickHouse rejects the text
+	bodyJSONMap         pcommon.Map
+	bodyJSONPromotedMap pcommon.Map
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -549,7 +554,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	// consumer: Append to batches and aggregate metrics
-	batchBodyPaths := make(map[string]struct{})
+	var logsV2Records []*Record
 	group.Go(func() error {
 		for {
 			select {
@@ -559,19 +564,6 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				if !open {
 					return nil
 				}
-				if chjson.ExceedsPathBudget(rec.bodyJSON, batchBodyPaths, chjson.DefaultPathBudgetPerBatch) {
-					if err := insertLogsStmtV2.Send(); err != nil {
-						return fmt.Errorf("StatementSendLogsV2Chunk:%w", err)
-					}
-					_ = insertLogsStmtV2.Close()
-					stmt, prepErr := e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
-					if prepErr != nil {
-						return fmt.Errorf("PrepareBatchV2Chunk:%w", prepErr)
-					}
-					insertLogsStmtV2 = stmt
-					clear(batchBodyPaths)
-				}
-				chjson.RecordPaths(rec.bodyJSON, batchBodyPaths)
 				// tags for resource/scope/attrs
 				if err := e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeResource, rec.resourceMap, shouldSkipKeys, deduper); err != nil {
 					return err
@@ -586,35 +578,10 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 				_ = e.addAttrsToTagStatement(tagStatementV2, attributeKeysStmt, resourceKeysStmt, utils.TagTypeLogField, rec.logFields, shouldSkipKeys, deduper)
 
 				// append main log row
-				args := []any{
-					rec.tsBucketStart,
-					rec.resourceFP,
-					rec.ts,
-					rec.ots,
-					rec.id,
-					rec.traceID,
-					rec.spanID,
-					rec.traceFlags,
-					rec.severityText,
-					rec.severityNum,
-					rec.body,
-				}
-				args = append(args,
-					rec.bodyJSON,
-					rec.bodyJSONPromoted,
-					rec.attrsMap.StringData,
-					rec.attrsMap.NumberData,
-					rec.attrsMap.BoolData,
-					rec.resourceMap.StringData,
-					rec.resourceMap.StringData,
-					rec.scopeName,
-					rec.scopeVersion,
-					rec.scopeMap.StringData,
-					time.Now(),
-				)
-				if err := insertLogsStmtV2.Append(args...); err != nil {
+				if err := insertLogsStmtV2.Append(rec.logsV2Row(rec.bodyJSON, rec.bodyJSONPromoted)...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
 				}
+				logsV2Records = append(logsV2Records, rec)
 
 				// aggregate metrics
 				tenant := usage.GetTenantNameFromResource()
@@ -700,28 +667,30 @@ producerIteration:
 					}
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
-					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
+					body, bodyJSON, promoted, bodyJSONMap, promotedMap := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
 					recordStream <- &Record{
-						tsBucketStart:    uint64(lBucketStart),
-						resourceFP:       fp,
-						ts:               ts,
-						ots:              ots,
-						id:               id.String(),
-						traceID:          utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:           utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:       uint32(record.Flags()),
-						severityText:     record.SeverityText(),
-						severityNum:      uint8(record.SeverityNumber()),
-						body:             body,
-						bodyJSON:         bodyJSON,
-						bodyJSONPromoted: promoted,
-						scopeName:        scopeName,
-						scopeVersion:     scopeVersion,
-						resourceMap:      resourcesMap,
-						scopeMap:         scopeMap,
-						attrsMap:         attrsMap,
-						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						tsBucketStart:       uint64(lBucketStart),
+						resourceFP:          fp,
+						ts:                  ts,
+						ots:                 ots,
+						id:                  id.String(),
+						traceID:             utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:              utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:          uint32(record.Flags()),
+						severityText:        record.SeverityText(),
+						severityNum:         uint8(record.SeverityNumber()),
+						body:                body,
+						bodyJSON:            bodyJSON,
+						bodyJSONPromoted:    promoted,
+						scopeName:           scopeName,
+						scopeVersion:        scopeVersion,
+						resourceMap:         resourcesMap,
+						scopeMap:            scopeMap,
+						attrsMap:            attrsMap,
+						logFields:           attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:          int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						bodyJSONMap:         bodyJSONMap,
+						bodyJSONPromotedMap: promotedMap,
 					}
 					return nil
 				})
@@ -777,7 +746,7 @@ producerIteration:
 	chDuration := make(chan statementSendDuration, chLen)
 
 	wg.Add(chLen)
-	go send(insertLogsStmtV2, distributedLogsTableV2, chDuration, chErr, &wg)
+	go e.sendLogsV2(ctx, insertLogsStmtV2, logsV2Records, chDuration, chErr, &wg)
 	go send(insertResourcesStmtV2, distributedLogsResourceV2, chDuration, chErr, &wg)
 	go send(attributeKeysStmt, distributedLogsAttributeKeys, chDuration, chErr, &wg)
 	go send(resourceKeysStmt, distributedLogsResourceKeys, chDuration, chErr, &wg)
@@ -816,9 +785,9 @@ producerIteration:
 	return nil
 }
 
-func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, *chcol.JSON, *chcol.JSON) {
+func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string, pcommon.Map, pcommon.Map) {
 	if !e.cfg.BodyJSONEnabled && !hasOriginalBody {
-		return getStringifiedBody(body), chcol.NewJSON(), chcol.NewJSON()
+		return getStringifiedBody(body), "{}", "{}", emptyBodyJSON, emptyBodyJSON
 	}
 
 	bodyJSON := pcommon.NewValueMap()
@@ -841,7 +810,82 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		body = originalBody
 	}
 
-	return getStringifiedBody(body), chjson.FromPcommonMap(bodyJSON.Map(), bodyV2Limits, bodyV2TypedStringPaths), chjson.FromPcommonMap(promoted.Map(), chjson.DefaultLimits, nil)
+	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted), bodyJSON.Map(), promoted.Map()
+}
+
+func (r *Record) logsV2Row(bodyJSON, bodyJSONPromoted any) []any {
+	return []any{
+		r.tsBucketStart,
+		r.resourceFP,
+		r.ts,
+		r.ots,
+		r.id,
+		r.traceID,
+		r.spanID,
+		r.traceFlags,
+		r.severityText,
+		r.severityNum,
+		r.body,
+		bodyJSON,
+		bodyJSONPromoted,
+		r.attrsMap.StringData,
+		r.attrsMap.NumberData,
+		r.attrsMap.BoolData,
+		r.resourceMap.StringData,
+		r.resourceMap.StringData,
+		r.scopeName,
+		r.scopeVersion,
+		r.scopeMap.StringData,
+		time.Now(),
+	}
+}
+
+// sendLogsV2 retries a batch whose JSON text ClickHouse cannot parse (code 117) with the body as typed JSON.
+func (e *clickhouseLogsExporter) sendLogsV2(ctx context.Context, statement driver.Batch, records []*Record, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	start := time.Now()
+	err := statement.Send()
+	var exception *clickhouse.Exception
+	if errors.As(err, &exception) && exception.Code == clickHouseIncorrectData {
+		e.logger.Warn("logs insert rejected, retrying with typed insert", zap.Error(err), zap.Int("records", len(records)))
+		err = e.insertLogsV2Typed(ctx, records)
+	}
+	chErr <- err
+	durationCh <- statementSendDuration{
+		Name:     distributedLogsTableV2,
+		duration: time.Since(start),
+	}
+}
+
+func (e *clickhouseLogsExporter) insertLogsV2Typed(ctx context.Context, records []*Record) error {
+	statement, err := e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+	if err != nil {
+		return fmt.Errorf("PrepareBatchV2Typed:%w", err)
+	}
+	defer func() { _ = statement.Close() }()
+
+	batchBodyPaths := make(map[string]struct{})
+	for _, rec := range records {
+		bodyJSON := chjson.FromPcommonMap(rec.bodyJSONMap, bodyV2Limits, bodyV2TypedStringPaths)
+		if chjson.ExceedsPathBudget(bodyJSON, batchBodyPaths, chjson.DefaultPathBudgetPerBatch) {
+			if err := statement.Send(); err != nil {
+				return fmt.Errorf("StatementSendLogsV2TypedChunk:%w", err)
+			}
+			next, err := e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+			if err != nil {
+				return fmt.Errorf("PrepareBatchV2TypedChunk:%w", err)
+			}
+			_ = statement.Close()
+			statement = next
+			clear(batchBodyPaths)
+		}
+		chjson.RecordPaths(bodyJSON, batchBodyPaths)
+		promoted := chjson.FromPcommonMap(rec.bodyJSONPromotedMap, chjson.DefaultLimits, nil)
+		if err := statement.Append(rec.logsV2Row(bodyJSON, promoted)...); err != nil {
+			return fmt.Errorf("StatementAppendLogsV2Typed:%w", err)
+		}
+	}
+	return statement.Send()
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {

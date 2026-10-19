@@ -74,33 +74,17 @@ func valueSignature(typ string, v any) string {
 	return typeSignature(v.(*chcol.JSON))
 }
 
-type inferenceTestCase struct {
-	name string
-	doc  string
-	fill func(m pcommon.Map)
-	// textFails: ClickHouse rejects this body as JSON text; want is the typed insert's behavior.
-	textFails bool
-	// deviates: date-like strings stay String instead of ClickHouse's Date/DateTime inference.
-	deviates bool
-	want     string
-}
-
-func (c inferenceTestCase) build(t *testing.T) pcommon.Map {
-	t.Helper()
-	m := pcommon.NewMap()
-	if c.doc != "" {
-		m = mapFromJSON(t, c.doc)
-	}
-	if c.fill != nil {
-		c.fill(m)
-	}
-	return m
-}
-
-// inferenceTestCases freezes the types ClickHouse 25.12 infers from each body's JSON text in a
-// JSON(max_dynamic_paths=0) column.
-func inferenceTestCases() []inferenceTestCase {
-	return []inferenceTestCase{
+func TestFromPcommonMapInferredTypes(t *testing.T) {
+	testCases := []struct {
+		name string
+		doc  string
+		fill func(m pcommon.Map)
+		// textFails: ClickHouse rejects this body as JSON text; want is the typed insert's behavior.
+		textFails bool
+		// deviates: date-like strings stay String instead of ClickHouse's Date/DateTime inference.
+		deviates bool
+		want     string
+	}{
 		{name: "Scalars", doc: `{"s":"a","i":1,"f":1.5,"b":true,"n":null,"e":""}`, want: "{b:Bool e:String f:Float64 i:Int64 s:String}"},
 		{name: "IntBoundaries", doc: `{"max":9223372036854775807,"min":-9223372036854775808}`, want: "{max:Int64 min:Int64}"},
 		{name: "IntegralDoubles", fill: func(m pcommon.Map) {
@@ -156,6 +140,8 @@ func inferenceTestCases() []inferenceTestCase {
 		{name: "NestedArraysUnify", doc: `{"ib":[[1],[true]],"fb":[[1.5],[true]],"sb":[["x"],[true]],"dyn_int":[[1,"a"],[2]],"dyn_str":[[1,"a"],["b"]],"dyn_empty":[[1,"a"],[]],"deep_conflict":[[[1]],[["a"]]],"obj_null":[[{"k":1}],null],"obj_int":[[{"k":1}],[1]],"obj_deep":[[[{"k":1}]]],"obj_str_k":[[{"k":1}],[{"k":"x"}]]}`, want: "{deep_conflict:Array(Dynamic)[Dynamic<Array(Array(Nullable(Int64)))>,Dynamic<Array(Array(Nullable(String)))>] dyn_empty:Array(Array(Dynamic))[Array(Dynamic)[Dynamic<Int64>,Dynamic<String>],Array(Dynamic)[]] dyn_int:Array(Array(Dynamic))[Array(Dynamic)[Dynamic<Int64>,Dynamic<String>],Array(Dynamic)[Dynamic<Int64>]] dyn_str:Array(Array(Dynamic))[Array(Dynamic)[Dynamic<Int64>,Dynamic<String>],Array(Dynamic)[Dynamic<String>]] fb:Array(Array(Nullable(Float64))) ib:Array(Array(Nullable(Int64))) obj_deep:Array(Array(Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))))[Array(Array(JSON(max_dynamic_types=16, max_dynamic_paths=0)))[Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))[{k:Int64}]]] obj_int:Array(Dynamic)[Dynamic<Array(JSON)[{k:Int64}]>,Dynamic<Array(Nullable(Int64))>] obj_null:Array(Array(JSON(max_dynamic_types=16, max_dynamic_paths=0)))[Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))[{k:Int64}],Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))[]] obj_str_k:Array(Array(JSON(max_dynamic_types=16, max_dynamic_paths=0)))[Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))[{k:Int64}],Array(JSON(max_dynamic_types=16, max_dynamic_paths=0))[{k:String}]] sb:Array(Array(Nullable(String)))}"},
 		{name: "NestedArraysWithEmptyAndNull", doc: `{"en":[[1],[],null],"ne":[null,[1]],"nn":[[],null],"deep":[[[],[-1],[null,"123"]]],"mix":[null,["1e5"],[[],[true,1000000000000000],[false]],[-9223372036854775808]]}`, want: "{deep:Array(Array(Array(Dynamic)))[Array(Array(Dynamic))[Array(Dynamic)[],Array(Dynamic)[Dynamic<Int64>],Array(Dynamic)[null,Dynamic<String>]]] en:Array(Dynamic)[Dynamic<Array(Nullable(Int64))>,Dynamic<Array(Nullable(String))>,null] mix:Array(Array(Dynamic))[Array(Dynamic)[],Array(Dynamic)[Dynamic<String>],Array(Dynamic)[Dynamic<Array(Nullable(String))>,Dynamic<Array(Nullable(Int64))>,Dynamic<Array(Nullable(Bool))>],Array(Dynamic)[Dynamic<Int64>]] ne:Array(Array(Nullable(Int64))) nn:Array(Array(Nullable(String)))}"},
 		{name: "ArrayDynamicNumbersUnify", doc: `{"fis":[-1e300,1,"123"],"sfi":["-1.5",0.1,9223372036854775807],"bis":[true,1,"x"],"eas":[[],[3],"s",[]]}`, want: "{bis:Array(Dynamic)[Dynamic<Bool>,Dynamic<Int64>,Dynamic<String>] eas:Array(Dynamic)[Dynamic<Array(Nullable(String))>,Dynamic<Array(Nullable(Int64))>,Dynamic<String>,Dynamic<Array(Nullable(String))>] fis:Array(Dynamic)[Dynamic<Float64>,Dynamic<Int64>,Dynamic<String>] sfi:Array(Dynamic)[Dynamic<String>,Dynamic<Float64>,Dynamic<Int64>]}"},
+		{name: "NegativeAfterPositive_InNestedArrayWithUInt64", doc: `{"v":[[1,-1],[10000000000000000000]]}`, want: "{v:Array(Dynamic)[Dynamic<Array(Nullable(Int64))>,Dynamic<Array(Nullable(UInt64))>]}"},
+		{name: "NegativeBeforePositive_InNestedArrayWithUInt64_TextFails", doc: `{"v":[[-1,1],[10000000000000000000]]}`, textFails: true, want: "{v:Array(Dynamic)[Dynamic<Array(Nullable(Int64))>,Dynamic<Array(Nullable(UInt64))>]}"},
 		{name: "ArrayDynamicWithNestedJSONArrays", doc: `{"d":[1,{"a":[{"b":1}]},[{"c":2}]]}`, want: "{d:Array(Dynamic)[Dynamic<Int64>,Dynamic<{a:Array(JSON(max_dynamic_types=16, max_dynamic_paths=256))[{b:Int64}]}>,Dynamic<Array(JSON)[{c:Int64}]>]}"},
 		{name: "ArrayBytes", fill: func(m pcommon.Map) { m.PutEmptySlice("b").AppendEmpty().SetEmptyBytes().FromRaw([]byte("hi")) }, want: "{b:Array(Nullable(String))}"},
 		{name: "ArrayNaN_TextFails", fill: func(m pcommon.Map) {
@@ -165,13 +151,39 @@ func inferenceTestCases() []inferenceTestCase {
 			s.AppendEmpty().SetDouble(2.5)
 		}, textFails: true, want: "{f:Array(Nullable(Float64))}"},
 	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			m := pcommon.NewMap()
+			if testCase.doc != "" {
+				m = mapFromJSON(t, testCase.doc)
+			}
+			if testCase.fill != nil {
+				testCase.fill(m)
+			}
+			obj := FromPcommonMap(m, Limits{MaxDynamicTypes: 32, MaxDynamicPaths: 0}, nil)
+			assert.Equal(t, testCase.want, typeSignature(obj))
+		})
+	}
 }
 
-func TestFromPcommonMapInferredTypes(t *testing.T) {
-	for _, testCase := range inferenceTestCases() {
+func TestFromPcommonMapNegativeIntegersNeverWidenedToUInt64(t *testing.T) {
+	testCases := []struct {
+		name string
+		doc  string
+		want []any
+	}{
+		{name: "NegativeFirst", doc: `{"v":[[-1,1],[10000000000000000000]]}`, want: []any{[]any{int64(-1), int64(1)}, []any{uint64(1e19)}}},
+		{name: "NegativeLast", doc: `{"v":[[1,-1],[10000000000000000000]]}`, want: []any{[]any{int64(1), int64(-1)}, []any{uint64(1e19)}}},
+	}
+	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			obj := FromPcommonMap(testCase.build(t), Limits{MaxDynamicTypes: 32, MaxDynamicPaths: 0}, nil)
-			assert.Equal(t, testCase.want, typeSignature(obj))
+			d := dynamicAt(t, FromPcommonMap(mapFromJSON(t, testCase.doc), Limits{MaxDynamicTypes: 32, MaxDynamicPaths: 0}, nil), "v")
+			elems, ok := d.Any().([]any)
+			require.True(t, ok)
+			require.Len(t, elems, len(testCase.want))
+			for i, el := range elems {
+				assert.Equal(t, testCase.want[i], el.(chcol.Dynamic).Any())
+			}
 		})
 	}
 }

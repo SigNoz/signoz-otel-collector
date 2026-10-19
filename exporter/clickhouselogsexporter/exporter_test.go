@@ -2,13 +2,13 @@ package clickhouselogsexporter
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"testing"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
+	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -344,34 +344,6 @@ func TestExporterConcurrency(t *testing.T) {
 	}
 }
 
-func chJSONFlatString(t *testing.T, obj *chcol.JSON) string {
-	t.Helper()
-	out, err := json.Marshal(resolveChValue(obj))
-	require.NoError(t, err)
-	return string(out)
-}
-
-func resolveChValue(v any) any {
-	switch tv := v.(type) {
-	case *chcol.JSON:
-		flat := make(map[string]any, len(tv.ValuesByPath()))
-		for path, pv := range tv.ValuesByPath() {
-			flat[path] = resolveChValue(pv)
-		}
-		return flat
-	case chcol.Dynamic:
-		return resolveChValue(tv.Any())
-	case []any:
-		resolved := make([]any, len(tv))
-		for i, el := range tv {
-			resolved[i] = resolveChValue(el)
-		}
-		return resolved
-	default:
-		return v
-	}
-}
-
 func TestProcessBody(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -532,7 +504,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"message":"test","user":{"id":"123","name":"john"}}`)
 			},
 			expectedBody:     `{"message":"test","user":{"id":"123","name":"john"}}`,
-			expectedBodyJSON: `{"message":"test","user.id":"123","user.name":"john"}`,
+			expectedBodyJSON: `{"message":"test","user":{"id":"123","name":"john"}}`,
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
@@ -562,7 +534,7 @@ func TestProcessBody(t *testing.T) {
 				return pcommon.NewValueStr(`{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`)
 			},
 			expectedBody:     `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
-			expectedBodyJSON: `{"level":1,"message":"test","user.email":"john@example.com","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
+			expectedBodyJSON: `{"level":1,"message":"test","user":{"email":"john@example.com","id":"123","name":"john","roles":["admin","user"]}}`,
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 		{
@@ -656,15 +628,15 @@ func TestProcessBody(t *testing.T) {
 			}
 
 			// Process body
-			bodyStr, bodyJSON, promoted := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
+			bodyStr, bodyJSONStr, promotedStr, _, _ := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)
 
 			// Verify results
 			assert.Equal(t, testCase.expectedBody, bodyStr, "body string mismatch")
-			assert.JSONEq(t, testCase.expectedBodyJSON, chJSONFlatString(t, bodyJSON), "bodyJSON mismatch")
-			assert.JSONEq(t, testCase.expectedPromoted, chJSONFlatString(t, promoted), "promoted mismatch")
+			assert.Equal(t, testCase.expectedBodyJSON, bodyJSONStr, "bodyJSON string mismatch")
+			assert.Equal(t, testCase.expectedPromoted, promotedStr, "promoted string mismatch")
 		})
 	}
 }
@@ -729,84 +701,76 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 	assert.Equal(t, int64(3), recorded)
 }
 
-func TestPushLogsDataChunksOnPathBudget(t *testing.T) {
-	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
-	require.NoError(t, err)
-	mock.MatchExpectationsInOrder(false)
-
-	tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
-	attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
-	resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
-	logsChunk1 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
-	logsChunk2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
-	logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
-
-	tagStatementV2.ExpectSend()
-	attributeKeysStmt.ExpectSend()
-	resourceKeysStmt.ExpectSend()
-	logsChunk1.ExpectAppend()
-	logsChunk1.ExpectSend()
-	logsChunk2.ExpectAppend()
-	logsChunk2.ExpectSend()
-	logsResourceStatementV2.ExpectAppend()
-	logsResourceStatementV2.ExpectSend()
-
-	mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
-	mock.ExpectClose()
-
-	opts := testOptions(t)
-	id := uuid.New()
-	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock))
-	exp, err := newExporter(
-		exporter.Settings{},
-		&Config{
-			DSN:                       "clickhouse://localhost:9000/test",
-			BodyJSONEnabled:           true,
-			PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
-			LogLevelConcurrency:       utils.ToPointer(1),
-			AttributesLimits: AttributesLimits{
-				FetchKeysInterval: 2 * time.Second,
-				MaxDistinctValues: 25000,
-			},
-		},
-		opts...,
-	)
-	require.NoError(t, err)
-	exp.promotedPaths.Store(map[string]struct{}{})
-
-	ld := plog.NewLogs()
-	sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
-	now := pcommon.NewTimestampFromTime(time.Now())
-	for r := 0; r < 3; r++ {
-		rec := sl.LogRecords().AppendEmpty()
-		rec.SetTimestamp(now)
-		rec.SetObservedTimestamp(now)
-		body := rec.Body().SetEmptyMap()
-		for k := 0; k < 500; k++ {
-			body.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
-		}
+func TestPushLogsDataTypedRetry(t *testing.T) {
+	testCases := []struct {
+		name         string
+		sendErr      error
+		typedBatches int
+		wantErr      bool
+	}{
+		{name: "TextAccepted_NoRetry", sendErr: nil, typedBatches: 0},
+		{name: "Code117_RetriedTypedInPathBudgetChunks", sendErr: &clickhouse.Exception{Code: 117, Message: "Cannot parse JSON object here"}, typedBatches: 2},
+		{name: "OtherException_NotRetried", sendErr: &clickhouse.Exception{Code: 252, Message: "Too many partitions"}, wantErr: true},
+		{name: "NonExceptionError_NotRetried", sendErr: errors.New("connection reset"), wantErr: true},
 	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+			require.NoError(t, err)
+			mock.MatchExpectationsInOrder(false)
 
-	require.NoError(t, exp.pushLogsData(context.Background(), ld))
+			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2").ExpectSend()
+			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys").ExpectSend()
+			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys").ExpectSend()
+			textBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2 .*")
+			textBatch.ExpectAppend()
+			textBatch.ExpectSend().WillReturnError(testCase.sendErr)
+			for i := 0; i < testCase.typedBatches; i++ {
+				typedBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2 .*")
+				typedBatch.ExpectAppend()
+				typedBatch.ExpectSend()
+			}
+			resourceBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+			resourceBatch.ExpectAppend()
+			resourceBatch.ExpectSend()
 
-	eventually(t, func() bool {
-		rows, err := view.RetrieveData(SigNozLogsCount)
-		if err != nil {
-			return false
-		}
-		for _, row := range rows {
-			for _, rowTag := range row.Tags {
-				if rowTag.Value == id.String() {
-					return true
+			exp, err := newExporter(
+				exporter.Settings{},
+				&Config{
+					DSN:                       "clickhouse://localhost:9000/test",
+					BodyJSONEnabled:           true,
+					PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
+					LogLevelConcurrency:       utils.ToPointer(1),
+					AttributesLimits: AttributesLimits{
+						FetchKeysInterval: 2 * time.Second,
+						MaxDistinctValues: 25000,
+					},
+				},
+				append(testOptions(t), WithClickHouseClient(mock))...,
+			)
+			require.NoError(t, err)
+			exp.promotedPaths.Store(map[string]struct{}{})
+
+			ld := plog.NewLogs()
+			sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
+			now := pcommon.NewTimestampFromTime(time.Now())
+			for r := 0; r < 3; r++ {
+				rec := sl.LogRecords().AppendEmpty()
+				rec.SetTimestamp(now)
+				rec.SetObservedTimestamp(now)
+				body := rec.Body().SetEmptyMap()
+				for k := 0; k < 500; k++ {
+					body.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
 				}
 			}
-		}
-		return false
-	})
 
-	require.NoError(t, exp.Shutdown(context.Background()))
-
-	eventually(t, func() bool {
-		return mock.ExpectationsWereMet() == nil
-	})
+			err = exp.pushToClickhouse(context.Background(), ld)
+			if testCase.wantErr {
+				assert.ErrorIs(t, err, testCase.sendErr)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
