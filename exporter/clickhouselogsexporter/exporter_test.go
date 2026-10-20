@@ -376,8 +376,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:            "BodyJSONDisabled_Stash_Ignored",
-			bodyJSONEnabled: false,
+			name:            "BodyJSONEnabled_Stash_Ignored",
+			bodyJSONEnabled: true,
 			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
@@ -387,8 +387,8 @@ func TestProcessBody(t *testing.T) {
 			originalBody: func() pcommon.Value {
 				return pcommon.NewValueStr("spoofed original body")
 			},
-			expectedBody:     `{"message":"raw text log"}`,
-			expectedBodyJSON: "{}",
+			expectedBody:     "",
+			expectedBodyJSON: `{"message":"raw text log"}`,
 			expectedPromoted: "{}",
 		},
 		{
@@ -465,8 +465,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
-			name:            "BodyJSONEnabled_MapBody_Stash_PromotedPaths",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_MapBody_Stash_PromotedPaths",
+			bodyJSONEnabled: false,
 			promotedPaths:   map[string]struct{}{"message": {}},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
@@ -482,8 +482,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test"}`,
 		},
 		{
-			name:            "BodyJSONEnabled_MapBody_Stash_NestedPromotedPaths",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_MapBody_Stash_NestedPromotedPaths",
+			bodyJSONEnabled: false,
 			promotedPaths: map[string]struct{}{
 				"user.id": {},
 				"message": {},
@@ -504,8 +504,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"message":"test","user.id":"123"}`,
 		},
 		{
-			name:            "BodyJSONEnabled_MapBody_Stash_MultiplePromotedPaths",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_MapBody_Stash_MultiplePromotedPaths",
+			bodyJSONEnabled: false,
 			promotedPaths: map[string]struct{}{
 				"level":      {},
 				"user.id":    {},
@@ -534,8 +534,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: `{"level":1,"message":"test","user.id":"123","user.name":"john","user.roles":["admin","user"]}`,
 		},
 		{
-			name:            "BodyJSONEnabled_MapBody_Stash_RawTextRestored",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_MapBody_Stash_RawTextRestored",
+			bodyJSONEnabled: false,
 			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
@@ -550,8 +550,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:            "BodyJSONEnabled_MapBody_Stash_NormalizedJSONStringRestored",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_MapBody_Stash_NormalizedJSONStringRestored",
+			bodyJSONEnabled: false,
 			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				v := pcommon.NewValueMap()
@@ -567,8 +567,8 @@ func TestProcessBody(t *testing.T) {
 			expectedPromoted: "{}",
 		},
 		{
-			name:            "BodyJSONEnabled_StringBody_Stash_Restored",
-			bodyJSONEnabled: true,
+			name:            "BodyJSONDisabled_StringBody_Stash_Restored",
+			bodyJSONEnabled: false,
 			promotedPaths:   map[string]struct{}{},
 			body: func() pcommon.Value {
 				return pcommon.NewValueStr("stringified by a pipeline")

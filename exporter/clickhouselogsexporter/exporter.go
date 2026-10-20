@@ -363,28 +363,26 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 
 // fetchPromotedPaths periodically loads promoted JSON paths from ClickHouse into memory.
 func (e *clickhouseLogsExporter) fetchPromotedPaths() {
-	// if body JSON columns are activated, fetch promoted paths periodically
-	if e.cfg.BodyJSONEnabled {
-		ticker := time.NewTicker(e.promotedPathsSyncInterval)
-		e.shutdownFuncs = append(e.shutdownFuncs, func() error {
-			ticker.Stop()
-			return nil
-		})
+	// unconditional: stashed records write body_v2 even when body JSON is disabled
+	ticker := time.NewTicker(e.promotedPathsSyncInterval)
+	e.shutdownFuncs = append(e.shutdownFuncs, func() error {
+		ticker.Stop()
+		return nil
+	})
 
-		e.doFetchPromotedPaths() // Immediate first fetch
-		e.wg.Add(1)
-		go func() {
-			defer e.wg.Done()
-			for {
-				select {
-				case <-e.closeChan:
-					return
-				case <-ticker.C:
-					e.doFetchPromotedPaths()
-				}
+	e.doFetchPromotedPaths() // Immediate first fetch
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		for {
+			select {
+			case <-e.closeChan:
+				return
+			case <-ticker.C:
+				e.doFetchPromotedPaths()
 			}
-		}()
-	}
+		}
+	}()
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
@@ -797,28 +795,28 @@ producerIteration:
 }
 
 func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.Value, originalBody pcommon.Value, hasOriginalBody bool) (string, string, string) {
-	promoted := pcommon.NewValueMap()
+	if !e.cfg.BodyJSONEnabled && !hasOriginalBody {
+		return getStringifiedBody(body), "{}", "{}"
+	}
+
 	bodyJSON := pcommon.NewValueMap()
+	if body.Type() == pcommon.ValueTypeMap {
+		// switch the reference to bodyJSON
+		bodyJSON = body
+	} else {
+		bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
+		e.nonMapBodyCounter.Add(ctx, 1)
+	}
+
+	// promoted paths extraction using cached set
+	promotedSet := e.promotedPaths.Load().(map[string]struct{})
+	promoted := utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
 
 	if e.cfg.BodyJSONEnabled {
-		if body.Type() == pcommon.ValueTypeMap {
-			// switch the reference to bodyJSON
-			bodyJSON = body
-		} else {
-			bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
-			e.nonMapBodyCounter.Add(ctx, 1)
-		}
-
-		// promoted paths extraction using cached set
-		promotedSet := e.promotedPaths.Load().(map[string]struct{})
-		promoted = utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
-
-		if hasOriginalBody {
-			body = originalBody
-		} else {
-			// set body to empty string
-			body = pcommon.NewValueEmpty()
-		}
+		// set body to empty string
+		body = pcommon.NewValueEmpty()
+	} else {
+		body = originalBody
 	}
 
 	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
