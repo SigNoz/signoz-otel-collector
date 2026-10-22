@@ -3,7 +3,7 @@ package schemamigrator
 import (
 	"testing"
 
-	mockhouse "github.com/srikanthccv/ClickHouse-go-mock"
+	mockhouse "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

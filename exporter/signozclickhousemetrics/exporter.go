@@ -19,6 +19,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 
+	"github.com/ClickHouse/ch-go"
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -45,7 +46,6 @@ var (
 	quantilesSuffix   = ".quantile"
 	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	metadataSQLTmpl   = "INSERT INTO %s.%s (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
 	// buffer table variants used when reduction is enabled
@@ -55,6 +55,12 @@ var (
 
 const NanDetectedErrMsg = "NaN detected in data point, skipping entire data point"
 
+// expHistConn is a native ch-go connection: clickhouse-go cannot encode quantilesDD states.
+type expHistConn interface {
+	Do(ctx context.Context, q ch.Query) error
+	Close()
+}
+
 type clickhouseMetricsExporter struct {
 	cfg           *Config
 	logger        *zap.Logger
@@ -62,12 +68,12 @@ type clickhouseMetricsExporter struct {
 	cache         *ttlcache.Cache[string, bool]
 	cacheRunning  bool
 	conn          clickhouse.Conn
+	expHistConn   expHistConn
 	wg            sync.WaitGroup
 	enableExpHist bool
 
 	samplesSQL    string
 	timeSeriesSQL string
-	expHistSQL    string
 	metadataSQL   string
 
 	processMetricsDuration metricapi.Float64Histogram
@@ -109,8 +115,8 @@ type exponentialHistogramSample struct {
 	metricName  string
 	fingerprint uint64
 	unixMilli   int64
-	sketch      chproto.DD
-	count       float64
+	sketch      ddSketch
+	count       uint64
 	sum         float64
 	min         float64
 	max         float64
@@ -199,6 +205,13 @@ func WithConn(conn clickhouse.Conn) ExporterOption {
 	}
 }
 
+func WithExpHistConn(conn expHistConn) ExporterOption {
+	return func(e *clickhouseMetricsExporter) error {
+		e.expHistConn = conn
+		return nil
+	}
+}
+
 func WithConfig(cfg *Config) ExporterOption {
 	return func(e *clickhouseMetricsExporter) error {
 		e.cfg = cfg
@@ -259,7 +272,6 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
 		chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
 	}
-	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
 	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
 
 	var err error
@@ -336,6 +348,9 @@ func (c *clickhouseMetricsExporter) Shutdown(ctx context.Context) error {
 	}
 	close(c.closeChan)
 	c.wg.Wait()
+	if c.expHistConn != nil {
+		c.expHistConn.Close()
+	}
 	return c.conn.Close()
 }
 
@@ -993,17 +1008,16 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		})
 	}
 
-	toStore := func(buckets pmetric.ExponentialHistogramDataPointBuckets) *chproto.Store {
+	toStore := func(buckets pmetric.ExponentialHistogramDataPointBuckets) ddSketchStore {
 		bincounts := make([]float64, 0, buckets.BucketCounts().Len())
 		for _, bucket := range buckets.BucketCounts().AsRaw() {
 			bincounts = append(bincounts, float64(bucket))
 		}
 
-		store := &chproto.Store{
-			ContiguousBinIndexOffset: int32(buckets.Offset()),
-			ContiguousBinCounts:      bincounts,
+		return ddSketchStore{
+			offset: buckets.Offset(),
+			counts: bincounts,
 		}
-		return store
 	}
 
 	addDDSketchSample := func(batch *batch, dp pmetric.ExponentialHistogramDataPoint) {
@@ -1011,11 +1025,11 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 		positive := toStore(dp.Positive())
 		negative := toStore(dp.Negative())
 		gamma := math.Pow(2, math.Pow(2, float64(-dp.Scale())))
-		dd := chproto.DD{
-			Mapping:        &chproto.IndexMapping{Gamma: gamma},
-			PositiveValues: positive,
-			NegativeValues: negative,
-			ZeroCount:      float64(dp.ZeroCount()),
+		dd := ddSketch{
+			gamma:     gamma,
+			positive:  positive,
+			negative:  negative,
+			zeroCount: float64(dp.ZeroCount()),
 		}
 
 		fingerprint := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, scopeFingerprint.Hash(), dp.Attributes(), map[string]string{
@@ -1028,7 +1042,7 @@ func (c *clickhouseMetricsExporter) processExponentialHistogram(b *batch, metric
 			fingerprint: fingerprint.HashWithName(name),
 			unixMilli:   unixMilli,
 			sketch:      dd,
-			count:       float64(dp.Count()),
+			count:       dp.Count(),
 			sum:         dp.Sum(),
 			min:         dp.Min(),
 			max:         dp.Max(),
@@ -1338,33 +1352,54 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		if len(expHist) == 0 {
 			return nil
 		}
-		statement, err := c.conn.PrepareBatch(ctx, c.expHistSQL, driver.WithReleaseConnection())
-		if err != nil {
-			return err
-		}
-		defer func() { _ = statement.Close() }()
-
+		var (
+			env                 = chproto.NewLowCardinality(new(chproto.ColStr))
+			temporality         = chproto.NewLowCardinality(new(chproto.ColStr))
+			metricName          = chproto.NewLowCardinality(new(chproto.ColStr))
+			fingerprint         chproto.ColUInt64
+			unixMilli           chproto.ColInt64
+			count               chproto.ColUInt64
+			sum                 chproto.ColFloat64
+			minimum             chproto.ColFloat64
+			maximum             chproto.ColFloat64
+			sketch              ddSketchColumn
+			flags               chproto.ColUInt32
+			insertedAtUnixMilli chproto.ColInt64
+		)
+		insertedAt := time.Now().UnixMilli()
 		for i := range expHist {
 			expHist := &expHist[i]
-			err = statement.Append(
-				expHist.env,
-				expHist.temporality.String(),
-				expHist.metricName,
-				expHist.fingerprint,
-				expHist.unixMilli,
-				expHist.count,
-				expHist.sum,
-				expHist.min,
-				expHist.max,
-				expHist.sketch,
-				expHist.flags,
-				time.Now().UnixMilli(),
-			)
-			if err != nil {
-				return err
-			}
+			env.Append(expHist.env)
+			temporality.Append(expHist.temporality.String())
+			metricName.Append(expHist.metricName)
+			fingerprint.Append(expHist.fingerprint)
+			unixMilli.Append(expHist.unixMilli)
+			count.Append(expHist.count)
+			sum.Append(expHist.sum)
+			minimum.Append(expHist.min)
+			maximum.Append(expHist.max)
+			sketch.Append(expHist.sketch)
+			flags.Append(expHist.flags)
+			insertedAtUnixMilli.Append(insertedAt)
 		}
-		return statement.Send()
+		input := chproto.Input{
+			{Name: "env", Data: env},
+			{Name: "temporality", Data: temporality},
+			{Name: "metric_name", Data: metricName},
+			{Name: "fingerprint", Data: &fingerprint},
+			{Name: "unix_milli", Data: &unixMilli},
+			{Name: "count", Data: &count},
+			{Name: "sum", Data: &sum},
+			{Name: "min", Data: &minimum},
+			{Name: "max", Data: &maximum},
+			{Name: "sketch", Data: &sketch},
+			{Name: "flags", Data: &flags},
+			{Name: "inserted_at_unix_milli", Data: &insertedAtUnixMilli},
+		}
+		return c.expHistConn.Do(ctx, ch.Query{
+			Body:  fmt.Sprintf("INSERT INTO %s.%s %s VALUES", c.cfg.Database, c.cfg.ExpHistTable, input.Columns()),
+			Input: input,
+		})
 	}
 
 	writeMetadata := func(ctx context.Context, metadata []metadata) error {

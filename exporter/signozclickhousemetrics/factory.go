@@ -3,8 +3,11 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/chpool"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -61,7 +64,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		set.Logger,
 	)
 
-	chExporter, err := NewClickHouseExporter(
+	exporterOptions := []ExporterOption{
 		WithConfig(chCfg),
 		WithConn(conn),
 		WithLogger(set.Logger),
@@ -70,7 +73,16 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		WithSettings(set),
 		WithUsageCollector(collector),
 		WithExporterID(id),
-	)
+	}
+	if chCfg.EnableExpHist {
+		expHistConn, err := chpool.New(ctx, newExpHistConnOptions(connOptions))
+		if err != nil {
+			return nil, err
+		}
+		exporterOptions = append(exporterOptions, WithExpHistConn(expHistConn))
+	}
+
+	chExporter, err := NewClickHouseExporter(exporterOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +104,39 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 	}
 
 	return exporter, nil
+}
+
+// newExpHistConnOptions dials only the first DSN address; ch-go has no failover across hosts.
+func newExpHistConnOptions(opts *clickhouse.Options) chpool.Options {
+	clientOptions := ch.Options{
+		Database:    opts.Auth.Database,
+		User:        opts.Auth.Username,
+		Password:    opts.Auth.Password,
+		TLS:         opts.TLS,
+		DialTimeout: opts.DialTimeout,
+		ReadTimeout: opts.ReadTimeout,
+	}
+	if len(opts.Addr) > 0 {
+		clientOptions.Address = opts.Addr[0]
+	}
+	if opts.Compression != nil {
+		switch opts.Compression.Method {
+		case clickhouse.CompressionLZ4:
+			clientOptions.Compression = ch.CompressionLZ4
+		case clickhouse.CompressionLZ4HC:
+			clientOptions.Compression = ch.CompressionLZ4HC
+		case clickhouse.CompressionZSTD:
+			clientOptions.Compression = ch.CompressionZSTD
+		}
+	}
+	for key, value := range opts.Settings {
+		clientOptions.Settings = append(clientOptions.Settings, ch.Setting{Key: key, Value: fmt.Sprint(value)})
+	}
+	return chpool.Options{
+		ClientOptions:   clientOptions,
+		MaxConns:        int32(opts.MaxOpenConns),
+		MaxConnLifetime: opts.ConnMaxLifetime,
+	}
 }
 
 func createDefaultConfig() component.Config {
