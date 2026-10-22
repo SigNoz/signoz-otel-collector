@@ -10,23 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type metricsTestCase struct {
-	name     string
-	count    pmetricsgen.Count
-	expected int
-}
-
-func runMetricsTestCases(t *testing.T, testCases []metricsTestCase) {
-	meter := NewMetrics(zap.NewNop())
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
-			assert.Equal(t, testCase.expected, meter.Count(md))
-		})
-	}
-}
-
 func TestMetrics(t *testing.T) {
 	meter := NewMetrics(zap.NewNop())
 
@@ -37,9 +20,13 @@ func TestMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountGaugeMetrics(t *testing.T) {
-	testCases := []metricsTestCase{
+	testCases := []struct {
+		name     string
+		count    pmetricsgen.Count
+		expected int
+	}{
 		{
-			name:  "AllValid",
+			name:  "WithoutNaN",
 			count: pmetricsgen.Count{GaugeMetricsCount: 10, GaugeDataPointCount: 10},
 			// 10 metrics * 10 data points = 100
 			expected: 100,
@@ -52,13 +39,24 @@ func TestMetrics_CountGaugeMetrics(t *testing.T) {
 		},
 	}
 
-	runMetricsTestCases(t, testCases)
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
 }
 
 func TestMetrics_CountSumMetrics(t *testing.T) {
-	testCases := []metricsTestCase{
+	testCases := []struct {
+		name     string
+		count    pmetricsgen.Count
+		expected int
+	}{
 		{
-			name:  "AllValid",
+			name:  "WithoutNaN",
 			count: pmetricsgen.Count{SumMetricsCount: 10, SumDataPointCount: 6},
 			// 10 metrics * 6 data points = 60
 			expected: 60,
@@ -71,13 +69,24 @@ func TestMetrics_CountSumMetrics(t *testing.T) {
 		},
 	}
 
-	runMetricsTestCases(t, testCases)
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
 }
 
 func TestMetrics_CountHistogramMetrics(t *testing.T) {
-	testCases := []metricsTestCase{
+	testCases := []struct {
+		name     string
+		count    pmetricsgen.Count
+		expected int
+	}{
 		{
-			name:  "AllValid",
+			name:  "WithoutNaN",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20},
 			// 6 data points * 20 buckets = 120
 			// 6 data points * 4 (sum,count,min,max) metrics = 24
@@ -94,7 +103,14 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 		},
 	}
 
-	runMetricsTestCases(t, testCases)
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
 }
 
 func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
@@ -111,9 +127,13 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountSummaryMetrics(t *testing.T) {
-	testCases := []metricsTestCase{
+	testCases := []struct {
+		name     string
+		count    pmetricsgen.Count
+		expected int
+	}{
 		{
-			name:  "AllValid",
+			name:  "WithoutNaN",
 			count: pmetricsgen.Count{SummaryMetricsCount: 1, SummaryDataPointCount: 6, SummaryQuantileCount: 3},
 			// 6 data points * (3 quantiles + count (1) + sum (1)) = 30
 			expected: 30,
@@ -126,7 +146,14 @@ func TestMetrics_CountSummaryMetrics(t *testing.T) {
 		},
 	}
 
-	runMetricsTestCases(t, testCases)
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
 }
 
 func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {
