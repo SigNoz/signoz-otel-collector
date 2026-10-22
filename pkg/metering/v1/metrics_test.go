@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"math"
 	"regexp"
 	"testing"
 
@@ -10,6 +9,23 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 )
+
+type metricsTestCase struct {
+	name     string
+	count    pmetricsgen.Count
+	expected int
+}
+
+func runMetricsTestCases(t *testing.T, testCases []metricsTestCase) {
+	meter := NewMetrics(zap.NewNop())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
+			assert.Equal(t, testCase.expected, meter.Count(md))
+		})
+	}
+}
 
 func TestMetrics(t *testing.T) {
 	meter := NewMetrics(zap.NewNop())
@@ -21,42 +37,64 @@ func TestMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountGaugeMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
-		GaugeMetricsCount:   10,
-		GaugeDataPointCount: 10,
-	}))
+	testCases := []metricsTestCase{
+		{
+			name:  "AllValid",
+			count: pmetricsgen.Count{GaugeMetricsCount: 10, GaugeDataPointCount: 10},
+			// 10 metrics * 10 data points = 100
+			expected: 100,
+		},
+		{
+			name:  "WithNaN",
+			count: pmetricsgen.Count{GaugeMetricsCount: 10, GaugeDataPointCount: 10, GaugeNanValuesCount: 3},
+			// 10 metrics * (10 - 3 NaN) data points = 70
+			expected: 70,
+		},
+	}
 
-	meter := NewMetrics(zap.NewNop())
-
-	// 10 metrics * 10 data points = 100
-	assert.Equal(t, 100, meter.Count(md))
+	runMetricsTestCases(t, testCases)
 }
 
 func TestMetrics_CountSumMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
-		SumMetricsCount:   10,
-		SumDataPointCount: 6,
-	}))
+	testCases := []metricsTestCase{
+		{
+			name:  "AllValid",
+			count: pmetricsgen.Count{SumMetricsCount: 10, SumDataPointCount: 6},
+			// 10 metrics * 6 data points = 60
+			expected: 60,
+		},
+		{
+			name:  "WithNaN",
+			count: pmetricsgen.Count{SumMetricsCount: 10, SumDataPointCount: 6, SumNanValuesCount: 2},
+			// 10 metrics * (6 - 2 NaN) data points = 40
+			expected: 40,
+		},
+	}
 
-	meter := NewMetrics(zap.NewNop())
-
-	// 10 metrics * 6 data points = 60
-	assert.Equal(t, 60, meter.Count(md))
+	runMetricsTestCases(t, testCases)
 }
 
 func TestMetrics_CountHistogramMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
-		HistogramMetricsCount:   1,
-		HistogramDataPointCount: 6,
-		HistogramBucketCount:    20,
-	}))
+	testCases := []metricsTestCase{
+		{
+			name:  "AllValid",
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20},
+			// 6 data points * 20 buckets = 120
+			// 6 data points * 4 (sum,count,min,max) metrics = 24
+			// total -> 120 + 24 = 144
+			expected: 144,
+		},
+		{
+			name:  "WithNaN",
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20, HistogramNanValuesCount: 2},
+			// (6 - 2 NaN) data points * 20 buckets = 80
+			// (6 - 2 NaN) data points * 4 (sum,count,min,max) metrics = 16
+			// total -> 80 + 16 = 96
+			expected: 96,
+		},
+	}
 
-	meter := NewMetrics(zap.NewNop())
-
-	// 6 data points * 20 buckets = 120
-	// 6 data points * 4 (sum,count,min,max) metrics = 24
-	// total -> 120 + 24 = 144
-	assert.Equal(t, 144, meter.Count(md))
+	runMetricsTestCases(t, testCases)
 }
 
 func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
@@ -73,88 +111,22 @@ func TestMetrics_CountExponentialHistogramMetrics(t *testing.T) {
 }
 
 func TestMetrics_CountSummaryMetrics(t *testing.T) {
-	md := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
-		SummaryMetricsCount:   1,
-		SummaryDataPointCount: 6,
-		SummaryQuantileCount:  3,
-	}))
-
-	meter := NewMetrics(zap.NewNop())
-
-	assert.Equal(t, 30, meter.Count(md))
-}
-
-func TestMetrics_CountSkipsNaNPoints(t *testing.T) {
-	testCases := []struct {
-		metricType  pmetric.MetricType
-		nanPoints   int
-		validPoints int
-		expected    int
-	}{
-		{metricType: pmetric.MetricTypeGauge, nanPoints: 3, validPoints: 4, expected: 4},
-		{metricType: pmetric.MetricTypeSum, nanPoints: 3, validPoints: 4, expected: 4},
-		// 2 buckets + count + one of sum/min/max per point
-		{metricType: pmetric.MetricTypeHistogram, nanPoints: 3, validPoints: 4, expected: 16},
-		// 1 quantile + count + sum per point
-		{metricType: pmetric.MetricTypeSummary, nanPoints: 2, validPoints: 4, expected: 12},
+	testCases := []metricsTestCase{
+		{
+			name:  "AllValid",
+			count: pmetricsgen.Count{SummaryMetricsCount: 1, SummaryDataPointCount: 6, SummaryQuantileCount: 3},
+			// 6 data points * (3 quantiles + count (1) + sum (1)) = 30
+			expected: 30,
+		},
+		{
+			name:  "WithNaN",
+			count: pmetricsgen.Count{SummaryMetricsCount: 1, SummaryDataPointCount: 6, SummaryQuantileCount: 3, SummaryNanValuesCount: 2},
+			// (6 - 2 NaN) data points * (3 quantiles + count (1) + sum (1)) = 20
+			expected: 20,
+		},
 	}
 
-	meter := NewMetrics(zap.NewNop())
-
-	for _, testCase := range testCases {
-		t.Run(testCase.metricType.String(), func(t *testing.T) {
-			md := generateMetricsWithNaN(testCase.metricType, testCase.nanPoints, testCase.validPoints)
-			assert.Equal(t, testCase.expected, meter.Count(md))
-		})
-	}
-}
-
-func generateMetricsWithNaN(metricType pmetric.MetricType, nanPoints, validPoints int) pmetric.Metrics {
-	md := pmetric.NewMetrics()
-	m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-	m.SetName("test.metric")
-
-	var numberDps pmetric.NumberDataPointSlice
-	switch metricType {
-	case pmetric.MetricTypeGauge:
-		numberDps = m.SetEmptyGauge().DataPoints()
-	case pmetric.MetricTypeSum:
-		numberDps = m.SetEmptySum().DataPoints()
-	case pmetric.MetricTypeHistogram:
-		m.SetEmptyHistogram()
-	case pmetric.MetricTypeSummary:
-		m.SetEmptySummary()
-	}
-
-	for i := range nanPoints + validPoints {
-		isNaN := i < nanPoints
-		value := 1.0
-		if isNaN {
-			value = math.NaN()
-		}
-
-		switch metricType {
-		case pmetric.MetricTypeGauge, pmetric.MetricTypeSum:
-			dp := numberDps.AppendEmpty()
-			if !isNaN && i%2 == 1 {
-				dp.SetIntValue(1)
-			} else {
-				dp.SetDoubleValue(value)
-			}
-		case pmetric.MetricTypeHistogram:
-			dp := m.Histogram().DataPoints().AppendEmpty()
-			dp.ExplicitBounds().FromRaw([]float64{1})
-			dp.BucketCounts().FromRaw([]uint64{1, 1})
-			[]func(float64){dp.SetSum, dp.SetMin, dp.SetMax}[i%3](value)
-		case pmetric.MetricTypeSummary:
-			dp := m.Summary().DataPoints().AppendEmpty()
-			q := dp.QuantileValues().AppendEmpty()
-			q.SetValue(1)
-			[]func(float64){dp.SetSum, q.SetValue}[i%2](value)
-		}
-	}
-
-	return md
+	runMetricsTestCases(t, testCases)
 }
 
 func TestMetrics_CountSummaryMetrics_WithExcludePattern(t *testing.T) {

@@ -129,8 +129,11 @@ func (meter *metrics) countSummarySamples(dps pmetric.SummaryDataPointSlice) int
 	count := 0
 	for i := range dps.Len() {
 		dp := dps.At(i)
+		if math.IsNaN(dp.Sum()) {
+			continue
+		}
 		quantiles := dp.QuantileValues()
-		hasNaN := math.IsNaN(dp.Sum())
+		hasNaN := false
 		for j := range quantiles.Len() {
 			if math.IsNaN(quantiles.At(j).Value()) {
 				hasNaN = true
