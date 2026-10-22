@@ -3,6 +3,7 @@ package clickhouselogsexporter
 import (
 	"context"
 	"log"
+	"math"
 	"testing"
 	"time"
 
@@ -463,6 +464,42 @@ func TestProcessBody(t *testing.T) {
 			expectedBody:     "",
 			expectedBodyJSON: `{"message":"test"}`,
 			expectedPromoted: `{"message":"test"}`,
+		},
+		{
+			name:            "BodyJSONEnabled_MapBody_NonFiniteAndOutOfInt64Doubles_Sanitized",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{"big": {}},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutStr("message", "m")
+				v.Map().PutDouble("nan", math.NaN())
+				v.Map().PutDouble("big", 18446744073709551615)
+				v.Map().PutDouble("neg", -1e19)
+				v.Map().PutDouble("ok", 1.5)
+				s := v.Map().PutEmptySlice("arr")
+				s.AppendEmpty().SetDouble(math.Inf(1))
+				s.AppendEmpty().SetEmptyMap().PutDouble("h", 1e20)
+				return v
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"arr":[null,{"h":1e+20}],"big":1.8446744073709552e+19,"message":"m","nan":null,"neg":-1e+19,"ok":1.5}`,
+			expectedPromoted: `{"big":1.8446744073709552e+19}`,
+		},
+		{
+			name:            "BodyJSONEnabled_MapBody_Int64RangeValues_Unchanged",
+			bodyJSONEnabled: true,
+			promotedPaths:   map[string]struct{}{},
+			body: func() pcommon.Value {
+				v := pcommon.NewValueMap()
+				v.Map().PutInt("max", math.MaxInt64)
+				v.Map().PutInt("min", math.MinInt64)
+				v.Map().PutDouble("whole", 200)
+				v.Map().PutDouble("tiny", 1e-7)
+				return v
+			},
+			expectedBody:     "",
+			expectedBodyJSON: `{"max":9223372036854775807,"min":-9223372036854775808,"tiny":1e-7,"whole":200}`,
+			expectedPromoted: "{}",
 		},
 		{
 			name:            "BodyJSONDisabled_MapBody_Stash_PromotedPaths",

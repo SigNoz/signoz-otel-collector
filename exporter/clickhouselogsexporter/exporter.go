@@ -16,6 +16,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	encodingjson "encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -819,7 +820,15 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		body = originalBody
 	}
 
-	return getStringifiedBody(body), getStringifiedBody(bodyJSON), getStringifiedBody(promoted)
+	return getStringifiedBody(body), getJSONColumnBody(bodyJSON), getJSONColumnBody(promoted)
+}
+
+func getJSONColumnBody(body pcommon.Value) string {
+	b, err := encodingjson.Marshal(utils.SanitizeJSONFloats(body.Map().AsRaw()))
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
 
 func send(statement driver.Batch, tableName string, durationCh chan<- statementSendDuration, chErr chan<- error, wg *sync.WaitGroup) {

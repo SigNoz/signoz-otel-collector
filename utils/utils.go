@@ -30,6 +30,34 @@ func IsValidFloat(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
+// SanitizeJSONFloats rewrites, in place, the float64 values ClickHouse rejects in JSON text:
+// NaN/Inf become null (encoding/json errors out on them), and values outside the Int64 range
+// are written in exponent form, since Go prints them as integer literals ClickHouse cannot store.
+func SanitizeJSONFloats(v any) any {
+	switch val := v.(type) {
+	case float64:
+		if !IsValidFloat(val) {
+			return nil
+		}
+		if val >= 1<<63 || val <= -(1<<63) {
+			return encodingjson.Number(strconv.FormatFloat(val, 'e', -1, 64))
+		}
+		return val
+	case map[string]any:
+		for k, vv := range val {
+			val[k] = SanitizeJSONFloats(vv)
+		}
+		return val
+	case []any:
+		for i, vv := range val {
+			val[i] = SanitizeJSONFloats(vv)
+		}
+		return val
+	default:
+		return v
+	}
+}
+
 type TagType string
 
 const (
