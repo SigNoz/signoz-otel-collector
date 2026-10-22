@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	goccyjson "github.com/goccy/go-json"
+	"github.com/goccy/go-json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -53,7 +53,7 @@ func sanitizeJSON(v any, depth, arrayDepth int) any {
 			return nil
 		}
 		if val >= 1<<63 || val <= -(1<<63) {
-			return goccyjson.Number(strconv.FormatFloat(val, 'e', -1, 64))
+			return json.Number(strconv.FormatFloat(val, 'e', -1, 64))
 		}
 		return val
 	case map[string]any:
@@ -78,7 +78,7 @@ func sanitizeJSON(v any, depth, arrayDepth int) any {
 }
 
 func jsonText(v any) string {
-	b, err := goccyjson.Marshal(sanitizeJSON(v, noJSONDepthLimit, noJSONDepthLimit))
+	b, err := json.Marshal(sanitizeJSON(v, noJSONDepthLimit, noJSONDepthLimit))
 	if err != nil {
 		return ""
 	}
