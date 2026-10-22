@@ -38,9 +38,10 @@ const (
 )
 
 // SanitizeJSON rewrites, in place, the values ClickHouse rejects in JSON text:
-// NaN/Inf become null (encoding/json errors out on them), float64 values outside the Int64 range
-// are written in exponent form, since Go prints them as integer literals ClickHouse cannot store,
-// and maps or slices nested past maxJSONDepth, or slices past maxJSONArrayDepth, become their JSON text.
+// NaN/Inf become null (encoding/json errors out on them); float64 values outside the UInt64 range, below
+// the Int64 range, or above it inside directly nested slices are written in exponent form, since Go prints
+// them as integer literals ClickHouse cannot store (nested slices merge to UInt64, rejecting negative
+// siblings); and maps or slices nested past maxJSONDepth, or slices past maxJSONArrayDepth, become their JSON text.
 func SanitizeJSON(v any) any {
 	return sanitizeJSON(v, 0, 0, true)
 }
@@ -51,7 +52,7 @@ func sanitizeJSON(v any, depth, arrayDepth int, limitDepth bool) any {
 		if !IsValidFloat(val) {
 			return nil
 		}
-		if val >= 1<<63 || val <= -(1<<63) {
+		if val >= 1<<64 || val <= -(1<<63) || (val >= 1<<63 && arrayDepth >= 2) {
 			return json.Number(strconv.FormatFloat(val, 'e', -1, 64))
 		}
 		return val
