@@ -12,7 +12,3 @@ tests:
   config:
   skip_lifecycle: false
   skip_shutdown: false
-  goleak:
-    ignore:
-      top:
-        - "github.com/ClickHouse/clickhouse-go/v2.(*clickhouse).startAutoCloseIdleConnections"

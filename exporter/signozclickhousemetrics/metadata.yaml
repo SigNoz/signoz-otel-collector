@@ -18,4 +18,3 @@ tests:
     ignore:
       top:
         - go.opencensus.io/stats/view.(*worker).start
-        - github.com/ClickHouse/clickhouse-go/v2.(*clickhouse).startAutoCloseIdleConnections

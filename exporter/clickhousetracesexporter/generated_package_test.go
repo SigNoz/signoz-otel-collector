@@ -8,5 +8,5 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"), goleak.IgnoreTopFunction("go.opencensus.io/metric/metricexport.(*IntervalReader).startInternal"), goleak.IgnoreTopFunction("github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"), goleak.IgnoreTopFunction("github.com/ClickHouse/clickhouse-go/v2.(*clickhouse).startAutoCloseIdleConnections"))
+	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"), goleak.IgnoreTopFunction("go.opencensus.io/metric/metricexport.(*IntervalReader).startInternal"), goleak.IgnoreTopFunction("github.com/jellydator/ttlcache/v3.(*Cache[...]).Start"))
 }

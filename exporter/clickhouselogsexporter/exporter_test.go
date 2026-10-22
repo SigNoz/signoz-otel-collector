@@ -2,13 +2,10 @@ package clickhouselogsexporter
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"testing"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -22,7 +19,6 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -628,7 +624,7 @@ func TestProcessBody(t *testing.T) {
 			}
 
 			// Process body
-			bodyStr, bodyJSONStr, promotedStr, _, _ := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
+			bodyStr, bodyJSONStr, promotedStr := exporter.processBody(context.Background(), body, originalBody, hasOriginalBody)
 
 			err = exporter.Shutdown(context.Background())
 			require.NoError(t, err)
@@ -699,78 +695,4 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 
 	require.True(t, found, "counter was not recorded")
 	assert.Equal(t, int64(3), recorded)
-}
-
-func TestPushLogsDataTypedRetry(t *testing.T) {
-	testCases := []struct {
-		name         string
-		sendErr      error
-		typedBatches int
-		wantErr      bool
-	}{
-		{name: "TextAccepted_NoRetry", sendErr: nil, typedBatches: 0},
-		{name: "Code117_RetriedTypedInPathBudgetChunks", sendErr: &clickhouse.Exception{Code: 117, Message: "Cannot parse JSON object here"}, typedBatches: 2},
-		{name: "OtherException_NotRetried", sendErr: &clickhouse.Exception{Code: 252, Message: "Too many partitions"}, wantErr: true},
-		{name: "NonExceptionError_NotRetried", sendErr: errors.New("connection reset"), wantErr: true},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
-			require.NoError(t, err)
-			mock.MatchExpectationsInOrder(false)
-
-			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2").ExpectSend()
-			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys").ExpectSend()
-			mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys").ExpectSend()
-			textBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2 .*")
-			textBatch.ExpectAppend()
-			textBatch.ExpectSend().WillReturnError(testCase.sendErr)
-			for i := 0; i < testCase.typedBatches; i++ {
-				typedBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2 .*")
-				typedBatch.ExpectAppend()
-				typedBatch.ExpectSend()
-			}
-			resourceBatch := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
-			resourceBatch.ExpectAppend()
-			resourceBatch.ExpectSend()
-
-			exp, err := newExporter(
-				exporter.Settings{},
-				&Config{
-					DSN:                       "clickhouse://localhost:9000/test",
-					BodyJSONEnabled:           true,
-					PromotedPathsSyncInterval: utils.ToPointer(5 * time.Minute),
-					LogLevelConcurrency:       utils.ToPointer(1),
-					AttributesLimits: AttributesLimits{
-						FetchKeysInterval: 2 * time.Second,
-						MaxDistinctValues: 25000,
-					},
-				},
-				append(testOptions(t), WithClickHouseClient(mock))...,
-			)
-			require.NoError(t, err)
-			exp.promotedPaths.Store(map[string]struct{}{})
-
-			ld := plog.NewLogs()
-			sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
-			now := pcommon.NewTimestampFromTime(time.Now())
-			for r := 0; r < 3; r++ {
-				rec := sl.LogRecords().AppendEmpty()
-				rec.SetTimestamp(now)
-				rec.SetObservedTimestamp(now)
-				body := rec.Body().SetEmptyMap()
-				for k := 0; k < 500; k++ {
-					body.PutInt(fmt.Sprintf("r%d_k%d", r, k), int64(k))
-				}
-			}
-
-			err = exp.pushToClickhouse(context.Background(), ld)
-			if testCase.wantErr {
-				assert.ErrorIs(t, err, testCase.sendErr)
-			} else {
-				assert.NoError(t, err)
-			}
-			assert.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
 }

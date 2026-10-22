@@ -8,5 +8,5 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("github.com/ClickHouse/clickhouse-go/v2.(*clickhouse).startAutoCloseIdleConnections"))
+	goleak.VerifyTestMain(m)
 }
