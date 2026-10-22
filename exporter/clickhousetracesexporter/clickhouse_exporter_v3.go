@@ -178,7 +178,7 @@ func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommo
 	b, err := json.Marshal(raw)
 	if err != nil {
 		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-		sanitizeJSONFloats(raw)
+		utils.SanitizeJSONFloats(raw)
 		b, err = json.Marshal(raw)
 	}
 	if err != nil {
@@ -190,30 +190,6 @@ func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommo
 		return "{}"
 	}
 	return string(b)
-}
-
-// sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out
-// for these values, so a single malformed double attribute could not fail the whole span.
-func sanitizeJSONFloats(v any) any {
-	switch val := v.(type) {
-	case float64:
-		if utils.IsValidFloat(val) {
-			return val
-		}
-		return nil
-	case map[string]any:
-		for k, vv := range val {
-			val[k] = sanitizeJSONFloats(vv)
-		}
-		return val
-	case []any:
-		for i, vv := range val {
-			val[i] = sanitizeJSONFloats(vv)
-		}
-		return val
-	default:
-		return v
-	}
 }
 
 type attributesData struct {
