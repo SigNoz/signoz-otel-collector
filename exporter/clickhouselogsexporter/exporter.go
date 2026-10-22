@@ -26,6 +26,7 @@ import (
 	"github.com/goccy/go-json"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -62,7 +63,6 @@ const (
 	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
 	bodyNonMapKey                    = "message"
-	clickHouseIncorrectData          = 117
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
 		labels,
@@ -846,7 +846,7 @@ func (e *clickhouseLogsExporter) sendLogsV2(ctx context.Context, statement drive
 	start := time.Now()
 	err := statement.Send()
 	var exception *clickhouse.Exception
-	if errors.As(err, &exception) && exception.Code == clickHouseIncorrectData {
+	if errors.As(err, &exception) && proto.Error(exception.Code) == proto.ErrIncorrectData {
 		e.logger.Warn("logs insert rejected, retrying with typed insert", zap.Error(err), zap.Int("records", len(records)))
 		err = e.insertLogsV2Typed(ctx, records)
 	}
@@ -868,6 +868,7 @@ func (e *clickhouseLogsExporter) insertLogsV2Typed(ctx context.Context, records 
 	for _, rec := range records {
 		bodyJSON := chjson.FromPcommonMap(rec.bodyJSONMap, bodyV2Limits, bodyV2TypedStringPaths)
 		if chjson.ExceedsPathBudget(bodyJSON, batchBodyPaths, chjson.DefaultPathBudgetPerBatch) {
+			e.logger.Info("typed insert path budget exceeded, sending chunk", zap.Int("paths", len(batchBodyPaths)), zap.Int("budget", chjson.DefaultPathBudgetPerBatch))
 			if err := statement.Send(); err != nil {
 				return fmt.Errorf("StatementSendLogsV2TypedChunk:%w", err)
 			}
