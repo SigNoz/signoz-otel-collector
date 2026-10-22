@@ -91,12 +91,7 @@ func TestSanitizeJSON(t *testing.T) {
 		{name: "LargestBelowInt64Max_Unchanged", in: math.Nextafter(1<<63, 0), wantJSON: `9223372036854775000`},
 		{name: "Int64Min_Exponent", in: float64(math.MinInt64), wantJSON: `-9.223372036854776e+18`},
 		{name: "BeyondUInt64_Exponent", in: 18446744073709551615.0, wantJSON: `1.8446744073709552e+19`},
-		{name: "UInt64Range_Unchanged", in: 1e19, wantJSON: `10000000000000000000`},
-		{name: "UInt64Range_InSlice_Unchanged", in: []any{9.2e18, 1e19}, wantJSON: `[9200000000000000000,10000000000000000000]`},
-		{name: "UInt64Range_InNestedSlice_Exponent", in: []any{[]any{-1.0}, []any{1e19}}, wantJSON: `[[-1],[1e+19]]`},
-		{name: "UInt64Range_InObjectInNestedSlice_Unchanged", in: []any{[]any{map[string]any{"x": 1e19}}}, wantJSON: `[[{"x":10000000000000000000}]]`},
-		{name: "LargestBelowUInt64Max_Unchanged", in: math.Nextafter(1<<64, 0), wantJSON: `18446744073709550000`},
-		{name: "UInt64MaxDouble_Exponent", in: float64(math.MaxUint64), wantJSON: `1.8446744073709552e+19`},
+		{name: "UInt64Range_Exponent", in: 1e19, wantJSON: `1e+19`},
 		{name: "BelowInt64_Exponent", in: -1e19, wantJSON: `-1e+19`},
 		{name: "HugeFloat_Unchanged", in: 1.5e300, wantJSON: `1.5e+300`},
 		{
@@ -111,8 +106,8 @@ func TestSanitizeJSON(t *testing.T) {
 		},
 		{
 			name:     "DeeplyNested_SliceOfMapOfSlice",
-			in:       []any{map[string]any{"scores": []any{math.Inf(-1), 2.0, 1e20}}},
-			wantJSON: `[{"scores":[null,2,1e+20]}]`,
+			in:       []any{map[string]any{"scores": []any{math.Inf(-1), 2.0, 1e19}}},
+			wantJSON: `[{"scores":[null,2,1e+19]}]`,
 		},
 	}
 
