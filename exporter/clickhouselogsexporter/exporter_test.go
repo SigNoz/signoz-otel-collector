@@ -498,7 +498,7 @@ func TestProcessBody(t *testing.T) {
 				return v
 			},
 			expectedBody:     "",
-			expectedBodyJSON: `{"max":9223372036854775807,"min":-9223372036854775808,"tiny":1e-7,"whole":200}`,
+			expectedBodyJSON: `{"max":9223372036854775807,"min":-9223372036854775808,"tiny":1e-07,"whole":200}`,
 			expectedPromoted: "{}",
 		},
 		{

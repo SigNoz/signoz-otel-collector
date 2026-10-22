@@ -16,7 +16,6 @@ package clickhouselogsexporter
 
 import (
 	"context"
-	encodingjson "encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -824,7 +823,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
-	b, err := encodingjson.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
+	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	if err != nil {
 		return "{}"
 	}
