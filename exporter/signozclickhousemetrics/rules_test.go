@@ -236,7 +236,7 @@ func Test_reductionHistogramFlattenedRules(t *testing.T) {
 		"http.server.duration0.bucket": {keys: labelSet("resource.attr_0")},
 		"http.server.duration0.count":  {keys: labelSet("resource.attr_0")},
 	})
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
 
 	require.NotEmpty(t, batch.samples)

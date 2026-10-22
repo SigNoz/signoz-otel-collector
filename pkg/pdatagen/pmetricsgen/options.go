@@ -13,6 +13,7 @@ type Count struct {
 	SumPointAttributeCount                  int
 	HistogramMetricsCount                   int
 	HistogramDataPointCount                 int
+	HistogramExplicitBoundsCount            int
 	HistogramBucketCount                    int
 	HistogramNanValuesCount                 int
 	HistogramNoRecordCount                  int

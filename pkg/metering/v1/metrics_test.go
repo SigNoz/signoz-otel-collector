@@ -87,7 +87,7 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 	}{
 		{
 			name:  "WithoutNaN",
-			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20},
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramExplicitBoundsCount: 20, HistogramBucketCount: 20},
 			// 6 data points * (20 buckets + le=+Inf) = 126
 			// 6 data points * 4 (sum,count,min,max) metrics = 24
 			// total -> 126 + 24 = 150
@@ -95,7 +95,7 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 		},
 		{
 			name:  "WithNaN",
-			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramBucketCount: 20, HistogramNanValuesCount: 2},
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 6, HistogramExplicitBoundsCount: 20, HistogramBucketCount: 20, HistogramNanValuesCount: 2},
 			// (6 - 2 NaN) data points * (20 buckets + le=+Inf) = 84
 			// (6 - 2 NaN) data points * 4 (sum,count,min,max) metrics = 16
 			// total -> 84 + 16 = 100
@@ -115,28 +115,27 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 
 func TestMetrics_CountHistogramBuckets(t *testing.T) {
 	testCases := []struct {
-		name         string
-		bounds       []float64
-		bucketCounts []uint64
-		expected     int
+		name     string
+		count    pmetricsgen.Count
+		expected int
 	}{
 		{
-			name:         "WellFormed",
-			bounds:       []float64{0.5, 1},
-			bucketCounts: []uint64{1, 1, 1},
-			// 2 bounds + le=+Inf + count (1) + sum (1) = 5
+			name:  "WellFormed",
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1, HistogramExplicitBoundsCount: 2, HistogramBucketCount: 3},
+			// 2 bounds + le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 7
+			expected: 7,
+		},
+		{
+			name:  "NoBuckets",
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1},
+			// le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 5
 			expected: 5,
 		},
 		{
-			name: "NoBuckets",
-			// le=+Inf + count (1) + sum (1) = 3
-			expected: 3,
-		},
-		{
-			name:   "BoundsWithoutCounts",
-			bounds: []float64{100, 1000},
-			// bounds without counts aren't written, so le=+Inf + count (1) + sum (1) = 3
-			expected: 3,
+			name:  "BoundsWithoutCounts",
+			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1, HistogramExplicitBoundsCount: 2},
+			// bounds without counts aren't written, so le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 5
+			expected: 5,
 		},
 	}
 
@@ -144,15 +143,7 @@ func TestMetrics_CountHistogramBuckets(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			md := pmetric.NewMetrics()
-			m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-			m.SetName("db.query.duration")
-			dp := m.SetEmptyHistogram().DataPoints().AppendEmpty()
-			dp.SetCount(3)
-			dp.SetSum(1.5)
-			dp.ExplicitBounds().FromRaw(testCase.bounds)
-			dp.BucketCounts().FromRaw(testCase.bucketCounts)
-
+			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
 			assert.Equal(t, testCase.expected, meter.Count(md))
 		})
 	}
