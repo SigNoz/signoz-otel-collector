@@ -1014,7 +1014,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"mixed_slice": []any{[]any{"a"}, "oops"}},
 		},
 		{
-			// The exhaustive NaN/Inf/nesting matrix lives in utils.TestSanitizeJSONFloats.
+			// The exhaustive NaN/Inf/nesting matrix lives in utils.TestSanitizeJSON.
 			name: "NaN double is sanitized to null, siblings preserved",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutDouble("nan", math.NaN())

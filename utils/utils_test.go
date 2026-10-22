@@ -75,7 +75,7 @@ func TestToLookUpMap_Int(t *testing.T) {
 	}
 }
 
-func TestSanitizeJSONFloats(t *testing.T) {
+func TestSanitizeJSON(t *testing.T) {
 	testCases := []struct {
 		name     string
 		in       any
@@ -113,9 +113,126 @@ func TestSanitizeJSONFloats(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			b, err := json.Marshal(SanitizeJSONFloats(testCase.in))
+			b, err := json.Marshal(SanitizeJSON(testCase.in))
 			require.NoError(t, err)
 			assert.Equal(t, testCase.wantJSON, string(b))
+		})
+	}
+}
+
+func nestMaps(levels int, leaf map[string]any) map[string]any {
+	m := leaf
+	for i := 1; i < levels; i++ {
+		m = map[string]any{"a": m}
+	}
+	return m
+}
+
+func nestSlices(levels int, leaf any) any {
+	v := leaf
+	for i := 0; i < levels; i++ {
+		v = []any{v}
+	}
+	return v
+}
+
+// jsonShape returns the container depth, the longest run of directly nested slices, and the deepest scalar.
+func jsonShape(v any, arrayRun int) (int, int, any) {
+	switch val := v.(type) {
+	case map[string]any:
+		depth, maxRun, leaf := 1, 0, any(nil)
+		for _, child := range val {
+			d, r, l := jsonShape(child, 0)
+			if d+1 >= depth {
+				depth, leaf = d+1, l
+			}
+			maxRun = max(maxRun, r)
+		}
+		return depth, maxRun, leaf
+	case []any:
+		depth, maxRun, leaf := 1, arrayRun+1, any(nil)
+		for _, child := range val {
+			d, r, l := jsonShape(child, arrayRun+1)
+			if d+1 >= depth {
+				depth, leaf = d+1, l
+			}
+			maxRun = max(maxRun, r)
+		}
+		return depth, maxRun, leaf
+	default:
+		return 0, 0, v
+	}
+}
+
+func TestSanitizeJSONDepthLimits(t *testing.T) {
+	testCases := []struct {
+		name         string
+		in           func() any
+		wantDepth    int
+		wantArrayRun int
+		wantDeepest  any
+	}{
+		{
+			name:        "Objects_AtDepthLimit_Unchanged",
+			in:          func() any { return nestMaps(1000, map[string]any{"leaf": int64(1)}) },
+			wantDepth:   1000,
+			wantDeepest: int64(1),
+		},
+		{
+			name:        "Objects_PastDepthLimit_DeepestObjectStringified",
+			in:          func() any { return nestMaps(1001, map[string]any{"leaf": int64(1)}) },
+			wantDepth:   1000,
+			wantDeepest: `{"leaf":1}`,
+		},
+		{
+			name:        "Objects_FarPastDepthLimit_RemainderStringifiedOnce",
+			in:          func() any { return nestMaps(1003, map[string]any{"leaf": int64(1)}) },
+			wantDepth:   1000,
+			wantDeepest: `{"a":{"a":{"leaf":1}}}`,
+		},
+		{
+			name:         "Arrays_AtArrayLimit_Unchanged",
+			in:           func() any { return map[string]any{"a": nestSlices(128, int64(1))} },
+			wantDepth:    129,
+			wantArrayRun: 128,
+			wantDeepest:  int64(1),
+		},
+		{
+			name:         "Arrays_PastArrayLimit_InnermostStringified",
+			in:           func() any { return map[string]any{"a": nestSlices(130, int64(1))} },
+			wantDepth:    129,
+			wantArrayRun: 128,
+			wantDeepest:  `[[1]]`,
+		},
+		{
+			name: "Arrays_RunResetsInsideObject_Unchanged",
+			in: func() any {
+				return map[string]any{"a": nestSlices(100, map[string]any{"b": nestSlices(100, int64(1))})}
+			},
+			wantDepth:    202,
+			wantArrayRun: 100,
+			wantDeepest:  int64(1),
+		},
+		{
+			name: "Stringified_SubtreeFloatsSanitized",
+			in: func() any {
+				return map[string]any{"a": nestSlices(129, map[string]any{"nan": math.NaN(), "big": 1e20})}
+			},
+			wantDepth:    129,
+			wantArrayRun: 128,
+			wantDeepest:  `[{"big":1e+20,"nan":null}]`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := SanitizeJSON(testCase.in())
+			depth, arrayRun, deepest := jsonShape(got, 0)
+			assert.Equal(t, testCase.wantDepth, depth, "depth")
+			assert.Equal(t, testCase.wantArrayRun, arrayRun, "array run")
+			assert.Equal(t, testCase.wantDeepest, deepest, "deepest value")
+			_, err := json.Marshal(got)
+			assert.NoError(t, err)
 		})
 	}
 }

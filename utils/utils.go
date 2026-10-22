@@ -30,10 +30,22 @@ func IsValidFloat(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
-// SanitizeJSONFloats rewrites, in place, the float64 values ClickHouse rejects in JSON text:
-// NaN/Inf become null (encoding/json errors out on them), and values outside the Int64 range
-// are written in exponent form, since Go prints them as integer literals ClickHouse cannot store.
-func SanitizeJSONFloats(v any) any {
+const (
+	// ClickHouse rejects JSON text nested 1024 levels deep, and 149 directly nested arrays.
+	maxJSONDepth      = 1000
+	maxJSONArrayDepth = 128
+	noJSONDepthLimit  = math.MinInt
+)
+
+// SanitizeJSON rewrites, in place, the values ClickHouse rejects in JSON text:
+// NaN/Inf become null (encoding/json errors out on them), float64 values outside the Int64 range
+// are written in exponent form, since Go prints them as integer literals ClickHouse cannot store,
+// and maps or slices nested past maxJSONDepth, or slices past maxJSONArrayDepth, become their JSON text.
+func SanitizeJSON(v any) any {
+	return sanitizeJSON(v, 0, 0)
+}
+
+func sanitizeJSON(v any, depth, arrayDepth int) any {
 	switch val := v.(type) {
 	case float64:
 		if !IsValidFloat(val) {
@@ -44,18 +56,32 @@ func SanitizeJSONFloats(v any) any {
 		}
 		return val
 	case map[string]any:
+		if depth >= maxJSONDepth {
+			return jsonText(val)
+		}
 		for k, vv := range val {
-			val[k] = SanitizeJSONFloats(vv)
+			val[k] = sanitizeJSON(vv, depth+1, 0)
 		}
 		return val
 	case []any:
+		if depth >= maxJSONDepth || arrayDepth >= maxJSONArrayDepth {
+			return jsonText(val)
+		}
 		for i, vv := range val {
-			val[i] = SanitizeJSONFloats(vv)
+			val[i] = sanitizeJSON(vv, depth+1, arrayDepth+1)
 		}
 		return val
 	default:
 		return v
 	}
+}
+
+func jsonText(v any) string {
+	b, err := encodingjson.Marshal(sanitizeJSON(v, noJSONDepthLimit, noJSONDepthLimit))
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 type TagType string

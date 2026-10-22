@@ -824,7 +824,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
-	b, err := encodingjson.Marshal(utils.SanitizeJSONFloats(body.Map().AsRaw()))
+	b, err := encodingjson.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	if err != nil {
 		return "{}"
 	}

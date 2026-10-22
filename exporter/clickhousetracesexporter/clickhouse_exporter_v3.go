@@ -175,7 +175,7 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 // each attribute since the slice of any can't be inserted.
 func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
 	// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-	b, err := json.Marshal(utils.SanitizeJSONFloats(attrs.AsRaw()))
+	b, err := json.Marshal(utils.SanitizeJSON(attrs.AsRaw()))
 	if err != nil {
 		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
 			zap.Error(err),
