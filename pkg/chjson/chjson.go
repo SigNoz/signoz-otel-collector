@@ -1,9 +1,7 @@
 package chjson
 
 import (
-	"encoding/base64"
 	"math"
-	"strconv"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/chcol"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -138,7 +136,7 @@ func convert(v pcommon.Value, t *chType, objectLimits *Limits) any {
 		et := elementType(v)
 		return chcol.NewDynamicWithType(convert(v, et, nil), typeName(et, nil))
 	default:
-		return stringValue(v)
+		return v.AsString()
 	}
 }
 
@@ -153,16 +151,5 @@ func numericValue(v pcommon.Value) float64 {
 		return 0
 	default:
 		return v.Double()
-	}
-}
-
-func stringValue(v pcommon.Value) string {
-	switch v.Type() {
-	case pcommon.ValueTypeBytes:
-		return base64.StdEncoding.EncodeToString(v.Bytes().AsRaw())
-	case pcommon.ValueTypeBool:
-		return strconv.FormatBool(v.Bool())
-	default:
-		return v.Str()
 	}
 }
