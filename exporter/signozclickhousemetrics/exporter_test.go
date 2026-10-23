@@ -160,7 +160,7 @@ func Test_prepareBatchSum(t *testing.T) {
 }
 
 func Test_prepareBatchHistogram(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -598,7 +598,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 func Benchmark_prepareBatchHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * 20 buckets = 200k samples in total
 	// each with 30 total attributes
-	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10, 20, 20, 0, 0)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -693,7 +693,7 @@ func Test_prepareBatchGaugeWithStaleNan(t *testing.T) {
 }
 
 func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 1)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -883,7 +883,7 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 }
 
 func Test_prepareBatchHistogramWithNan(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 1, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 1, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),

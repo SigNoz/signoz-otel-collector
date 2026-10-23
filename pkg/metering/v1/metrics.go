@@ -110,7 +110,8 @@ func (meter *metrics) countHistogramSamples(dps pmetric.HistogramDataPointSlice)
 			continue
 		}
 		// each bucket is treated as separate sample
-		count += dp.BucketCounts().Len()
+		// finite le buckets need both a bound and a count; le=+Inf is always written
+		count += min(dp.ExplicitBounds().Len(), dp.BucketCounts().Len()) + 1
 		count += 1 // count metric
 		if dp.HasSum() {
 			count++

@@ -91,6 +91,8 @@ func Generate(opts ...GenerationOption) pmetric.Metrics {
 		generationOpts.count.HistogramPointAttributeCount,
 		generationOpts.scopeAttributeCount,
 		generationOpts.resourceAttributeCount,
+		generationOpts.count.HistogramExplicitBoundsCount,
+		generationOpts.count.HistogramBucketCount,
 		generationOpts.count.HistogramNanValuesCount,
 		generationOpts.count.HistogramNoRecordCount,
 	), sm)
@@ -266,10 +268,9 @@ func GenerateSumMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numS
 // the histogram metrics will be cumulative or delta based on the index of the metric
 // for even metrics i.e http.server.duration0, http.server.duration2, etc will be cumulative
 // for odd metrics i.e http.server.duration1, http.server.duration3, etc will be delta
-// the default number of buckets is 20
-// the default bucket counts are `1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1`
-// the default explicit bounds are `0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19`
-func GenerateHistogramMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
+// the explicit bounds are `0, 1, 2, ..., numExplicitBounds-1`
+// the bucket counts are numBucketCounts values cycling through `1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1`
+func GenerateHistogramMetrics(numMetrics, totalNumDataPoints, numPointAttributes, numScopeAttributes, numResourceAttributes, numExplicitBounds, numBucketCounts int, numNanValues int, numNoRecordedValues int) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
 	_, sm := setupResourceAndScope(&metrics, numResourceAttributes, numScopeAttributes, "value", "value")
 
@@ -292,8 +293,15 @@ func GenerateHistogramMetrics(numMetrics, totalNumDataPoints, numPointAttributes
 		validDataPoints := totalNumDataPoints - numNanValues - numNoRecordedValues
 
 		// Define these once
-		explicitBounds := []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
-		bucketCounts := []uint64{1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1}
+		explicitBounds := make([]float64, numExplicitBounds)
+		for j := range explicitBounds {
+			explicitBounds[j] = float64(j)
+		}
+		bucketCountsPattern := []uint64{1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 12, 1, 1, 1, 1, 1, 1, 1}
+		bucketCounts := make([]uint64, numBucketCounts)
+		for j := range bucketCounts {
+			bucketCounts[j] = bucketCountsPattern[j%len(bucketCountsPattern)]
+		}
 
 		// Add normal data points
 		addHistogramDataPoints(dpSlice, validDataPoints, numPointAttributes, baseTimestamp, "histogram.attr_", false, explicitBounds, bucketCounts, 0, 12)
