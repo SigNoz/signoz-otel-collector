@@ -101,24 +101,6 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 			// total -> 84 + 16 = 100
 			expected: 100,
 		},
-	}
-
-	meter := NewMetrics(zap.NewNop())
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			md := pmetricsgen.Generate(pmetricsgen.WithCount(testCase.count))
-			assert.Equal(t, testCase.expected, meter.Count(md))
-		})
-	}
-}
-
-func TestMetrics_CountHistogramBuckets(t *testing.T) {
-	testCases := []struct {
-		name     string
-		count    pmetricsgen.Count
-		expected int
-	}{
 		{
 			name:  "WellFormed",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1, HistogramExplicitBoundsCount: 2, HistogramBucketCount: 3},
