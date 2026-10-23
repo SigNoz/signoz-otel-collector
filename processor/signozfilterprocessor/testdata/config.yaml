@@ -1,0 +1,7 @@
+signozfilter:
+signozfilter/custom:
+  max_allowed_data_age_days: 3
+signozfilter/zero_max_allowed_data_age_days:
+  max_allowed_data_age_days: 0
+signozfilter/unknown:
+  unknown_key: true
