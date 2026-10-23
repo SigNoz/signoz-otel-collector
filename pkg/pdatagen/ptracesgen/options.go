@@ -1,6 +1,9 @@
 package ptracesgen
 
-import "go.opentelemetry.io/collector/pdata/ptrace"
+import (
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+)
 
 type generationOptions struct {
 	spanCount                    int
@@ -9,6 +12,7 @@ type generationOptions struct {
 	resourceAttributeStringValue string
 	spanKind                     ptrace.SpanKind
 	attributes                   map[string]any
+	startTimestamp               pcommon.Timestamp
 }
 
 type GenerationOption func(*generationOptions)
@@ -46,5 +50,11 @@ func WithResourceAttributeStringValue(s string) GenerationOption {
 func WithAttributes(m map[string]any) GenerationOption {
 	return func(o *generationOptions) {
 		o.attributes = m
+	}
+}
+
+func WithStartTimestamp(ts pcommon.Timestamp) GenerationOption {
+	return func(o *generationOptions) {
+		o.startTimestamp = ts
 	}
 }

@@ -9,6 +9,7 @@ import (
 )
 
 func Generate(opts ...GenerationOption) ptrace.Traces {
+	endTime := pcommon.NewTimestampFromTime(time.Now())
 	generationOpts := generationOptions{
 		eventCount:                   0,
 		spanCount:                    1,
@@ -16,13 +17,13 @@ func Generate(opts ...GenerationOption) ptrace.Traces {
 		resourceAttributeStringValue: "resource",
 		spanKind:                     ptrace.SpanKindClient,
 		attributes:                   map[string]any{},
+		startTimestamp:               endTime,
 	}
 
 	for _, opt := range opts {
 		opt(&generationOpts)
 	}
 
-	endTime := pcommon.NewTimestampFromTime(time.Now())
 	traces := ptrace.NewTraces()
 	resourceSpan := traces.ResourceSpans().AppendEmpty()
 	for i := 0; i < generationOpts.resourceAttributeCount; i++ {
@@ -38,7 +39,7 @@ func Generate(opts ...GenerationOption) ptrace.Traces {
 		span := scopeSpans.Spans().AppendEmpty()
 		span.SetName("span." + suffix)
 		span.SetKind(generationOpts.spanKind)
-		span.SetStartTimestamp(endTime)
+		span.SetStartTimestamp(generationOpts.startTimestamp)
 		span.SetEndTimestamp(endTime)
 		span.SetTraceID(pcommon.TraceID([]byte("5B8EFFF798038103D269B633813FC60C")))
 		span.SetSpanID(pcommon.SpanID([]byte("EEE19B7EC3C1B174")))

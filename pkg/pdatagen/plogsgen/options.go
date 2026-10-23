@@ -1,10 +1,14 @@
 package plogsgen
 
+import "go.opentelemetry.io/collector/pdata/pcommon"
+
 type generationOptions struct {
 	logRecordCount               int
 	resourceAttributeCount       int
 	body                         string
 	resourceAttributeStringValue string
+	timestamp                    pcommon.Timestamp
+	observedTimestamp            pcommon.Timestamp
 }
 
 type GenerationOption func(*generationOptions)
@@ -30,5 +34,17 @@ func WithBody(s string) GenerationOption {
 func WithResourceAttributeStringValue(s string) GenerationOption {
 	return func(o *generationOptions) {
 		o.resourceAttributeStringValue = s
+	}
+}
+
+func WithTimestamp(ts pcommon.Timestamp) GenerationOption {
+	return func(o *generationOptions) {
+		o.timestamp = ts
+	}
+}
+
+func WithObservedTimestamp(ts pcommon.Timestamp) GenerationOption {
+	return func(o *generationOptions) {
+		o.observedTimestamp = ts
 	}
 }

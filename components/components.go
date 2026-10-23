@@ -10,6 +10,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
+	"github.com/SigNoz/signoz-otel-collector/processor/signozfilterprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor"
@@ -413,6 +414,7 @@ func Components() (otelcol.Factories, error) {
 		signozlogsnormalizerprocessor.NewFactory(),
 		signozspanmapperprocessor.NewFactory(),
 		signozllmpricingprocessor.NewFactory(),
+		signozfilterprocessor.NewFactory(),
 	}
 
 	connectors := []connector.Factory{

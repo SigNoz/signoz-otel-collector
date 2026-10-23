@@ -12,6 +12,7 @@ import (
 
 	"github.com/goccy/go-json"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/filterrule"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	tracesschema "github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -416,7 +417,7 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	oldestAllowedTs := time.Now().Add(-time.Duration(s.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano()
+	oldestAllowedTs := filterrule.OldestAllowed(time.Now(), time.Duration(s.maxAllowedDataAgeDays)*24*time.Hour)
 
 	resourcesSeen := map[int64]map[string]string{}
 
@@ -456,11 +457,11 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
 					ts := uint64(span.StartTimestamp())
-					if ts < uint64(oldestAllowedTs) {
+					if filterrule.SpanTooOld(span, oldestAllowedTs) {
 						s.logger.Debug(
 							"skipping span outside allowed time window",
 							zap.Uint64("start_ts", ts),
-							zap.Int64("oldest_allowed_ts", oldestAllowedTs),
+							zap.Int64("oldest_allowed_ts", int64(oldestAllowedTs)),
 							zap.String("service_name", serviceName),
 							zap.String("span_name", span.Name()),
 							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),

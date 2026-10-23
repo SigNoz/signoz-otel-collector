@@ -30,6 +30,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/internal/common"
+	"github.com/SigNoz/signoz-otel-collector/pkg/filterrule"
 	"github.com/SigNoz/signoz-otel-collector/pkg/keycheck"
 	"github.com/SigNoz/signoz-otel-collector/pkg/tagdedup"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -466,7 +467,7 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
-	oldestAllowedTs := uint64(time.Now().Add(-time.Duration(e.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano())
+	oldestAllowedTs := filterrule.OldestAllowed(time.Now(), time.Duration(e.maxAllowedDataAgeDays)*24*time.Hour)
 
 	start := time.Now()
 	chLen := 5
@@ -644,8 +645,8 @@ producerIteration:
 					if ts == 0 {
 						ts = ots
 					}
-					if ts < oldestAllowedTs {
-						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
+					if filterrule.LogRecordTooOld(record, oldestAllowedTs) {
+						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", uint64(oldestAllowedTs)))
 						return nil
 					}
 

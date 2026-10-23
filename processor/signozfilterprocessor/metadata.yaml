@@ -1,0 +1,11 @@
+type: signozfilter
+github_project: SigNoz/signoz-otel-collector
+
+status:
+  class: processor
+  stability:
+    development: [logs, traces]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
