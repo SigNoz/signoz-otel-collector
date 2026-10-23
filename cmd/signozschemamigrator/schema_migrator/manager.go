@@ -77,11 +77,12 @@ type MigrationManager struct {
 	connOpts clickhouse.Options
 	conns    map[string]clickhouse.Conn
 
-	clusterName        string
-	replicationEnabled bool
-	logger             *zap.Logger
-	backoff            *backoff.ExponentialBackOff
-	development        bool
+	clusterName                      string
+	replicationEnabled               bool
+	logger                           *zap.Logger
+	backoff                          *backoff.ExponentialBackOff
+	development                      bool
+	allowDimensionsOutsideSortingKey bool
 }
 
 type Option func(*MigrationManager)
@@ -115,6 +116,33 @@ func WithDevelopment(development bool) Option {
 	return func(mgr *MigrationManager) {
 		mgr.development = development
 	}
+}
+
+func WithAllowDimensionsOutsideSortingKey(enabled bool) Option {
+	return func(mgr *MigrationManager) {
+		mgr.allowDimensionsOutsideSortingKey = enabled
+	}
+}
+
+func (m *MigrationManager) applyCompatibilitySettings(operation Operation) {
+	if !m.allowDimensionsOutsideSortingKey {
+		return
+	}
+
+	createTable, ok := operation.(*CreateTableOperation)
+	if !ok {
+		return
+	}
+
+	aggregatingMergeTree, ok := createTable.Engine.(*AggregatingMergeTree)
+	if !ok {
+		return
+	}
+
+	aggregatingMergeTree.Settings = append(aggregatingMergeTree.Settings, TableSetting{
+		Name:  "allow_dimensions_outside_sorting_key",
+		Value: "1",
+	})
 }
 
 func WithReplicationEnabled(replicationEnabled bool) Option {
@@ -1073,6 +1101,7 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 		}
 	}
 
+	m.applyCompatibilitySettings(operation)
 	sql = operation.ToSQL()
 	m.logger.Info("Running operation", zap.String("sql", sql))
 	err := m.conn.Exec(ctx, sql)
@@ -1142,6 +1171,7 @@ func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operat
 		}
 	}
 
+	m.applyCompatibilitySettings(operation)
 	sql = operation.ToSQL()
 	m.logger.Info("Running operation", zap.String("sql", sql))
 	err := m.conn.Exec(ctx, sql)
