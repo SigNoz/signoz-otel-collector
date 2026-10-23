@@ -2,11 +2,25 @@ signozlogsnormalizer:
 signozlogsnormalizer/body_disabled:
   body:
     enabled: false
-signozlogsnormalizer/fields:
+signozlogsnormalizer/body_fields:
   body:
     fields: [text]
+signozlogsnormalizer/fields:
+  severity_text:
+    fields: [sev]
+  scope_name:
+    fields: [logger, scope.name]
+signozlogsnormalizer/fields_move:
+  trace_id:
+    action: move
+signozlogsnormalizer/fields_empty:
+  severity_text:
+    fields: []
 signozlogsnormalizer/unknown:
   body:
+    unknown_key: true
+signozlogsnormalizer/field_unknown:
+  trace_id:
     unknown_key: true
 signozlogsnormalizer/opamp_position_before:
   opamp:
@@ -14,3 +28,6 @@ signozlogsnormalizer/opamp_position_before:
 signozlogsnormalizer/bad_opamp_position:
   opamp:
     position: middle
+signozlogsnormalizer/bad_action:
+  span_id:
+    action: rename
