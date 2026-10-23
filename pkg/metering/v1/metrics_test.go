@@ -102,19 +102,19 @@ func TestMetrics_CountHistogramMetrics(t *testing.T) {
 			expected: 100,
 		},
 		{
-			name:  "WellFormed",
+			name:  "WithBoundsAndInfBucket",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1, HistogramExplicitBoundsCount: 2, HistogramBucketCount: 3},
 			// 2 bounds + le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 7
 			expected: 7,
 		},
 		{
-			name:  "NoBuckets",
+			name:  "WithOnlyInfBucket",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1},
 			// le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 5
 			expected: 5,
 		},
 		{
-			name:  "BoundsWithoutCounts",
+			name:  "WithBoundsWithoutBucketCounts",
 			count: pmetricsgen.Count{HistogramMetricsCount: 1, HistogramDataPointCount: 1, HistogramExplicitBoundsCount: 2},
 			// bounds without counts aren't written, so le=+Inf (1) + count (1) + sum (1) + min (1) + max (1) = 5
 			expected: 5,
