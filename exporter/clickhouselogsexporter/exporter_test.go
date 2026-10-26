@@ -2,10 +2,12 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
@@ -498,4 +500,78 @@ func TestProcessBody(t *testing.T) {
 			assert.Equal(t, tc.expectedPromoted, promotedStr, "promoted string mismatch")
 		})
 	}
+}
+
+func TestIsPrepareBatchDeadline(t *testing.T) {
+	assert.True(t, isPrepareBatchDeadline(fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :context deadline exceeded")))
+	assert.True(t, isPrepareBatchDeadline(fmt.Errorf("PrepareTagBatchV2:context deadline exceeded")))
+	assert.False(t, isPrepareBatchDeadline(fmt.Errorf("StatementSend:context deadline exceeded")))
+	assert.False(t, isPrepareBatchDeadline(fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :connection reset")))
+	assert.False(t, isPrepareBatchDeadline(nil))
+}
+
+func TestRebuildClientAfterRepeatedPrepareBatchTimeouts(t *testing.T) {
+	oldMock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	oldMock.ExpectClose()
+
+	newMock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	newMock.ExpectClose()
+
+	unusedMock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+
+	exporter := setupTestExporter(t, oldMock)
+	var builds int
+	exporter.newClient = func(*zap.Logger, *Config) (clickhouse.Conn, error) {
+		builds++
+		if builds == 1 {
+			return newMock, nil
+		}
+		return unusedMock, nil
+	}
+
+	timeoutErr := fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :context deadline exceeded")
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(timeoutErr)
+	require.Same(t, oldMock, exporter.conn())
+	require.Equal(t, 0, builds)
+
+	exporter.noteExportResult(timeoutErr)
+	require.Same(t, newMock, exporter.conn())
+	require.Equal(t, 1, builds)
+
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(timeoutErr)
+	require.Same(t, newMock, exporter.conn())
+	require.Equal(t, 1, builds)
+
+	require.NoError(t, exporter.Shutdown(context.Background()))
+	eventually(t, func() bool {
+		return oldMock.ExpectationsWereMet() == nil && newMock.ExpectationsWereMet() == nil
+	})
+}
+
+func TestPrepareBatchFailureCountResetsOnSuccess(t *testing.T) {
+	oldMock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	oldMock.ExpectClose()
+
+	exporter := setupTestExporter(t, oldMock)
+	exporter.newClient = func(*zap.Logger, *Config) (clickhouse.Conn, error) {
+		t.Fatal("client should not rebuild after a successful export resets the counter")
+		return nil, nil
+	}
+
+	timeoutErr := fmt.Errorf("couldn't PrepareBatch for inserting resource fingerprints :context deadline exceeded")
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(nil)
+	exporter.noteExportResult(timeoutErr)
+	exporter.noteExportResult(timeoutErr)
+	require.Same(t, oldMock, exporter.conn())
+
+	require.NoError(t, exporter.Shutdown(context.Background()))
 }

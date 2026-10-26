@@ -59,6 +59,8 @@ const (
 	distributedLogsResourceKeys      = "distributed_logs_resource_keys"
 	distributedColumnEvolutionTable  = constants.SignozMetadataDB + ".distributed_column_evolution_metadata"
 	distributedLogsResourceV2Seconds = 1800
+	prepareBatchRebuildThreshold     = 3
+	prepareBatchRebuildCooldown      = 30 * time.Second
 	// language=ClickHouse SQL
 	insertLogsResourceSQLTemplate = `INSERT INTO %s.%s (
 		labels,
@@ -276,9 +278,15 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 	return err
 }
 
+type clickhouseClientFactory func(*zap.Logger, *Config) (clickhouse.Conn, error)
+
 type clickhouseLogsExporter struct {
 	id                     uuid.UUID
 	db                     clickhouse.Conn
+	dbMu                   sync.RWMutex
+	newClient              clickhouseClientFactory
+	prepareFailCount       int
+	lastRebuild            time.Time
 	insertLogsSQLV2        string
 	insertLogsResourceSQL  string
 	bodyJSONEnabled        bool
@@ -365,7 +373,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 	keys := []shouldSkipKey{}
 
-	err := e.db.Select(context.Background(), &keys, query)
+	err := e.conn().Select(context.Background(), &keys, query)
 	if err != nil {
 		e.logger.Error("error while fetching should skip keys", zap.Error(err))
 	}
@@ -441,7 +449,7 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	rows := []struct {
 		FieldName string `ch:"field_name"`
 	}{}
-	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+	if err := e.conn().Select(context.Background(), &rows, query); err != nil {
 		e.logger.Error("error while fetching promoted paths from evolution table", zap.Error(err))
 		return
 	}
@@ -474,13 +482,80 @@ func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
 		e.rfCache.Stop()
 	}
 
+	e.dbMu.Lock()
+	defer e.dbMu.Unlock()
 	if e.db != nil {
-		err := e.db.Close()
-		if err != nil {
+		if err := e.db.Close(); err != nil {
 			return err
 		}
+		e.db = nil
 	}
 	return nil
+}
+
+func (e *clickhouseLogsExporter) conn() clickhouse.Conn {
+	e.dbMu.RLock()
+	defer e.dbMu.RUnlock()
+	return e.db
+}
+
+func isPrepareBatchDeadline(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "context deadline exceeded") {
+		return false
+	}
+	return strings.Contains(msg, "PrepareBatch") ||
+		strings.Contains(msg, "PrepareTagBatch") ||
+		strings.Contains(msg, "PrepareAttributeKeysBatch") ||
+		strings.Contains(msg, "PrepareResourceKeysBatch")
+}
+
+func (e *clickhouseLogsExporter) noteExportResult(err error) {
+	if err == nil {
+		e.dbMu.Lock()
+		e.prepareFailCount = 0
+		e.dbMu.Unlock()
+		return
+	}
+	if !isPrepareBatchDeadline(err) {
+		return
+	}
+	e.maybeRebuildClient()
+}
+
+func (e *clickhouseLogsExporter) maybeRebuildClient() {
+	e.dbMu.Lock()
+	defer e.dbMu.Unlock()
+
+	e.prepareFailCount++
+	if e.prepareFailCount < prepareBatchRebuildThreshold {
+		return
+	}
+	if !e.lastRebuild.IsZero() && time.Since(e.lastRebuild) < prepareBatchRebuildCooldown {
+		return
+	}
+
+	factory := e.newClient
+	if factory == nil {
+		factory = newClickhouseClient
+	}
+	client, err := factory(e.logger, e.cfg)
+	if err != nil {
+		e.logger.Error("failed to rebuild clickhouse client after repeated PrepareBatch timeouts", zap.Error(err))
+		return
+	}
+
+	old := e.db
+	e.db = client
+	e.prepareFailCount = 0
+	e.lastRebuild = time.Now()
+	if old != nil {
+		_ = old.Close()
+	}
+	e.logger.Info("rebuilt clickhouse client after repeated PrepareBatch timeouts")
 }
 
 func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
@@ -497,9 +572,11 @@ func (e *clickhouseLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs)
 			return nil
 		}
 
+		e.noteExportResult(err)
 		return err
 	}
 
+	e.noteExportResult(nil)
 	return nil
 }
 
@@ -531,25 +608,26 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	}
 
 	// Prepare batches first
-	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
+	db := e.conn()
+	tagStatementV2, err := db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareTagBatchV2:%w", err)
 	}
 	defer tagStatementV2.Close()
 
-	attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
+	attributeKeysStmt, err = db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
 	}
 	defer attributeKeysStmt.Close()
 
-	resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
+	resourceKeysStmt, err = db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
 	}
 	defer resourceKeysStmt.Close()
 
-	insertLogsStmtV2, err = e.db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
+	insertLogsStmtV2, err = db.PrepareBatch(ctx, e.insertLogsSQLV2, driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareBatchV2:%w", err)
 	}
@@ -755,7 +833,7 @@ producerIteration:
 	}
 
 	// Prepare and append resources fingerprints
-	insertResourcesStmtV2, err = e.db.PrepareBatch(
+	insertResourcesStmtV2, err = db.PrepareBatch(
 		ctx,
 		e.insertLogsResourceSQL,
 		driver.WithReleaseConnection(),
