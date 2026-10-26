@@ -26,8 +26,7 @@ import (
 )
 
 const (
-	defaultPromotedPathsSyncInterval     = 5 * time.Minute
-	defaultMaxAllowedDataAgeDays     int = 15
+	defaultPromotedPathsSyncInterval = 5 * time.Minute
 )
 
 type AttributesLimits struct {
@@ -50,7 +49,7 @@ type Config struct {
 	AttributesLimits          AttributesLimits `mapstructure:"attributes_limits"`
 	PromotedPathsSyncInterval *time.Duration   `mapstructure:"promoted_paths_sync_interval"`
 	BodyJSONEnabled           bool             `mapstructure:"body_json_enabled"`
-	// MaxAllowedDataAgeDays drops logs older than now minus this many days.
+	// Deprecated: ignored. Drop old logs with the filter processor instead.
 	MaxAllowedDataAgeDays *int `mapstructure:"max_allowed_data_age_days"`
 }
 
@@ -73,9 +72,5 @@ func (cfg *Config) Validate() (err error) {
 	if *cfg.LogLevelConcurrency < 1 {
 		err = multierr.Append(err, errors.New("concurrency must be greater than 0"))
 	}
-	if cfg.MaxAllowedDataAgeDays == nil {
-		cfg.MaxAllowedDataAgeDays = utils.ToPointer(defaultMaxAllowedDataAgeDays)
-	}
-
 	return err
 }
