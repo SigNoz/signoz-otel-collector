@@ -173,12 +173,6 @@ func (s *serverClient) Start(ctx context.Context) error {
 		return err
 	}
 
-	err = s.opampClient.Start(ctx, settings)
-	if err != nil {
-		s.logger.Error("Error while starting opamp client", zap.Error(err))
-		return err
-	}
-
 	noopConfig, err := s.initialNopConfig()
 	if err != nil {
 		return fmt.Errorf("failed to get noop config: %s", err)
@@ -187,7 +181,17 @@ func (s *serverClient) Start(ctx context.Context) error {
 	// Apply noop config
 	s.runningNopConfig.Store(true)
 	if err := s.reload(noopConfig); err != nil {
+		s.coll.Shutdown()
 		return fmt.Errorf("failed to start with noop config: %s", err)
+	}
+
+	// Finish bootstrap before callbacks can apply a remote configuration.
+	// Otherwise bootstrap can overwrite a real configuration with no-op.
+	err = s.opampClient.Start(ctx, settings)
+	if err != nil {
+		s.logger.Error("Error while starting opamp client", zap.Error(err))
+		s.coll.Shutdown()
+		return err
 	}
 
 	// Watch for any async errors from the collector and initiate a shutdown

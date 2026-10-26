@@ -116,6 +116,11 @@ func (wCol *WrappedCollector) Run(ctx context.Context) error {
 	go func() {
 		for {
 			state := svc.GetState()
+			// Run reports startup errors separately. A closed collector will never
+			// become Running, even when the reload used a background context.
+			if state == otelcol.StateClosed {
+				return
+			}
 			if state == otelcol.StateRunning {
 				wCol.logger.Info("Collector service is running")
 				// TODO: collector may panic or exit unexpectedly, need to handle that
