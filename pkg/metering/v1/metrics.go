@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"math"
 	"regexp"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -64,40 +65,20 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 
 		for k := 0; k < scopeMetrics.Metrics().Len(); k++ {
 			metric := scopeMetrics.Metrics().At(k)
-			// if the metric satisifies the excluded regex then skip the metric
+			// if the metric satisfies the excluded regex then skip the metric
 			if excludeRegex.MatchString(metric.Name()) {
 				continue
 			}
 
 			switch metric.Type() {
 			case pmetric.MetricTypeGauge:
-				count += metric.Gauge().DataPoints().Len()
+				count += meter.countNumberSamples(metric.Gauge().DataPoints())
 			case pmetric.MetricTypeSum:
-				count += metric.Sum().DataPoints().Len()
+				count += meter.countNumberSamples(metric.Sum().DataPoints())
 			case pmetric.MetricTypeHistogram:
-				subCount := 0
-				// each bucket is treated as separate sample
-				for i := 0; i < metric.Histogram().DataPoints().Len(); i++ {
-					subCount += metric.Histogram().DataPoints().At(i).BucketCounts().Len()
-					subCount += 1 // count metric
-					if metric.Histogram().DataPoints().At(i).HasSum() {
-						subCount += 1
-					}
-					if metric.Histogram().DataPoints().At(i).HasMin() {
-						subCount += 1
-					}
-					if metric.Histogram().DataPoints().At(i).HasMax() {
-						subCount += 1
-					}
-				}
-				count += subCount
+				count += meter.countHistogramSamples(metric.Histogram().DataPoints())
 			case pmetric.MetricTypeSummary:
-				subCount := 0
-				for i := 0; i < metric.Summary().DataPoints().Len(); i++ {
-					subCount += metric.Summary().DataPoints().At(i).QuantileValues().Len()
-					subCount += 2 // count,sum metrics
-				}
-				count += subCount
+				count += meter.countSummarySamples(metric.Summary().DataPoints())
 			case pmetric.MetricTypeExponentialHistogram:
 				// Intentionally not counted. Exp histograms aren't billable on Cloud yet,
 				// and counting each bucket as a sample would explode the count.
@@ -108,5 +89,63 @@ func (meter *metrics) CountPerResource(rmd pmetric.ResourceMetrics) int {
 		}
 	}
 
+	return count
+}
+
+func (meter *metrics) countNumberSamples(dps pmetric.NumberDataPointSlice) int {
+	count := 0
+	for i := range dps.Len() {
+		if !math.IsNaN(dps.At(i).DoubleValue()) {
+			count++
+		}
+	}
+	return count
+}
+
+func (meter *metrics) countHistogramSamples(dps pmetric.HistogramDataPointSlice) int {
+	count := 0
+	for i := range dps.Len() {
+		dp := dps.At(i)
+		if math.IsNaN(dp.Sum()) || math.IsNaN(dp.Min()) || math.IsNaN(dp.Max()) {
+			continue
+		}
+		// each bucket is treated as separate sample
+		// finite le buckets need both a bound and a count; le=+Inf is always written
+		count += min(dp.ExplicitBounds().Len(), dp.BucketCounts().Len()) + 1
+		count += 1 // count metric
+		if dp.HasSum() {
+			count++
+		}
+		if dp.HasMin() {
+			count++
+		}
+		if dp.HasMax() {
+			count++
+		}
+	}
+	return count
+}
+
+func (meter *metrics) countSummarySamples(dps pmetric.SummaryDataPointSlice) int {
+	count := 0
+	for i := range dps.Len() {
+		dp := dps.At(i)
+		if math.IsNaN(dp.Sum()) {
+			continue
+		}
+		quantiles := dp.QuantileValues()
+		hasNaN := false
+		for j := range quantiles.Len() {
+			if math.IsNaN(quantiles.At(j).Value()) {
+				hasNaN = true
+				break
+			}
+		}
+		if hasNaN {
+			continue
+		}
+		count += quantiles.Len()
+		count += 2 // count,sum metrics
+	}
 	return count
 }
