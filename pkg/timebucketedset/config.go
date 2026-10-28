@@ -16,13 +16,13 @@ const (
 
 type Config struct {
 	// MaxBuckets is the number of buckets to create in the bucketset.
-	MaxBuckets int
+	MaxBuckets int `mapstructure:"max_buckets"`
 
 	// MaxBucketSize is the fastcache chunk budget per bucket. A bucket holds about MaxBytes/(len(key)+4) identities before it starts evicting the oldest.
-	MaxBucketSize int
+	MaxBucketSize int `mapstructure:"max_bucket_size"`
 
 	// PreWriteWindow is the tail of each bucket during which identities already registered for it are also registered for the next bucket.
-	PreWriteWindow time.Duration
+	PreWriteWindow time.Duration `mapstructure:"pre_write_window"`
 }
 
 func DefaultConfig() Config {

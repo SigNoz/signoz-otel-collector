@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -343,7 +344,7 @@ func TestBatch_addMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := newBatch(zaptest.NewLogger(t), 0, 0, 0)
+			b := newBatch(zaptest.NewLogger(t), nil, 0, 0, 0)
 			attrs := tt.setupAttrs()
 			fp := pkgfingerprint.NewFingerprint(tt.fingerprintType, 0, attrs, nil)
 
@@ -352,6 +353,151 @@ func TestBatch_addMetadata(t *testing.T) {
 				fp, tt.firstSeen, tt.lastSeen)
 
 			tt.validate(t, b)
+		})
+	}
+}
+
+func Test_planTimeSeries(t *testing.T) {
+	bucketStart := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC).UnixMilli()
+	midBucket := bucketStart + 20*time.Minute.Milliseconds()
+	lastMilliOfBucket := bucketStart + time.Hour.Milliseconds() - 1
+
+	pointAttrs := pcommon.NewMap()
+	pointAttrs.PutStr("host", "a")
+	point := pkgfingerprint.NewFingerprint(pkgfingerprint.PointFingerprintType, 0, pointAttrs, map[string]string{"__temporality__": "Unspecified"})
+	scopeAttrs := map[string]string{"__scope.name__": "test"}
+	resourceAttrs := map[string]string{"service.name": "svc"}
+	reduced := &reducedSeries{fingerprint: 77, point: point, scope: point, resource: point}
+
+	row := ts{metricName: "http.requests", fingerprint: 42, unixMilli: bucketStart + 5*time.Minute.Milliseconds()}
+
+	plan := func(b *batch, nowMilli int64, reducer *reducer, reduced *reducedSeries) {
+		b.nowMilli = nowMilli
+		b.planTimeSeries(row, point, scopeAttrs, resourceAttrs, reducer, reduced)
+	}
+	newTestBatch := func(exp *clickhouseMetricsExporter) *batch {
+		return newBatch(zap.NewNop(), exp.timeSeriesTimeBucketedSet, 0, 0, 0)
+	}
+
+	type wantRow struct {
+		isReduced    bool
+		writeCurrent bool
+		writeNext    bool
+	}
+
+	testCases := []struct {
+		name    string
+		enabled bool
+		run     func(exp *clickhouseMetricsExporter) *batch
+		want    []wantRow
+	}{
+		{
+			name: "Disabled_RepeatInBatch_EveryRowBuilt",
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
+				plan(b, midBucket, nil, nil)
+				return b
+			},
+			want: []wantRow{{}, {}},
+		},
+		{
+			name: "Disabled_Reduced_OneReducedRowPerReducer",
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				b := newTestBatch(exp)
+				r := &reducer{}
+				plan(b, midBucket, r, reduced)
+				plan(b, midBucket, r, reduced)
+				return b
+			},
+			want: []wantRow{{}, {isReduced: true}, {}},
+		},
+		{
+			name:    "Enabled_FirstSeen_WritesCurrent",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
+				return b
+			},
+			want: []wantRow{{writeCurrent: true}},
+		},
+		{
+			name:    "Enabled_RepeatInBatch_PlannedOnce",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				b := newTestBatch(exp)
+				plan(b, midBucket, nil, nil)
+				plan(b, midBucket, nil, nil)
+				return b
+			},
+			want: []wantRow{{writeCurrent: true}},
+		},
+		{
+			name:    "Enabled_Applied_NoRow",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				first := newTestBatch(exp)
+				plan(first, midBucket, nil, nil)
+				exp.timeSeriesTimeBucketedSet.Apply(writtenTimeSeriesIDs(first.ts))
+				second := newTestBatch(exp)
+				plan(second, midBucket, nil, nil)
+				return second
+			},
+			want: nil,
+		},
+		{
+			name:    "Enabled_Applied_InPreWriteWindow_WritesNext",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				first := newTestBatch(exp)
+				plan(first, midBucket, nil, nil)
+				exp.timeSeriesTimeBucketedSet.Apply(writtenTimeSeriesIDs(first.ts))
+				second := newTestBatch(exp)
+				plan(second, lastMilliOfBucket, nil, nil)
+				return second
+			},
+			want: []wantRow{{writeNext: true}},
+		},
+		{
+			name:    "Enabled_Reduced_RawAndReducedRowsDistinct",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				b := newTestBatch(exp)
+				plan(b, midBucket, &reducer{}, reduced)
+				plan(b, midBucket, &reducer{}, reduced)
+				return b
+			},
+			want: []wantRow{{writeCurrent: true}, {isReduced: true, writeCurrent: true}},
+		},
+		{
+			name:    "Enabled_Reduced_Applied_NoRow",
+			enabled: true,
+			run: func(exp *clickhouseMetricsExporter) *batch {
+				first := newTestBatch(exp)
+				plan(first, midBucket, &reducer{}, reduced)
+				exp.timeSeriesTimeBucketedSet.Apply(writtenTimeSeriesIDs(first.ts))
+				second := newTestBatch(exp)
+				plan(second, midBucket, &reducer{}, reduced)
+				return second
+			},
+			want: nil,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			exp := newTimeBucketedSetExporter(t, testCase.enabled)
+			b := testCase.run(exp)
+			require.Len(t, b.ts, len(testCase.want))
+			for i, want := range testCase.want {
+				got := b.ts[i]
+				assert.Equal(t, want.isReduced, got.isReduced, "row %d isReduced", i)
+				assert.Equal(t, want.writeCurrent, got.writeCurrent, "row %d writeCurrent", i)
+				assert.Equal(t, want.writeNext, got.writeNext, "row %d writeNext", i)
+				assert.Equal(t, bucketStart, got.bucketStart, "row %d bucketStart", i)
+				assert.NotEmpty(t, got.labels, "row %d labels", i)
+				assert.NotEmpty(t, got.attrs, "row %d attrs", i)
+			}
 		})
 	}
 }
