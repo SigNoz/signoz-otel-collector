@@ -64,7 +64,6 @@ const (
 	ColumnTypeEnumMap
 	ColumnTypeEnumTuple
 	ColumnTypeEnumEnumeration
-	ColumnTypeEnumDynamic
 )
 
 // ColumnType represents a column type.
@@ -150,23 +149,6 @@ func (f JSONColumnType) String() string {
 
 func (f JSONColumnType) GetType() ColumnTypeEnum {
 	return ColumnTypeEnumJSON
-}
-
-// DynamicColumnType represents a Dynamic column type.
-// Example: Dynamic or Dynamic(max_types=8).
-type DynamicColumnType struct {
-	MaxTypes *uint
-}
-
-func (d DynamicColumnType) String() string {
-	if d.MaxTypes == nil {
-		return "Dynamic"
-	}
-	return fmt.Sprintf("Dynamic(max_types=%d)", *d.MaxTypes)
-}
-
-func (d DynamicColumnType) GetType() ColumnTypeEnum {
-	return ColumnTypeEnumDynamic
 }
 
 // FixedStringColumnType represents a fixed string column type.
