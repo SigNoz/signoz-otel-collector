@@ -56,8 +56,10 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
 					{Name: "severity_number_idx", Expression: "severity_number", Type: "set(25)", Granularity: 4},
 					{Name: "severity_text_idx", Expression: "severity_text", Type: "set(25)", Granularity: 4},
-					{Name: "body_idx", Expression: "lower(body.message)", Type: "tokenbf_v1(32768, 3, 0)", Granularity: 1},
-				},
+					{Name: "body_string_ngram_idx", Expression: JSONFullTextIndexExpr("body"), Type: "ngrambf_v1(4, 15000, 3, 0)", Granularity: 1},
+					{Name: "body_string_token_idx", Expression: JSONFullTextIndexExpr("body"), Type: "tokenbf_v1(10000, 2, 0)", Granularity: 1},
+					{Name: "body_paths_ngram_idx", Expression: JSONPathsIndexExpr("body"), Type: "ngrambf_v1(4, 15000, 3, 0)", Granularity: 1},
+					{Name: "body_paths_token_idx", Expression: JSONPathsIndexExpr("body"), Type: "tokenbf_v1(10000, 2, 0)", Granularity: 1}},
 				Engine: MergeTree{
 					PartitionBy: "(toDate(timestamp / 1000000000), _retention_days, _retention_days_cold)",
 					OrderBy:     "(ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)",

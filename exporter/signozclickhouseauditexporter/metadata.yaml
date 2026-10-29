@@ -1,0 +1,35 @@
+type: signozclickhouseaudit
+github_project: SigNoz/signoz-otel-collector
+
+status:
+  class: exporter
+  stability:
+    beta:
+      - logs
+  distributions:
+    - signoz
+
+attributes:
+  table:
+    description: ClickHouse table the batch was written to.
+    type: string
+    enum: [distributed_field_keys, distributed_fields, distributed_logs, distributed_logs_resource]
+
+telemetry:
+  metrics:
+    signozclickhouseaudit.write.duration:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Time taken to send one batch to ClickHouse.
+      unit: s
+      histogram:
+        value_type: double
+        bucket_boundaries: [0.25, 0.5, 0.75, 1, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 25, 30]
+      attributes: [table]
+
+tests:
+  config:
+    dsn: tcp://localhost:9000
+  skip_lifecycle: true
