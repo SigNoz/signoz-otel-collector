@@ -267,6 +267,30 @@ func TestAlterTableAddColumn(t *testing.T) {
 			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col JSON(max_dynamic_paths=10, max_dynamic_types=2)",
 		},
 		{
+			name: "col-with-name-and-type-and-cluster-and-dynamic-type",
+			op: AlterTableAddColumn{
+				Database: "db",
+				Table:    "table",
+				Column: Column{
+					Name: "col",
+					Type: DynamicColumnType{},
+				},
+			}.OnCluster("cluster"),
+			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Dynamic",
+		},
+		{
+			name: "col-with-name-and-type-and-cluster-and-dynamic-type-with-max-types",
+			op: AlterTableAddColumn{
+				Database: "db",
+				Table:    "table",
+				Column: Column{
+					Name: "col",
+					Type: DynamicColumnType{MaxTypes: utils.ToPointer(uint(8))},
+				},
+			}.OnCluster("cluster"),
+			want: "ALTER TABLE db.table ON CLUSTER cluster ADD COLUMN IF NOT EXISTS col Dynamic(max_types=8)",
+		},
+		{
 			name: "col-with-name-and-type-and-cluster-and-nullable-type",
 			op: AlterTableAddColumn{
 				Database: "db",
