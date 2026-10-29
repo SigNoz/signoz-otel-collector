@@ -13,13 +13,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
 
-const (
-	bucketSeconds = 1800
-
-	fieldContextAttribute = "attribute"
-	fieldContextResource  = "resource"
-	fieldContextScope     = "scope"
-)
+const bucketSeconds = 1800
 
 type logRow struct {
 	tsBucketStart       uint64
@@ -45,42 +39,22 @@ type resourceRow struct {
 	seenAtTSBucketStart int64
 }
 
-type fieldKeyRow struct {
-	name          string
-	fieldContext  string
-	fieldDataType string
-}
-
-// fieldRow.value holds a string, int64, float64 or bool so the Dynamic column keeps the type.
-type fieldRow struct {
-	name          string
-	fieldContext  string
-	fieldDataType string
-	value         any
-}
-
 type batch struct {
 	logs      []logRow
 	resources []resourceRow
-	fieldKeys []fieldKeyRow
-	fields    []fieldRow
 }
 
-// batchBuilder converts plog.Logs into rows. Rows already present in the exporter caches are skipped.
+// batchBuilder converts plog.Logs into rows. Resources already in the exporter cache are skipped.
 type batchBuilder struct {
 	exp          *auditExporter
 	batch        batch
 	fingerprints map[int64]map[string]string
-	fieldKeys    map[fieldKeyRow]struct{}
-	fields       map[fieldRow]struct{}
 }
 
 func (e *auditExporter) buildBatch(ld plog.Logs, now time.Time) (*batch, error) {
 	b := &batchBuilder{
 		exp:          e,
 		fingerprints: map[int64]map[string]string{},
-		fieldKeys:    map[fieldKeyRow]struct{}{},
-		fields:       map[fieldRow]struct{}{},
 	}
 
 	resourceLogs := ld.ResourceLogs()
@@ -103,7 +77,6 @@ func (b *batchBuilder) addResourceLogs(rl plog.ResourceLogs, now time.Time) erro
 	if err != nil {
 		return fmt.Errorf("failed to marshal resource labels: %w", err)
 	}
-	b.addFields(fieldContextResource, res.Attributes())
 
 	scopeLogs := rl.ScopeLogs()
 	for i := range scopeLogs.Len() {
@@ -117,7 +90,6 @@ func (b *batchBuilder) addResourceLogs(rl plog.ResourceLogs, now time.Time) erro
 		if err != nil {
 			return fmt.Errorf("failed to marshal scope: %w", err)
 		}
-		b.addFields(fieldContextScope, scope.Attributes())
 
 		records := sl.LogRecords()
 		for j := range records.Len() {
@@ -148,7 +120,6 @@ func (b *batchBuilder) addResourceLogs(rl plog.ResourceLogs, now time.Time) erro
 			if err != nil {
 				return fmt.Errorf("failed to marshal attributes: %w", err)
 			}
-			b.addFields(fieldContextAttribute, record.Attributes())
 
 			b.batch.logs = append(b.batch.logs, logRow{
 				tsBucketStart:       uint64(bucket),
@@ -183,61 +154,13 @@ func (b *batchBuilder) fingerprint(bucket int64, labels string, attrs pcommon.Ma
 		return fp
 	}
 
-	fp := fingerprint.CalculateFingerprint(attrs.AsRaw(), fingerprint.ResourceHierarchy())
+	fp := fingerprint.CalculateFingerprint(attrs.AsRaw(), fingerprint.AuditResourceHierarchy())
 	byLabels[labels] = fp
 	if b.exp.rfCache.Get(utils.MakeKeyForRFCache(bucket, fp)) == nil {
 		b.batch.resources = append(b.batch.resources, resourceRow{labels: labels, fingerprint: fp, seenAtTSBucketStart: bucket})
 	}
 
 	return fp
-}
-
-func (b *batchBuilder) addFields(fieldContext string, attrs pcommon.Map) {
-	attrs.Range(func(name string, v pcommon.Value) bool {
-		dataType, value, ok := scalar(v)
-		if !ok {
-			return true
-		}
-
-		key := fieldKeyRow{name: name, fieldContext: fieldContext, fieldDataType: dataType}
-		if _, seen := b.fieldKeys[key]; !seen {
-			b.fieldKeys[key] = struct{}{}
-			if b.exp.keysCache.Get(fieldKeyCacheKey(key)) == nil {
-				b.batch.fieldKeys = append(b.batch.fieldKeys, key)
-			}
-		}
-
-		field := fieldRow{name: name, fieldContext: fieldContext, fieldDataType: dataType, value: value}
-		if _, seen := b.fields[field]; !seen {
-			b.fields[field] = struct{}{}
-			b.batch.fields = append(b.batch.fields, field)
-		}
-
-		return true
-	})
-}
-
-// scalar returns the field data type and Go value of v. Slices, maps, bytes and non-finite floats are not reported.
-func scalar(v pcommon.Value) (string, any, bool) {
-	switch v.Type() {
-	case pcommon.ValueTypeStr:
-		return string(utils.FieldDataTypeString), v.Str(), true
-	case pcommon.ValueTypeInt:
-		return string(utils.FieldDataTypeInt64), v.Int(), true
-	case pcommon.ValueTypeDouble:
-		if !utils.IsValidFloat(v.Double()) {
-			return "", nil, false
-		}
-		return string(utils.FieldDataTypeFloat64), v.Double(), true
-	case pcommon.ValueTypeBool:
-		return string(utils.FieldDataTypeBool), v.Bool(), true
-	default:
-		return "", nil, false
-	}
-}
-
-func fieldKeyCacheKey(key fieldKeyRow) string {
-	return key.name + ":" + key.fieldContext + ":" + key.fieldDataType
 }
 
 // bodyJSON keeps a map body as is and wraps any other body as {"message": <body as string>}.
