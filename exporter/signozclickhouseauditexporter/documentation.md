@@ -18,4 +18,4 @@ Time taken to send one batch to ClickHouse. [Alpha]
 
 | Name | Description | Values |
 | ---- | ----------- | ------ |
-| table | ClickHouse table the batch was written to. | Str: ``distributed_field_keys``, ``distributed_fields``, ``distributed_logs``, ``distributed_logs_resource`` |
+| table | ClickHouse table the batch was written to. | Str: ``distributed_logs``, ``distributed_logs_resource`` |

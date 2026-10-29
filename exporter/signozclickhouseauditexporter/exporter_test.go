@@ -43,33 +43,39 @@ func auditLogs() plog.Logs {
 
 func TestPushLogsData(t *testing.T) {
 	testCases := []struct {
-		name            string
-		cached          bool
-		sendErr         error
-		wantTables      []string
-		wantErr         string
-		wantKeysCached  bool
-		wantDurationFor []string
+		name               string
+		cached             bool
+		failTable          string
+		wantTables         []string
+		wantErr            string
+		wantResourceCached bool
+		wantDurationFor    []string
 	}{
 		{
-			name:            "EmptyCaches_WritesAllTables",
-			wantTables:      []string{distributedLogsTable, distributedLogsResourceTable, distributedFieldKeysTable, distributedFieldsTable},
-			wantKeysCached:  true,
-			wantDurationFor: []string{distributedFieldKeysTable, distributedFieldsTable, distributedLogsTable, distributedLogsResourceTable},
+			name:               "EmptyCache_WritesResourceAndLogs",
+			wantTables:         []string{distributedLogsResourceTable, distributedLogsTable},
+			wantResourceCached: true,
+			wantDurationFor:    []string{distributedLogsResourceTable, distributedLogsTable},
 		},
 		{
-			name:            "CachedMetadata_WritesLogsAndFields",
-			cached:          true,
-			wantTables:      []string{distributedLogsTable, distributedFieldsTable},
-			wantKeysCached:  true,
-			wantDurationFor: []string{distributedFieldsTable, distributedLogsTable},
+			name:               "CachedResource_WritesLogsOnly",
+			cached:             true,
+			wantTables:         []string{distributedLogsTable},
+			wantResourceCached: true,
+			wantDurationFor:    []string{distributedLogsTable},
 		},
 		{
-			name:            "SendFails_ReturnsErrorAndSkipsCaches",
-			sendErr:         errors.New("connection reset"),
-			wantTables:      []string{distributedLogsTable, distributedLogsResourceTable, distributedFieldKeysTable, distributedFieldsTable},
+			name:            "LogsSendFails_ReturnsErrorAndSkipsCache",
+			failTable:       distributedLogsTable,
+			wantTables:      []string{distributedLogsResourceTable, distributedLogsTable},
 			wantErr:         "connection reset",
-			wantDurationFor: []string{distributedFieldKeysTable, distributedFieldsTable, distributedLogsResourceTable},
+			wantDurationFor: []string{distributedLogsResourceTable},
+		},
+		{
+			name:       "ResourceSendFails_SkipsLogs",
+			failTable:  distributedLogsResourceTable,
+			wantTables: []string{distributedLogsResourceTable},
+			wantErr:    "connection reset",
 		},
 	}
 
@@ -86,18 +92,17 @@ func TestPushLogsData(t *testing.T) {
 			mock.MatchExpectationsInOrder(false)
 			exp.conn = mock
 
+			resourceKey := utils.MakeKeyForRFCache(1790730000, resourceFingerprint(map[string]any{"service.name": "signoz"}))
 			if testCase.cached {
-				exp.keysCache.Set("service.name:resource:string", struct{}{}, ttlcache.DefaultTTL)
-				exp.keysCache.Set("signoz.audit.action:attribute:string", struct{}{}, ttlcache.DefaultTTL)
-				exp.rfCache.Set(utils.MakeKeyForRFCache(1790730000, resourceFingerprint(map[string]any{"service.name": "signoz"})), struct{}{}, ttlcache.DefaultTTL)
+				exp.rfCache.Set(resourceKey, struct{}{}, ttlcache.DefaultTTL)
 			}
 
 			for _, table := range testCase.wantTables {
 				batch := mock.ExpectPrepareBatch(`INSERT INTO signoz_audit\.` + table + ` \(`)
 				batch.ExpectAppend()
 				send := batch.ExpectSend()
-				if table == distributedLogsTable && testCase.sendErr != nil {
-					send.WillReturnError(testCase.sendErr)
+				if table == testCase.failTable {
+					send.WillReturnError(errors.New("connection reset"))
 				}
 			}
 
@@ -109,9 +114,13 @@ func TestPushLogsData(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.NoError(t, mock.ExpectationsWereMet())
-			assert.Equal(t, testCase.wantKeysCached, exp.keysCache.Has("signoz.audit.action:attribute:string"))
+			assert.Equal(t, testCase.wantResourceCached, exp.rfCache.Has(resourceKey))
 
 			got, err := tel.GetMetric("otelcol.signozclickhouseaudit.write.duration")
+			if len(testCase.wantDurationFor) == 0 {
+				assert.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			histogram, ok := got.Data.(metricdata.Histogram[float64])
 			require.True(t, ok)

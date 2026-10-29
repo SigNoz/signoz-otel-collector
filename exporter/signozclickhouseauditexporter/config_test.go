@@ -42,6 +42,10 @@ func TestConfigClickHouseOptions(t *testing.T) {
 	options, err := cfg.clickHouseOptions()
 	require.NoError(t, err)
 
-	assert.Equal(t, clickhouse.Settings{"type_json_skip_duplicated_paths": 1}, options.Settings)
+	assert.Equal(t, clickhouse.Settings{
+		"type_json_skip_duplicated_paths":  1,
+		"input_format_try_infer_datetimes": 0,
+		"input_format_try_infer_dates":     0,
+	}, options.Settings)
 	assert.Equal(t, cfg.QueueBatchConfig.Get().NumConsumers+1, options.MaxIdleConns)
 }

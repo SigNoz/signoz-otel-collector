@@ -46,6 +46,36 @@ func TestCalculateFingerprint(t *testing.T) {
 	}
 }
 
+func TestCalculateFingerprintAudit(t *testing.T) {
+	testCases := []struct {
+		name          string
+		resourceAttrs map[string]any
+		want          string
+	}{
+		{
+			name:          "ServiceKindAndID_AllInPrefix",
+			resourceAttrs: map[string]any{"service.name": "signoz", "service.version": "0.91.0", "signoz.audit.resource.kind": "dashboard", "signoz.audit.resource.id": "6dc9d11b"},
+			want:          "service.name=signoz;signoz.audit.resource.kind=dashboard;signoz.audit.resource.id=6dc9d11b;hash=5225893275152003141",
+		},
+		{
+			name:          "NoResourceID_StopsAtKind",
+			resourceAttrs: map[string]any{"service.name": "signoz", "signoz.audit.resource.kind": "organization"},
+			want:          "service.name=signoz;signoz.audit.resource.kind=organization;hash=14439156761989706515",
+		},
+		{
+			name:          "NoServiceName_StartsAtKind",
+			resourceAttrs: map[string]any{"signoz.audit.resource.kind": "session", "signoz.audit.resource.id": "771025b0"},
+			want:          "signoz.audit.resource.kind=session;signoz.audit.resource.id=771025b0;hash=7826910678086919264",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, CalculateFingerprint(testCase.resourceAttrs, AuditResourceHierarchy()))
+		})
+	}
+}
+
 func TestFindAttributeSynonyms(t *testing.T) {
 	testHierarchy := &DimensionHierarchyNode{
 		labels: []string{"1.a", "1.b"},

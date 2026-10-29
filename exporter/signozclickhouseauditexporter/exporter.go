@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -27,7 +26,6 @@ type auditExporter struct {
 	conn      driver.Conn
 	telemetry *metadata.TelemetryBuilder
 	tableAttr map[string]metric.RecordOption
-	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 }
 
@@ -38,7 +36,7 @@ func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
 	}
 
 	tableAttr := map[string]metric.RecordOption{}
-	for _, table := range []string{distributedLogsTable, distributedLogsResourceTable, distributedFieldKeysTable, distributedFieldsTable} {
+	for _, table := range []string{distributedLogsTable, distributedLogsResourceTable} {
 		tableAttr[table] = metric.WithAttributeSet(attribute.NewSet(attribute.String("table", table)))
 	}
 
@@ -47,11 +45,6 @@ func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
 		cfg:       cfg,
 		telemetry: telemetry,
 		tableAttr: tableAttr,
-		keysCache: ttlcache.New(
-			ttlcache.WithTTL[string, struct{}](240*time.Minute),
-			ttlcache.WithCapacity[string, struct{}](50000),
-			ttlcache.WithDisableTouchOnHit[string, struct{}](),
-		),
 		rfCache: ttlcache.New(
 			ttlcache.WithTTL[string, struct{}](bucketSeconds*time.Second),
 			ttlcache.WithCapacity[string, struct{}](100000),
@@ -76,14 +69,12 @@ func (e *auditExporter) start(ctx context.Context, _ component.Host) error {
 	}
 
 	e.conn = conn
-	go e.keysCache.Start()
 	go e.rfCache.Start()
 
 	return nil
 }
 
 func (e *auditExporter) shutdown(_ context.Context) error {
-	e.keysCache.Stop()
 	e.rfCache.Stop()
 	e.telemetry.Shutdown()
 
@@ -101,68 +92,34 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 		return err
 	}
 
-	unixMilliHour := now.Truncate(time.Hour).UnixMilli()
-	writes := []struct {
-		table      string
-		query      string
-		rows       int
-		appendRows func(driver.Batch) error
-	}{
-		{distributedLogsTable, insertLogsSQL, len(b.logs), func(batch driver.Batch) error {
-			for _, r := range b.logs {
-				if err := batch.Append(r.tsBucketStart, r.resourceFingerprint, r.timestamp, r.observedTimestamp, r.id, r.traceID, r.spanID, r.traceFlags, r.severityText, r.severityNumber, r.body, r.scope, r.attributes, r.resource, r.eventName); err != nil {
-					return err
-				}
-			}
-			return nil
-		}},
-		{distributedLogsResourceTable, insertLogsResourceSQL, len(b.resources), func(batch driver.Batch) error {
+	if len(b.resources) > 0 {
+		err := e.write(ctx, distributedLogsResourceTable, insertLogsResourceSQL, func(batch driver.Batch) error {
 			for _, r := range b.resources {
 				if err := batch.Append(r.labels, r.fingerprint, r.seenAtTSBucketStart); err != nil {
 					return err
 				}
 			}
 			return nil
-		}},
-		{distributedFieldKeysTable, insertFieldKeysSQL, len(b.fieldKeys), func(batch driver.Batch) error {
-			for _, r := range b.fieldKeys {
-				if err := batch.Append(uint64(now.UnixNano()), r.name, r.fieldContext, r.fieldDataType); err != nil {
-					return err
-				}
-			}
-			return nil
-		}},
-		{distributedFieldsTable, insertFieldsSQL, len(b.fields), func(batch driver.Batch) error {
-			for _, r := range b.fields {
-				if err := batch.Append(unixMilliHour, r.name, r.fieldContext, r.fieldDataType, r.value); err != nil {
-					return err
-				}
-			}
-			return nil
-		}},
-	}
-
-	var wg sync.WaitGroup
-	errs := make([]error, len(writes))
-	for i, w := range writes {
-		if w.rows == 0 {
-			continue
+		})
+		if err != nil {
+			return err
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs[i] = e.write(ctx, w.table, w.query, w.appendRows)
-		}()
-	}
-	wg.Wait()
-
-	if err := errors.Join(errs...); err != nil {
-		return err
 	}
 
-	for _, r := range b.fieldKeys {
-		e.keysCache.Set(fieldKeyCacheKey(r), struct{}{}, ttlcache.DefaultTTL)
+	if len(b.logs) > 0 {
+		err := e.write(ctx, distributedLogsTable, insertLogsSQL, func(batch driver.Batch) error {
+			for _, r := range b.logs {
+				if err := batch.Append(r.tsBucketStart, r.resourceFingerprint, r.timestamp, r.observedTimestamp, r.id, r.traceID, r.spanID, r.traceFlags, r.severityText, r.severityNumber, r.body, r.scope, r.attributes, r.resource, r.eventName); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
+
 	for _, r := range b.resources {
 		e.rfCache.Set(utils.MakeKeyForRFCache(r.seenAtTSBucketStart, r.fingerprint), struct{}{}, ttlcache.DefaultTTL)
 	}
@@ -170,8 +127,6 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	e.logger.Debug("inserted audit logs",
 		zap.Int("logs", len(b.logs)),
 		zap.Int("resources", len(b.resources)),
-		zap.Int("field_keys", len(b.fieldKeys)),
-		zap.Int("fields", len(b.fields)),
 		zap.Duration("duration", time.Since(now)),
 	)
 

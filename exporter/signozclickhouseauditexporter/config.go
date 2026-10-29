@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-// Config defines configuration for the ClickHouse audit logs exporter.
 type Config struct {
 	exporterhelper.TimeoutConfig `mapstructure:",squash"`
 	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`

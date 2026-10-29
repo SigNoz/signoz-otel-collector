@@ -13,7 +13,7 @@ attributes:
   table:
     description: ClickHouse table the batch was written to.
     type: string
-    enum: [distributed_field_keys, distributed_fields, distributed_logs, distributed_logs_resource]
+    enum: [distributed_logs, distributed_logs_resource]
 
 telemetry:
   metrics:

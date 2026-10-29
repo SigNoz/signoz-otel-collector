@@ -17,7 +17,7 @@ import (
 )
 
 func resourceFingerprint(attrs map[string]any) string {
-	return fingerprint.CalculateFingerprint(attrs, fingerprint.ResourceHierarchy())
+	return fingerprint.CalculateFingerprint(attrs, fingerprint.AuditResourceHierarchy())
 }
 
 func TestBuildBatch(t *testing.T) {
@@ -28,8 +28,6 @@ func TestBuildBatch(t *testing.T) {
 		setup         func(e *auditExporter)
 		wantLogs      []logRow
 		wantResources []resourceRow
-		wantFieldKeys []fieldKeyRow
-		wantFields    []fieldRow
 	}{
 		{
 			name: "StringBody_ScalarAttributes",
@@ -80,22 +78,6 @@ func TestBuildBatch(t *testing.T) {
 				fingerprint:         resourceFingerprint(map[string]any{"service.name": "signoz"}),
 				seenAtTSBucketStart: 1790677800,
 			}},
-			wantFieldKeys: []fieldKeyRow{
-				{name: "service.name", fieldContext: "resource", fieldDataType: "string"},
-				{name: "signoz.audit.schema", fieldContext: "scope", fieldDataType: "string"},
-				{name: "signoz.audit.action", fieldContext: "attribute", fieldDataType: "string"},
-				{name: "http.response.status_code", fieldContext: "attribute", fieldDataType: "int64"},
-				{name: "signoz.audit.score", fieldContext: "attribute", fieldDataType: "float64"},
-				{name: "signoz.audit.dry_run", fieldContext: "attribute", fieldDataType: "bool"},
-			},
-			wantFields: []fieldRow{
-				{name: "service.name", fieldContext: "resource", fieldDataType: "string", value: "signoz"},
-				{name: "signoz.audit.schema", fieldContext: "scope", fieldDataType: "string", value: "v1"},
-				{name: "signoz.audit.action", fieldContext: "attribute", fieldDataType: "string", value: "update"},
-				{name: "http.response.status_code", fieldContext: "attribute", fieldDataType: "int64", value: int64(200)},
-				{name: "signoz.audit.score", fieldContext: "attribute", fieldDataType: "float64", value: 0.5},
-				{name: "signoz.audit.dry_run", fieldContext: "attribute", fieldDataType: "bool", value: false},
-			},
 		},
 		{
 			name: "MapBody_KeptAsIs",
@@ -177,7 +159,7 @@ func TestBuildBatch(t *testing.T) {
 			}},
 		},
 		{
-			name: "RepeatedAttributes_MetadataDeduped",
+			name: "SameResource_OneResourceRow",
 			logs: func() plog.Logs {
 				ld := plog.NewLogs()
 				records := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
@@ -217,11 +199,9 @@ func TestBuildBatch(t *testing.T) {
 				fingerprint:         resourceFingerprint(map[string]any{}),
 				seenAtTSBucketStart: 1790699400,
 			}},
-			wantFieldKeys: []fieldKeyRow{{name: "signoz.audit.action", fieldContext: "attribute", fieldDataType: "string"}},
-			wantFields:    []fieldRow{{name: "signoz.audit.action", fieldContext: "attribute", fieldDataType: "string", value: "delete"}},
 		},
 		{
-			name: "CachedKeysAndResource_Skipped",
+			name: "CachedResource_Skipped",
 			logs: func() plog.Logs {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
@@ -234,8 +214,6 @@ func TestBuildBatch(t *testing.T) {
 			},
 			now: time.Unix(0, 1790710001000000000),
 			setup: func(e *auditExporter) {
-				e.keysCache.Set("service.name:resource:string", struct{}{}, ttlcache.DefaultTTL)
-				e.keysCache.Set("signoz.audit.outcome:attribute:string", struct{}{}, ttlcache.DefaultTTL)
 				fp := resourceFingerprint(map[string]any{"service.name": "signoz-api"})
 				e.rfCache.Set(utils.MakeKeyForRFCache(1790708400, fp), struct{}{}, ttlcache.DefaultTTL)
 			},
@@ -249,13 +227,9 @@ func TestBuildBatch(t *testing.T) {
 				attributes:          `{"signoz.audit.outcome":"success"}`,
 				resource:            `{"attributes":{"service.name":"signoz-api"}}`,
 			}},
-			wantFields: []fieldRow{
-				{name: "service.name", fieldContext: "resource", fieldDataType: "string", value: "signoz-api"},
-				{name: "signoz.audit.outcome", fieldContext: "attribute", fieldDataType: "string", value: "success"},
-			},
 		},
 		{
-			name: "NonFiniteFloat_NotReported",
+			name: "NonFiniteFloat_WrittenAsNull",
 			logs: func() plog.Logs {
 				ld := plog.NewLogs()
 				record := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
@@ -302,8 +276,6 @@ func TestBuildBatch(t *testing.T) {
 			}
 			assert.Equal(t, testCase.wantLogs, b.logs)
 			assert.Equal(t, testCase.wantResources, b.resources)
-			assert.Equal(t, testCase.wantFieldKeys, b.fieldKeys)
-			assert.Equal(t, testCase.wantFields, b.fields)
 		})
 	}
 }

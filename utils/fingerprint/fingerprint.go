@@ -205,6 +205,18 @@ func ResourceHierarchy() *DimensionHierarchyNode {
 	}
 }
 
+func AuditResourceHierarchy() *DimensionHierarchyNode {
+	return &DimensionHierarchyNode{
+		labels: []string{"service.name"},
+		subHierachies: []DimensionHierarchyNode{{
+			labels: []string{"signoz.audit.resource.kind"},
+			subHierachies: []DimensionHierarchyNode{{
+				labels: []string{"signoz.audit.resource.id"},
+			}},
+		}},
+	}
+}
+
 // Calculates fingerprint for attributes that when sorted would keep fingerprints
 // for the same set of attributes next to each other while also colocating
 // entries at all levels of the hierarchy
