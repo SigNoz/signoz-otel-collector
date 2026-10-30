@@ -175,17 +175,56 @@ func TestCacheReadAndWriteWithinInput(t *testing.T) {
 	assert.InDelta(t, 0.010035, getDouble(t, a, "signoz.gen_ai.usage.tokens.cost"), 1e-9)
 }
 
-func TestRuleFirstMatchWins(t *testing.T) {
-	// "gpt-4o*" should match before a catch-all "*" if one existed.
-	td := buildTrace(map[string]any{
-		"gen_ai.request.model":       "gpt-4o-2024-11-20",
-		"gen_ai.usage.input_tokens":  int64(1000),
-		"gen_ai.usage.output_tokens": int64(0),
-	})
-	_, err := newProcessor(testCfg).ProcessTraces(context.Background(), td)
-	require.NoError(t, err)
-	// gpt-4o rule price_in=5.0
-	assert.InDelta(t, 1000*5.0/1e6, getDouble(t, attrs(td), "signoz.gen_ai.usage.input_tokens.cost"), 1e-9)
+func TestMatchRule(t *testing.T) {
+	gpt5 := PricingRule{Name: "gpt-5", Pattern: []string{"openai/gpt-5", "gpt-5"}, In: 1, Out: 1}
+	gpt5Mini := PricingRule{Name: "gpt-5-mini", Pattern: []string{"openai/gpt-5-mini", "gpt-5-mini"}, In: 1, Out: 1}
+	opus5 := PricingRule{Name: "claude-opus-5", Pattern: []string{"anthropic/claude-opus-5", "claude-opus-5"}, In: 5, Out: 25}
+	opus55 := PricingRule{Name: "claude-opus-5.5", Pattern: []string{"anthropic/claude-opus-5.5", "claude-opus-5.5", "claude-opus-5-5"}, In: 4, Out: 20}
+	grok := PricingRule{Name: "grok-build-0.1", Pattern: []string{"x-ai/grok-build-0.1", "grok-build-0.1"}, In: 1, Out: 2}
+
+	testCases := []struct {
+		name  string
+		rules []PricingRule
+		model string
+		want  string
+	}{
+		{name: "ExactModel", rules: []PricingRule{grok}, model: "grok-build-0.1", want: "grok-build-0.1"},
+		{name: "ProviderQualifiedModel", rules: []PricingRule{grok}, model: "x-ai/grok-build-0.1", want: "grok-build-0.1"},
+		{name: "DatedSnapshot_Matches", rules: []PricingRule{grok}, model: "grok-build-0.1-20260520", want: "grok-build-0.1"},
+		{name: "DashedDate_Matches", rules: []PricingRule{gpt5}, model: "gpt-5-2025-08-07", want: "gpt-5"},
+		{name: "MonthYearDate_Matches", rules: []PricingRule{{Name: "command-a", Pattern: []string{"command-a"}, In: 1, Out: 1}}, model: "command-a-03-2025", want: "command-a"},
+		{name: "StableVersion_Matches", rules: []PricingRule{{Name: "gemini-2.0-flash", Pattern: []string{"gemini-2.0-flash"}, In: 1, Out: 1}}, model: "gemini-2.0-flash-001", want: "gemini-2.0-flash"},
+		{name: "LatestAlias_Matches", rules: []PricingRule{{Name: "claude-3.5-sonnet", Pattern: []string{"claude-3-5-sonnet"}, In: 1, Out: 1}}, model: "claude-3-5-sonnet-latest", want: "claude-3.5-sonnet"},
+		{name: "BedrockVersion_Matches", rules: []PricingRule{{Name: "claude-sonnet-4.5", Pattern: []string{"claude-sonnet-4-5"}, In: 1, Out: 1}}, model: "claude-sonnet-4-5-20250929-v1:0", want: "claude-sonnet-4.5"},
+		{name: "VertexVersion_Matches", rules: []PricingRule{{Name: "claude-opus-4.5", Pattern: []string{"claude-opus-4-5"}, In: 1, Out: 1}}, model: "claude-opus-4-5@20251101", want: "claude-opus-4.5"},
+		{name: "HyphenAlias_PricesSDKSpelling", rules: []PricingRule{opus5, opus55}, model: "claude-opus-5-5", want: "claude-opus-5.5"},
+		{name: "HyphenAlias_PricesDatedSDKSpelling", rules: []PricingRule{opus5, opus55}, model: "claude-opus-5-5-20260921", want: "claude-opus-5.5"},
+		{name: "MinorVersionBump_NoRuleYet_NoMatch", rules: []PricingRule{opus5}, model: "claude-opus-5-5", want: ""},
+		{name: "DottedVersionBump_NoMatch", rules: []PricingRule{gpt5}, model: "gpt-5.1-2025-11-13", want: ""},
+		{name: "SiblingModel_NoMatch", rules: []PricingRule{gpt5}, model: "gpt-5-mini-2025-08-07", want: ""},
+		{name: "ExtraDigitVersion_NoMatch", rules: []PricingRule{grok}, model: "grok-build-0.10", want: ""},
+		{name: "ShorterThanPrefix_NoMatch", rules: []PricingRule{grok}, model: "grok-build-0", want: ""},
+		{name: "DifferentCase_NoMatch", rules: []PricingRule{grok}, model: "Grok-Build-0.1", want: ""},
+		{name: "OverlappingPrefixes_LongestWins", rules: []PricingRule{gpt5, gpt5Mini}, model: "gpt-5-mini-2025-08-07", want: "gpt-5-mini"},
+		{name: "TrailingStar_MatchesAnySuffix", rules: []PricingRule{{Name: "gpt-4o", Pattern: []string{"gpt-4o*"}, In: 1, Out: 1}}, model: "gpt-4o-mini", want: "gpt-4o"},
+		{name: "StarOnly_MatchesEverything", rules: []PricingRule{{Name: "any", Pattern: []string{"*"}, In: 1, Out: 1}}, model: "mystery-model", want: "any"},
+		{name: "DuplicatePrefix_ConfigOrderWins", rules: []PricingRule{{Name: "first", Pattern: []string{"o3"}, In: 1, Out: 1}, {Name: "second", Pattern: []string{"o3"}, In: 1, Out: 1}}, model: "o3-2025-04-16", want: "first"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cfg := *testCfg
+			cfg.DefaultPricing = PricingConfig{Rules: testCase.rules}
+
+			rule := newProcessor(&cfg).matchRule(testCase.model)
+			if testCase.want == "" {
+				assert.Nil(t, rule)
+				return
+			}
+			require.NotNil(t, rule)
+			assert.Equal(t, testCase.want, rule.name)
+		})
+	}
 }
 
 func TestNoMatchingRule_SkipsSpan(t *testing.T) {
@@ -354,7 +393,8 @@ func TestNormalize(t *testing.T) {
 
 func TestPrice(t *testing.T) {
 	p := newProcessor(testCfg)
-	rule := &p.rules[1] // claude-*: 3.0 in, 15.0 out, 0.30 read, 3.75 write
+	rule := p.matchRule("claude-3-5-sonnet") // 3.0 in, 15.0 out, 0.30 read, 3.75 write
+	require.NotNil(t, rule)
 
 	c := p.price(rule, tokens{input: 1000, output: 500, cacheRead: 200, cacheWrite: 100})
 	assert.InDelta(t, 1000*3.0/1e6, c.input, 1e-9)
