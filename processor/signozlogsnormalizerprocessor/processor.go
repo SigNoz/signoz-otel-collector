@@ -19,7 +19,6 @@ const (
 
 type normalizeProcessor struct {
 	json          sonic.API
-	bodyEnabled   bool
 	messageFields []string
 	fields        fieldIndex
 	telemetry     *telemetry
@@ -40,7 +39,6 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 	}
 	return &normalizeProcessor{
 		json:          sonic.Config{UseInt64: true}.Froze(),
-		bodyEnabled:   cfg.Body.Enabled,
 		messageFields: cfg.Body.Fields,
 		fields:        index,
 		telemetry:     t,
@@ -48,9 +46,6 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 }
 
 func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.Logs, error) {
-	if !p.bodyEnabled && p.fields.empty() {
-		return ld, nil
-	}
 	st := batchStats{
 		promotions: make([]int64, len(p.messageFields)),
 		inferences: make([]int64, len(p.telemetry.inferences)),

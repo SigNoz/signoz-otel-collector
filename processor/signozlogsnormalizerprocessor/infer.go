@@ -50,9 +50,7 @@ func (p *normalizeProcessor) processScope(sls plog.ScopeLogsSlice, sl plog.Scope
 
 	for k := 0; k < lrs.Len(); k++ {
 		lr := lrs.At(k)
-		if p.bodyEnabled {
-			p.normalizeBody(lr, st)
-		}
+		p.normalizeBody(lr, st)
 		if p.fields.empty() {
 			continue
 		}
@@ -123,8 +121,8 @@ func (p *normalizeProcessor) inferRecord(
 
 	var lookups [2]lookup
 	n := 0
-	if body, ok := p.bodyFields(lr.Body()); ok {
-		lookups[n] = lookup{entries: body, from: sourceBody}
+	if body := lr.Body(); body.Type() == pcommon.ValueTypeMap {
+		lookups[n] = lookup{entries: body.Map(), from: sourceBody}
 		n++
 	}
 	lookups[n] = lookup{entries: lr.Attributes(), from: sourceAttributes}
@@ -154,18 +152,6 @@ func (p *normalizeProcessor) inferRecord(
 		key.version = r.value.text
 	}
 	return key
-}
-
-func (p *normalizeProcessor) bodyFields(body pcommon.Value) (pcommon.Map, bool) {
-	switch body.Type() {
-	case pcommon.ValueTypeMap:
-		return body.Map(), true
-	case pcommon.ValueTypeStr:
-		if p.parseJSONObject(body.Str(), body) {
-			return body.Map(), true
-		}
-	}
-	return pcommon.Map{}, false
 }
 
 func removeMovedFields(results *scanResults, fields *fieldIndex) {

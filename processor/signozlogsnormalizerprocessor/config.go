@@ -63,6 +63,9 @@ func (c *Config) Validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("invalid opamp.position %q: must be %q or %q", c.OpAMP.Position, PositionAfter, PositionBefore))
 	}
+	if !c.Body.Enabled {
+		errs = append(errs, errors.New("body.enabled must be true: the processor always parses and normalizes the body"))
+	}
 	for t, field := range c.fields() {
 		switch field.Action {
 		case ActionMove, ActionCopy:

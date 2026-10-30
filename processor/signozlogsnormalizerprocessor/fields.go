@@ -148,46 +148,52 @@ func normalizeField(name string) string {
 }
 
 type scanResult struct {
-	value  inferred
-	found  bool
-	rank   int
-	source source
-	key    string
-	in     pcommon.Map
+	value   inferred
+	found   bool
+	rank    int
+	source  source
+	rawPath string
+	key     string
+	in      pcommon.Map
 }
 
 type scanResults [targetCount]scanResult
 
 func (f *fieldIndex) scan(lookups []lookup, want wanted, results *scanResults) {
 	for _, l := range lookups {
-		f.scanMap(l.entries, "", l.from, want, results)
+		f.scanMap(l.entries, "", "", l.from, want, results)
 	}
 }
 
-func (f *fieldIndex) scanMap(m pcommon.Map, prefix string, from source, want wanted, results *scanResults) {
+// path is lowercased to match the index; rawPath keeps the log's own spelling, which
+// is what breaks a tie between two keys matching the same configured field.
+func (f *fieldIndex) scanMap(m pcommon.Map, prefix, rawPrefix string, from source, want wanted, results *scanResults) {
 	m.Range(func(key string, value pcommon.Value) bool {
-		path := prefix + normalizeField(key)
+		path, rawPath := prefix+normalizeField(key), rawPrefix+key
 		for _, match := range f.byField[path] {
 			parse := want[match.target]
-			if parse == nil || !results[match.target].losesTo(match.rank, from, key) {
+			if parse == nil || !results[match.target].losesTo(match.rank, from, rawPath) {
 				continue
 			}
 			parsed, ok := parse(value)
 			if !ok {
 				continue
 			}
-			results[match.target] = scanResult{value: parsed, found: true, rank: match.rank, source: from, key: key, in: m}
+			results[match.target] = scanResult{
+				value: parsed, found: true, rank: match.rank, source: from,
+				rawPath: rawPath, key: key, in: m,
+			}
 		}
 		if _, descend := f.prefixes[path]; descend && value.Type() == pcommon.ValueTypeMap {
-			f.scanMap(value.Map(), path+".", from, want, results)
+			f.scanMap(value.Map(), path+".", rawPath+".", from, want, results)
 		}
 		return true
 	})
 }
 
-// The configured order of a field decides. Where it was found, then the key itself,
-// only break a tie between two logs keys matching the same configured field.
-func (r scanResult) losesTo(rank int, src source, key string) bool {
+// The configured order of a field decides. Where it was found, then the log's own
+// spelling of it, only break a tie between two keys matching the same configured field.
+func (r scanResult) losesTo(rank int, src source, rawPath string) bool {
 	switch {
 	case !r.found:
 		return true
@@ -196,7 +202,7 @@ func (r scanResult) losesTo(rank int, src source, key string) bool {
 	case src != r.source:
 		return src < r.source
 	default:
-		return key < r.key
+		return rawPath < r.rawPath
 	}
 }
 

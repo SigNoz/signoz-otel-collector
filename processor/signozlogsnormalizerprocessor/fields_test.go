@@ -19,11 +19,17 @@ import (
 
 func fieldsConfig(mutate func(*Config)) *Config {
 	cfg := testConfig()
-	cfg.Body.Enabled = false
 	if mutate != nil {
 		mutate(cfg)
 	}
 	return cfg
+}
+
+// Body normalization always runs, so it always leaves a stash behind.
+func attrsWithoutStash(lr plog.LogRecord) map[string]any {
+	attrs := lr.Attributes().AsRaw()
+	delete(attrs, constants.OriginalBodyAttributeKey)
+	return attrs
 }
 
 func moveAll(c *Config) {
@@ -438,7 +444,7 @@ func TestFieldsMove(t *testing.T) {
 			if testCase.wantBody != nil {
 				assert.Equal(t, testCase.wantBody, lr.Body().Map().AsRaw())
 			}
-			assert.Equal(t, testCase.wantAttrs, lr.Attributes().AsRaw())
+			assert.Equal(t, testCase.wantAttrs, attrsWithoutStash(lr))
 			assert.Equal(t, testCase.wantScope, sl.Scope().Attributes().AsRaw())
 			assert.Equal(t, testCase.wantResource, out.ResourceLogs().At(0).Resource().Attributes().AsRaw())
 		})
@@ -533,7 +539,7 @@ func TestScopeRegrouping(t *testing.T) {
 			schemaURL: "https://opentelemetry.io/schemas/1.26.0",
 			input:     [][]any{{map[string]any{"scope_name": "inventory"}}, {"plain line"}},
 			expected: []scopeGroup{
-				{name: "", bodies: []any{"plain line"}},
+				{name: "", bodies: []any{map[string]any{"message": "plain line"}}},
 				{name: "inventory", bodies: []any{map[string]any{"scope_name": "inventory"}}},
 			},
 		},
@@ -638,64 +644,6 @@ func TestFieldNames(t *testing.T) {
 	}
 }
 
-func TestBodyDisabled(t *testing.T) {
-	testCases := []struct {
-		name      string
-		body      string
-		attrs     map[string]any
-		wantText  string
-		wantTrace pcommon.TraceID
-		wantBody  any
-		wantAttrs map[string]any
-	}{
-		{
-			name:      "JSONTextBody_ParsedIntoBody",
-			body:      `{"level":"error","trace_id":"0102030405060708090a0b0c0d0e0f10"}`,
-			attrs:     map[string]any{"level": "info"},
-			wantText:  "error",
-			wantTrace: pcommon.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			wantBody:  map[string]any{"level": "error", "trace_id": "0102030405060708090a0b0c0d0e0f10"},
-			wantAttrs: map[string]any{"level": "info"},
-		},
-		{
-			name:      "JSONTextBody_MessageNotPromoted",
-			body:      `{"msg":"boom","level":"warn"}`,
-			wantText:  "warn",
-			wantBody:  map[string]any{"msg": "boom", "level": "warn"},
-			wantAttrs: map[string]any{},
-		},
-		{
-			name:      "PlainTextBody_KeptAsText",
-			body:      "level=error",
-			attrs:     map[string]any{"level": "info"},
-			wantText:  "info",
-			wantBody:  "level=error",
-			wantAttrs: map[string]any{"level": "info"},
-		},
-		{
-			name:      "InvalidJSONBody_KeptAsText",
-			body:      `{"level":"error",}`,
-			attrs:     map[string]any{"severity": "warn"},
-			wantText:  "warn",
-			wantBody:  `{"level":"error",}`,
-			wantAttrs: map[string]any{"severity": "warn"},
-		},
-	}
-
-	p := newFieldsProcessor(t, fieldsConfig(nil))
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ld := newLogs(t, input{attrs: testCase.attrs, setup: func(lr plog.LogRecord) { lr.Body().SetStr(testCase.body) }})
-			_, lr := onlyRecord(t, process(t, p, ld))
-			assert.Equal(t, testCase.wantText, lr.SeverityText())
-			assert.Equal(t, testCase.wantTrace, lr.TraceID())
-			assert.Equal(t, testCase.wantBody, lr.Body().AsRaw())
-			assert.Equal(t, testCase.wantAttrs, lr.Attributes().AsRaw())
-			assertNoStash(t, lr)
-		})
-	}
-}
-
 func TestFieldInferenceMetrics(t *testing.T) {
 	ctx := context.Background()
 	tel := componenttest.NewTelemetry()
@@ -783,18 +731,6 @@ func TestBodyAndFields(t *testing.T) {
 	}
 }
 
-func TestBodyAndFieldsDisabled_Untouched(t *testing.T) {
-	cfg := fieldsConfig(disableFields)
-	ld := newLogs(t, input{
-		attrs: map[string]any{"level": "info"},
-		setup: func(lr plog.LogRecord) { lr.Body().SetStr(`{"level":"error"}`) },
-	})
-	expected := plog.NewLogs()
-	ld.CopyTo(expected)
-
-	assert.Equal(t, expected, process(t, newFieldsProcessor(t, cfg), ld))
-}
-
 func TestPreferenceOrder(t *testing.T) {
 	versionFirst := func(c *Config) { c.ScopeVersion.Fields = []string{"version", "scope.version"} }
 	dottedFirst := func(c *Config) { c.ScopeVersion.Fields = []string{"scope.version", "version"} }
@@ -846,6 +782,7 @@ func TestPreferenceOrder(t *testing.T) {
 }
 
 func TestNestedFields(t *testing.T) {
+	appLevel := func(c *Config) { c.SeverityText.Fields = []string{"app.level"} }
 	testCases := []struct {
 		name      string
 		mutate    func(*Config)
@@ -856,25 +793,29 @@ func TestNestedFields(t *testing.T) {
 	}{
 		{
 			name:     "DottedNameMatchesNestedMap",
-			body:     map[string]any{"msg": "abc", "log": map[string]any{"level": "info"}},
+			mutate:   appLevel,
+			body:     map[string]any{"svc": "checkout", "app": map[string]any{"level": "info"}},
 			wantText: "info",
-			wantBody: map[string]any{"msg": "abc", "log": map[string]any{"level": "info"}},
+			wantBody: map[string]any{"svc": "checkout", "app": map[string]any{"level": "info"}},
 		},
 		{
 			name:     "DottedNameStillMatchesFlatKey",
-			body:     map[string]any{"log.level": "warn"},
+			mutate:   appLevel,
+			body:     map[string]any{"app.level": "warn"},
 			wantText: "warn",
-			wantBody: map[string]any{"log.level": "warn"},
+			wantBody: map[string]any{"app.level": "warn"},
 		},
 		{
 			name:     "InvertedNesting_NoMatch",
-			body:     map[string]any{"level": map[string]any{"log": "info"}},
-			wantBody: map[string]any{"level": map[string]any{"log": "info"}},
+			mutate:   appLevel,
+			body:     map[string]any{"level": map[string]any{"app": "info"}},
+			wantBody: map[string]any{"level": map[string]any{"app": "info"}},
 		},
 		{
 			name:     "UnconfiguredWrapper_NotDescended",
-			body:     map[string]any{"app": map[string]any{"level": "info"}},
-			wantBody: map[string]any{"app": map[string]any{"level": "info"}},
+			mutate:   appLevel,
+			body:     map[string]any{"other": map[string]any{"level": "info"}},
+			wantBody: map[string]any{"other": map[string]any{"level": "info"}},
 		},
 		{
 			name:      "NestedTraceID",
@@ -884,10 +825,24 @@ func TestNestedFields(t *testing.T) {
 		},
 		{
 			name:     "MoveRemovesTheNestedLeaf",
-			mutate:   moveAll,
-			body:     map[string]any{"log": map[string]any{"level": "info", "keep": "x"}},
+			mutate:   func(c *Config) { appLevel(c); moveAll(c) },
+			body:     map[string]any{"app": map[string]any{"level": "info", "keep": "x"}},
 			wantText: "info",
-			wantBody: map[string]any{"log": map[string]any{"keep": "x"}},
+			wantBody: map[string]any{"app": map[string]any{"keep": "x"}},
+		},
+		{
+			// log is a body.fields name, so it is promoted and flattened before lookup
+			// and the configured path no longer exists. level still matches by default.
+			name:     "MessageFieldParent_FlattenedBeforeLookup",
+			mutate:   func(c *Config) { c.SeverityText.Fields = []string{"log.level"} },
+			body:     map[string]any{"log": map[string]any{"level": "warn"}},
+			wantBody: map[string]any{"level": "warn"},
+		},
+		{
+			name:     "MessageFieldParent_DefaultsStillMatch",
+			body:     map[string]any{"log": map[string]any{"level": "warn"}},
+			wantText: "warn",
+			wantBody: map[string]any{"level": "warn"},
 		},
 	}
 

@@ -29,7 +29,7 @@ func TestLoadConfig(t *testing.T) {
 		expectErr bool
 	}{
 		{name: "Default", id: component.NewID(factory.Type()), expected: withDefaults(func(*Config) {})},
-		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: withDefaults(func(c *Config) { c.Body.Enabled = false })},
+		{name: "BodyDisabled_Rejected", id: component.NewIDWithName(factory.Type(), "body_disabled"), expectErr: true},
 		{name: "BodyCustomFields", id: component.NewIDWithName(factory.Type(), "body_fields"), expected: withDefaults(func(c *Config) { c.Body.Fields = []string{"text"} })},
 		{
 			name: "FieldsCustomNames_OthersDefault",
