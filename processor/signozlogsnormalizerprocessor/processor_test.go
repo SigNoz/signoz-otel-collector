@@ -409,11 +409,9 @@ func TestStashKeepsExistingAttributes(t *testing.T) {
 func TestIncomingStash(t *testing.T) {
 	testCases := []struct {
 		name          string
-		bodyDisabled  bool
 		body          any
 		expectedStash any
 	}{
-		{name: "BodyDisabled_Kept", bodyDisabled: true, body: "untouched line", expectedStash: "stale upstream stash"},
 		{name: "EmptyBody_Removed", body: nil},
 		{name: "Overwritten", body: "current line", expectedStash: "current line"},
 	}
@@ -423,9 +421,7 @@ func TestIncomingStash(t *testing.T) {
 			lr := ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 			lr.Attributes().PutStr(constants.OriginalBodyAttributeKey, "stale upstream stash")
 
-			cfg := testConfig()
-			cfg.Body.Enabled = !testCase.bodyDisabled
-			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), cfg)
+			p, err := newNormalizeProcessor(componenttest.NewNopTelemetrySettings(), testConfig())
 			require.NoError(t, err)
 			_, err = p.ProcessLogs(context.Background(), ld)
 			require.NoError(t, err)
@@ -496,13 +492,11 @@ func TestShutdownStopsObserving(t *testing.T) {
 
 func TestFactoryCreatesLogsProcessor(t *testing.T) {
 	testCases := []struct {
-		name         string
-		bodyDisabled bool
-		input        string
-		expected     any
+		name     string
+		input    string
+		expected any
 	}{
 		{name: "DefaultConfig_BodyNormalized", input: `{"log":"line"}`, expected: map[string]any{"message": "line"}},
-		{name: "BodyDisabled_BodyUntouched", bodyDisabled: true, input: `{"log":"raw line"}`, expected: `{"log":"raw line"}`},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -510,7 +504,6 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 			factory := NewFactory()
 			cfg := factory.CreateDefaultConfig().(*Config)
 			assert.True(t, cfg.Body.Enabled)
-			cfg.Body.Enabled = !testCase.bodyDisabled
 
 			sink := new(consumertest.LogsSink)
 			proc, err := factory.CreateLogs(ctx, processortest.NewNopSettings(factory.Type()), cfg, sink)

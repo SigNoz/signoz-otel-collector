@@ -11,6 +11,12 @@ import (
 	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
+func withDefaults(mutate func(*Config)) Config {
+	cfg := createDefaultConfig().(*Config)
+	mutate(cfg)
+	return *cfg
+}
+
 func TestLoadConfig(t *testing.T) {
 	cm, err := confmaptest.LoadConf(filepath.Join("testdata", "config.yaml"))
 	require.NoError(t, err)
@@ -22,12 +28,25 @@ func TestLoadConfig(t *testing.T) {
 		expected  Config
 		expectErr bool
 	}{
-		{name: "Default_BodyEnabled", id: component.NewID(factory.Type()), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, Fields: []string{"log", "msg"}}}},
-		{name: "BodyDisabled", id: component.NewIDWithName(factory.Type(), "body_disabled"), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Fields: []string{"log", "msg"}}}},
-		{name: "BodyCustomFields", id: component.NewIDWithName(factory.Type(), "fields"), expected: Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, Fields: []string{"text"}}}},
-		{name: "OpAMPPositionBefore", id: component.NewIDWithName(factory.Type(), "opamp_position_before"), expected: Config{OpAMP: OpAMPConfig{Position: PositionBefore}, Body: BodyConfig{Enabled: true, Fields: []string{"log", "msg"}}}},
+		{name: "Default", id: component.NewID(factory.Type()), expected: withDefaults(func(*Config) {})},
+		{name: "BodyDisabled_Rejected", id: component.NewIDWithName(factory.Type(), "body_disabled"), expectErr: true},
+		{name: "BodyCustomFields", id: component.NewIDWithName(factory.Type(), "body_fields"), expected: withDefaults(func(c *Config) { c.Body.Fields = []string{"text"} })},
+		{
+			name: "FieldsCustomNames_OthersDefault",
+			id:   component.NewIDWithName(factory.Type(), "fields"),
+			expected: withDefaults(func(c *Config) {
+				c.SeverityText.Fields = []string{"sev"}
+				c.ScopeName.Fields = []string{"logger", "scope.name"}
+			}),
+		},
+		{name: "FieldMove_OthersCopy", id: component.NewIDWithName(factory.Type(), "fields_move"), expected: withDefaults(func(c *Config) { c.TraceID.Action = ActionMove })},
+		{name: "InvalidAction_Rejected", id: component.NewIDWithName(factory.Type(), "bad_action"), expectErr: true},
+		{name: "FieldsEmptyList_KeptEmpty", id: component.NewIDWithName(factory.Type(), "fields_empty"), expected: withDefaults(func(c *Config) { c.SeverityText.Fields = []string{} })},
+		{name: "FieldDisabled", id: component.NewIDWithName(factory.Type(), "fields_disabled"), expected: withDefaults(func(c *Config) { c.SeverityText.Enabled = false })},
+		{name: "OpAMPPositionBefore", id: component.NewIDWithName(factory.Type(), "opamp_position_before"), expected: withDefaults(func(c *Config) { c.OpAMP.Position = PositionBefore })},
 		{name: "InvalidOpAMPPosition_Rejected", id: component.NewIDWithName(factory.Type(), "bad_opamp_position"), expectErr: true},
-		{name: "UnknownKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
+		{name: "UnknownBodyKey_Rejected", id: component.NewIDWithName(factory.Type(), "unknown"), expectErr: true},
+		{name: "UnknownFieldKey_Rejected", id: component.NewIDWithName(factory.Type(), "field_unknown"), expectErr: true},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
