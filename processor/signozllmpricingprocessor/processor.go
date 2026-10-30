@@ -2,7 +2,9 @@ package signozllmpricingprocessor // import "github.com/SigNoz/signoz-otel-colle
 
 import (
 	"context"
-	"path"
+	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -12,6 +14,10 @@ import (
 
 // maxMatchCacheSize bounds matchCache; least recently seen model names are evicted beyond it.
 const maxMatchCacheSize = 1000
+
+// snapshotSuffix is what may follow a prefix: dated snapshots, "-latest",
+// Bedrock "-vN:M" and Vertex "@" versions, in any combination.
+var snapshotSuffix = regexp.MustCompile(`^(?:-\d{4}-\d{2}-\d{2}|-\d{2}-\d{4}|-\d{2}-\d{2}|-\d{3,8}|-latest|-v\d+(?::\d+)?|@\d{8}|@default)+$`)
 
 // tokens are one span's per-bucket token counts.
 type tokens struct {
@@ -32,8 +38,10 @@ type costs struct {
 
 // compiledRule is the hot-path form of PricingRule.
 type compiledRule struct {
-	name       string
-	pattern    string
+	name   string
+	prefix string
+	// anySuffix is set by a trailing "*": the prefix matches whatever follows it.
+	anySuffix  bool
 	in         float64
 	out        float64
 	cacheRead  float64
@@ -63,15 +71,17 @@ type llmCostProcessor struct {
 }
 
 func newProcessor(cfg *Config) *llmCostProcessor {
-	// Expand each rule's pattern list into separate compiled rules. This keeps
-	// the match hot-path simple (one glob per entry) while preserving the
-	// first-match-wins semantics across patterns within the same rule.
+	// Expand each rule's pattern list into separate compiled rules, one prefix
+	// per entry. Longest prefix first, so "gpt-5-mini" beats "gpt-5" regardless
+	// of config order; equal prefixes keep config order.
 	rules := make([]compiledRule, 0, len(cfg.DefaultPricing.Rules))
 	for _, r := range cfg.DefaultPricing.Rules {
 		for _, p := range r.Pattern {
+			prefix := strings.TrimRight(p, "*")
 			rules = append(rules, compiledRule{
 				name:       r.Name,
-				pattern:    p,
+				prefix:     prefix,
+				anySuffix:  prefix != p,
 				in:         r.In,
 				out:        r.Out,
 				cacheRead:  r.Cache.Read,
@@ -79,6 +89,9 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 			})
 		}
 	}
+	sort.SliceStable(rules, func(i, j int) bool {
+		return len(rules[i].prefix) > len(rules[j].prefix)
+	})
 
 	divisor := 1e6 // UnitPerMillionTokens
 
@@ -149,7 +162,7 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 	p.writeAttrs(attrs, p.price(rule, normalize(raw)))
 }
 
-// matchRule returns the first rule whose pattern matches model, or nil.
+// matchRule returns the matching rule with the longest prefix, or nil.
 func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 	if rule, ok := p.matchCache.Get(model); ok {
 		return rule
@@ -157,7 +170,7 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 
 	var rule *compiledRule
 	for i := range p.rules {
-		if ok, _ := path.Match(p.rules[i].pattern, model); ok {
+		if p.rules[i].matches(model) {
 			rule = &p.rules[i]
 			break
 		}
@@ -165,6 +178,16 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 
 	p.matchCache.Add(model, rule)
 	return rule
+}
+
+// matches accepts the prefix itself or the prefix followed by snapshot
+// suffixes only, so "claude-opus-5" never prices "claude-opus-5-5".
+func (r *compiledRule) matches(model string) bool {
+	rest, ok := strings.CutPrefix(model, r.prefix)
+	if !ok {
+		return false
+	}
+	return rest == "" || r.anySuffix || snapshotSuffix.MatchString(rest)
 }
 
 // normalize splits raw counters into the buckets the rule prices. Cache tokens are a
