@@ -502,7 +502,7 @@ func TestFactoryCreatesLogsProcessor(t *testing.T) {
 		expected     any
 	}{
 		{name: "DefaultConfig_BodyNormalized", input: `{"log":"line"}`, expected: map[string]any{"message": "line"}},
-		{name: "BodyDisabled_BodyUntouched", bodyDisabled: true, input: `{"log":"raw line"}`, expected: `{"log":"raw line"}`},
+		{name: "BodyDisabled_ParsedButNotPromoted", bodyDisabled: true, input: `{"log":"raw line"}`, expected: map[string]any{"log": "raw line"}},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {

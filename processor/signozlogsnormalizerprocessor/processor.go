@@ -21,6 +21,7 @@ type normalizeProcessor struct {
 	json          sonic.API
 	bodyEnabled   bool
 	messageFields []string
+	fields        fieldIndex
 	telemetry     *telemetry
 }
 
@@ -32,7 +33,8 @@ type messageOutcome struct {
 }
 
 func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*normalizeProcessor, error) {
-	t, err := newTelemetry(set, cfg.Body.Fields)
+	index := newFieldIndex(cfg)
+	t, err := newTelemetry(set, cfg.Body.Fields, &index)
 	if err != nil {
 		return nil, err
 	}
@@ -40,23 +42,22 @@ func newNormalizeProcessor(set component.TelemetrySettings, cfg *Config) (*norma
 		json:          sonic.Config{UseInt64: true}.Froze(),
 		bodyEnabled:   cfg.Body.Enabled,
 		messageFields: cfg.Body.Fields,
+		fields:        index,
 		telemetry:     t,
 	}, nil
 }
 
 func (p *normalizeProcessor) ProcessLogs(_ context.Context, ld plog.Logs) (plog.Logs, error) {
-	st := batchStats{promotions: make([]int64, len(p.messageFields))}
+	if !p.bodyEnabled && p.fields.empty() {
+		return ld, nil
+	}
+	st := batchStats{
+		promotions: make([]int64, len(p.messageFields)),
+		inferences: make([]int64, len(p.telemetry.inferences)),
+	}
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
-		sls := rls.At(i).ScopeLogs()
-		for j := 0; j < sls.Len(); j++ {
-			lrs := sls.At(j).LogRecords()
-			for k := 0; k < lrs.Len(); k++ {
-				if p.bodyEnabled {
-					p.normalizeBody(lrs.At(k), &st)
-				}
-			}
-		}
+		p.processResource(rls.At(i), &st)
 	}
 	p.telemetry.add(&st)
 	return ld, nil
@@ -115,17 +116,23 @@ func stashOriginalBody(body, dest pcommon.Value) {
 
 func (p *normalizeProcessor) parseText(body pcommon.Value) bool {
 	str := body.Str()
-	unquoted := strings.Trim(utils.Unquote(strings.Trim(str, jsonWhitespace)), jsonWhitespace)
-	if strings.HasPrefix(unquoted, "{") && strings.HasSuffix(unquoted, "}") {
-		var parsed map[string]any
-		if err := p.json.UnmarshalFromString(unquoted, &parsed); err == nil {
-			if err := body.SetEmptyMap().FromRaw(parsed); err == nil {
-				return true
-			}
-		}
+	if p.parseJSONObject(str, body) {
+		return true
 	}
 	body.SetEmptyMap().PutStr(messageField, str)
 	return false
+}
+
+func (p *normalizeProcessor) parseJSONObject(str string, dest pcommon.Value) bool {
+	unquoted := strings.Trim(utils.Unquote(strings.Trim(str, jsonWhitespace)), jsonWhitespace)
+	if !strings.HasPrefix(unquoted, "{") || !strings.HasSuffix(unquoted, "}") {
+		return false
+	}
+	var parsed map[string]any
+	if err := p.json.UnmarshalFromString(unquoted, &parsed); err != nil {
+		return false
+	}
+	return dest.SetEmptyMap().FromRaw(parsed) == nil
 }
 
 func (p *normalizeProcessor) normalizeMessage(m pcommon.Map) messageOutcome {
