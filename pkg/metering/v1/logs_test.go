@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/SigNoz/signoz-otel-collector/constants"
@@ -18,6 +19,10 @@ func TestLogsSize(t *testing.T) {
 		// 20 bytes
 		plogsgen.WithResourceAttributeStringValue("Lorem ipsum euismod."),
 	)
+	records := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords()
+	for i := 0; i < records.Len(); i++ {
+		records.At(i).SetSeverityText(strings.Repeat("E", 10000))
+	}
 
 	meter := NewLogs(zap.NewNop())
 	size := meter.Size(logs)
