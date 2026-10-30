@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
@@ -155,6 +157,7 @@ func TestExporterPushLogsData(t *testing.T) {
 	exporter := setupTestExporter(t, mock)
 
 	logs := plogsgen.Generate()
+	logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetSeverityText(strings.Repeat("E", 10000))
 
 	err = exporter.pushLogsData(context.Background(), logs)
 	if err != nil {
@@ -165,6 +168,19 @@ func TestExporterPushLogsData(t *testing.T) {
 		rows, err := view.RetrieveData(SigNozLogsCount)
 		return err == nil && len(rows) > 0
 	})
+
+	// body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25)
+	var size float64
+	rows, err := view.RetrieveData(SigNozLogsBytes)
+	require.NoError(t, err)
+	for _, row := range rows {
+		for _, tg := range row.Tags {
+			if tg.Key == usage.TagExporterIdKey && tg.Value == exporter.id.String() {
+				size += row.Data.(*view.SumData).Value
+			}
+		}
+	}
+	assert.Equal(t, float64(25+2+25), size)
 
 	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
