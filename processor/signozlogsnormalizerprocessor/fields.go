@@ -31,7 +31,7 @@ var targetNames = [targetCount]string{
 
 var defaultFields = [targetCount][]string{
 	targetSeverityNumber: {"severity_number", "severitynumber"},
-	targetSeverityText:   {"severity_text", "severitytext", "severity", "level", "log.level", "log_level", "loglevel", "levelname", "lvl"},
+	targetSeverityText:   {"severity_text", "severitytext", "severity", "level", "log.level", "log_level", "loglevel", "levelname", "level_name", "lvl"},
 	targetTraceID:        {"trace_id", "traceid", "trace.id"},
 	targetSpanID:         {"span_id", "spanid", "span.id"},
 	targetScopeName:      {"scope.name", "scope_name", "scopename"},

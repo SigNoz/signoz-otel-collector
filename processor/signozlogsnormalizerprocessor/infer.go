@@ -75,6 +75,8 @@ func (p *normalizeProcessor) processScope(sls plog.ScopeLogsSlice, sl plog.Scope
 	if moved == nil {
 		return false
 	}
+	// Records that inferred a different scope were moved into one carrying it, so drop
+	// what is left of them here; setting the scope in place would relabel their siblings.
 	removeMarked(moved, lrs.RemoveIf)
 	return lrs.Len() == 0
 }
