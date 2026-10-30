@@ -5,6 +5,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhouselogsexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/clickhousetracesexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemeter"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
@@ -373,6 +374,7 @@ func Components() (otelcol.Factories, error) {
 		zipkinexporter.NewFactory(),
 		nopexporter.NewFactory(),
 		signozclickhousemeter.NewFactory(),
+		signozclickhouseauditexporter.NewFactory(),
 	}
 
 	processors := []processor.Factory{
