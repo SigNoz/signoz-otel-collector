@@ -101,30 +101,4 @@ To add a new migration, you need to find the migration file for the data source 
 
 ## Usage
 
-Migrations run through the `migrate` command of `signoz-otel-collector`.
-
-### Commands
-
-- `migrate ready`: checks if the store is ready to run migrations.
-- `migrate bootstrap`: creates the migration tables if they do not exist.
-- `migrate sync up`: runs sync migrations; these block the upgrade until complete.
-- `migrate sync check`: checks that all sync migrations have finished.
-- `migrate async up`: runs async migrations; these do not block the upgrade.
-- `migrate async check`: checks that all async migrations have finished.
-
-### Flags
-
-- `--clickhouse-dsn`: ClickHouse connection string, e.g. `tcp://localhost:9000`.
-- `--clickhouse-cluster`: cluster name (default `cluster`).
-- `--clickhouse-replication`: whether replication is enabled (default `true`).
-- `--timeout`: per-command timeout.
-
-### Running the migrator
-
-```bash
-go run ./cmd/signozotelcollector migrate bootstrap --clickhouse-dsn="tcp://localhost:9000"
-go run ./cmd/signozotelcollector migrate sync up --clickhouse-dsn="tcp://localhost:9000"
-go run ./cmd/signozotelcollector migrate async up --clickhouse-dsn="tcp://localhost:9000"
-```
-
-For a local single-node ClickHouse, run `make migrator`.
+Migrations run via `signoz-otel-collector migrate` (see `--help`). Locally: `make migrator`.
