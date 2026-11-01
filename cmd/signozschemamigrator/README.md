@@ -101,90 +101,30 @@ To add a new migration, you need to find the migration file for the data source 
 
 ## Usage
 
-### Supported commands
+Migrations run through the `migrate` command of `signoz-otel-collector`.
 
-- `sync`
+### Commands
 
-The sync mode is used to run the migrations in the foreground and block the upgrade until the operations are complete.
-
-- `async`
-
-The async mode is used to run the migrations in the background and do not block the upgrade.
-
+- `migrate ready`: checks if the store is ready to run migrations.
+- `migrate bootstrap`: creates the migration tables if they do not exist.
+- `migrate sync up`: runs sync migrations; these block the upgrade until complete.
+- `migrate sync check`: checks that all sync migrations have finished.
+- `migrate async up`: runs async migrations; these do not block the upgrade.
+- `migrate async check`: checks that all async migrations have finished.
 
 ### Flags
 
-#### DSN
-
-The DSN is the ClickHouse connection string.
-
-```bash
-... --dsn "tcp://localhost:9000" ...
-```
-
-#### Up
-
-The up flag is used to specify the migrations to be run.
-
-```bash
-... --up 1,2,3 ...
-```
-
-#### Down
-
-The down flag is used to specify the migrations to be rolled back.
-
-```bash
-... --down 1,2,3 ...
-```
-
-#### Replication
-
-The replication flag is used to specify if the migrations should be run on a specific cluster.
-
-```bash
-... --replication ...
-```
-
-#### Dev
-
-The dev flag is used to specify if the migrations should be run in the development mode.
-
-```bash
-... --dev ...
-```
-
+- `--clickhouse-dsn`: ClickHouse connection string, e.g. `tcp://localhost:9000`.
+- `--clickhouse-cluster`: cluster name (default `cluster`).
+- `--clickhouse-replication`: whether replication is enabled (default `true`).
+- `--timeout`: per-command timeout.
 
 ### Running the migrator
 
-Add `--dev` flag to run the migrator in the development/local mode.
-
-To run all the up migrations, you can use the following command:
-
 ```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=
+go run ./cmd/signozotelcollector migrate bootstrap --clickhouse-dsn="tcp://localhost:9000"
+go run ./cmd/signozotelcollector migrate sync up --clickhouse-dsn="tcp://localhost:9000"
+go run ./cmd/signozotelcollector migrate async up --clickhouse-dsn="tcp://localhost:9000"
 ```
 
-To run all the up & async migrations, you can use the following command:
-
-```bash
-go run cmd/signozschemamigrator/main.go async --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=
-```
-
-To run all the down migrations, you can use the following command:
-
-```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --down=
-```
-
-To run a specific migration, you can use the following command:
-
-```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1
-```
-
-To run more than one migration, you can use the following command:
-
-```bash
-go run cmd/signozschemamigrator/main.go sync --cluster-name="cluster" --dsn="tcp://localhost:9000" --replication=true --up=1,2,3
-```
+For a local single-node ClickHouse, run `make migrator`.
