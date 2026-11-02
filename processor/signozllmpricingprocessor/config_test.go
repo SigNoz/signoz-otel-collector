@@ -101,6 +101,11 @@ func TestValidateErrors(t *testing.T) {
 			errContains: "pattern must not be empty",
 		},
 		{
+			name:        "mid_star_pattern",
+			id:          component.NewIDWithName(processorType, "mid_star_pattern"),
+			errContains: `may only use "*" at the end`,
+		},
+		{
 			name:        "bad_cache_mode",
 			id:          component.NewIDWithName(processorType, "bad_cache_mode"),
 			errContains: "cache.mode must be",
