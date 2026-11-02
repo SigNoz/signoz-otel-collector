@@ -191,6 +191,7 @@ func TestMatchRule(t *testing.T) {
 		{name: "HyphenAlias_PricesSDKSpelling", rules: []PricingRule{opus5, opus55}, model: "claude-opus-5-5", want: "claude-opus-5.5"},
 		{name: "MinorVersionBump_NoRuleYet_NoMatch", rules: []PricingRule{opus5}, model: "claude-opus-5-5", want: ""},
 		{name: "OverlappingPrefixes_LongestWins", rules: []PricingRule{gpt5, gpt5Mini}, model: "gpt-5-mini-2025-08-07", want: "gpt-5-mini"},
+		{name: "CatchAllListedFirst_SpecificPrefixWins", rules: []PricingRule{{Name: "any", Pattern: []string{"*"}, In: 1, Out: 1}, {Name: "gpt-4o", Pattern: []string{"gpt-4o*"}, In: 5, Out: 15}}, model: "gpt-4o-2024-11-20", want: "gpt-4o"},
 		{name: "DuplicatePrefix_ConfigOrderWins", rules: []PricingRule{{Name: "first", Pattern: []string{"o3"}, In: 1, Out: 1}, {Name: "second", Pattern: []string{"o3"}, In: 1, Out: 1}}, model: "o3-2025-04-16", want: "first"},
 	}
 	for _, testCase := range testCases {
