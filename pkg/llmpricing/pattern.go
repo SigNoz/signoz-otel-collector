@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // snapshotSuffix is what may follow a prefix: dated snapshots, "-latest",
@@ -39,10 +40,14 @@ func (p Pattern) Matches(model string) bool {
 	return rest == "" || p.anySuffix || snapshotSuffix.MatchString(rest)
 }
 
-// ValidatePattern rejects an empty pattern and a "*" anywhere but the end.
+// ValidatePattern rejects an empty pattern, surrounding whitespace or control
+// characters, and a "*" anywhere but the end.
 func ValidatePattern(s string) error {
 	if s == "" {
 		return errors.New("pattern must not be empty")
+	}
+	if strings.TrimSpace(s) != s || strings.ContainsFunc(s, unicode.IsControl) {
+		return fmt.Errorf("pattern %q must not contain surrounding whitespace or control characters", s)
 	}
 	if strings.Contains(strings.TrimSuffix(s, "*"), "*") {
 		return fmt.Errorf("pattern %q may only use \"*\" at the end", s)

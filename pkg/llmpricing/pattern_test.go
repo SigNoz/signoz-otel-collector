@@ -51,7 +51,12 @@ func TestValidatePattern(t *testing.T) {
 		{name: "TrailingStar", pattern: "gpt-4o*"},
 		{name: "StarOnly", pattern: "*"},
 		{name: "BracketLiteral", pattern: "claude-sonnet-4-5[1m]"},
+		{name: "InteriorSpace", pattern: "my model"},
 		{name: "Empty", pattern: "", wantErr: true},
+		{name: "LeadingSpace", pattern: " gpt-4o", wantErr: true},
+		{name: "TrailingSpace", pattern: "gpt-4o ", wantErr: true},
+		{name: "WhitespaceOnly", pattern: "  ", wantErr: true},
+		{name: "ControlCharacter", pattern: "gpt-4o\n", wantErr: true},
 		{name: "MidStar", pattern: "gpt-*-turbo", wantErr: true},
 		{name: "DoubleStar", pattern: "gpt-4o**", wantErr: true},
 	}
