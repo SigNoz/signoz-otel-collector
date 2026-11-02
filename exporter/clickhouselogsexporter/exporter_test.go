@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
+	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
@@ -20,6 +22,7 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -155,6 +158,24 @@ func TestExporterPushLogsData(t *testing.T) {
 	exporter := setupTestExporter(t, mock)
 
 	logs := plogsgen.Generate()
+	large := strings.Repeat("x", 10000)
+	resourceLogs := logs.ResourceLogs().At(0)
+	resourceLogs.SetSchemaUrl(large)
+	resourceLogs.Resource().SetDroppedAttributesCount(7)
+	scopeLogs := resourceLogs.ScopeLogs().At(0)
+	scopeLogs.SetSchemaUrl(large)
+	scopeLogs.Scope().SetName(large)
+	scopeLogs.Scope().SetVersion(large)
+	scopeLogs.Scope().Attributes().PutStr("scope.attribute", large)
+	scopeLogs.Scope().SetDroppedAttributesCount(7)
+	record := scopeLogs.LogRecords().At(0)
+	record.SetSeverityText(large)
+	record.SetSeverityNumber(plog.SeverityNumberFatal4)
+	record.SetEventName(large)
+	record.SetTraceID(pcommon.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	record.SetSpanID(pcommon.SpanID{1, 2, 3, 4, 5, 6, 7, 8})
+	record.SetFlags(plog.DefaultLogRecordFlags.WithIsSampled(true))
+	record.SetDroppedAttributesCount(7)
 
 	err = exporter.pushLogsData(context.Background(), logs)
 	if err != nil {
@@ -165,6 +186,19 @@ func TestExporterPushLogsData(t *testing.T) {
 		rows, err := view.RetrieveData(SigNozLogsCount)
 		return err == nil && len(rows) > 0
 	})
+
+	// Only body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25) count.
+	var size float64
+	rows, err := view.RetrieveData(SigNozLogsBytes)
+	require.NoError(t, err)
+	for _, row := range rows {
+		for _, tg := range row.Tags {
+			if tg.Key == usage.TagExporterIdKey && tg.Value == exporter.id.String() {
+				size += row.Data.(*view.SumData).Value
+			}
+		}
+	}
+	assert.Equal(t, float64(25+2+25), size)
 
 	err = exporter.Shutdown(context.Background())
 	assert.Nil(t, err)
