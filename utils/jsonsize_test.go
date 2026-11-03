@@ -2,6 +2,7 @@ package utils
 
 import (
 	encodingjson "encoding/json"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"strings"
@@ -39,17 +40,38 @@ func mapValue(fill func(m pcommon.Map)) func() pcommon.Value {
 }
 
 // Put replaces existing keys, so duplicates need the OTLP unmarshaler.
-func duplicateKeyBody(t *testing.T) pcommon.Value {
+func otlpMapBody(t *testing.T, kvs ...string) pcommon.Value {
 	raw := `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"body":{"kvlistValue":{"values":[` +
-		`{"key":"a","value":{"stringValue":"short"}},` +
-		`{"key":"b","value":{"intValue":"1"}},` +
-		`{"key":"a","value":{"stringValue":"a much longer value"}}` +
-		`]}}}]}]}]}`
+		strings.Join(kvs, ",") + `]}}}]}]}]}`
 	logs, err := (&plog.JSONUnmarshaler{}).UnmarshalLogs([]byte(raw))
 	require.NoError(t, err)
 	body := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body()
-	require.Equal(t, 3, body.Map().Len())
+	require.Equal(t, len(kvs), body.Map().Len())
 	return body
+}
+
+func duplicateKeyBody(t *testing.T) pcommon.Value {
+	return otlpMapBody(t,
+		`{"key":"a","value":{"stringValue":"short"}}`,
+		`{"key":"b","value":{"intValue":"1"}}`,
+		`{"key":"a","value":{"stringValue":"a much longer value"}}`,
+	)
+}
+
+// setNthDouble sets the nth (0-based) value stored under key, since Get only finds the first.
+func setNthDouble(m pcommon.Map, key string, n int, f float64) {
+	seen := 0
+	m.Range(func(k string, v pcommon.Value) bool {
+		if k != key {
+			return true
+		}
+		if seen == n {
+			v.SetDouble(f)
+			return false
+		}
+		seen++
+		return true
+	})
 }
 
 func TestJSONSize(t *testing.T) {
@@ -113,6 +135,57 @@ func TestJSONSize(t *testing.T) {
 			m.PutStr("ok", "fine")
 			m.PutEmptySlice("list").AppendEmpty().SetDouble(math.NaN())
 		}), ok: false},
+		{name: "Str_NulInMiddle", value: strValue("a\x00b"), std: `"a\u0000b"`, ok: true},
+		{name: "Str_MixedEscapes_GoccyDiffers", value: strValue("<\"\\\n\b>"), std: `"\u003c\"\\\n\b\u003e"`, goccy: `"\u003c\"\\\n\u0008\u003e"`, ok: true},
+		{name: "Str_OverlongEncoding", value: strValue("\xc0\xaf"), std: `"\ufffd\ufffd"`, ok: true},
+		{name: "Str_SurrogateHalf", value: strValue("\xed\xa0\x80"), std: `"\ufffd\ufffd\ufffd"`, ok: true},
+		{name: "Str_MaxRune", value: strValue("\xf4\x8f\xbf\xbf"), std: "\"\xf4\x8f\xbf\xbf\"", ok: true},
+		{name: "Str_BeyondMaxRune", value: strValue("\xf4\x90\x80\x80"), std: `"\ufffd\ufffd\ufffd\ufffd"`, ok: true},
+		{name: "Str_TruncatedFourByte", value: strValue("\xf0\x9f\x98"), std: `"\ufffd\ufffd\ufffd"`, ok: true},
+		{name: "Str_SeparatorNextToInvalid", value: strValue("\xe2\x80\xa8\xff"), std: `"\u2028\ufffd"`, ok: true},
+		{name: "Int_NegativeOne", value: func() pcommon.Value { return pcommon.NewValueInt(-1) }, std: `-1`, ok: true},
+		{name: "Double_JustBelowSmallCutoff_GoccyDiffers", value: doubleValue(math.Nextafter(1e-6, 0)), std: `9.999999999999997e-7`, goccy: `9.999999999999997e-07`, ok: true},
+		{name: "Double_NineExponent_GoccyDiffers", value: doubleValue(1e-9), std: `1e-9`, goccy: `1e-09`, ok: true},
+		{name: "Double_ThreeDigitExponent", value: doubleValue(1e-100), std: `1e-100`, ok: true},
+		{name: "Double_JustBelowLargeCutoff", value: doubleValue(math.Nextafter(1e21, 0)), std: `999999999999999900000`, ok: true},
+		{name: "Double_NegativeLargeExponent", value: doubleValue(-1e21), std: `-1e+21`, ok: true},
+		{name: "Double_IntegerValued", value: doubleValue(1e15), std: `1000000000000000`, ok: true},
+		{name: "Double_MaxInt64", value: doubleValue(float64(math.MaxInt64)), std: `9223372036854776000`, ok: true},
+		{name: "Double_ShortestRoundTrip", value: doubleValue(0.30000000000000004), std: `0.30000000000000004`, ok: true},
+		{name: "Bytes_TwoBytes", value: bytesValue([]byte{0x01, 0x02}), std: `"AQI="`, ok: true},
+		{name: "Bytes_FourBytes", value: bytesValue([]byte{0x01, 0x02, 0x03, 0x04}), std: `"AQIDBA=="`, ok: true},
+		{name: "Map_EmptyBytesValue", value: mapValue(func(m pcommon.Map) { m.PutEmptyBytes("b") }), std: `{"b":null}`, ok: true},
+		{name: "Map_EmptyKey", value: mapValue(func(m pcommon.Map) { m.PutInt("", 1) }), std: `{"":1}`, ok: true},
+		{name: "Map_EmptyValue", value: mapValue(func(m pcommon.Map) { m.PutEmpty("a") }), std: `{"a":null}`, ok: true},
+		{name: "Map_KeyOrder", value: mapValue(func(m pcommon.Map) {
+			m.PutInt("z", 1)
+			m.PutInt("a", 2)
+			m.PutInt("m", 3)
+		}), std: `{"a":2,"m":3,"z":1}`, ok: true},
+		{name: "Map_NestedInf_Fails", value: mapValue(func(m pcommon.Map) {
+			m.PutEmptyMap("a").PutEmptyMap("b").PutDouble("c", math.Inf(-1))
+		}), ok: false},
+		{name: "Slice_NestedEmpty", value: func() pcommon.Value {
+			v := pcommon.NewValueSlice()
+			v.Slice().AppendEmpty().SetEmptySlice().AppendEmpty().SetEmptySlice()
+			v.Slice().AppendEmpty().SetEmptyMap()
+			return v
+		}, std: `[[[]],{}]`, ok: true},
+		{name: "Slice_Mixed", value: func() pcommon.Value {
+			v := pcommon.NewValueSlice()
+			v.Slice().AppendEmpty().SetBool(true)
+			v.Slice().AppendEmpty().SetInt(-1)
+			v.Slice().AppendEmpty().SetStr("x")
+			v.Slice().AppendEmpty()
+			v.Slice().AppendEmpty().SetEmptyMap().PutEmptySlice("k")
+			return v
+		}, std: `[true,-1,"x",null,{"k":[]}]`, ok: true},
+		{name: "Slice_NaN_Fails", value: func() pcommon.Value {
+			v := pcommon.NewValueSlice()
+			v.Slice().AppendEmpty().SetInt(1)
+			v.Slice().AppendEmpty().SetDouble(math.NaN())
+			return v
+		}, ok: false},
 	}
 
 	for _, testCase := range testCases {
@@ -151,24 +224,130 @@ func TestJSONSize(t *testing.T) {
 }
 
 func TestJSONSize_DuplicateKeys(t *testing.T) {
-	body := duplicateKeyBody(t)
-	require.True(t, hasDuplicateKeys(body.Map()))
+	wideKVs := func() []string {
+		kvs := make([]string, 0, 41)
+		for i := range 40 {
+			kvs = append(kvs, fmt.Sprintf(`{"key":"k%d","value":{"intValue":"%d"}}`, i, i))
+		}
+		return append(kvs, `{"key":"k0","value":{"stringValue":"last"}}`)
+	}
 
-	// AsRaw keeps the last value per key
-	want := `{"a":"a much longer value","b":1}`
-	stdBytes, err := encodingjson.Marshal(body.AsRaw())
-	require.NoError(t, err)
-	assert.Equal(t, want, string(stdBytes))
+	testCases := []struct {
+		name  string
+		value func(t *testing.T) pcommon.Value
+		want  string // AsRaw keeps the last value per key; empty when Marshal fails
+	}{
+		{name: "LastWins", value: duplicateKeyBody, want: `{"a":"a much longer value","b":1}`},
+		{name: "FirstNaN_LastFinite", value: func(t *testing.T) pcommon.Value {
+			v := otlpMapBody(t, `{"key":"a","value":{"doubleValue":1}}`, `{"key":"b","value":{"boolValue":true}}`, `{"key":"a","value":{"stringValue":"x"}}`)
+			setNthDouble(v.Map(), "a", 0, math.NaN())
+			return v
+		}, want: `{"a":"x","b":true}`},
+		{name: "LastNaN_Fails", value: func(t *testing.T) pcommon.Value {
+			v := otlpMapBody(t, `{"key":"a","value":{"stringValue":"x"}}`, `{"key":"a","value":{"doubleValue":2}}`)
+			setNthDouble(v.Map(), "a", 1, math.NaN())
+			return v
+		}},
+		{name: "Over32Keys", value: func(t *testing.T) pcommon.Value { return otlpMapBody(t, wideKVs()...) }},
+		{name: "Nested", value: func(t *testing.T) pcommon.Value {
+			return otlpMapBody(t,
+				`{"key":"x","value":{"kvlistValue":{"values":[{"key":"a","value":{"stringValue":"1"}},{"key":"a","value":{"stringValue":"22"}}]}}}`,
+				`{"key":"y","value":{"boolValue":true}}`,
+			)
+		}, want: `{"x":{"a":"22"},"y":true}`},
+	}
 
-	size, ok := JSONSize(body)
-	assert.True(t, ok)
-	assert.Equal(t, len(want), size)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			value := testCase.value(t)
+			raw := value.AsRaw()
+			stdBytes, stdErr := encodingjson.Marshal(raw)
+			goccyBytes, goccyErr := json.Marshal(raw)
+			if testCase.want != "" {
+				assert.Equal(t, testCase.want, string(stdBytes))
+			}
 
-	size, ok = GoccyJSONSize(body)
-	assert.True(t, ok)
-	assert.Equal(t, len(want), size)
+			stdSize, stdOK := JSONSize(value)
+			goccySize, goccyOK := GoccyJSONSize(value)
+			assert.Equal(t, stdErr == nil, stdOK)
+			assert.Equal(t, goccyErr == nil, goccyOK)
+			assert.Equal(t, len(stdBytes), stdSize)
+			assert.Equal(t, len(goccyBytes), goccySize)
+			assert.Equal(t, len(value.AsString()), AsStringSize(value))
+		})
+	}
+}
 
-	assert.Equal(t, len(want), AsStringSize(body))
+func TestJSONSize_Generated(t *testing.T) {
+	type generatedCase struct {
+		name  string
+		value func() pcommon.Value
+	}
+	testCases := make([]generatedCase, 0, 262)
+	for b := range 256 {
+		s := string([]byte{byte(b)})
+		testCases = append(testCases, generatedCase{
+			name:  fmt.Sprintf("Byte_0x%02x", b),
+			value: mapValue(func(m pcommon.Map) { m.PutEmptySlice(s).AppendEmpty().SetStr("a" + s + "b") }),
+		})
+	}
+	testCases = append(testCases,
+		generatedCase{name: "Str_OneMiB", value: strValue(strings.Repeat("a<\xc3\xa9\n", 1<<18))},
+		generatedCase{name: "Nesting_500Levels", value: func() pcommon.Value {
+			v := pcommon.NewValueMap()
+			m := v.Map()
+			for i := range 500 {
+				if i%2 == 0 {
+					m = m.PutEmptySlice("s").AppendEmpty().SetEmptyMap()
+				} else {
+					m = m.PutEmptyMap("m")
+				}
+			}
+			m.PutDouble("leaf", 1e-7)
+			return v
+		}},
+		generatedCase{name: "Map_1000Keys", value: mapValue(func(m pcommon.Map) {
+			for i := range 1000 {
+				m.PutInt(fmt.Sprintf("key-%d", i), int64(i*i))
+			}
+		})},
+		generatedCase{name: "Map_32Keys", value: mapValue(func(m pcommon.Map) {
+			for i := range 32 {
+				m.PutStr(fmt.Sprintf("k%d", i), "\b")
+			}
+		})},
+		generatedCase{name: "Map_33Keys", value: mapValue(func(m pcommon.Map) {
+			for i := range 33 {
+				m.PutStr(fmt.Sprintf("k%d", i), "\f")
+			}
+		})},
+		generatedCase{name: "Slice_1000Doubles", value: func() pcommon.Value {
+			v := pcommon.NewValueSlice()
+			for i := range 1000 {
+				v.Slice().AppendEmpty().SetDouble(float64(i) * 1.37e-9)
+			}
+			return v
+		}},
+	)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			value := testCase.value()
+			raw := value.AsRaw()
+			stdBytes, stdErr := encodingjson.Marshal(raw)
+			goccyBytes, goccyErr := json.Marshal(raw)
+			require.NoError(t, stdErr)
+			require.NoError(t, goccyErr)
+
+			stdSize, stdOK := JSONSize(value)
+			goccySize, goccyOK := GoccyJSONSize(value)
+			assert.True(t, stdOK)
+			assert.True(t, goccyOK)
+			assert.Equal(t, len(stdBytes), stdSize)
+			assert.Equal(t, len(goccyBytes), goccySize)
+			assert.Equal(t, len(value.AsString()), AsStringSize(value))
+		})
+	}
 }
 
 func TestAsStringSize(t *testing.T) {
