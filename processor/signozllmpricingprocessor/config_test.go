@@ -91,22 +91,27 @@ func TestValidateErrors(t *testing.T) {
 		errContains string
 	}{
 		{
-			name:        "no_model_attr",
+			name:        "NoModelAttr",
 			id:          component.NewIDWithName(processorType, "no_model_attr"),
 			errContains: "attrs.model must not be empty",
 		},
 		{
-			name:        "no_pattern",
+			name:        "NoPattern",
 			id:          component.NewIDWithName(processorType, "no_pattern"),
 			errContains: "pattern must not be empty",
 		},
 		{
-			name:        "bad_cache_mode",
+			name:        "MidStarPattern",
+			id:          component.NewIDWithName(processorType, "mid_star_pattern"),
+			errContains: `may only use "*" at the end`,
+		},
+		{
+			name:        "BadCacheMode",
 			id:          component.NewIDWithName(processorType, "bad_cache_mode"),
 			errContains: "cache.mode must be",
 		},
 		{
-			name:        "no_total_output",
+			name:        "NoTotalOutput",
 			id:          component.NewIDWithName(processorType, "no_total_output"),
 			errContains: "output_attrs.total must not be empty",
 		},
