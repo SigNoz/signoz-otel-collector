@@ -213,14 +213,6 @@ func (m *MigrationManager) Bootstrap() error {
 		}
 	}
 
-	for _, migration := range V2MigrationTablesAudit {
-		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozAuditDB, true); err != nil {
-				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
-			}
-		}
-	}
-
 	m.logger.Info("Created schema migrations tables")
 	return nil
 }
@@ -815,15 +807,6 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 		}
 	}
 
-	for _, migration := range AuditMigrations {
-		if !m.shouldRunMigration(SignozAuditDB, migration.MigrationID, upVersions) {
-			continue
-		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozAuditDB); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -873,15 +856,6 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 			continue
 		}
 		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozMeterDB); err != nil {
-			return err
-		}
-	}
-
-	for _, migration := range AuditMigrations {
-		if !m.shouldRunMigration(SignozAuditDB, migration.MigrationID, downVersions) {
-			continue
-		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozAuditDB); err != nil {
 			return err
 		}
 	}

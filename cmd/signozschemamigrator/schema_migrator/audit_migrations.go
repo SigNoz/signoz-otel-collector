@@ -20,15 +20,22 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "trace_flags", Type: ColumnTypeUInt32},
 					{Name: "severity_text", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "severity_number", Type: ColumnTypeUInt8},
-					{Name: "body", Type: JSONColumnType{Columns: []Column{{Name: "message", Type: ColumnTypeString}}, MaxDynamicPaths: utils.ToPointer[uint](0)}, Codec: "ZSTD(1)"},
+					{
+						Name: "body",
+						Type: JSONColumnType{
+							Columns:         []Column{{Name: "message", Type: ColumnTypeString}},
+							MaxDynamicPaths: utils.ToPointer[uint](0),
+						},
+						Codec: "ZSTD(1)",
+					},
 					{
 						Name: "scope",
 						Type: JSONColumnType{
-							MaxDynamicPaths: utils.ToPointer[uint](128),
+							MaxDynamicPaths: utils.ToPointer[uint](0),
 							Columns: []Column{
 								{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}},
 								{Name: "version", Type: ColumnTypeString},
-								{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](128)}},
+								{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)}},
 							},
 						},
 						Codec: "ZSTD(1)",
@@ -54,10 +61,7 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "id_minmax", Expression: "id", Type: "minmax", Granularity: 1},
 					{Name: "severity_number_idx", Expression: "severity_number", Type: "set(25)", Granularity: 4},
 					{Name: "severity_text_idx", Expression: "severity_text", Type: "set(25)", Granularity: 4},
-					{Name: "body_string_ngram_idx", Expression: JSONFullTextIndexExpr("body"), Type: "ngrambf_v1(4, 15000, 3, 0)", Granularity: 1},
-					{Name: "body_string_token_idx", Expression: JSONFullTextIndexExpr("body"), Type: "tokenbf_v1(10000, 2, 0)", Granularity: 1},
-					{Name: "body_paths_ngram_idx", Expression: JSONPathsIndexExpr("body"), Type: "ngrambf_v1(4, 15000, 3, 0)", Granularity: 1},
-					{Name: "body_paths_token_idx", Expression: JSONPathsIndexExpr("body"), Type: "tokenbf_v1(10000, 2, 0)", Granularity: 1}},
+					{Name: "body_paths_token_idx", Expression: JSONPathsIndexExpr("body"), Type: "tokenbf_v1(1024, 2, 0)", Granularity: 1}},
 				Engine: MergeTree{
 					PartitionBy: "toDate(timestamp / 1000000000)",
 					OrderBy:     "(ts_bucket_start, resource_fingerprint, severity_text, timestamp, id)",
@@ -84,15 +88,22 @@ var AuditMigrations = []SchemaMigrationRecord{
 					{Name: "trace_flags", Type: ColumnTypeUInt32},
 					{Name: "severity_text", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "severity_number", Type: ColumnTypeUInt8},
-					{Name: "body", Type: JSONColumnType{Columns: []Column{{Name: "message", Type: ColumnTypeString}}, MaxDynamicPaths: utils.ToPointer[uint](0)}, Codec: "ZSTD(1)"},
+					{
+						Name: "body",
+						Type: JSONColumnType{
+							Columns:         []Column{{Name: "message", Type: ColumnTypeString}},
+							MaxDynamicPaths: utils.ToPointer[uint](0),
+						},
+						Codec: "ZSTD(1)",
+					},
 					{
 						Name: "scope",
 						Type: JSONColumnType{
-							MaxDynamicPaths: utils.ToPointer[uint](128),
+							MaxDynamicPaths: utils.ToPointer[uint](0),
 							Columns: []Column{
 								{Name: "name", Type: LowCardinalityColumnType{ColumnTypeString}},
 								{Name: "version", Type: ColumnTypeString},
-								{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](128)}},
+								{Name: "attributes", Type: JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)}},
 							},
 						},
 						Codec: "ZSTD(1)",
