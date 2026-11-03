@@ -786,11 +786,10 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		return getStringifiedBody(body), "{}", "{}"
 	}
 
-	bodyJSON := pcommon.NewValueMap()
-	if body.Type() == pcommon.ValueTypeMap {
-		// switch the reference to bodyJSON
-		bodyJSON = body
-	} else {
+	// switch the reference to bodyJSON
+	bodyJSON := body
+	if body.Type() != pcommon.ValueTypeMap {
+		bodyJSON = pcommon.NewValueMap()
 		bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
 		e.nonMapBodyCounter.Add(ctx, 1)
 	}
@@ -810,6 +809,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
+	if body.Map().Len() == 0 {
+		return "{}"
+	}
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	if err != nil {
 		return "{}"

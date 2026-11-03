@@ -14,6 +14,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
@@ -766,4 +767,12 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 
 	require.True(t, found, "counter was not recorded")
 	assert.Equal(t, int64(3), recorded)
+}
+
+func TestGetJSONColumnBodyEmptyMap(t *testing.T) {
+	body := pcommon.NewValueMap()
+	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
+	require.NoError(t, err)
+
+	assert.Equal(t, string(b), getJSONColumnBody(body))
 }
