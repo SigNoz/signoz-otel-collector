@@ -786,6 +786,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		return getStringifiedBody(body), "{}", "{}"
 	}
 
+	// switch the reference to bodyJSON
 	bodyJSON := body
 	if body.Type() != pcommon.ValueTypeMap {
 		bodyJSON = pcommon.NewValueMap()
@@ -808,7 +809,6 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
-	// the promoted map is empty unless the tenant has promoted paths, skip the raw copy and marshal
 	if body.Map().Len() == 0 {
 		return "{}"
 	}

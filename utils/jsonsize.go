@@ -11,11 +11,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-// maxStackKeys is the map size up to which duplicate keys are checked without allocating.
 const maxStackKeys = 32
 
-// jsonEncoder picks whose output the sizes below match. goccy/go-json differs from encoding/json in
-// writing \b and \f as \u0008 and \u000c, and keeping the leading zero in exponents such as 1e-07.
+// goccyJSON differs from stdJSON in writing \b and \f as \u0008 and \u000c, and keeping the leading zero in exponents such as 1e-07.
 type jsonEncoder int
 
 const (
@@ -24,7 +22,6 @@ const (
 )
 
 // AsStringSize returns len(v.AsString()) without building the string.
-// AsString marshals maps and slices with encoding/json, and returns "" when that fails.
 func AsStringSize(v pcommon.Value) int {
 	switch v.Type() {
 	case pcommon.ValueTypeMap, pcommon.ValueTypeSlice:
@@ -40,8 +37,7 @@ func AsStringSize(v pcommon.Value) int {
 	}
 }
 
-// JSONSize returns len(encoding/json.Marshal(v.AsRaw())) without marshalling, and false where Marshal fails on a NaN or Inf.
-// Key order does not change the size.
+// JSONSize returns len(encoding/json.Marshal(v.AsRaw())) without marshalling, and false where Marshal fails on NaN or Inf.
 func JSONSize(v pcommon.Value) (int, bool) {
 	return jsonSize(v, stdJSON)
 }
@@ -51,8 +47,7 @@ func GoccyJSONSize(v pcommon.Value) (int, bool) {
 	return jsonSize(v, goccyJSON)
 }
 
-// JSONMapSize returns len(encoding/json.Marshal(m.AsRaw())) without marshalling, leaving out the top-level keys skip returns true for.
-// skip may be nil.
+// JSONMapSize is JSONSize for a map, leaving out top-level keys for which skip returns true. skip may be nil.
 func JSONMapSize(m pcommon.Map, skip func(key string) bool) (int, bool) {
 	return jsonMapSize(m, skip, stdJSON)
 }
@@ -94,7 +89,7 @@ func jsonSize(v pcommon.Value, enc jsonEncoder) (int, bool) {
 
 func jsonMapSize(m pcommon.Map, skip func(key string) bool, enc jsonEncoder) (int, bool) {
 	if hasDuplicateKeys(m) {
-		// AsRaw keeps the last value per key, so let the encoder measure what is left
+		// AsRaw keeps the last value per key
 		raw := m.AsRaw()
 		if skip != nil {
 			for k := range raw {
