@@ -35,11 +35,11 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func TestConfigClickHouseOptions(t *testing.T) {
+func TestConfigBuildClickHouseOptions(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cfg.DSN = "tcp://default:password@localhost:9000"
 
-	options, err := cfg.clickHouseOptions()
+	options, err := cfg.buildClickHouseOptions()
 	require.NoError(t, err)
 
 	assert.Equal(t, clickhouse.Settings{

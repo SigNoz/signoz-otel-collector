@@ -42,7 +42,7 @@ func (cfg *Config) Validate() error {
 	return cfg.BackOffConfig.Validate()
 }
 
-func (cfg *Config) clickHouseOptions() (*clickhouse.Options, error) {
+func (cfg *Config) buildClickHouseOptions() (*clickhouse.Options, error) {
 	options, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, err
