@@ -1,31 +1,33 @@
-package clickhouselogsexporter
+package utils
 
 import (
+	encodingjson "encoding/json"
 	"math"
 	"math/rand/v2"
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-var bodySizeStringParts = []string{
+var jsonSizeStringParts = []string{
 	"a", "Z", "0", " ", "message", `"`, `\`, "/", "\b", "\f", "\n", "\r", "\t", "\x00", "\x01", "\x1f", "\x7f",
 	"<", ">", "&", "\u00e9", "\u65e5\u672c", "\U0001F600", "\u2028", "\u2029", "\xff", "\xe2\x80", "\xc3", "\ufffd",
 }
 
-var bodySizeFloats = []float64{
+var jsonSizeFloats = []float64{
 	0, math.Copysign(0, -1), 1, -1, 0.1, 123.456, 1e-6, 9.99e-7, 1e-7, 1.5e-10, 1e20, 999999999999999999999, 1e21, 1.5e21,
 	-2.5e-8, 1e100, -1.7976931348623157e308, 5e-324, 1 << 53, 1<<63 - 1,
 }
 
-func randomBodySizeString(r *rand.Rand) string {
+func randomJSONSizeString(r *rand.Rand) string {
 	var sb strings.Builder
 	for range r.IntN(12) {
-		sb.WriteString(bodySizeStringParts[r.IntN(len(bodySizeStringParts))])
+		sb.WriteString(jsonSizeStringParts[r.IntN(len(jsonSizeStringParts))])
 	}
 	return sb.String()
 }
@@ -37,11 +39,11 @@ func fillRandomValue(r *rand.Rand, v pcommon.Value, depth int, allowNaN bool) {
 	}
 	switch r.IntN(kinds) {
 	case 0:
-		v.SetStr(randomBodySizeString(r))
+		v.SetStr(randomJSONSizeString(r))
 	case 1:
 		v.SetInt(r.Int64() - math.MaxInt64/2)
 	case 2:
-		f := bodySizeFloats[r.IntN(len(bodySizeFloats))]
+		f := jsonSizeFloats[r.IntN(len(jsonSizeFloats))]
 		if r.IntN(3) == 0 {
 			f = r.NormFloat64() * math.Pow(10, float64(r.IntN(50)-25))
 		}
@@ -62,7 +64,7 @@ func fillRandomValue(r *rand.Rand, v pcommon.Value, depth int, allowNaN bool) {
 	case 6:
 		m := v.SetEmptyMap()
 		for range r.IntN(6) {
-			fillRandomValue(r, m.PutEmpty(randomBodySizeString(r)), depth+1, allowNaN)
+			fillRandomValue(r, m.PutEmpty(randomJSONSizeString(r)), depth+1, allowNaN)
 		}
 	case 7:
 		s := v.SetEmptySlice()
@@ -72,7 +74,7 @@ func fillRandomValue(r *rand.Rand, v pcommon.Value, depth int, allowNaN bool) {
 	}
 }
 
-func TestBodySizeRandomValues(t *testing.T) {
+func TestJSONSizeRandomValues(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))
 	for i := range 20000 {
 		body := pcommon.NewValueEmpty()
@@ -80,7 +82,7 @@ func TestBodySizeRandomValues(t *testing.T) {
 		case 0:
 			m := body.SetEmptyMap()
 			for range r.IntN(8) {
-				fillRandomValue(r, m.PutEmpty(randomBodySizeString(r)), 1, i%2 == 0)
+				fillRandomValue(r, m.PutEmpty(randomJSONSizeString(r)), 1, i%2 == 0)
 			}
 		case 1:
 			s := body.SetEmptySlice()
@@ -92,13 +94,28 @@ func TestBodySizeRandomValues(t *testing.T) {
 		}
 
 		want := len(body.AsString())
-		if got := bodySize(body); got != want {
+		if got := AsStringSize(body); got != want {
 			require.Equalf(t, want, got, "body %q", body.AsString())
+		}
+
+		raw := body.AsRaw()
+		stdBytes, stdErr := encodingjson.Marshal(raw)
+		gotSize, ok := JSONSize(body)
+		require.Equalf(t, stdErr == nil, ok, "body %q", body.AsString())
+		if ok {
+			require.Equalf(t, len(stdBytes), gotSize, "body %q", body.AsString())
+		}
+
+		goccyBytes, goccyErr := json.Marshal(raw)
+		goccySize, goccyOK := GoccyJSONSize(body)
+		require.Equalf(t, goccyErr == nil, goccyOK, "goccy, body %q", body.AsString())
+		if goccyOK {
+			require.Equalf(t, len(goccyBytes), goccySize, "goccy, body %q", body.AsString())
 		}
 	}
 }
 
-func TestBodySizeDuplicateKeys(t *testing.T) {
+func TestJSONSizeDuplicateKeys(t *testing.T) {
 	// pcommon.Map's Put methods replace existing keys, so build the duplicates through the OTLP JSON unmarshaler
 	raw := `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"body":{"kvlistValue":{"values":[` +
 		`{"key":"a","value":{"stringValue":"short"}},` +
@@ -112,10 +129,16 @@ func TestBodySizeDuplicateKeys(t *testing.T) {
 	require.Equal(t, 3, body.Map().Len())
 	require.True(t, hasDuplicateKeys(body.Map()))
 
-	assert.Equal(t, len(body.AsString()), bodySize(body))
+	assert.Equal(t, len(body.AsString()), AsStringSize(body))
+
+	goccyBytes, err := json.Marshal(body.AsRaw())
+	require.NoError(t, err)
+	goccySize, ok := GoccyJSONSize(body)
+	require.True(t, ok)
+	assert.Equal(t, len(goccyBytes), goccySize)
 }
 
-func TestBodySizeDoesNotAllocate(t *testing.T) {
+func TestJSONSizeDoesNotAllocate(t *testing.T) {
 	body := pcommon.NewValueMap()
 	body.Map().PutStr("message", strings.Repeat("GET /api/v1/orders?id=<12345> 200 & done ", 10))
 	body.Map().PutDouble("latency", 1.5e-7)
@@ -123,18 +146,54 @@ func TestBodySizeDoesNotAllocate(t *testing.T) {
 	nested.PutInt("status", 200)
 	nested.PutEmptySlice("tags").AppendEmpty().SetStr("\u65e5\u672c")
 
-	allocs := testing.AllocsPerRun(100, func() { _ = bodySize(body) })
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = AsStringSize(body)
+		_, _ = GoccyJSONSize(body)
+	})
 	assert.Zero(t, allocs)
 }
 
-func FuzzBodySizeString(f *testing.F) {
-	for _, s := range bodySizeStringParts {
+func FuzzJSONSizeString(f *testing.F) {
+	for _, s := range jsonSizeStringParts {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
 		body := pcommon.NewValueMap()
 		body.Map().PutStr(s, s)
 		body.Map().PutEmptySlice("list").AppendEmpty().SetStr(s)
-		assert.Equal(t, len(body.AsString()), bodySize(body))
+		assert.Equal(t, len(body.AsString()), AsStringSize(body))
+
+		goccyBytes, err := json.Marshal(body.AsRaw())
+		require.NoError(t, err)
+		goccySize, ok := GoccyJSONSize(body)
+		require.True(t, ok)
+		assert.Equal(t, len(goccyBytes), goccySize)
 	})
+}
+
+func TestJSONMapSizeSkip(t *testing.T) {
+	m := pcommon.NewMap()
+	m.PutStr("keep", "value")
+	m.PutStr("signoz.internal.original_body", "dropped")
+	m.PutInt("count", 3)
+	skip := func(k string) bool { return strings.HasPrefix(k, "signoz.internal.") }
+
+	raw := m.AsRaw()
+	delete(raw, "signoz.internal.original_body")
+	want, err := encodingjson.Marshal(raw)
+	require.NoError(t, err)
+
+	got, ok := JSONMapSize(m, skip)
+	require.True(t, ok)
+	assert.Equal(t, len(want), got)
+
+	goccyWant, err := json.Marshal(raw)
+	require.NoError(t, err)
+	goccyGot, ok := GoccyJSONMapSize(m, skip)
+	require.True(t, ok)
+	assert.Equal(t, len(goccyWant), goccyGot)
+
+	all, ok := JSONMapSize(m, nil)
+	require.True(t, ok)
+	assert.Greater(t, all, got)
 }

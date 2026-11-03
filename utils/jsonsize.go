@@ -1,4 +1,4 @@
-package clickhouselogsexporter
+package utils
 
 import (
 	"encoding/base64"
@@ -7,37 +7,67 @@ import (
 	"strconv"
 	"unicode/utf8"
 
+	"github.com/goccy/go-json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 // maxStackKeys is the map size up to which duplicate keys are checked without allocating.
 const maxStackKeys = 32
 
-// bodySize returns len(body.AsString()) without building the string.
-// AsString marshals maps and slices with encoding/json, so the sizes below follow its encoding:
-// key order does not change the length, and a NaN or Inf anywhere fails Marshal, which makes AsString return "".
-func bodySize(body pcommon.Value) int {
-	switch body.Type() {
+// jsonEncoder picks whose output the sizes below match. goccy/go-json differs from encoding/json in
+// writing \b and \f as \u0008 and \u000c, and keeping the leading zero in exponents such as 1e-07.
+type jsonEncoder int
+
+const (
+	stdJSON jsonEncoder = iota
+	goccyJSON
+)
+
+// AsStringSize returns len(v.AsString()) without building the string.
+// AsString marshals maps and slices with encoding/json, and returns "" when that fails.
+func AsStringSize(v pcommon.Value) int {
+	switch v.Type() {
 	case pcommon.ValueTypeMap, pcommon.ValueTypeSlice:
-		n, ok := jsonValueSize(body)
+		n, ok := jsonSize(v, stdJSON)
 		if !ok {
 			return 0
 		}
 		return n
 	case pcommon.ValueTypeBytes:
-		return base64.StdEncoding.EncodedLen(body.Bytes().Len())
+		return base64.StdEncoding.EncodedLen(v.Bytes().Len())
 	default:
-		return len(body.AsString())
+		return len(v.AsString())
 	}
 }
 
-// jsonValueSize returns the length of encoding/json's output for v.AsRaw(), and false where Marshal would fail.
-func jsonValueSize(v pcommon.Value) (int, bool) {
+// JSONSize returns len(encoding/json.Marshal(v.AsRaw())) without marshalling, and false where Marshal fails on a NaN or Inf.
+// Key order does not change the size.
+func JSONSize(v pcommon.Value) (int, bool) {
+	return jsonSize(v, stdJSON)
+}
+
+// GoccyJSONSize is JSONSize for github.com/goccy/go-json's Marshal.
+func GoccyJSONSize(v pcommon.Value) (int, bool) {
+	return jsonSize(v, goccyJSON)
+}
+
+// JSONMapSize returns len(encoding/json.Marshal(m.AsRaw())) without marshalling, leaving out the top-level keys skip returns true for.
+// skip may be nil.
+func JSONMapSize(m pcommon.Map, skip func(key string) bool) (int, bool) {
+	return jsonMapSize(m, skip, stdJSON)
+}
+
+// GoccyJSONMapSize is JSONMapSize for github.com/goccy/go-json's Marshal.
+func GoccyJSONMapSize(m pcommon.Map, skip func(key string) bool) (int, bool) {
+	return jsonMapSize(m, skip, goccyJSON)
+}
+
+func jsonSize(v pcommon.Value, enc jsonEncoder) (int, bool) {
 	switch v.Type() {
 	case pcommon.ValueTypeEmpty:
 		return len("null"), true
 	case pcommon.ValueTypeStr:
-		return jsonStringSize(v.Str()), true
+		return jsonStringSize(v.Str(), enc), true
 	case pcommon.ValueTypeBool:
 		if v.Bool() {
 			return len("true"), true
@@ -47,7 +77,7 @@ func jsonValueSize(v pcommon.Value) (int, bool) {
 		var buf [20]byte
 		return len(strconv.AppendInt(buf[:0], v.Int(), 10)), true
 	case pcommon.ValueTypeDouble:
-		return jsonFloatSize(v.Double())
+		return jsonFloatSize(v.Double(), enc)
 	case pcommon.ValueTypeBytes:
 		// AsRaw returns nil for empty bytes, which encodes as null
 		if v.Bytes().Len() == 0 {
@@ -55,42 +85,59 @@ func jsonValueSize(v pcommon.Value) (int, bool) {
 		}
 		return base64.StdEncoding.EncodedLen(v.Bytes().Len()) + 2, true
 	case pcommon.ValueTypeMap:
-		return jsonMapSize(v.Map())
+		return jsonMapSize(v.Map(), nil, enc)
 	case pcommon.ValueTypeSlice:
-		return jsonSliceSize(v.Slice())
+		return jsonSliceSize(v.Slice(), enc)
 	}
 	return 0, false
 }
 
-func jsonMapSize(m pcommon.Map) (int, bool) {
+func jsonMapSize(m pcommon.Map, skip func(key string) bool, enc jsonEncoder) (int, bool) {
 	if hasDuplicateKeys(m) {
-		// AsRaw keeps the last value per key, so let encoding/json measure what is left
-		b, err := encodingjson.Marshal(m.AsRaw())
+		// AsRaw keeps the last value per key, so let the encoder measure what is left
+		raw := m.AsRaw()
+		if skip != nil {
+			for k := range raw {
+				if skip(k) {
+					delete(raw, k)
+				}
+			}
+		}
+		var b []byte
+		var err error
+		if enc == goccyJSON {
+			b, err = json.Marshal(raw)
+		} else {
+			b, err = encodingjson.Marshal(raw)
+		}
 		return len(b), err == nil
 	}
 
 	n, ok := len("{}"), true
-	i := 0
+	written := 0
 	m.Range(func(k string, v pcommon.Value) bool {
-		vn, vok := jsonValueSize(v)
+		if skip != nil && skip(k) {
+			return true
+		}
+		vn, vok := jsonSize(v, enc)
 		if !vok {
 			ok = false
 			return false
 		}
-		if i > 0 {
+		if written > 0 {
 			n++ // ,
 		}
-		n += jsonStringSize(k) + 1 + vn // "key":value
-		i++
+		n += jsonStringSize(k, enc) + 1 + vn // "key":value
+		written++
 		return true
 	})
 	return n, ok
 }
 
-func jsonSliceSize(s pcommon.Slice) (int, bool) {
+func jsonSliceSize(s pcommon.Slice, enc jsonEncoder) (int, bool) {
 	n := len("[]")
 	for i := 0; i < s.Len(); i++ {
-		vn, ok := jsonValueSize(s.At(i))
+		vn, ok := jsonSize(s.At(i), enc)
 		if !ok {
 			return 0, false
 		}
@@ -138,8 +185,8 @@ func hasDuplicateKeys(m pcommon.Map) bool {
 }
 
 // jsonFloatSize follows encoding/json's floatEncoder for float64.
-func jsonFloatSize(f float64) (int, bool) {
-	if math.IsInf(f, 0) || math.IsNaN(f) {
+func jsonFloatSize(f float64, enc jsonEncoder) (int, bool) {
+	if !IsValidFloat(f) {
 		return 0, false
 	}
 	format := byte('f')
@@ -149,22 +196,24 @@ func jsonFloatSize(f float64) (int, bool) {
 	var buf [32]byte
 	b := strconv.AppendFloat(buf[:0], f, format, -1, 64)
 	n := len(b)
-	// encoding/json writes e-07 as e-7
-	if format == 'e' && n >= 4 && b[n-4] == 'e' && b[n-3] == '-' && b[n-2] == '0' {
+	// encoding/json writes e-07 as e-7, goccy keeps it
+	if enc == stdJSON && format == 'e' && n >= 4 && b[n-4] == 'e' && b[n-3] == '-' && b[n-2] == '0' {
 		n--
 	}
 	return n, true
 }
 
 // jsonStringSize follows encoding/json's appendString with HTML escaping on.
-func jsonStringSize(s string) int {
+func jsonStringSize(s string, enc jsonEncoder) int {
 	n := len(`""`)
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
 			switch {
 			case b >= 0x20 && b != '"' && b != '\\' && b != '<' && b != '>' && b != '&':
 				n++
-			case b == '"' || b == '\\' || b == '\b' || b == '\f' || b == '\n' || b == '\r' || b == '\t':
+			case b == '"' || b == '\\' || b == '\n' || b == '\r' || b == '\t':
+				n += 2
+			case (b == '\b' || b == '\f') && enc == stdJSON:
 				n += 2
 			default:
 				n += len(`\u00XX`)

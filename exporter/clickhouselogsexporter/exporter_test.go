@@ -769,53 +769,6 @@ func TestProcessBodyNonMapCounter(t *testing.T) {
 	assert.Equal(t, int64(3), recorded)
 }
 
-func TestBodySizeMatchesAsString(t *testing.T) {
-	testCases := []struct {
-		name string
-		body func() pcommon.Value
-	}{
-		{name: "Empty", body: pcommon.NewValueEmpty},
-		{name: "Str", body: func() pcommon.Value { return pcommon.NewValueStr("héllo <world> & \"quotes\"") }},
-		{name: "Int", body: func() pcommon.Value { return pcommon.NewValueInt(-42) }},
-		{name: "Double", body: func() pcommon.Value { return pcommon.NewValueDouble(1e21) }},
-		{name: "Bool", body: func() pcommon.Value { return pcommon.NewValueBool(true) }},
-		{name: "Bytes", body: func() pcommon.Value {
-			v := pcommon.NewValueBytes()
-			v.Bytes().FromRaw([]byte{0x00, 0xff, 0x10})
-			return v
-		}},
-		{name: "Map", body: func() pcommon.Value {
-			v := pcommon.NewValueMap()
-			v.Map().PutStr("message", "GET /a?b=<c>&d 200")
-			v.Map().PutDouble("latency", 12.5)
-			v.Map().PutDouble("big", 1e21)
-			nested := v.Map().PutEmptyMap("nested")
-			nested.PutStr("k", "v")
-			nested.PutEmptySlice("list").AppendEmpty().SetInt(1)
-			return v
-		}},
-		{name: "MapWithNaN", body: func() pcommon.Value {
-			v := pcommon.NewValueMap()
-			v.Map().PutDouble("nan", math.NaN())
-			return v
-		}},
-		{name: "EmptyMap", body: pcommon.NewValueMap},
-		{name: "Slice", body: func() pcommon.Value {
-			v := pcommon.NewValueSlice()
-			v.Slice().AppendEmpty().SetStr("a")
-			v.Slice().AppendEmpty().SetDouble(math.Inf(1))
-			return v
-		}},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			body := testCase.body()
-			assert.Equal(t, len(body.AsString()), bodySize(body))
-		})
-	}
-}
-
 func TestGetJSONColumnBodyEmptyMap(t *testing.T) {
 	body := pcommon.NewValueMap()
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
