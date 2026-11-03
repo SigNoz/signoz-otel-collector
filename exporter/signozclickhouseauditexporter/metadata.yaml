@@ -1,0 +1,10 @@
+type: signozclickhouseaudit
+status:
+  class: exporter
+  stability:
+    beta: [logs]
+
+tests:
+  config:
+    dsn: tcp://localhost:9000
+  skip_lifecycle: true
