@@ -16,7 +16,6 @@ package clickhouselogsexporter
 
 import (
 	"context"
-	encodingjson "encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -840,21 +839,6 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
-}
-
-// bodySize returns len(body.AsString()) without copying the marshalled map or slice into a string.
-// AsString marshals with encoding/json, so this must too for the metered size to stay the same.
-func bodySize(body pcommon.Value) int {
-	var b []byte
-	switch body.Type() {
-	case pcommon.ValueTypeMap:
-		b, _ = encodingjson.Marshal(body.Map().AsRaw())
-	case pcommon.ValueTypeSlice:
-		b, _ = encodingjson.Marshal(body.Slice().AsRaw())
-	default:
-		return len(body.AsString())
-	}
-	return len(b)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
