@@ -139,8 +139,8 @@ func TestJSONSize(t *testing.T) {
 			}
 			require.NoError(t, stdErr)
 			require.NoError(t, goccyErr)
-			require.Equal(t, testCase.std, string(stdBytes), "encoding/json output changed")
-			require.Equal(t, wantGoccy, string(goccyBytes), "goccy/go-json output changed")
+			assert.Equal(t, testCase.std, string(stdBytes), "encoding/json output changed")
+			assert.Equal(t, wantGoccy, string(goccyBytes), "goccy/go-json output changed")
 
 			assert.True(t, stdOK)
 			assert.True(t, goccyOK)
@@ -158,7 +158,7 @@ func TestJSONSize_DuplicateKeys(t *testing.T) {
 	want := `{"a":"a much longer value","b":1}`
 	stdBytes, err := encodingjson.Marshal(body.AsRaw())
 	require.NoError(t, err)
-	require.Equal(t, want, string(stdBytes))
+	assert.Equal(t, want, string(stdBytes))
 
 	size, ok := JSONSize(body)
 	assert.True(t, ok)
@@ -202,7 +202,7 @@ func TestAsStringSize(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			value := testCase.value()
-			require.Equal(t, testCase.want, value.AsString(), "pdata AsString output changed")
+			assert.Equal(t, testCase.want, value.AsString(), "pdata AsString output changed")
 			assert.Equal(t, len(testCase.want), AsStringSize(value))
 		})
 	}
