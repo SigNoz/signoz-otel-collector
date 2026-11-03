@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -772,6 +773,19 @@ func TestExporterPushTracesData(t *testing.T) {
 	exporter := setupTestExporter(t, mock)
 
 	traces := ptracesgen.Generate()
+	rs := traces.ResourceSpans().At(0)
+	ss := rs.ScopeSpans().At(0)
+	span := ss.Spans().At(0)
+	span.SetName("GET /items?id=1&sort=<asc>")
+	span.TraceState().FromRaw(`vendor="a"`)
+
+	// usage counts name and traceState at raw length: the size of the same span with plain characters
+	plain, err := newStructuredSpanV3(0, "", span, ServiceNameForResource(rs.Resource()), rs.Resource(), ss.Scope(), storageConfig{}, nil)
+	require.NoError(t, err)
+	plain.Name = strings.Repeat("x", len(plain.Name))
+	plain.TraceState = strings.Repeat("x", len(plain.TraceState))
+	plainJSON, err := goccyjson.Marshal(plain)
+	require.NoError(t, err)
 
 	err = exporter.pushTraceDataV3(context.Background(), traces)
 	if err != nil {
@@ -781,6 +795,10 @@ func TestExporterPushTracesData(t *testing.T) {
 	eventually(t, func() bool {
 		rows, err := view.RetrieveData(SigNozSpansCount)
 		return err == nil && len(rows) > 0
+	})
+	eventually(t, func() bool {
+		rows, err := view.RetrieveData(SigNozSpansBytes)
+		return err == nil && len(rows) == 1 && rows[0].Data.(*view.SumData).Value == float64(len(plainJSON))
 	})
 
 	err = exporter.Shutdown(context.Background())

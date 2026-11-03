@@ -474,6 +474,15 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 						return fmt.Errorf("failed to marshal structured span: %w", err)
 					}
 					size += len(serializedStructuredSpan)
+					// name and traceState count at their raw length, as the meter does, not JSON-escaped
+					for _, raw := range []string{structuredSpan.Name, structuredSpan.TraceState} {
+						escaped, err := json.Marshal(raw)
+						if err != nil {
+							return fmt.Errorf("failed to marshal span field: %w", err)
+						}
+						// bytes escaping added: a&b marshals to "a\u0026b" (10) - quotes (2) - raw a&b (3) = 5
+						size -= len(escaped) - len(`""`) - len(raw)
+					}
 					count += 1
 				}
 			}
