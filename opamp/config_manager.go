@@ -16,8 +16,6 @@ import (
 
 const collectorConfigKey = "collector.yaml"
 
-var k = koanf.New("::")
-
 // agentConfigManager is responsible for managing the agent configuration
 // It is responsible for:
 // 1. Reading the agent configuration from the file
@@ -63,6 +61,7 @@ func NewDynamicConfig(configPath string, reloader reloadFunc, logger *zap.Logger
 
 // UpsertInstanceID adds a unique instance id to the config file if it is not present
 func (m *remoteControlledConfig) UpsertInstanceID() error {
+	k := koanf.New("::")
 	// Parse the config file
 	if err := k.Load(file.Provider(m.path), yaml.Parser()); err != nil {
 		return fmt.Errorf("failed to parse config file %s: %w", m.path, err)
