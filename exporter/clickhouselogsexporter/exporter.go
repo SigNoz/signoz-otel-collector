@@ -16,6 +16,7 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	encodingjson "encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -686,7 +687,7 @@ producerIteration:
 						scopeMap:         scopeMap,
 						attrsMap:         attrsMap,
 						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						recordSize:       int64(bodySize(record.Body()) + len(attrBytes) + len(resBytes)),
 					}
 					return nil
 				})
@@ -786,11 +787,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		return getStringifiedBody(body), "{}", "{}"
 	}
 
-	bodyJSON := pcommon.NewValueMap()
-	if body.Type() == pcommon.ValueTypeMap {
-		// switch the reference to bodyJSON
-		bodyJSON = body
-	} else {
+	bodyJSON := body
+	if body.Type() != pcommon.ValueTypeMap {
+		bodyJSON = pcommon.NewValueMap()
 		bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
 		e.nonMapBodyCounter.Add(ctx, 1)
 	}
@@ -810,6 +809,10 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
+	// the promoted map is empty unless the tenant has promoted paths, skip the raw copy and marshal
+	if body.Map().Len() == 0 {
+		return "{}"
+	}
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	if err != nil {
 		return "{}"
@@ -837,6 +840,21 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
+}
+
+// bodySize returns len(body.AsString()) without copying the marshalled map or slice into a string.
+// AsString marshals with encoding/json, so this must too for the metered size to stay the same.
+func bodySize(body pcommon.Value) int {
+	var b []byte
+	switch body.Type() {
+	case pcommon.ValueTypeMap:
+		b, _ = encodingjson.Marshal(body.Map().AsRaw())
+	case pcommon.ValueTypeSlice:
+		b, _ = encodingjson.Marshal(body.Slice().AsRaw())
+	default:
+		return len(body.AsString())
+	}
+	return len(b)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
