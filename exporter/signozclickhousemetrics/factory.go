@@ -7,6 +7,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/component"
@@ -95,6 +96,8 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 }
 
 func createDefaultConfig() component.Config {
+	timeBucketedSet := timebucketedset.DefaultConfig()
+	timeBucketedSet.PreWriteWindow = 15 * time.Minute
 	return &Config{
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
@@ -114,5 +117,6 @@ func createDefaultConfig() component.Config {
 			BufferTimeSeriesTable: "distributed_time_series_v4_buffer",
 		},
 		MetadataWriteSampleRatio: 1.0,
+		TimeBucketedSet:          TimeBucketedSetConfig{Enabled: false, Config: timeBucketedSet},
 	}
 }
