@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"go.opencensus.io/metric/metricdata"
 	"go.opencensus.io/metric/metricexport"
+	"go.opencensus.io/stats/view"
 	"go.uber.org/zap"
 )
 
@@ -118,6 +119,13 @@ func (e *UsageCollector) Start() error {
 }
 
 func (c *UsageCollector) Stop() error {
+	// stats.RecordWithTags queues the measurement on the opencensus worker's
+	// command channel and returns before the worker applies it. Round-tripping
+	// any command through that same channel drains everything queued ahead of
+	// it, so this guarantees the last Record from the final push is reflected
+	// in view state before Flush reads it below.
+	view.Find("")
+
 	c.ir.Stop()
 	c.ir.Flush()
 	// cancel any in-flight reduced-usage query so shutdown isn't blocked
