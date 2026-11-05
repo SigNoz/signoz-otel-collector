@@ -261,6 +261,42 @@ func TestInMemoryKeyCache_NonExistentResource(t *testing.T) {
 	assert.Equal(t, []bool{false, false}, exists, "non-existent resource => false for all")
 }
 
+func TestInMemoryKeyCache_TotalCardinalityConcurrentEviction(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	opts := InMemoryKeyCacheOptions{
+		MaxTracesResourceFp:              1000,
+		MaxTracesCardinalityPerResource:  1000,
+		TracesFingerprintCacheTTL:        5 * time.Millisecond, // short TTL so entries expire mid-read
+		MaxMetricsResourceFp:             1000,
+		MaxMetricsCardinalityPerResource: 1000,
+		MetricsFingerprintCacheTTL:       10 * time.Second,
+		MaxLogsResourceFp:                1000,
+		MaxLogsCardinalityPerResource:    1000,
+		LogsFingerprintCacheTTL:          10 * time.Second,
+		TenantID:                         "tenant1",
+		Logger:                           logger,
+	}
+
+	cache, err := NewInMemoryKeyCache(opts)
+	require.NoError(t, err)
+
+	// Fill the trace cache with short-lived entries. The background janitor
+	// evicts them as their TTL elapses, so an entry can disappear between the
+	// Keys() snapshot and the per-key Get() inside TotalCardinalityLimitExceeded,
+	// making Get() return nil. Re-fill and read in a loop so the read overlaps
+	// eviction; the method must tolerate the nil instead of dereferencing it.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for fp := uint64(0); fp < 3000; fp++ {
+			_ = cache.AddAttrsToResource(ctx, fp, []uint64{fp, fp + 1}, pipeline.SignalTraces)
+		}
+		// Must not panic even while entries are expiring underneath it.
+		_ = cache.TotalCardinalityLimitExceeded(ctx, pipeline.SignalTraces)
+	}
+}
+
 func TestInMemoryKeyCache_Debug(t *testing.T) {
 	ctx := context.Background()
 	logger := zap.NewNop()
