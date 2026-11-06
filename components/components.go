@@ -9,6 +9,7 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozkafkaexporter"
 	signozhealthcheckextension "github.com/SigNoz/signoz-otel-collector/extension/healthcheckextension"
+	"github.com/SigNoz/signoz-otel-collector/extension/signozmetricreductionrulesextension"
 	_ "github.com/SigNoz/signoz-otel-collector/pkg/parser/grok"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozllmpricingprocessor"
 	"github.com/SigNoz/signoz-otel-collector/processor/signozlogsnormalizerprocessor"
@@ -476,6 +477,7 @@ func CoreComponents(
 		healthcheckextension.NewFactory(),
 		pprofextension.NewFactory(),
 		signozhealthcheckextension.NewFactory(),
+		signozmetricreductionrulesextension.NewFactory(),
 		zpagesextension.NewFactory(),
 		azureauthextension.NewFactory(),
 		googlecloudlogentryencodingextension.NewFactory(),
