@@ -1,0 +1,34 @@
+type: signozmetricreductionrules
+github_project: SigNoz/signoz-otel-collector
+
+status:
+  class: extension
+  stability:
+    alpha: [extension]
+
+telemetry:
+  metrics:
+    signozmetricreductionrules.poll.errors:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Failed polls of the rules table. The last loaded rules stay active.
+      unit: "{error}"
+      sum:
+        value_type: int
+        monotonic: true
+
+    signozmetricreductionrules.rule.count:
+      enabled: true
+      stability:
+        level: alpha
+      prefix: otelcol.
+      description: Active reduction rules after the last successful poll.
+      unit: "{rule}"
+      gauge:
+        value_type: int
+
+tests:
+  config:
+    dsn: tcp://127.0.0.1:1
