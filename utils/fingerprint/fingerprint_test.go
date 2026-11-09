@@ -54,18 +54,18 @@ func TestCalculateFingerprintAudit(t *testing.T) {
 	}{
 		{
 			name:          "ServiceKindAndID_AllInPrefix",
-			resourceAttrs: map[string]any{"service.name": "signoz", "service.version": "0.91.0", "signoz.audit.resource.kind": "dashboard", "signoz.audit.resource.id": "6dc9d11b"},
-			want:          "service.name=signoz;signoz.audit.resource.kind=dashboard;signoz.audit.resource.id=6dc9d11b;hash=5225893275152003141",
+			resourceAttrs: map[string]any{"service.name": "signoz", "service.version": "0.91.0", "signoz.resource.kind": "dashboard", "signoz.resource.id": "6dc9d11b"},
+			want:          "service.name=signoz;signoz.resource.kind=dashboard;signoz.resource.id=6dc9d11b;hash=11115898445761104517",
 		},
 		{
 			name:          "NoResourceID_StopsAtKind",
-			resourceAttrs: map[string]any{"service.name": "signoz", "signoz.audit.resource.kind": "organization"},
-			want:          "service.name=signoz;signoz.audit.resource.kind=organization;hash=14439156761989706515",
+			resourceAttrs: map[string]any{"service.name": "signoz", "signoz.resource.kind": "organization"},
+			want:          "service.name=signoz;signoz.resource.kind=organization;hash=4942536868395385454",
 		},
 		{
 			name:          "NoServiceName_StartsAtKind",
-			resourceAttrs: map[string]any{"signoz.audit.resource.kind": "session", "signoz.audit.resource.id": "771025b0"},
-			want:          "signoz.audit.resource.kind=session;signoz.audit.resource.id=771025b0;hash=7826910678086919264",
+			resourceAttrs: map[string]any{"signoz.resource.kind": "session", "signoz.resource.id": "771025b0"},
+			want:          "signoz.resource.kind=session;signoz.resource.id=771025b0;hash=8219059365071224168",
 		},
 	}
 

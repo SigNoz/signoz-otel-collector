@@ -209,9 +209,9 @@ func AuditResourceHierarchy() *DimensionHierarchyNode {
 	return &DimensionHierarchyNode{
 		labels: []string{"service.name"},
 		subHierachies: []DimensionHierarchyNode{{
-			labels: []string{"signoz.audit.resource.kind"},
+			labels: []string{"signoz.resource.kind"},
 			subHierachies: []DimensionHierarchyNode{{
-				labels: []string{"signoz.audit.resource.id"},
+				labels: []string{"signoz.resource.id"},
 			}},
 		}},
 	}
