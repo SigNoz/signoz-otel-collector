@@ -11,8 +11,6 @@ Rows that are deleted, have an unknown `match_type`, drop no labels, or drop a p
 | Field | Default | Description |
 | --- | --- | --- |
 | `dsn` | `tcp://localhost:9000` | ClickHouse DSN. |
-| `database` | `signoz_metrics` | Database of the rules table. |
-| `rules_table` | `distributed_metric_reduction_rules` | Rules table. |
 | `poll_interval` | `45s` | How often the rules table is read. Minimum `5s`. |
 
 ```yaml
