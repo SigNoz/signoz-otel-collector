@@ -34,7 +34,8 @@ var (
 	SignozMetadataDB      = "signoz_metadata"
 	SignozAnalyticsDB     = "signoz_analytics"
 	SignozMeterDB         = "signoz_meter"
-	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
+	SignozAuditDB         = "signoz_audit"
+	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB, SignozAuditDB}
 
 	InProgressStatus = "in-progress"
 	FinishedStatus   = "finished"
