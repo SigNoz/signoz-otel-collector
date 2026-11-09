@@ -23,11 +23,11 @@ func Tracer(settings component.TelemetrySettings) trace.Tracer {
 // TelemetryBuilder provides an interface for components to report telemetry
 // as defined in metadata and user config.
 type TelemetryBuilder struct {
-	meter                                metric.Meter
-	mu                                   sync.Mutex
-	registrations                        []metric.Registration
-	SignozmetricreductionrulesPollErrors metric.Int64Counter
-	SignozmetricreductionrulesRuleCount  metric.Int64Gauge
+	meter                               metric.Meter
+	mu                                  sync.Mutex
+	registrations                       []metric.Registration
+	SignozmetricreductionrulesPolls     metric.Int64Counter
+	SignozmetricreductionrulesRuleCount metric.Int64Gauge
 }
 
 // TelemetryBuilderOption applies changes to default builder.
@@ -59,10 +59,10 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	}
 	builder.meter = Meter(settings)
 	var err, errs error
-	builder.SignozmetricreductionrulesPollErrors, err = builder.meter.Int64Counter(
-		"otelcol.signozmetricreductionrules.poll.errors",
-		metric.WithDescription("Failed polls of the rules table. The last loaded rules stay active. [Alpha]"),
-		metric.WithUnit("{error}"),
+	builder.SignozmetricreductionrulesPolls, err = builder.meter.Int64Counter(
+		"otelcol.signozmetricreductionrules.polls",
+		metric.WithDescription("Polls of the rules table. A failed poll has error.type and keeps the last loaded rules. [Alpha]"),
+		metric.WithUnit("{poll}"),
 	)
 	errs = errors.Join(errs, err)
 	builder.SignozmetricreductionrulesRuleCount, err = builder.meter.Int64Gauge(
