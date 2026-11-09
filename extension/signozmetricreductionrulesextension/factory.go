@@ -24,9 +24,7 @@ func NewFactory() extension.Factory {
 func createDefaultConfig() component.Config {
 	return &Config{
 		DSN:          "tcp://localhost:9000",
-		Database:     "signoz_metrics",
 		PollInterval: 45 * time.Second,
-		RulesTable:   "distributed_metric_reduction_rules",
 	}
 }
 
