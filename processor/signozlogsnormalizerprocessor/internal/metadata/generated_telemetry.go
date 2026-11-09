@@ -28,6 +28,7 @@ type TelemetryBuilder struct {
 	meter                                       metric.Meter
 	mu                                          sync.Mutex
 	registrations                               []metric.Registration
+	SignozlogsnormalizerFieldInferences         metric.Int64ObservableCounter
 	SignozlogsnormalizerMessageFlattenings      metric.Int64ObservableCounter
 	SignozlogsnormalizerMessageNestedPromotions metric.Int64ObservableCounter
 	SignozlogsnormalizerMessagePromotions       metric.Int64ObservableCounter
@@ -44,6 +45,21 @@ type telemetryBuilderOptionFunc func(mb *TelemetryBuilder)
 
 func (tbof telemetryBuilderOptionFunc) apply(mb *TelemetryBuilder) {
 	tbof(mb)
+}
+
+// RegisterSignozlogsnormalizerFieldInferencesCallback sets callback for observable SignozlogsnormalizerFieldInferences metric.
+func (builder *TelemetryBuilder) RegisterSignozlogsnormalizerFieldInferencesCallback(cb metric.Int64Callback) error {
+	reg, err := builder.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		cb(ctx, &observerInt64{inst: builder.SignozlogsnormalizerFieldInferences, obs: o})
+		return nil
+	}, builder.SignozlogsnormalizerFieldInferences)
+	if err != nil {
+		return err
+	}
+	builder.mu.Lock()
+	defer builder.mu.Unlock()
+	builder.registrations = append(builder.registrations, reg)
+	return nil
 }
 
 // RegisterSignozlogsnormalizerMessageFlatteningsCallback sets callback for observable SignozlogsnormalizerMessageFlattenings metric.
@@ -149,6 +165,12 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	}
 	builder.meter = Meter(settings)
 	var err, errs error
+	builder.SignozlogsnormalizerFieldInferences, err = builder.meter.Int64ObservableCounter(
+		"otelcol.signozlogsnormalizer.field.inferences",
+		metric.WithDescription("Top level fields inferred, by target, the field read and where it was found. [Alpha]"),
+		metric.WithUnit("{field}"),
+	)
+	errs = errors.Join(errs, err)
 	builder.SignozlogsnormalizerMessageFlattenings, err = builder.meter.Int64ObservableCounter(
 		"otelcol.signozlogsnormalizer.message.flattenings",
 		metric.WithDescription("Object messages lifted to the top level of the body. [Alpha]"),

@@ -1456,9 +1456,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 }
 
 func (c *clickhouseMetricsExporter) collectUsageForSample(s *sample) bool {
-	if strings.HasPrefix(s.metricName, "signoz") ||
-		strings.HasPrefix(s.metricName, "chi") ||
-		strings.HasPrefix(s.metricName, "otelcol") {
+	if strings.HasPrefix(s.metricName, "signoz") || strings.HasPrefix(s.metricName, "otelcol") {
 		return false
 	}
 	if s.reducedFingerprint != 0 || c.ruleFor(s.metricName) != nil {
