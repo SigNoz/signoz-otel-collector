@@ -2,12 +2,24 @@ package opamp
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+// copyTestdata copies a testdata file into t.TempDir(), since NewDynamicConfig and config reloads rewrite the file in place.
+func copyTestdata(t *testing.T, name string) string {
+	t.Helper()
+	contents, err := os.ReadFile(filepath.Join("testdata", name))
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.WriteFile(path, contents, 0o644))
+	return path
+}
 
 func newLogger(t *testing.T) *zap.Logger {
 	t.Helper()
@@ -36,7 +48,7 @@ func TestNewDynamicConfig(t *testing.T) {
 		return nil
 	}
 
-	_, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	_, err := NewDynamicConfig(copyTestdata(t, "coll-config-path.yaml"), reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 }
@@ -58,7 +70,8 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 		return nil
 	}
 
-	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	path := copyTestdata(t, "coll-config-path.yaml")
+	cfg, err := NewDynamicConfig(path, reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 
@@ -66,47 +79,23 @@ func TestNewAgentConfigManagerEffectiveConfig(t *testing.T) {
 	effCfg, err := mgr.CreateEffectiveConfigMsg(nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, effCfg)
-	bytes, err := os.ReadFile("./testdata/coll-config-path.yaml")
+	bytes, err := os.ReadFile(path)
 	assert.NoError(t, err)
 	assert.Equal(t, effCfg.GetConfigMap().ConfigMap["collector.yaml"].GetContentType(), "text/yaml")
 	assert.Equal(t, effCfg.GetConfigMap().ConfigMap["collector.yaml"].Body, bytes)
 }
 
 func TestNewDynamicConfigAddsInstanceId(t *testing.T) {
-	// make a copy of the original file
-	func() {
-		_ = copy("./testdata/service-instance-id.yaml", "./testdata/service-instance-id-copy.yaml")
-	}()
-
-	// restore the original file
-	defer func() {
-		_ = copy("./testdata/service-instance-id-copy.yaml", "./testdata/service-instance-id.yaml")
-		_ = os.Remove("./testdata/service-instance-id-copy.yaml")
-	}()
-
-	_, err := NewDynamicConfig("./testdata/service-instance-id.yaml", func(contents []byte) error { return nil }, nil)
+	path := copyTestdata(t, "service-instance-id.yaml")
+	_, err := NewDynamicConfig(path, func(contents []byte) error { return nil }, nil)
 	assert.NoError(t, err)
 
-	bytes, err := os.ReadFile("./testdata/service-instance-id.yaml")
+	bytes, err := os.ReadFile(path)
 	assert.NoError(t, err)
 	assert.Contains(t, string(bytes), "service.instance.id: ")
 }
 
 func TestNewAgentConfigManagerApply(t *testing.T) {
-	// make a copy of the original file
-	func() {
-		_ = copy("./testdata/coll-config-path.yaml", "./testdata/coll-config-path-copy.yaml")
-		_ = copy("./testdata/coll-config-path-changed.yaml", "./testdata/coll-config-path-changed-copy.yaml")
-	}()
-
-	// restore the original file
-	defer func() {
-		_ = copy("./testdata/coll-config-path-copy.yaml", "./testdata/coll-config-path.yaml")
-		_ = copy("./testdata/coll-config-path-changed-copy.yaml", "./testdata/coll-config-path-changed.yaml")
-		_ = os.Remove("./testdata/coll-config-path-copy.yaml")
-		_ = os.Remove("./testdata/coll-config-path-changed-copy.yaml")
-	}()
-
 	logger := newLogger(t)
 	mgr := NewAgentConfigManager(logger)
 	assert.NotNil(t, mgr)
@@ -118,7 +107,7 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 		return nil
 	}
 
-	cfg, err := NewDynamicConfig("./testdata/coll-config-path.yaml", reloadFunc, nil)
+	cfg, err := NewDynamicConfig(copyTestdata(t, "coll-config-path.yaml"), reloadFunc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, cnt)
 

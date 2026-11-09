@@ -3,6 +3,7 @@ package signozlogsnormalizerprocessor
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -23,7 +24,14 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{OpAMP: OpAMPConfig{Position: PositionAfter}, Body: BodyConfig{Enabled: true, Fields: []string{"log", "msg"}}}
+	cfg := &Config{
+		OpAMP: OpAMPConfig{Position: PositionAfter},
+		Body:  BodyConfig{Enabled: true, Fields: []string{"log", "msg"}},
+	}
+	for t, field := range cfg.fields() {
+		*field = FieldConfig{Enabled: true, Fields: slices.Clone(defaultFields[t]), Action: ActionCopy}
+	}
+	return cfg
 }
 
 func createLogsProcessor(

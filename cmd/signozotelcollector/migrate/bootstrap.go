@@ -257,6 +257,24 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 		}
 	}
 
+	for _, migration := range schemamigrator.V2MigrationTablesAudit {
+		for _, operation := range migration.UpItems {
+			shouldRun, err := cmd.ShouldRunOperation(ctx, operation)
+			if err != nil {
+				return err
+			}
+
+			if !shouldRun {
+				continue
+			}
+
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozAuditDB, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
