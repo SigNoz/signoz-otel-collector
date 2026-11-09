@@ -309,10 +309,10 @@ func Test_collectUsageForSample(t *testing.T) {
 	})
 
 	assert.True(t, exp.collectUsageForSample(&sample{metricName: "http.server.duration0.count"}))
+	assert.True(t, exp.collectUsageForSample(&sample{metricName: "chi.foo"}))
 
 	// internal metrics
 	assert.False(t, exp.collectUsageForSample(&sample{metricName: "signoz.collector.foo"}))
-	assert.False(t, exp.collectUsageForSample(&sample{metricName: "chi.foo"}))
 	assert.False(t, exp.collectUsageForSample(&sample{metricName: "otelcol.foo"}))
 
 	// reduced
