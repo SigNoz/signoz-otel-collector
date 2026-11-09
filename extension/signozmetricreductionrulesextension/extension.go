@@ -3,7 +3,6 @@ package signozmetricreductionrulesextension
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -103,14 +102,14 @@ func (e *rulesExtension) pollReductionRules(ctx context.Context) {
 
 func (e *rulesExtension) fetchReductionRules(ctx context.Context) (metricreductionrule.RuleSet, error) {
 	// argMax over the distributed table picks the latest rule regardless of shard.
-	query := fmt.Sprintf(`SELECT
+	query := `SELECT
 			metric_name,
 			argMax(labels, updated_at) AS labels,
 			argMax(match_type, updated_at) AS match_type,
 			argMax(effective_from_unix_milli, updated_at) AS effective_from_unix_milli,
 			argMax(deleted, updated_at) AS deleted
-		FROM %s.%s
-		GROUP BY metric_name`, e.cfg.Database, e.cfg.RulesTable)
+		FROM signoz_metrics.distributed_metric_reduction_rules
+		GROUP BY metric_name`
 
 	rows, err := e.conn.Query(ctx, query)
 	if err != nil {
