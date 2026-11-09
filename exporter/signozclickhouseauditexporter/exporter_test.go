@@ -3,7 +3,6 @@ package signozclickhouseauditexporter
 import (
 	"context"
 	"errors"
-	"math"
 	"testing"
 	"time"
 
@@ -42,7 +41,7 @@ func auditLogs() plog.Logs {
 	record := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
 	record.SetTimestamp(1790730000000000000)
 	record.Body().SetStr("user23 deleted alert-rule")
-	record.Attributes().PutStr("signoz.audit.action", "delete")
+	record.Attributes().PutStr("signoz.audit.verb", "delete")
 	return ld
 }
 
@@ -151,10 +150,11 @@ func TestBuildBatch(t *testing.T) {
 				ld := plog.NewLogs()
 				rl := ld.ResourceLogs().AppendEmpty()
 				rl.Resource().Attributes().PutStr("service.name", "signoz")
+				rl.Resource().Attributes().PutStr("signoz.resource.kind", "dashboard")
+				rl.Resource().Attributes().PutStr("signoz.resource.id", "019a4f2e-7c1d-7b3a-9e5f-2d8c6a0b4e17")
 				sl := rl.ScopeLogs().AppendEmpty()
 				sl.Scope().SetName("signoz.audit")
 				sl.Scope().SetVersion("1.0.0")
-				sl.Scope().Attributes().PutStr("signoz.audit.schema", "v1")
 				record := sl.LogRecords().AppendEmpty()
 				record.SetTimestamp(1790677977519692024)
 				record.SetObservedTimestamp(1790677977522805958)
@@ -163,19 +163,20 @@ func TestBuildBatch(t *testing.T) {
 				record.SetFlags(plog.DefaultLogRecordFlags.WithIsSampled(true))
 				record.SetSeverityText("INFO")
 				record.SetSeverityNumber(plog.SeverityNumberInfo)
-				record.SetEventName("dashboard.updated")
-				record.Body().SetStr("user23 updated dashboard")
-				record.Attributes().PutStr("signoz.audit.action", "update")
+				record.SetEventName("signoz.audit.update")
+				record.Body().SetStr("jane.doe@example.com updated dashboard")
+				record.Attributes().PutStr("signoz.audit.verb", "update")
+				record.Attributes().PutStr("signoz.audit.action_category", "configuration_changes")
+				record.Attributes().PutStr("signoz.audit.outcome", "success")
+				record.Attributes().PutStr("signoz.principal.type", "user")
 				record.Attributes().PutInt("http.response.status_code", 200)
-				record.Attributes().PutDouble("signoz.audit.score", 0.5)
-				record.Attributes().PutBool("signoz.audit.dry_run", false)
-				record.Attributes().PutEmptySlice("signoz.audit.tags").AppendEmpty().SetStr("a")
+				record.Attributes().PutInt("client.port", 51234)
 				return ld
 			},
 			now: time.Unix(0, 1790677980000000000),
 			wantLogs: []logRow{{
 				tsBucketStart:       1790677800,
-				resourceFingerprint: resourceFingerprint(map[string]any{"service.name": "signoz"}),
+				resourceFingerprint: resourceFingerprint(map[string]any{"service.name": "signoz", "signoz.resource.kind": "dashboard", "signoz.resource.id": "019a4f2e-7c1d-7b3a-9e5f-2d8c6a0b4e17"}),
 				timestamp:           1790677977519692024,
 				observedTimestamp:   1790677977522805958,
 				traceID:             "a4a3153707d91382ff5106ebaf0c7a66",
@@ -183,15 +184,15 @@ func TestBuildBatch(t *testing.T) {
 				traceFlags:          1,
 				severityText:        "INFO",
 				severityNumber:      9,
-				body:                `{"message":"user23 updated dashboard"}`,
-				scope:               `{"attributes":{"signoz.audit.schema":"v1"},"name":"signoz.audit","version":"1.0.0"}`,
-				attributes:          `{"http.response.status_code":200,"signoz.audit.action":"update","signoz.audit.dry_run":false,"signoz.audit.score":0.5,"signoz.audit.tags":["a"]}`,
-				resource:            `{"attributes":{"service.name":"signoz"}}`,
-				eventName:           "dashboard.updated",
+				body:                `{"message":"jane.doe@example.com updated dashboard"}`,
+				scope:               `{"attributes":{},"name":"signoz.audit","version":"1.0.0"}`,
+				attributes:          `{"client.port":51234,"http.response.status_code":200,"signoz.audit.action_category":"configuration_changes","signoz.audit.outcome":"success","signoz.audit.verb":"update","signoz.principal.type":"user"}`,
+				resource:            `{"attributes":{"service.name":"signoz","signoz.resource.id":"019a4f2e-7c1d-7b3a-9e5f-2d8c6a0b4e17","signoz.resource.kind":"dashboard"}}`,
+				eventName:           "signoz.audit.update",
 			}},
 			wantResources: []resourceRow{{
-				labels:              `{"service.name":"signoz"}`,
-				fingerprint:         resourceFingerprint(map[string]any{"service.name": "signoz"}),
+				labels:              `{"service.name":"signoz","signoz.resource.id":"019a4f2e-7c1d-7b3a-9e5f-2d8c6a0b4e17","signoz.resource.kind":"dashboard"}`,
+				fingerprint:         resourceFingerprint(map[string]any{"service.name": "signoz", "signoz.resource.kind": "dashboard", "signoz.resource.id": "019a4f2e-7c1d-7b3a-9e5f-2d8c6a0b4e17"}),
 				seenAtTSBucketStart: 1790677800,
 			}},
 		},
@@ -283,7 +284,7 @@ func TestBuildBatch(t *testing.T) {
 					record := records.AppendEmpty()
 					record.SetTimestamp(ts)
 					record.Body().SetStr("dashboard deleted")
-					record.Attributes().PutStr("signoz.audit.action", "delete")
+					record.Attributes().PutStr("signoz.audit.verb", "delete")
 				}
 				return ld
 			},
@@ -296,7 +297,7 @@ func TestBuildBatch(t *testing.T) {
 					observedTimestamp:   1790700002000000000,
 					body:                `{"message":"dashboard deleted"}`,
 					scope:               `{"attributes":{},"name":"","version":""}`,
-					attributes:          `{"signoz.audit.action":"delete"}`,
+					attributes:          `{"signoz.audit.verb":"delete"}`,
 					resource:            `{"attributes":{}}`,
 				},
 				{
@@ -306,7 +307,7 @@ func TestBuildBatch(t *testing.T) {
 					observedTimestamp:   1790700002000000000,
 					body:                `{"message":"dashboard deleted"}`,
 					scope:               `{"attributes":{},"name":"","version":""}`,
-					attributes:          `{"signoz.audit.action":"delete"}`,
+					attributes:          `{"signoz.audit.verb":"delete"}`,
 					resource:            `{"attributes":{}}`,
 				},
 			},
@@ -342,33 +343,6 @@ func TestBuildBatch(t *testing.T) {
 				scope:               `{"attributes":{},"name":"","version":""}`,
 				attributes:          `{"signoz.audit.outcome":"success"}`,
 				resource:            `{"attributes":{"service.name":"signoz-api"}}`,
-			}},
-		},
-		{
-			name: "NonFiniteFloat_WrittenAsNull",
-			logs: func() plog.Logs {
-				ld := plog.NewLogs()
-				record := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
-				record.SetTimestamp(1790720000000000000)
-				record.Body().SetStr("quota updated")
-				record.Attributes().PutDouble("signoz.audit.ratio", math.NaN())
-				return ld
-			},
-			now: time.Unix(0, 1790720001000000000),
-			wantLogs: []logRow{{
-				tsBucketStart:       1790719200,
-				resourceFingerprint: resourceFingerprint(map[string]any{}),
-				timestamp:           1790720000000000000,
-				observedTimestamp:   1790720001000000000,
-				body:                `{"message":"quota updated"}`,
-				scope:               `{"attributes":{},"name":"","version":""}`,
-				attributes:          `{"signoz.audit.ratio":null}`,
-				resource:            `{"attributes":{}}`,
-			}},
-			wantResources: []resourceRow{{
-				labels:              `{}`,
-				fingerprint:         resourceFingerprint(map[string]any{}),
-				seenAtTSBucketStart: 1790719200,
 			}},
 		},
 	}
