@@ -9,7 +9,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/goccy/go-json"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/segmentio/ksuid"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
@@ -20,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
@@ -55,20 +55,21 @@ type batch struct {
 	resources []resourceRow
 }
 
-// batchBuilder converts plog.Logs into rows. Resources already in the exporter cache are skipped.
+// batchBuilder converts plog.Logs into rows. Resources already registered in the exporter resource set are skipped.
 type batchBuilder struct {
 	exp          *auditExporter
 	batch        batch
 	fingerprints map[int64]map[string]string
+	nowMilli     int64
 }
 
 type auditExporter struct {
-	logger    *zap.Logger
-	cfg       *Config
-	conn      driver.Conn
-	telemetry *metadata.TelemetryBuilder
-	tableAttr map[string]metric.RecordOption
-	rfCache   *ttlcache.Cache[string, struct{}]
+	logger      *zap.Logger
+	cfg         *Config
+	conn        driver.Conn
+	telemetry   *metadata.TelemetryBuilder
+	tableAttr   map[string]metric.RecordOption
+	resourceSet *timebucketedset.Set
 }
 
 func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
@@ -82,16 +83,23 @@ func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
 		tableAttr[table] = metric.WithAttributeSet(attribute.NewSet(attribute.String("table", table)))
 	}
 
+	resourceSet, err := timebucketedset.New(
+		bucketSeconds*time.Second,
+		timebucketedset.Config{MaxBuckets: 2, MaxBucketSize: 32 << 20},
+		set.TelemetrySettings,
+		attribute.String("exporter", set.ID.String()),
+	)
+	if err != nil {
+		telemetry.Shutdown()
+		return nil, fmt.Errorf("failed to create resource set: %w", err)
+	}
+
 	return &auditExporter{
-		logger:    set.Logger,
-		cfg:       cfg,
-		telemetry: telemetry,
-		tableAttr: tableAttr,
-		rfCache: ttlcache.New(
-			ttlcache.WithTTL[string, struct{}](bucketSeconds*time.Second),
-			ttlcache.WithCapacity[string, struct{}](100000),
-			ttlcache.WithDisableTouchOnHit[string, struct{}](),
-		),
+		logger:      set.Logger,
+		cfg:         cfg,
+		telemetry:   telemetry,
+		tableAttr:   tableAttr,
+		resourceSet: resourceSet,
 	}, nil
 }
 
@@ -111,13 +119,12 @@ func (e *auditExporter) start(ctx context.Context, _ component.Host) error {
 	}
 
 	e.conn = conn
-	go e.rfCache.Start()
 
 	return nil
 }
 
 func (e *auditExporter) shutdown(_ context.Context) error {
-	e.rfCache.Stop()
+	e.resourceSet.Shutdown()
 	e.telemetry.Shutdown()
 
 	if e.conn != nil {
@@ -188,9 +195,13 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 		return err
 	}
 
-	for _, r := range b.resources {
-		e.rfCache.Set(utils.MakeKeyForRFCache(r.seenAtTSBucketStart, r.fingerprint), struct{}{}, ttlcache.DefaultTTL)
-	}
+	e.resourceSet.Apply(func(yield func([]byte, int64) bool) {
+		for _, r := range b.resources {
+			if !yield([]byte(r.fingerprint), r.seenAtTSBucketStart*1000) {
+				return
+			}
+		}
+	})
 
 	e.logger.Debug("inserted audit logs",
 		zap.Int("logs", len(b.logs)),
@@ -216,6 +227,7 @@ func (e *auditExporter) buildBatch(ld plog.Logs, now time.Time) (*batch, error) 
 	b := &batchBuilder{
 		exp:          e,
 		fingerprints: map[int64]map[string]string{},
+		nowMilli:     now.UnixMilli(),
 	}
 
 	resourceLogs := ld.ResourceLogs()
@@ -317,7 +329,7 @@ func (b *batchBuilder) fingerprint(bucket int64, labels string, attrs pcommon.Ma
 
 	fp := fingerprint.CalculateFingerprint(attrs.AsRaw(), fingerprint.AuditResourceHierarchy())
 	byLabels[labels] = fp
-	if b.exp.rfCache.Get(utils.MakeKeyForRFCache(bucket, fp)) == nil {
+	if write, _ := b.exp.resourceSet.Plan([]byte(fp), bucket*1000, b.nowMilli); write {
 		b.batch.resources = append(b.batch.resources, resourceRow{labels: labels, fingerprint: fp, seenAtTSBucketStart: bucket})
 	}
 

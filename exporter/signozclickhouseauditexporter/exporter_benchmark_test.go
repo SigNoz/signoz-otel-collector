@@ -75,8 +75,12 @@ func BenchmarkPushLogsData(b *testing.B) {
 
 	b.ReportAllocs()
 
-	for b.Loop() {
-		exp.rfCache.DeleteAll()
+	resourceLogs := ld.ResourceLogs()
+	for n := 0; b.Loop(); n++ {
+		// The resource set cannot be cleared, so new resource ids per iteration keep every push writing all resource rows.
+		for i := range resourceLogs.Len() {
+			resourceLogs.At(i).Resource().Attributes().PutStr("signoz.resource.id", fmt.Sprintf("dashboard-%d-%d", n, i))
+		}
 		require.NoError(b, exp.pushLogsData(context.Background(), ld))
 	}
 }

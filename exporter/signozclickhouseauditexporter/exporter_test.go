@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/segmentio/ksuid"
 	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +20,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadatatest"
-	"github.com/SigNoz/signoz-otel-collector/utils"
+	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
 
@@ -92,9 +91,12 @@ func TestPushLogsData(t *testing.T) {
 			mock.MatchExpectationsInOrder(false)
 			exp.conn = mock
 
-			resourceKey := utils.MakeKeyForRFCache(1790730000, resourceFingerprint(map[string]any{"service.name": "signoz"}))
+			id := []byte(resourceFingerprint(map[string]any{"service.name": "signoz"}))
 			if testCase.cached {
-				exp.rfCache.Set(resourceKey, struct{}{}, ttlcache.DefaultTTL)
+				require.NoError(t, timebucketedset.RunSteps(exp.resourceSet, []timebucketedset.Step{
+					timebucketedset.PlanStep(id, 1790730000000, 1790730000000, nil, nil),
+					timebucketedset.ApplyStep(id, 1790730000000),
+				}))
 			}
 
 			for _, table := range testCase.wantTables {
@@ -114,7 +116,9 @@ func TestPushLogsData(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.NoError(t, mock.ExpectationsWereMet())
-			assert.Equal(t, testCase.wantResourceCached, exp.rfCache.Has(resourceKey))
+			assert.NoError(t, timebucketedset.RunSteps(exp.resourceSet, []timebucketedset.Step{
+				timebucketedset.PlanStep(id, 1790730000000, 1790730000000, timebucketedset.ExpectedBool(!testCase.wantResourceCached), nil),
+			}))
 
 			got, err := tel.GetMetric("otelcol.signozclickhouseaudit.write.duration")
 			require.NoError(t, err)
@@ -140,7 +144,7 @@ func TestBuildBatch(t *testing.T) {
 		name          string
 		logs          func() plog.Logs
 		now           time.Time
-		setup         func(e *auditExporter)
+		setup         func(t *testing.T, e *auditExporter)
 		wantLogs      []logRow
 		wantResources []resourceRow
 	}{
@@ -330,9 +334,12 @@ func TestBuildBatch(t *testing.T) {
 				return ld
 			},
 			now: time.Unix(0, 1790710001000000000),
-			setup: func(e *auditExporter) {
-				fp := resourceFingerprint(map[string]any{"service.name": "signoz-api"})
-				e.rfCache.Set(utils.MakeKeyForRFCache(1790708400, fp), struct{}{}, ttlcache.DefaultTTL)
+			setup: func(t *testing.T, e *auditExporter) {
+				id := []byte(resourceFingerprint(map[string]any{"service.name": "signoz-api"}))
+				require.NoError(t, timebucketedset.RunSteps(e.resourceSet, []timebucketedset.Step{
+					timebucketedset.PlanStep(id, 1790708400000, 1790710001000, nil, nil),
+					timebucketedset.ApplyStep(id, 1790708400000),
+				}))
 			},
 			wantLogs: []logRow{{
 				tsBucketStart:       1790708400,
@@ -351,7 +358,7 @@ func TestBuildBatch(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			exp := newTestExporter(t)
 			if testCase.setup != nil {
-				testCase.setup(exp)
+				testCase.setup(t, exp)
 			}
 
 			b, err := exp.buildBatch(testCase.logs(), testCase.now)
