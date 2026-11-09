@@ -6,13 +6,19 @@
 
 The following telemetry is emitted by this component.
 
-### otelcol.signozmetricreductionrules.poll.errors
+### otelcol.signozmetricreductionrules.polls
 
-Failed polls of the rules table. The last loaded rules stay active. [Alpha]
+Polls of the rules table. A failed poll has error.type and keeps the last loaded rules. [Alpha]
 
 | Unit | Metric Type | Value Type | Monotonic | Stability |
 | ---- | ----------- | ---------- | --------- | --------- |
-| {error} | Sum | Int | true | Alpha |
+| {poll} | Sum | Int | true | Alpha |
+
+#### Attributes
+
+| Name | Description | Values |
+| ---- | ----------- | ------ |
+| error.type | Why the poll failed. timeout: the poll hit its timeout. other: any other error. Set only on failed polls. | Str: ``timeout``, ``other`` |
 
 ### otelcol.signozmetricreductionrules.rule.count
 

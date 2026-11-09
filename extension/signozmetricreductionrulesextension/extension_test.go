@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 	"go.uber.org/zap"
@@ -115,8 +116,7 @@ func TestRulesExtension_Poll(t *testing.T) {
 			}
 			assert.Equal(t, testCase.expectedLogs, entries)
 			metadatatest.AssertEqualSignozmetricreductionrulesRuleCount(t, tt, []metricdata.DataPoint[int64]{{Value: int64(testCase.expectedLen)}}, metricdatatest.IgnoreTimestamp())
-			_, err := tt.GetMetric("otelcol.signozmetricreductionrules.poll.errors")
-			assert.ErrorContains(t, err, "not found")
+			metadatatest.AssertEqualSignozmetricreductionrulesPolls(t, tt, []metricdata.DataPoint[int64]{{Value: 1}}, metricdatatest.IgnoreTimestamp())
 			assert.NoError(t, conn.ExpectationsWereMet())
 		})
 	}
@@ -124,13 +124,16 @@ func TestRulesExtension_Poll(t *testing.T) {
 
 func TestRulesExtension_PollFails_LastRulesKept(t *testing.T) {
 	testCases := []struct {
-		name string
-		rows *cmock.Rows
-		err  error
+		name              string
+		rows              *cmock.Rows
+		err               error
+		expectedErrorType string
 	}{
-		{name: "QueryError", err: errors.New("connection refused")},
+		{name: "QueryError", err: errors.New("connection refused"), expectedErrorType: "other"},
+		{name: "QueryTimeout", err: context.DeadlineExceeded, expectedErrorType: "timeout"},
 		{
-			name: "ScanTypeMismatch",
+			name:              "ScanTypeMismatch",
+			expectedErrorType: "other",
 			rows: cmock.NewRows([]cmock.ColumnType{
 				{Name: "metric_name", Type: "String"},
 				{Name: "labels", Type: "Array(String)"},
@@ -167,7 +170,11 @@ func TestRulesExtension_PollFails_LastRulesKept(t *testing.T) {
 			// 2 rows, both valid
 			assert.Len(t, e.Current(), 2)
 			metadatatest.AssertEqualSignozmetricreductionrulesRuleCount(t, tt, []metricdata.DataPoint[int64]{{Value: 2}}, metricdatatest.IgnoreTimestamp())
-			metadatatest.AssertEqualSignozmetricreductionrulesPollErrors(t, tt, []metricdata.DataPoint[int64]{{Value: 1}}, metricdatatest.IgnoreTimestamp())
+			// 1 successful poll without error.type + 1 failed poll with it
+			metadatatest.AssertEqualSignozmetricreductionrulesPolls(t, tt, []metricdata.DataPoint[int64]{
+				{Value: 1},
+				{Value: 1, Attributes: attribute.NewSet(attribute.String("error.type", testCase.expectedErrorType))},
+			}, metricdatatest.IgnoreTimestamp())
 			assert.NoError(t, conn.ExpectationsWereMet())
 		})
 	}

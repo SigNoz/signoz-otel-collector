@@ -21,18 +21,18 @@ func NewSettings(tt *componenttest.Telemetry) extension.Settings {
 	return set
 }
 
-func AssertEqualSignozmetricreductionrulesPollErrors(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+func AssertEqualSignozmetricreductionrulesPolls(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
-		Name:        "otelcol.signozmetricreductionrules.poll.errors",
-		Description: "Failed polls of the rules table. The last loaded rules stay active. [Alpha]",
-		Unit:        "{error}",
+		Name:        "otelcol.signozmetricreductionrules.polls",
+		Description: "Polls of the rules table. A failed poll has error.type and keeps the last loaded rules. [Alpha]",
+		Unit:        "{poll}",
 		Data: metricdata.Sum[int64]{
 			Temporality: metricdata.CumulativeTemporality,
 			IsMonotonic: true,
 			DataPoints:  dps,
 		},
 	}
-	got, err := tt.GetMetric("otelcol.signozmetricreductionrules.poll.errors")
+	got, err := tt.GetMetric("otelcol.signozmetricreductionrules.polls")
 	require.NoError(t, err)
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
