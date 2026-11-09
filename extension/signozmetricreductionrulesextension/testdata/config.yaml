@@ -1,14 +1,10 @@
 signozmetricreductionrules:
 signozmetricreductionrules/all_fields:
   dsn: tcp://clickhouse:9000
-  database: metrics
-  rules_table: metric_reduction_rules
   poll_interval: 5s
 signozmetricreductionrules/dsn_empty:
   dsn: ""
-signozmetricreductionrules/rules_table_empty:
-  rules_table: ""
 signozmetricreductionrules/poll_interval_below_minimum:
   poll_interval: 4s
 signozmetricreductionrules/unknown_field:
-  table: metric_reduction_rules
+  rules_table: distributed_metric_reduction_rules

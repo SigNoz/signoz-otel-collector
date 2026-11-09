@@ -26,17 +26,16 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:     "NoFieldsSet_DefaultsUsed",
 			id:       component.NewID(factory.Type()),
-			expected: Config{DSN: "tcp://localhost:9000", Database: "signoz_metrics", RulesTable: "distributed_metric_reduction_rules", PollInterval: 45 * time.Second},
+			expected: Config{DSN: "tcp://localhost:9000", PollInterval: 45 * time.Second},
 		},
 		{
 			name:     "AllFieldsSet_PollIntervalAtMinimum_Loaded",
 			id:       component.NewIDWithName(factory.Type(), "all_fields"),
-			expected: Config{DSN: "tcp://clickhouse:9000", Database: "metrics", RulesTable: "metric_reduction_rules", PollInterval: 5 * time.Second},
+			expected: Config{DSN: "tcp://clickhouse:9000", PollInterval: 5 * time.Second},
 		},
 		{name: "DSNEmpty_Rejected", id: component.NewIDWithName(factory.Type(), "dsn_empty"), expectErr: "dsn must be specified"},
-		{name: "RulesTableEmpty_Rejected", id: component.NewIDWithName(factory.Type(), "rules_table_empty"), expectErr: "rules_table must be specified"},
 		{name: "PollIntervalBelowMinimum_Rejected", id: component.NewIDWithName(factory.Type(), "poll_interval_below_minimum"), expectErr: "poll_interval must be at least 5s"},
-		{name: "UnknownField_Rejected", id: component.NewIDWithName(factory.Type(), "unknown_field"), expectErr: "has invalid keys: table"},
+		{name: "UnknownField_Rejected", id: component.NewIDWithName(factory.Type(), "unknown_field"), expectErr: "has invalid keys: rules_table"},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
