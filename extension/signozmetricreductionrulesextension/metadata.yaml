@@ -6,18 +6,26 @@ status:
   stability:
     alpha: [extension]
 
+attributes:
+  error_type:
+    name_override: error.type
+    description: "Why the poll failed. timeout: the poll hit its timeout. other: any other error. Set only on failed polls."
+    type: string
+    enum: [timeout, other]
+
 telemetry:
   metrics:
-    signozmetricreductionrules.poll.errors:
+    signozmetricreductionrules.polls:
       enabled: true
       stability:
         level: alpha
       prefix: otelcol.
-      description: Failed polls of the rules table. The last loaded rules stay active.
-      unit: "{error}"
+      description: Polls of the rules table. A failed poll has error.type and keeps the last loaded rules.
+      unit: "{poll}"
       sum:
         value_type: int
         monotonic: true
+      attributes: [error_type]
 
     signozmetricreductionrules.rule.count:
       enabled: true

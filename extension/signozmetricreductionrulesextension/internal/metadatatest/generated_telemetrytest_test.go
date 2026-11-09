@@ -19,9 +19,9 @@ func TestSetupTelemetry(t *testing.T) {
 	tb, err := metadata.NewTelemetryBuilder(testTel.NewTelemetrySettings())
 	require.NoError(t, err)
 	defer tb.Shutdown()
-	tb.SignozmetricreductionrulesPollErrors.Add(context.Background(), 1)
+	tb.SignozmetricreductionrulesPolls.Add(context.Background(), 1)
 	tb.SignozmetricreductionrulesRuleCount.Record(context.Background(), 1)
-	AssertEqualSignozmetricreductionrulesPollErrors(t, testTel,
+	AssertEqualSignozmetricreductionrulesPolls(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualSignozmetricreductionrulesRuleCount(t, testTel,

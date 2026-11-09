@@ -2,13 +2,17 @@ package signozmetricreductionrulesextension
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/extension/signozmetricreductionrulesextension/internal/metadata"
@@ -23,6 +27,9 @@ type rulesExtension struct {
 	telemetry *metadata.TelemetryBuilder
 	conn      clickhouse.Conn
 	wg        sync.WaitGroup
+
+	timeoutErrorType metric.MeasurementOption
+	otherErrorType   metric.MeasurementOption
 
 	reductionRules atomic.Pointer[metricreductionrule.RuleSet]
 
@@ -41,6 +48,10 @@ func newExtension(cfg *Config, settings component.TelemetrySettings, conn clickh
 		logger:    settings.Logger,
 		telemetry: telemetry,
 		conn:      conn,
+
+		timeoutErrorType: metric.WithAttributeSet(attribute.NewSet(attribute.String("error.type", "timeout"))),
+		otherErrorType:   metric.WithAttributeSet(attribute.NewSet(attribute.String("error.type", "other"))),
+
 		closeChan: make(chan struct{}),
 	}, nil
 }
@@ -77,10 +88,16 @@ func (e *rulesExtension) pollReductionRules(ctx context.Context) {
 	rules, err := e.fetchReductionRules(ctx)
 	if err != nil {
 		e.logger.Error("failed to refresh metric reduction rules; keeping last known rules", zap.Error(err))
-		e.telemetry.SignozmetricreductionrulesPollErrors.Add(ctx, 1)
+		errorType := e.otherErrorType
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			errorType = e.timeoutErrorType
+		}
+		e.telemetry.SignozmetricreductionrulesPolls.Add(ctx, 1, errorType)
 		return
 	}
 	e.reductionRules.Store(&rules)
+	e.telemetry.SignozmetricreductionrulesPolls.Add(ctx, 1)
 	e.telemetry.SignozmetricreductionrulesRuleCount.Record(ctx, int64(len(rules)))
 }
 
