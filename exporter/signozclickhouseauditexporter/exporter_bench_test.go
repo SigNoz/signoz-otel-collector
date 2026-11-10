@@ -12,20 +12,20 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-// discardConn accepts every batch without a ClickHouse server, so the benchmark measures only the exporter.
-type discardConn struct{ driver.Conn }
+// noopConn accepts every batch without a ClickHouse server, so the benchmark measures only the exporter.
+type noopConn struct{ driver.Conn }
 
-func (discardConn) PrepareBatch(context.Context, string, ...driver.PrepareBatchOption) (driver.Batch, error) {
-	return discardBatch{}, nil
+func (noopConn) PrepareBatch(context.Context, string, ...driver.PrepareBatchOption) (driver.Batch, error) {
+	return noopBatch{}, nil
 }
 
-type discardBatch struct{ driver.Batch }
+type noopBatch struct{ driver.Batch }
 
-func (discardBatch) Append(...any) error { return nil }
-func (discardBatch) Send() error         { return nil }
-func (discardBatch) Close() error        { return nil }
+func (noopBatch) Append(...any) error { return nil }
+func (noopBatch) Send() error         { return nil }
+func (noopBatch) Close() error        { return nil }
 
-func benchmarkAuditLogs(resources int, recordsPerResource int) plog.Logs {
+func realisticLogs(resources int, recordsPerResource int) plog.Logs {
 	ld := plog.NewLogs()
 	start := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
 
@@ -70,8 +70,8 @@ func benchmarkAuditLogs(resources int, recordsPerResource int) plog.Logs {
 
 func BenchmarkPushLogsData(b *testing.B) {
 	exp := newTestExporter(b)
-	exp.conn = discardConn{}
-	ld := benchmarkAuditLogs(100, 100)
+	exp.db = noopConn{}
+	ld := realisticLogs(100, 100)
 
 	b.ReportAllocs()
 

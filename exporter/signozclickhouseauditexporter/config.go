@@ -3,6 +3,7 @@ package signozclickhouseauditexporter
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"go.opentelemetry.io/collector/component"
@@ -12,58 +13,89 @@ import (
 )
 
 type Config struct {
-	exporterhelper.TimeoutConfig `mapstructure:",squash"`
-	BackOffConfig                configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
-	QueueBatchConfig             configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
-	DSN                          string                                                   `mapstructure:"dsn"`
+	TimeoutSettings exporterhelper.TimeoutConfig                             `mapstructure:",squash"`
+	BackOffConfig   configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	QueueSettings   configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
+
+	DSN string `mapstructure:"dsn"`
 }
 
 var _ component.Config = (*Config)(nil)
 
-func (cfg *Config) Validate() error {
+var (
+	errConfigNoDSN      = errors.New("dsn must be specified")
+	errConfigInvalidDSN = errors.New("dsn must be url format")
+)
+
+func createDefaultConfig() component.Config {
+	return &Config{
+		TimeoutSettings: exporterhelper.NewDefaultTimeoutConfig(),
+		BackOffConfig:   configretry.NewDefaultBackOffConfig(),
+		QueueSettings:   configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
+		DSN:             "tcp://localhost:9000",
+	}
+}
+
+func (cfg *Config) Validate() (err error) {
 	if cfg.DSN == "" {
-		return errors.New("dsn must be specified")
+		err = errors.Join(err, errConfigNoDSN)
 	}
 
-	if _, err := clickhouse.ParseDSN(cfg.DSN); err != nil {
-		return fmt.Errorf("invalid dsn: %w", err)
+	dsn, e := cfg.buildDSN()
+	if e != nil {
+		err = errors.Join(err, e)
 	}
 
-	if qc := cfg.QueueBatchConfig.Get(); qc != nil {
-		if err := qc.Validate(); err != nil {
-			return err
+	if _, e := clickhouse.ParseDSN(dsn); e != nil {
+		err = errors.Join(err, e)
+	}
+
+	return err
+}
+
+// buildDSN adds the exporter defaults to the DSN; values already set in the DSN win.
+func (cfg *Config) buildDSN() (string, error) {
+	dsnURL, err := url.Parse(cfg.DSN)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", errConfigInvalidDSN, err.Error())
+	}
+
+	queryParams := dsnURL.Query()
+
+	if !queryParams.Has("async_insert") {
+		queryParams.Set("async_insert", "true")
+	}
+
+	if !queryParams.Has("compress") {
+		queryParams.Set("compress", "lz4")
+	}
+
+	// JSON columns are sent as text; keep string values that look like dates as strings.
+	for name, value := range map[string]string{
+		"type_json_skip_duplicated_paths":  "1",
+		"input_format_try_infer_datetimes": "0",
+		"input_format_try_infer_dates":     "0",
+	} {
+		if !queryParams.Has(name) {
+			queryParams.Set(name, value)
 		}
 	}
 
-	if err := cfg.TimeoutConfig.Validate(); err != nil {
-		return err
-	}
+	dsnURL.RawQuery = queryParams.Encode()
 
-	return cfg.BackOffConfig.Validate()
+	return dsnURL.String(), nil
 }
 
 func (cfg *Config) buildClickHouseOptions() (*clickhouse.Options, error) {
-	options, err := clickhouse.ParseDSN(cfg.DSN)
+	dsn, err := cfg.buildDSN()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build DSN from config: %w", err)
 	}
 
-	if options.Settings == nil {
-		options.Settings = clickhouse.Settings{}
-	}
-	// JSON columns are sent as text; keep string values that look like dates as strings.
-	options.Settings["type_json_skip_duplicated_paths"] = 1
-	options.Settings["input_format_try_infer_datetimes"] = 0
-	options.Settings["input_format_try_infer_dates"] = 0
-
-	maxIdleConns := 1
-	if qc := cfg.QueueBatchConfig.Get(); qc != nil {
-		maxIdleConns = qc.NumConsumers + 1
-	}
-	if options.MaxIdleConns < maxIdleConns {
-		options.MaxIdleConns = maxIdleConns
-		options.MaxOpenConns = maxIdleConns + 5
+	opt, err := clickhouse.ParseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse DSN: %w", err)
 	}
 
-	return options, nil
+	return opt, nil
 }

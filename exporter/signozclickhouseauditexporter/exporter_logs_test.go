@@ -3,6 +3,7 @@ package signozclickhouseauditexporter
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -24,10 +25,10 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
 
-func newTestExporter(t testing.TB) *auditExporter {
+func newTestExporter(t testing.TB) *auditLogsExporter {
 	t.Helper()
 
-	exp, err := newExporter(exportertest.NewNopSettings(metadata.Type), createDefaultConfig().(*Config))
+	exp, err := newAuditLogsExporter(exportertest.NewNopSettings(metadata.Type), withDefaultConfig())
 	require.NoError(t, err)
 
 	return exp
@@ -83,13 +84,13 @@ func TestPushLogsData(t *testing.T) {
 			tel := componenttest.NewTelemetry()
 			t.Cleanup(func() { require.NoError(t, tel.Shutdown(context.Background())) })
 
-			exp, err := newExporter(metadatatest.NewSettings(tel), createDefaultConfig().(*Config))
+			exp, err := newAuditLogsExporter(metadatatest.NewSettings(tel), withDefaultConfig())
 			require.NoError(t, err)
 
 			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
 			require.NoError(t, err)
 			mock.MatchExpectationsInOrder(false)
-			exp.conn = mock
+			exp.db = mock
 
 			id := []byte(resourceFingerprint(map[string]any{"service.name": "signoz"}))
 			if testCase.cached {
@@ -100,7 +101,7 @@ func TestPushLogsData(t *testing.T) {
 			}
 
 			for _, table := range testCase.wantTables {
-				batch := mock.ExpectPrepareBatch(`INSERT INTO signoz_audit\.` + table + ` \(`)
+				batch := mock.ExpectPrepareBatch(regexp.QuoteMeta("INSERT INTO `signoz_audit`.`" + table + "` ("))
 				batch.ExpectAppend()
 				send := batch.ExpectSend()
 				if table == testCase.failTable {
@@ -144,7 +145,7 @@ func TestBuildBatch(t *testing.T) {
 		name          string
 		logs          func() plog.Logs
 		now           time.Time
-		setup         func(t *testing.T, e *auditExporter)
+		setup         func(t *testing.T, e *auditLogsExporter)
 		wantLogs      []logRow
 		wantResources []resourceRow
 	}{
@@ -334,7 +335,7 @@ func TestBuildBatch(t *testing.T) {
 				return ld
 			},
 			now: time.Unix(0, 1790710001000000000),
-			setup: func(t *testing.T, e *auditExporter) {
+			setup: func(t *testing.T, e *auditLogsExporter) {
 				id := []byte(resourceFingerprint(map[string]any{"service.name": "signoz-api"}))
 				require.NoError(t, timebucketedset.RunSteps(e.resourceSet, []timebucketedset.Step{
 					timebucketedset.PlanStep(id, 1790708400000, 1790710001000, nil, nil),

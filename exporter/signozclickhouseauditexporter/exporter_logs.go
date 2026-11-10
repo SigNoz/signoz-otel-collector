@@ -1,6 +1,7 @@
 package signozclickhouseauditexporter
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,12 +20,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/sqltemplates"
 	"github.com/SigNoz/signoz-otel-collector/pkg/timebucketedset"
 	"github.com/SigNoz/signoz-otel-collector/utils"
 	"github.com/SigNoz/signoz-otel-collector/utils/fingerprint"
 )
 
-const bucketSeconds = 1800
+const (
+	bucketSeconds = 1800
+
+	database                     = "signoz_audit"
+	distributedLogsTable         = "distributed_logs"
+	distributedLogsResourceTable = "distributed_logs_resource"
+)
 
 type logRow struct {
 	tsBucketStart       uint64
@@ -57,22 +65,25 @@ type batch struct {
 
 // batchBuilder converts plog.Logs into rows. Resources already registered in the exporter resource set are skipped.
 type batchBuilder struct {
-	exp          *auditExporter
+	exp          *auditLogsExporter
 	batch        batch
 	fingerprints map[int64]map[string]string
 	nowMilli     int64
 }
 
-type auditExporter struct {
-	logger      *zap.Logger
-	cfg         *Config
-	conn        driver.Conn
-	telemetry   *metadata.TelemetryBuilder
-	tableAttr   map[string]metric.RecordOption
-	resourceSet *timebucketedset.Set
+type auditLogsExporter struct {
+	db                driver.Conn
+	insertSQL         string
+	insertResourceSQL string
+	resourceSet       *timebucketedset.Set
+	telemetry         *metadata.TelemetryBuilder
+	tableAttr         map[string]metric.RecordOption
+
+	logger *zap.Logger
+	cfg    *Config
 }
 
-func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
+func newAuditLogsExporter(set exporter.Settings, cfg *Config) (*auditLogsExporter, error) {
 	telemetry, err := metadata.NewTelemetryBuilder(set.TelemetrySettings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create telemetry builder: %w", err)
@@ -94,49 +105,51 @@ func newExporter(set exporter.Settings, cfg *Config) (*auditExporter, error) {
 		return nil, fmt.Errorf("failed to create resource set: %w", err)
 	}
 
-	return &auditExporter{
-		logger:      set.Logger,
-		cfg:         cfg,
+	e := &auditLogsExporter{
+		resourceSet: resourceSet,
 		telemetry:   telemetry,
 		tableAttr:   tableAttr,
-		resourceSet: resourceSet,
-	}, nil
+		logger:      set.Logger,
+		cfg:         cfg,
+	}
+
+	if err := e.renderInsertLogsSQL(); err != nil {
+		resourceSet.Shutdown()
+		telemetry.Shutdown()
+		return nil, fmt.Errorf("render logs insert sql: %w", err)
+	}
+
+	return e, nil
 }
 
-func (e *auditExporter) start(ctx context.Context, _ component.Host) error {
-	options, err := e.cfg.buildClickHouseOptions()
+func (e *auditLogsExporter) start(_ context.Context, _ component.Host) error {
+	opt, err := e.cfg.buildClickHouseOptions()
 	if err != nil {
-		return fmt.Errorf("failed to build clickhouse options: %w", err)
+		return err
 	}
 
-	conn, err := clickhouse.Open(options)
+	e.db, err = clickhouse.Open(opt)
 	if err != nil {
-		return fmt.Errorf("failed to open clickhouse connection: %w", err)
+		return err
 	}
-
-	if err := conn.Ping(ctx); err != nil {
-		return errors.Join(fmt.Errorf("failed to ping clickhouse: %w", err), conn.Close())
-	}
-
-	e.conn = conn
 
 	return nil
 }
 
-func (e *auditExporter) shutdown(_ context.Context) error {
+func (e *auditLogsExporter) shutdown(_ context.Context) error {
 	e.resourceSet.Shutdown()
 	e.telemetry.Shutdown()
 
-	if e.conn != nil {
-		return e.conn.Close()
+	if e.db != nil {
+		return e.db.Close()
 	}
 
 	return nil
 }
 
-func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
-	now := time.Now()
-	b, err := e.buildBatch(ld, now)
+func (e *auditLogsExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
+	processStart := time.Now()
+	b, err := e.buildBatch(ld, processStart)
 	if err != nil {
 		return err
 	}
@@ -144,25 +157,33 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 	var resourceBatch, logsBatch driver.Batch
 
 	if len(b.resources) > 0 {
-		resourceBatch, err = e.conn.PrepareBatch(ctx, insertLogsResourceSQL, driver.WithReleaseConnection())
+		resourceBatch, err = e.db.PrepareBatch(ctx, e.insertResourceSQL, driver.WithReleaseConnection())
 		if err != nil {
-			return fmt.Errorf("failed to prepare batch for %s: %w", distributedLogsResourceTable, err)
+			return err
 		}
-		defer func() { _ = resourceBatch.Close() }()
+		defer func(batch driver.Batch) {
+			if closeErr := batch.Close(); closeErr != nil {
+				e.logger.Warn("failed to close logs resource batch", zap.Error(closeErr))
+			}
+		}(resourceBatch)
 
 		for _, r := range b.resources {
 			if err := resourceBatch.Append(r.labels, r.fingerprint, r.seenAtTSBucketStart); err != nil {
-				return fmt.Errorf("failed to append to %s: %w", distributedLogsResourceTable, err)
+				return fmt.Errorf("failed to append log resource row: %w", err)
 			}
 		}
 	}
 
 	if len(b.logs) > 0 {
-		logsBatch, err = e.conn.PrepareBatch(ctx, insertLogsSQL, driver.WithReleaseConnection())
+		logsBatch, err = e.db.PrepareBatch(ctx, e.insertSQL, driver.WithReleaseConnection())
 		if err != nil {
-			return fmt.Errorf("failed to prepare batch for %s: %w", distributedLogsTable, err)
+			return err
 		}
-		defer func() { _ = logsBatch.Close() }()
+		defer func(batch driver.Batch) {
+			if closeErr := batch.Close(); closeErr != nil {
+				e.logger.Warn("failed to close logs batch", zap.Error(closeErr))
+			}
+		}(logsBatch)
 
 		for _, r := range b.logs {
 			if err := logsBatch.Append(
@@ -182,17 +203,20 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 				r.resource,
 				r.eventName,
 			); err != nil {
-				return fmt.Errorf("failed to append to %s: %w", distributedLogsTable, err)
+				return fmt.Errorf("failed to append log row: %w", err)
 			}
 		}
 	}
+
+	processDuration := time.Since(processStart)
+	networkStart := time.Now()
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- e.flush(ctx, resourceBatch, distributedLogsResourceTable) }()
 	go func() { errCh <- e.flush(ctx, logsBatch, distributedLogsTable) }()
 
 	if err := errors.Join(<-errCh, <-errCh); err != nil {
-		return err
+		return fmt.Errorf("logs insert failed: %w", err)
 	}
 
 	e.resourceSet.Apply(func(yield func([]byte, int64) bool) {
@@ -203,16 +227,35 @@ func (e *auditExporter) pushLogsData(ctx context.Context, ld plog.Logs) error {
 		}
 	})
 
-	e.logger.Debug("inserted audit logs",
-		zap.Int("logs", len(b.logs)),
+	networkDuration := time.Since(networkStart)
+	totalDuration := time.Since(processStart)
+	e.logger.Debug("insert logs",
+		zap.Int("records", len(b.logs)),
 		zap.Int("resources", len(b.resources)),
-		zap.Duration("duration", time.Since(now)),
-	)
+		zap.String("process_cost", processDuration.String()),
+		zap.String("network_cost", networkDuration.String()),
+		zap.String("total_cost", totalDuration.String()))
 
 	return nil
 }
 
-func (e *auditExporter) flush(ctx context.Context, batch driver.Batch, table string) error {
+func (e *auditLogsExporter) renderInsertLogsSQL() error {
+	var buf bytes.Buffer
+	if err := sqltemplates.LogsInsertTmpl.Execute(&buf, sqltemplates.InsertData{Database: database, TableName: distributedLogsTable}); err != nil {
+		return fmt.Errorf("execute logs insert template: %w", err)
+	}
+	e.insertSQL = buf.String()
+
+	buf.Reset()
+	if err := sqltemplates.LogsResourceInsertTmpl.Execute(&buf, sqltemplates.InsertData{Database: database, TableName: distributedLogsResourceTable}); err != nil {
+		return fmt.Errorf("execute logs resource insert template: %w", err)
+	}
+	e.insertResourceSQL = buf.String()
+
+	return nil
+}
+
+func (e *auditLogsExporter) flush(ctx context.Context, batch driver.Batch, table string) error {
 	if batch == nil {
 		return nil
 	}
@@ -223,7 +266,7 @@ func (e *auditExporter) flush(ctx context.Context, batch driver.Batch, table str
 	return err
 }
 
-func (e *auditExporter) buildBatch(ld plog.Logs, now time.Time) (*batch, error) {
+func (e *auditLogsExporter) buildBatch(ld plog.Logs, now time.Time) (*batch, error) {
 	b := &batchBuilder{
 		exp:          e,
 		fingerprints: map[int64]map[string]string{},

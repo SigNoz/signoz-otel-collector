@@ -1,42 +1,35 @@
+//go:generate mdatagen metadata.yaml
+
+// Package signozclickhouseauditexporter writes audit log records to the signoz_audit ClickHouse database.
 package signozclickhouseauditexporter
 
 import (
 	"context"
-	"errors"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/configoptional"
-	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
 	"github.com/SigNoz/signoz-otel-collector/exporter/signozclickhouseauditexporter/internal/metadata"
 )
 
+// NewFactory creates a factory for the ClickHouse audit exporter.
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
 		metadata.Type,
 		createDefaultConfig,
-		exporter.WithLogs(createLogsExporter, metadata.LogsStability),
+		exporter.WithLogs(createAuditLogsExporter, metadata.LogsStability),
 	)
 }
 
-func createDefaultConfig() component.Config {
-	return &Config{
-		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
-		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
-		QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
-		DSN:              "tcp://localhost:9000",
-	}
-}
+func createAuditLogsExporter(
+	ctx context.Context,
+	set exporter.Settings,
+	cfg component.Config,
+) (exporter.Logs, error) {
+	c := cfg.(*Config)
 
-func createLogsExporter(ctx context.Context, set exporter.Settings, cfg component.Config) (exporter.Logs, error) {
-	c, ok := cfg.(*Config)
-	if !ok {
-		return nil, errors.New("invalid configuration")
-	}
-
-	exp, err := newExporter(set, c)
+	exp, err := newAuditLogsExporter(set, c)
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +41,8 @@ func createLogsExporter(ctx context.Context, set exporter.Settings, cfg componen
 		exp.pushLogsData,
 		exporterhelper.WithStart(exp.start),
 		exporterhelper.WithShutdown(exp.shutdown),
-		exporterhelper.WithTimeout(c.TimeoutConfig),
-		exporterhelper.WithQueue(c.QueueBatchConfig),
+		exporterhelper.WithTimeout(c.TimeoutSettings),
+		exporterhelper.WithQueue(c.QueueSettings),
 		exporterhelper.WithRetry(c.BackOffConfig),
 	)
 }

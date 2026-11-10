@@ -1,13 +1,12 @@
 type: signozclickhouseaudit
+display_name: SigNoz ClickHouse Audit Exporter
 github_project: SigNoz/signoz-otel-collector
 
 status:
   class: exporter
   stability:
-    beta:
-      - logs
-  distributions:
-    - signoz
+    beta: [logs]
+  distributions: [signoz]
 
 attributes:
   table:
