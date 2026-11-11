@@ -114,3 +114,17 @@ signozllmpricing/no_total_output:
         out: 2.0
   output_attrs:
     total: ""
+
+# Invalid: "*" not at the end of a pattern.
+signozllmpricing/mid_star_pattern:
+  attrs:
+    model: "gen_ai.request.model"
+    in: "gen_ai.usage.input_tokens"
+    out: "gen_ai.usage.output_tokens"
+  default_pricing:
+    rules:
+      - pattern: ["gpt-*-turbo"]
+        in: 1.0
+        out: 2.0
+  output_attrs:
+    total: "signoz.gen_ai.usage.tokens.cost"

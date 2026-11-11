@@ -2,8 +2,9 @@ package signozllmpricingprocessor // import "github.com/SigNoz/signoz-otel-colle
 
 import (
 	"context"
-	"path"
+	"sort"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/llmpricing"
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -33,7 +34,7 @@ type costs struct {
 // compiledRule is the hot-path form of PricingRule.
 type compiledRule struct {
 	name       string
-	pattern    string
+	pattern    llmpricing.Pattern
 	in         float64
 	out        float64
 	cacheRead  float64
@@ -63,15 +64,15 @@ type llmCostProcessor struct {
 }
 
 func newProcessor(cfg *Config) *llmCostProcessor {
-	// Expand each rule's pattern list into separate compiled rules. This keeps
-	// the match hot-path simple (one glob per entry) while preserving the
-	// first-match-wins semantics across patterns within the same rule.
+	// Expand each rule's pattern list into separate compiled rules, one prefix
+	// per entry. Longest prefix first, so "gpt-5-mini" beats "gpt-5" regardless
+	// of config order; equal prefixes keep config order.
 	rules := make([]compiledRule, 0, len(cfg.DefaultPricing.Rules))
 	for _, r := range cfg.DefaultPricing.Rules {
 		for _, p := range r.Pattern {
 			rules = append(rules, compiledRule{
 				name:       r.Name,
-				pattern:    p,
+				pattern:    llmpricing.ParsePattern(p),
 				in:         r.In,
 				out:        r.Out,
 				cacheRead:  r.Cache.Read,
@@ -79,6 +80,9 @@ func newProcessor(cfg *Config) *llmCostProcessor {
 			})
 		}
 	}
+	sort.SliceStable(rules, func(i, j int) bool {
+		return len(rules[i].pattern.Prefix()) > len(rules[j].pattern.Prefix())
+	})
 
 	divisor := 1e6 // UnitPerMillionTokens
 
@@ -149,7 +153,7 @@ func (p *llmCostProcessor) processSpan(attrs pcommon.Map) {
 	p.writeAttrs(attrs, p.price(rule, normalize(raw)))
 }
 
-// matchRule returns the first rule whose pattern matches model, or nil.
+// matchRule returns the matching rule with the longest prefix, or nil.
 func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 	if rule, ok := p.matchCache.Get(model); ok {
 		return rule
@@ -157,7 +161,7 @@ func (p *llmCostProcessor) matchRule(model string) *compiledRule {
 
 	var rule *compiledRule
 	for i := range p.rules {
-		if ok, _ := path.Match(p.rules[i].pattern, model); ok {
+		if p.rules[i].pattern.Matches(model) {
 			rule = &p.rules[i]
 			break
 		}
