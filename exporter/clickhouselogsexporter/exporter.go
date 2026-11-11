@@ -93,8 +93,10 @@ const (
 		scope_name,
 		scope_version,
 		scope_string,
-		inserted_at
+		inserted_at,
+		event_name
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -152,6 +154,7 @@ type Record struct {
 	bodyJSONPromoted string
 	scopeName        string
 	scopeVersion     string
+	eventName        string
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -580,6 +583,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.scopeVersion,
 					rec.scopeMap.StringData,
 					time.Now(),
+					rec.eventName,
 				)
 				if err := insertLogsStmtV2.Append(args...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
@@ -682,6 +686,7 @@ producerIteration:
 						bodyJSONPromoted: promoted,
 						scopeName:        scopeName,
 						scopeVersion:     scopeVersion,
+						eventName:        record.EventName(),
 						resourceMap:      resourcesMap,
 						scopeMap:         scopeMap,
 						attrsMap:         attrsMap,
