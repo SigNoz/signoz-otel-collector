@@ -32,12 +32,9 @@ Optional:
 - `timeout`, `retry_on_failure`, `sending_queue`: standard
   [exporterhelper](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/exporterhelper)
   settings.
+- `extension`: the `signozmetricreductionrules` extension to read reduction
+  rules from. Reduction is on when it is set and that extension is enabled.
 - `reduction`: cardinality control (see below).
-  - `enabled` (default `false`)
-  - `poll_interval` (default `45s`, min `5s`): how often the rules table is
-    re-read. Rules carry an `effective_from` set ahead by the writer, so poll
-    cadence does not affect correctness within that margin.
-  - `rules_table` (default `distributed_metric_reduction_rules`)
   - `buffer_samples_table` (default `distributed_samples_v4_buffer`)
   - `buffer_time_series_table` (default `distributed_time_series_v4_buffer`)
 
@@ -50,9 +47,13 @@ exporters:
   signozclickhousemetrics:
     dsn: tcp://clickhouse:9000
     timeout: 15s
-    reduction:
-      enabled: true
+    extension: signozmetricreductionrules
+extensions:
+  signozmetricreductionrules:
+    enabled: true
+    dsn: tcp://clickhouse:9000
 service:
+  extensions: [signozmetricreductionrules]
   pipelines:
     metrics:
       receivers: [otlp]
@@ -62,7 +63,7 @@ service:
 
 ## Data flow
 
-### Direct mode (`reduction.enabled: false`)
+### Direct mode (no enabled `signozmetricreductionrules` extension)
 
 The exporter writes four table families directly; insert-time materialized
 views derive the rest:
@@ -85,7 +86,7 @@ exporter --> samples_v4 --> samples_v4_agg_5m --> samples_v4_agg_30m      (pre-a
   `cityHash64(env, temporality, metric_name, fingerprint)`, so a series'
   samples and its time-series rows always land on the same shard.
 
-### Cardinality control (`reduction.enabled: true`)
+### Cardinality control (`signozmetricreductionrules` extension enabled)
 
 With reduction on, the buffer tables become the universal landing target and
 the regular tables above are fed from them by materialized views. The direct
@@ -100,7 +101,8 @@ exporter --> samples_v4_buffer ----> samples_v4 --> agg_5m --> agg_30m          
                                      |-> time_series_v4_reduced --> _1day                (reduced group catalog)
 ```
 
-The exporter polls `rules_table` for reduction rules, keyed by the stored
+The exporter reads reduction rules from the `signozmetricreductionrules`
+extension named in `extension`, keyed by the stored
 (flattened) metric name i.e for histograms and summaries each derived series
 (`.bucket`, `.sum`, `.count`, …) is reduced under its own name. A rule lists
 label keys and a mode: drop the listed keys (keep the rest) or keep only the

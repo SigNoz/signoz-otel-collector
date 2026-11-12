@@ -33,10 +33,10 @@ var reducedUsageCollectorID = uuid.MustParse("00000000-0000-0000-0000-7265647563
 type Options struct {
 	// ReportingInterval is a time interval between two successive metrics export.
 	ReportingInterval time.Duration
-	// ReducedUsageTables, when non-empty, enables reporting of retained (reduced)
-	// metric sample usage read from these ClickHouse tables. Only the metrics
-	// exporter sets this (with reduction enabled); leaving it empty disables the
-	// behavior, so logs/traces collectors never run it.
+	// ReducedUsageTables are the ClickHouse tables StartReducedUsageReporter reads
+	// retained (reduced) metric sample usage from. Only the metrics exporter sets
+	// this and starts the reporter (with reduction enabled), so logs/traces
+	// collectors never run it.
 	ReducedUsageTables []string
 }
 
@@ -111,9 +111,6 @@ func (e *UsageCollector) Start() error {
 	if err := e.ir.Start(); err != nil {
 		return err
 	}
-	if len(e.o.ReducedUsageTables) > 0 {
-		e.startReducedUsageReporter()
-	}
 	return nil
 }
 
@@ -171,9 +168,9 @@ func windowExporterID(windowStart time.Time) uuid.UUID {
 	return uuid.NewSHA1(reducedUsageNamespace, []byte(fmt.Sprintf("reduced-usage:%d", windowStart.UTC().Unix())))
 }
 
-// startReducedUsageReporter periodically reports retained/reduced metric sample
-// usage read from ClickHouse. Started only when Options.ReducedUsageTables is set.
-func (e *UsageCollector) startReducedUsageReporter() {
+// StartReducedUsageReporter periodically reports retained/reduced metric sample
+// usage read from Options.ReducedUsageTables.
+func (e *UsageCollector) StartReducedUsageReporter() {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.reducedCancel = cancel
 	e.wg.Add(1)

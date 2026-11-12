@@ -34,15 +34,16 @@ import (
 	"go.uber.org/zap"
 
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 )
 
 var (
-	countSuffix       = ".count"
-	sumSuffix         = ".sum"
-	minSuffix         = ".min"
-	maxSuffix         = ".max"
-	bucketSuffix      = ".bucket"
-	quantilesSuffix   = ".quantile"
+	countSuffix       = metricreductionrule.CountSuffix
+	sumSuffix         = metricreductionrule.SumSuffix
+	minSuffix         = metricreductionrule.MinSuffix
+	maxSuffix         = metricreductionrule.MaxSuffix
+	bucketSuffix      = metricreductionrule.BucketSuffix
+	quantilesSuffix   = metricreductionrule.QuantilesSuffix
 	samplesSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 	timeSeriesSQLTmpl = "INSERT INTO %s.%s (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	expHistSQLTmpl    = "INSERT INTO %s.%s (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -77,9 +78,8 @@ type clickhouseMetricsExporter struct {
 	usageCollector *usage.UsageCollector
 	exporterID     uuid.UUID
 
-	reductionRules       atomic.Pointer[ruleSet]
-	reductionActiveRules metricapi.Int64Gauge
-	reductionPollErrors  metricapi.Int64Counter
+	rules            metricreductionrule.Source
+	reductionEnabled bool
 
 	lastSamplesLen  atomic.Int64
 	lastTsLen       atomic.Int64
@@ -252,33 +252,12 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		}
 	}
 
-	if chExporter.cfg.Reduction.Enabled {
-		chExporter.samplesSQL = fmt.Sprintf(bufferSamplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferSamplesTable)
-		chExporter.timeSeriesSQL = fmt.Sprintf(bufferTimeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferTimeSeriesTable)
-	} else {
-		chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
-		chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
-	}
+	chExporter.samplesSQL = fmt.Sprintf(samplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.SamplesTable)
+	chExporter.timeSeriesSQL = fmt.Sprintf(timeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.TimeSeriesTable)
 	chExporter.expHistSQL = fmt.Sprintf(expHistSQLTmpl, chExporter.cfg.Database, chExporter.cfg.ExpHistTable)
 	chExporter.metadataSQL = fmt.Sprintf(metadataSQLTmpl, chExporter.cfg.Database, chExporter.cfg.MetadataTable)
 
 	var err error
-	if chExporter.cfg.Reduction.Enabled {
-		chExporter.reductionActiveRules, err = chExporter.meter.Int64Gauge(
-			"exporter_reduction_active_rules",
-			metricapi.WithDescription("Number of active metric reduction rules"),
-		)
-		if err != nil {
-			return nil, err
-		}
-		chExporter.reductionPollErrors, err = chExporter.meter.Int64Counter(
-			"exporter_reduction_rule_poll_errors",
-			metricapi.WithDescription("Number of failed metric reduction rule polls"),
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
 	chExporter.processMetricsDuration, err = chExporter.meter.Float64Histogram(
 		"exporter_prepare_metrics_duration",
 		metricapi.WithDescription("Time taken (in millis) for exporter to prepare metrics"),
@@ -312,15 +291,21 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
+	rules, err := metricreductionrule.FromHost(host, c.cfg.Extension)
+	if err != nil {
+		return err
+	}
+	c.rules = rules
+	c.reductionEnabled = rules != nil && rules.Enabled()
+	if c.reductionEnabled {
+		c.samplesSQL = fmt.Sprintf(bufferSamplesSQLTmpl, c.cfg.Database, c.cfg.Reduction.BufferSamplesTable)
+		c.timeSeriesSQL = fmt.Sprintf(bufferTimeSeriesSQLTmpl, c.cfg.Database, c.cfg.Reduction.BufferTimeSeriesTable)
+		if c.usageCollector != nil {
+			c.usageCollector.StartReducedUsageReporter()
+		}
+	}
 	go c.cache.Start()
 	c.cacheRunning = true
-	if c.cfg.Reduction.Enabled {
-		// fail open: with no rules loaded everything is written unreduced, which is always correct
-		pollCtx, cancel := context.WithTimeout(ctx, rulesPollTimeout)
-		c.pollReductionRules(pollCtx)
-		cancel()
-		c.startReductionRulesPoller()
-	}
 	return nil
 }
 
@@ -1207,7 +1192,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 					continue
 				}
 			}
-			if c.cfg.Reduction.Enabled {
+			if c.reductionEnabled {
 				err = statement.Append(
 					ts.env,
 					ts.temporality.String(),
@@ -1280,7 +1265,7 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 
 		for i := range samples {
 			sample := &samples[i]
-			if c.cfg.Reduction.Enabled {
+			if c.reductionEnabled {
 				err = statement.Append(
 					sample.env,
 					sample.temporality.String(),
