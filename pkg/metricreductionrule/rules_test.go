@@ -73,6 +73,10 @@ type source struct {
 	component.ShutdownFunc
 }
 
+func (source) Enabled() bool {
+	return true
+}
+
 func (source) Current() RuleSet {
 	return nil
 }
@@ -87,18 +91,20 @@ func TestFromHost(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		id         *component.ID
 		extensions map[component.ID]component.Component
 		expected   Source
 		err        string
 	}{
-		{name: "ExtensionPresent_Found", extensions: map[component.ID]component.Component{id: rulesExtension}, expected: rulesExtension},
-		{name: "ExtensionMissing_Error", extensions: map[component.ID]component.Component{component.MustNewID("file_storage"): rulesExtension}, err: `metric reduction rules extension "signozmetricreductionrules" not found`},
-		{name: "ExtensionNotSource_Error", extensions: map[component.ID]component.Component{id: notSource}, err: `extension "signozmetricreductionrules" is not a metric reduction rules extension`},
+		{name: "NoExtensionNamed_Nil", extensions: map[component.ID]component.Component{id: rulesExtension}},
+		{name: "ExtensionNamed_Found", id: &id, extensions: map[component.ID]component.Component{id: rulesExtension}, expected: rulesExtension},
+		{name: "ExtensionNamedButMissing_Error", id: &id, extensions: map[component.ID]component.Component{component.MustNewID("file_storage"): rulesExtension}, err: `metric reduction rules extension "signozmetricreductionrules" not found`},
+		{name: "ExtensionNotSource_Error", id: &id, extensions: map[component.ID]component.Component{id: notSource}, err: `extension "signozmetricreductionrules" is not a metric reduction rules extension`},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := FromHost(host(testCase.extensions), id)
+			got, err := FromHost(host(testCase.extensions), testCase.id)
 			if testCase.err != "" {
 				assert.EqualError(t, err, testCase.err)
 				assert.Nil(t, got)

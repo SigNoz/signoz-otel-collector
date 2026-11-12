@@ -23,6 +23,7 @@ func NewFactory() extension.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
+		Enabled:      false,
 		DSN:          "tcp://localhost:9000",
 		PollInterval: 45 * time.Second,
 	}
