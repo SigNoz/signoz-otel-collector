@@ -1,6 +1,7 @@
 package metering
 
 import (
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 	"github.com/SigNoz/signoz-otel-collector/pkg/schema/traces"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -47,4 +48,6 @@ type Traces interface {
 // Metrics calculates billable metrics for metrics.
 type Metrics interface {
 	Meter[pmetric.Metrics, pmetric.ResourceMetrics]
+	// CountRoutedPerResource counts the samples of CountPerResource that reduction rules condense.
+	CountRoutedPerResource(pmetric.ResourceMetrics, metricreductionrule.RuleSet) int
 }

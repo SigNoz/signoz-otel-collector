@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
@@ -148,4 +149,127 @@ func (meter *metrics) countSummarySamples(dps pmetric.SummaryDataPointSlice) int
 		count += 2 // count,sum metrics
 	}
 	return count
+}
+
+func (meter *metrics) CountRoutedPerResource(rmd pmetric.ResourceMetrics, rules metricreductionrule.RuleSet) int {
+	if len(rules) == 0 {
+		return 0
+	}
+
+	routed := 0
+
+	for j := 0; j < rmd.ScopeMetrics().Len(); j++ {
+		scopeMetrics := rmd.ScopeMetrics().At(j)
+
+		for k := 0; k < scopeMetrics.Metrics().Len(); k++ {
+			metric := scopeMetrics.Metrics().At(k)
+			if excludeRegex.MatchString(metric.Name()) {
+				continue
+			}
+
+			switch metric.Type() {
+			case pmetric.MetricTypeGauge:
+				routed += meter.routedNumberSamples(metric.Gauge().DataPoints(), rules[metric.Name()])
+			case pmetric.MetricTypeSum:
+				routed += meter.routedNumberSamples(metric.Sum().DataPoints(), rules[metric.Name()])
+			case pmetric.MetricTypeHistogram:
+				routed += meter.routedHistogramSamples(metric.Histogram().DataPoints(), metric.Name(), rules)
+			case pmetric.MetricTypeSummary:
+				routed += meter.routedSummarySamples(metric.Summary().DataPoints(), metric.Name(), rules)
+			case pmetric.MetricTypeExponentialHistogram:
+				// Not counted by CountPerResource, so never routed.
+			}
+		}
+	}
+
+	return routed
+}
+
+func (meter *metrics) routedNumberSamples(dps pmetric.NumberDataPointSlice, rule *metricreductionrule.ReductionRule) int {
+	if rule == nil {
+		return 0
+	}
+	routed := 0
+	for i := range dps.Len() {
+		dp := dps.At(i)
+		if !math.IsNaN(dp.DoubleValue()) && rule.AppliesAt(dp.Timestamp().AsTime().UnixMilli()) {
+			routed++
+		}
+	}
+	return routed
+}
+
+func (meter *metrics) routedHistogramSamples(dps pmetric.HistogramDataPointSlice, name string, rules metricreductionrule.RuleSet) int {
+	countRule := rules[name+metricreductionrule.CountSuffix]
+	sumRule := rules[name+metricreductionrule.SumSuffix]
+	minRule := rules[name+metricreductionrule.MinSuffix]
+	maxRule := rules[name+metricreductionrule.MaxSuffix]
+	bucketRule := rules[name+metricreductionrule.BucketSuffix]
+	if countRule == nil && sumRule == nil && minRule == nil && maxRule == nil && bucketRule == nil {
+		return 0
+	}
+
+	routed := 0
+	for i := range dps.Len() {
+		dp := dps.At(i)
+		if math.IsNaN(dp.Sum()) || math.IsNaN(dp.Min()) || math.IsNaN(dp.Max()) {
+			continue
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		if bucketRule != nil && bucketRule.AppliesAt(unixMilli) {
+			routed += min(dp.ExplicitBounds().Len(), dp.BucketCounts().Len()) + 1
+		}
+		if countRule != nil && countRule.AppliesAt(unixMilli) {
+			routed++
+		}
+		if dp.HasSum() && sumRule != nil && sumRule.AppliesAt(unixMilli) {
+			routed++
+		}
+		if dp.HasMin() && minRule != nil && minRule.AppliesAt(unixMilli) {
+			routed++
+		}
+		if dp.HasMax() && maxRule != nil && maxRule.AppliesAt(unixMilli) {
+			routed++
+		}
+	}
+	return routed
+}
+
+func (meter *metrics) routedSummarySamples(dps pmetric.SummaryDataPointSlice, name string, rules metricreductionrule.RuleSet) int {
+	countRule := rules[name+metricreductionrule.CountSuffix]
+	sumRule := rules[name+metricreductionrule.SumSuffix]
+	quantilesRule := rules[name+metricreductionrule.QuantilesSuffix]
+	if countRule == nil && sumRule == nil && quantilesRule == nil {
+		return 0
+	}
+
+	routed := 0
+	for i := range dps.Len() {
+		dp := dps.At(i)
+		if math.IsNaN(dp.Sum()) {
+			continue
+		}
+		quantiles := dp.QuantileValues()
+		hasNaN := false
+		for j := range quantiles.Len() {
+			if math.IsNaN(quantiles.At(j).Value()) {
+				hasNaN = true
+				break
+			}
+		}
+		if hasNaN {
+			continue
+		}
+		unixMilli := dp.Timestamp().AsTime().UnixMilli()
+		if quantilesRule != nil && quantilesRule.AppliesAt(unixMilli) {
+			routed += quantiles.Len()
+		}
+		if countRule != nil && countRule.AppliesAt(unixMilli) {
+			routed++
+		}
+		if sumRule != nil && sumRule.AppliesAt(unixMilli) {
+			routed++
+		}
+	}
+	return routed
 }
