@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/connector/connectortest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
@@ -65,10 +67,38 @@ func TestTracesToMetrics(t *testing.T) {
 	}
 }
 
+// testSource is the signozmetricreductionrules extension with fixed rules.
+type testSource struct {
+	component.StartFunc
+	component.ShutdownFunc
+	enabled bool
+	rules   metricreductionrule.RuleSet
+}
+
+func (s testSource) Enabled() bool {
+	return s.enabled
+}
+
+func (s testSource) Current() metricreductionrule.RuleSet {
+	return s.rules
+}
+
+var rulesID = component.MustNewID("signozmetricreductionrules")
+
+// testHost serves these extensions; componenttest.NewNopHost has none.
+type testHost map[component.ID]component.Component
+
+func (h testHost) GetExtensions() map[component.ID]component.Component {
+	return h
+}
+
 func TestMetricsToMetrics(t *testing.T) {
 	testCases := []struct {
-		name string
-		cfg  *Config
+		name             string
+		cfg              *Config
+		host             component.Host
+		expectedIngested int64
+		expectedCount    int64
 	}{
 		{
 			name: "custom_dimensions",
@@ -80,6 +110,41 @@ func TestMetricsToMetrics(t *testing.T) {
 				},
 				MetricsFlushInterval: time.Millisecond,
 			},
+			host: componenttest.NewNopHost(),
+			// 10 metrics * 10 data points = 100
+			expectedIngested: 100,
+			// no extension, nothing routed = 100
+			expectedCount: 100,
+		},
+		{
+			name: "ExtensionDisabled_WithRule_NothingRouted",
+			cfg: &Config{
+				Dimensions:           []Dimension{{Name: "resource.attr_0"}},
+				MetricsFlushInterval: time.Millisecond,
+				Extension:            &rulesID,
+			},
+			host: testHost{rulesID: testSource{enabled: false, rules: metricreductionrule.RuleSet{
+				"system.memory.usage0": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0),
+			}}},
+			// 10 metrics * 10 data points = 100
+			expectedIngested: 100,
+			// extension disabled, nothing routed = 100
+			expectedCount: 100,
+		},
+		{
+			name: "ExtensionEnabled_WithRule_RoutedExcluded",
+			cfg: &Config{
+				Dimensions:           []Dimension{{Name: "resource.attr_0"}},
+				MetricsFlushInterval: time.Millisecond,
+				Extension:            &rulesID,
+			},
+			host: testHost{rulesID: testSource{enabled: true, rules: metricreductionrule.RuleSet{
+				"system.memory.usage0": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0),
+			}}},
+			// 10 metrics * 10 data points = 100
+			expectedIngested: 100,
+			// 100 - 1 ruled metric * 10 data points (10) = 90
+			expectedCount: 90,
 		},
 	}
 
@@ -94,7 +159,7 @@ func TestMetricsToMetrics(t *testing.T) {
 			require.NotNil(t, conn)
 			assert.False(t, conn.Capabilities().MutatesData)
 
-			require.NoError(t, conn.Start(context.Background(), componenttest.NewNopHost()))
+			require.NoError(t, conn.Start(context.Background(), tc.host))
 			defer func() {
 				assert.NoError(t, conn.Shutdown(context.Background()))
 			}()
@@ -107,8 +172,20 @@ func TestMetricsToMetrics(t *testing.T) {
 			assert.NoError(t, conn.ConsumeMetrics(context.Background(), testMetrics))
 
 			// Wait for the metrics to be flushed based on the MetricsFlushInterval
-			// only 2 metrics for span size and span count will be exported
-			assert.Eventually(t, func() bool { return sink.DataPointCount() == 2 }, time.Second, tc.cfg.MetricsFlushInterval)
+			// only 3 metrics for data point count, size and ingested count will be exported
+			require.Eventually(t, func() bool { return sink.DataPointCount() == 3 }, time.Second, tc.cfg.MetricsFlushInterval)
+
+			values := map[string]int64{}
+			for _, md := range sink.AllMetrics() {
+				for i := 0; i < md.ResourceMetrics().Len(); i++ {
+					metrics := md.ResourceMetrics().At(i).ScopeMetrics().At(0).Metrics()
+					for j := 0; j < metrics.Len(); j++ {
+						values[metrics.At(j).Name()] = metrics.At(j).Sum().DataPoints().At(0).IntValue()
+					}
+				}
+			}
+			assert.Equal(t, tc.expectedIngested, values[metricNameMetricsDataPointsIngestedCount])
+			assert.Equal(t, tc.expectedCount, values[metricNameMetricsDataPointsCount])
 
 		})
 	}
@@ -260,9 +337,10 @@ func TestAggregateMeterMetricsFromMetrics(t *testing.T) {
 	m.PutStr("resource.attr_0", "unknown_service0")
 	expectedData := map[[16]byte]*meterMetric{
 		pdatautil.MapHash(m): {
-			metricDataPointCount: 100,
-			metricDataPointSize:  0,
-			attrs:                m,
+			metricDataPointCount:         100,
+			metricDataPointIngestedCount: 100,
+			metricDataPointSize:          0,
+			attrs:                        m,
 		},
 	}
 
@@ -285,9 +363,10 @@ func TestAggregateMeterMetricsFromMultiMetrics(t *testing.T) {
 	m.PutStr("resource.attr_0", "unknown_service0")
 	expectedData := map[[16]byte]*meterMetric{
 		pdatautil.MapHash(m): {
-			metricDataPointCount: 300,
-			metricDataPointSize:  0,
-			attrs:                m,
+			metricDataPointCount:         300,
+			metricDataPointIngestedCount: 300,
+			metricDataPointSize:          0,
+			attrs:                        m,
 		},
 	}
 
@@ -376,26 +455,36 @@ func TestCollectMetricMeterMetrics(t *testing.T) {
 	m := pcommon.NewMap()
 	m.PutStr("resource.0", "unknown_service")
 	meterMetrics := meterMetric{
-		metricDataPointCount: 100,
-		metricDataPointSize:  0,
-		attrs:                m,
+		metricDataPointCount:         90,
+		metricDataPointIngestedCount: 100,
+		metricDataPointSize:          0,
+		attrs:                        m,
 	}
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
 
 	connector.collectMetricMeterMetrics(scopeMetrics, &meterMetrics, timestamp)
 
 	metrics := scopeMetrics.Metrics()
-	require.Equal(t, 2, metrics.Len())
+	require.Equal(t, 3, metrics.Len())
 
 	metric := metrics.At(0)
 	assert.Equal(t, metricNameMetricsDataPointsCount, metric.Name())
 	assert.Equal(t, "1", metric.Unit())
-	assert.Equal(t, int64(100), metric.Sum().DataPoints().At(0).IntValue())
+	assert.Equal(t, int64(90), metric.Sum().DataPoints().At(0).IntValue())
 
 	metric = metrics.At(1)
 	assert.Equal(t, metricNameMetricsDataPointsSize, metric.Name())
 	assert.Equal(t, "By", metric.Unit())
 	assert.Equal(t, int64(0), metric.Sum().DataPoints().At(0).IntValue())
+
+	metric = metrics.At(2)
+	assert.Equal(t, metricNameMetricsDataPointsIngestedCount, metric.Name())
+	assert.Equal(t, "1", metric.Unit())
+	assert.True(t, metric.Sum().IsMonotonic())
+	assert.Equal(t, pmetric.AggregationTemporalityDelta, metric.Sum().AggregationTemporality())
+	assert.Equal(t, timestamp, metric.Sum().DataPoints().At(0).Timestamp())
+	assert.Equal(t, m.AsRaw(), metric.Sum().DataPoints().At(0).Attributes().AsRaw())
+	assert.Equal(t, int64(100), metric.Sum().DataPoints().At(0).IntValue())
 }
 
 func TestCollectLogMeterMetrics(t *testing.T) {
