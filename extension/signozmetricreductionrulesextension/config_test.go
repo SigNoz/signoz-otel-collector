@@ -31,7 +31,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:     "AllFieldsSet_PollIntervalAtMinimum_Loaded",
 			id:       component.NewIDWithName(factory.Type(), "all_fields"),
-			expected: Config{DSN: "tcp://clickhouse:9000", PollInterval: 5 * time.Second},
+			expected: Config{Enabled: true, DSN: "tcp://clickhouse:9000", PollInterval: 5 * time.Second},
 		},
 		{name: "DSNEmpty_Rejected", id: component.NewIDWithName(factory.Type(), "dsn_empty"), expectErr: "dsn must be specified"},
 		{name: "PollIntervalBelowMinimum_Rejected", id: component.NewIDWithName(factory.Type(), "poll_interval_below_minimum"), expectErr: "poll_interval must be at least 5s"},

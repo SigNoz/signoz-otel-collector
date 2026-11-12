@@ -6,6 +6,8 @@ import (
 )
 
 type Config struct {
+	Enabled bool `mapstructure:"enabled"`
+
 	DSN string `mapstructure:"dsn"`
 
 	// PollInterval is how often the rules table is re-read. effective_from is set
