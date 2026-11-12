@@ -209,6 +209,70 @@ func TestExporterPushLogsData(t *testing.T) {
 	})
 }
 
+func TestExporterPushLogsDataEventNameNotBilled(t *testing.T) {
+	testCases := []struct {
+		name      string
+		eventName string
+	}{
+		{name: "EventNameEmpty_BilledBodyAttrsResource", eventName: ""},
+		{name: "EventNameSet_SameBilledSize", eventName: strings.Repeat("signoz.deployment", 100)},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+			require.NoError(t, err)
+
+			tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+			attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+			resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+			logsStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+			logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+			tagStatementV2.ExpectAppend()
+			tagStatementV2.ExpectSend()
+			attributeKeysStmt.ExpectAppend()
+			attributeKeysStmt.ExpectSend()
+			resourceKeysStmt.ExpectAppend()
+			resourceKeysStmt.ExpectSend()
+			logsStatementV2.ExpectAppend()
+			logsStatementV2.ExpectSend()
+			logsResourceStatementV2.ExpectAppend()
+			logsResourceStatementV2.ExpectSend()
+			mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+			mock.ExpectClose()
+
+			exporter := setupTestExporter(t, mock)
+			logs := plogsgen.Generate()
+			logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetEventName(testCase.eventName)
+
+			require.NoError(t, exporter.pushLogsData(context.Background(), logs))
+
+			billedBytes := func() float64 {
+				var size float64
+				rows, err := view.RetrieveData(SigNozLogsBytes)
+				if err != nil {
+					return 0
+				}
+				for _, row := range rows {
+					for _, tg := range row.Tags {
+						if tg.Key == usage.TagExporterIdKey && tg.Value == exporter.id.String() {
+							size += row.Data.(*view.SumData).Value
+						}
+					}
+				}
+				return size
+			}
+			eventually(t, func() bool { return billedBytes() > 0 })
+
+			// Only body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25) count.
+			assert.Equal(t, float64(25+2+25), billedBytes())
+
+			assert.NoError(t, exporter.Shutdown(context.Background()))
+			eventually(t, func() bool { return mock.ExpectationsWereMet() == nil })
+		})
+	}
+}
+
 func TestAttributesToMapSkipsOriginalBodyAttribute(t *testing.T) {
 	attrs := pcommon.NewMap()
 	attrs.PutStr("regular", "value")
