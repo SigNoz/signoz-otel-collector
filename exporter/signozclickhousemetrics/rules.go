@@ -1,188 +1,15 @@
 package signozclickhousemetrics
 
 import (
-	"context"
-	"fmt"
-	"time"
-
-	"go.uber.org/zap"
-
 	pkgfingerprint "github.com/SigNoz/signoz-otel-collector/internal/common/fingerprint"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 )
-
-// protectedLabels can never be aggregated away: le/quantile are series identity,
-// the dunder keys are baked into every fingerprint, and deployment.environment is
-// a physical column and part of the sharding key.
-var protectedLabels = map[string]struct{}{
-	"le":                     {},
-	"quantile":               {},
-	"__name__":               {},
-	"__temporality__":        {},
-	"deployment.environment": {},
-}
-
-const rulesPollTimeout = 30 * time.Second
-
-// reductionRule is one compiled label drop/keep rule, keyed by the flattened
-// metric name, e.g. http.server.duration.bucket.
-type reductionRule struct {
-	// keys is the configured label set; keep picks the mode. keep=false drops
-	// keys (rest kept); keep=true keeps only keys (rest dropped). protected
-	// labels are kept either way.
-	keys map[string]struct{}
-	keep bool
-	// effectiveFromUnixMilli is compared against the datapoint timestamp, not the
-	// wall clock, so every replica reduces at the same data-time boundary.
-	effectiveFromUnixMilli int64
-}
-
-func (r *reductionRule) drop(key string) bool {
-	_, listed := r.keys[key]
-	if r.keep {
-		if _, protected := protectedLabels[key]; protected {
-			return false
-		}
-		return !listed
-	}
-	return listed
-}
-
-func (r *reductionRule) appliesAt(unixMilli int64) bool {
-	return unixMilli >= r.effectiveFromUnixMilli
-}
-
-type ruleSet map[string]*reductionRule
-
-// ruleFor returns the active rule for the metric name, or nil.
-func (c *clickhouseMetricsExporter) ruleFor(metricName string) *reductionRule {
-	rules := c.reductionRules.Load()
-	if rules == nil {
-		return nil
-	}
-	return (*rules)[metricName]
-}
-
-// pollReductionRules refreshes the in-memory ruleset from ClickHouse. It fails
-// open: on error the last known ruleset stays active, and an unreduced series is
-// always correct, just at full fidelity.
-func (c *clickhouseMetricsExporter) pollReductionRules(ctx context.Context) {
-	rules, err := c.fetchReductionRules(ctx)
-	if err != nil {
-		c.logger.Error("failed to refresh metric reduction rules; keeping last known rules", zap.Error(err))
-		if c.reductionPollErrors != nil {
-			c.reductionPollErrors.Add(ctx, 1)
-		}
-		return
-	}
-	c.reductionRules.Store(&rules)
-	if c.reductionActiveRules != nil {
-		c.reductionActiveRules.Record(ctx, int64(len(rules)))
-	}
-}
-
-func (c *clickhouseMetricsExporter) fetchReductionRules(ctx context.Context) (ruleSet, error) {
-	// argMax over the distributed table picks the latest rule regardless of shard.
-	query := fmt.Sprintf(`SELECT
-			metric_name,
-			argMax(labels, updated_at) AS labels,
-			argMax(match_type, updated_at) AS match_type,
-			argMax(effective_from_unix_milli, updated_at) AS effective_from_unix_milli,
-			argMax(deleted, updated_at) AS deleted
-		FROM %s.%s
-		GROUP BY metric_name`, c.cfg.Database, c.cfg.Reduction.RulesTable)
-
-	rows, err := c.conn.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			c.logger.Warn("failed to close reduction rules result set", zap.Error(err))
-		}
-	}()
-
-	rules := make(ruleSet)
-	for rows.Next() {
-		var (
-			metricName    string
-			labels        []string
-			matchType     string
-			effectiveFrom int64
-			deleted       bool
-		)
-		if err := rows.Scan(&metricName, &labels, &matchType, &effectiveFrom, &deleted); err != nil {
-			return nil, err
-		}
-		if deleted {
-			continue
-		}
-		var keep bool
-		switch matchType {
-		case "", "drop":
-			keep = false
-		case "keep":
-			keep = true
-		default:
-			// unknown mode: fail open (leave the metric unreduced) rather than
-			// risk inverting drop/keep semantics on a typo.
-			c.logger.Warn("ignoring reduction rule with unknown match_type",
-				zap.String("metric_name", metricName), zap.String("match_type", matchType))
-			continue
-		}
-		// drop mode with no labels is a no-op; keep mode with no labels is a
-		// valid (maximal) reduction down to just the protected labels.
-		if !keep && len(labels) == 0 {
-			continue
-		}
-		keys := make(map[string]struct{}, len(labels))
-		valid := true
-		for _, label := range labels {
-			if !keep {
-				if _, protected := protectedLabels[label]; protected {
-					c.logger.Warn("ignoring reduction rule that drops a protected label",
-						zap.String("metric_name", metricName), zap.String("label", label))
-					valid = false
-					break
-				}
-			}
-			keys[label] = struct{}{}
-		}
-		if !valid {
-			continue
-		}
-		rules[metricName] = &reductionRule{
-			keys:                   keys,
-			keep:                   keep,
-			effectiveFromUnixMilli: effectiveFrom,
-		}
-	}
-	return rules, rows.Err()
-}
-
-func (c *clickhouseMetricsExporter) startReductionRulesPoller() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		ticker := time.NewTicker(c.cfg.Reduction.PollInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-c.closeChan:
-				return
-			case <-ticker.C:
-				ctx, cancel := context.WithTimeout(context.Background(), rulesPollTimeout)
-				c.pollReductionRules(ctx)
-				cancel()
-			}
-		}
-	}()
-}
 
 // reducer computes reduced fingerprints and series for one metric's datapoints
 // under one rule; the reduced resource/scope fingerprints are computed once and
 // reused for every datapoint.
 type reducer struct {
-	rule                *reductionRule
+	rule                *metricreductionrule.ReductionRule
 	resourceFingerprint *pkgfingerprint.Fingerprint
 	scopeFingerprint    *pkgfingerprint.Fingerprint
 
@@ -216,10 +43,18 @@ type reducedSeries struct {
 	resource    *pkgfingerprint.Fingerprint
 }
 
+// ruleFor returns the active rule for the metric name, or nil.
+func (c *clickhouseMetricsExporter) ruleFor(metricName string) *metricreductionrule.ReductionRule {
+	if !c.reductionEnabled {
+		return nil
+	}
+	return c.rules.Current()[metricName]
+}
+
 // newReducerFor returns a reducer for the metric name, or nil when reduction is
 // disabled or no rule matches.
 func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFingerprint, scopeFingerprint *pkgfingerprint.Fingerprint) *reducer {
-	if !c.cfg.Reduction.Enabled {
+	if !c.reductionEnabled {
 		return nil
 	}
 	rule := c.ruleFor(metricName)
@@ -238,14 +73,14 @@ func (c *clickhouseMetricsExporter) newReducerFor(metricName string, resourceFin
 // and flows to the long-retention tables). nameWithSuffix is the stored metric
 // name, e.g. metric.bucket.
 func (r *reducer) reduce(pointFingerprint *pkgfingerprint.Fingerprint, nameWithSuffix string, unixMilli int64) *reducedSeries {
-	if r == nil || !r.rule.appliesAt(unixMilli) {
+	if r == nil || !r.rule.AppliesAt(unixMilli) {
 		return nil
 	}
 	if r.reducedResource == nil {
-		r.reducedResource = r.resourceFingerprint.Reduced(pkgfingerprint.InitialOffset, r.rule.drop)
-		r.reducedScope = r.scopeFingerprint.Reduced(r.reducedResource.Hash(), r.rule.drop)
+		r.reducedResource = r.resourceFingerprint.Reduced(pkgfingerprint.InitialOffset, r.rule.Drop)
+		r.reducedScope = r.scopeFingerprint.Reduced(r.reducedResource.Hash(), r.rule.Drop)
 	}
-	reducedPoint := pointFingerprint.Reduced(r.reducedScope.Hash(), r.rule.drop)
+	reducedPoint := pointFingerprint.Reduced(r.reducedScope.Hash(), r.rule.Drop)
 	r.scratch = reducedSeries{
 		fingerprint: reducedPoint.HashWithName(nameWithSuffix),
 		point:       reducedPoint,
