@@ -1,0 +1,13 @@
+signozclickhouseaudit:
+  dsn: tcp://127.0.0.1:9000
+signozclickhouseaudit/full:
+  dsn: tcp://default:password@127.0.0.1:9000?dial_timeout=5s&max_open_conns=30
+  timeout: 10s
+  retry_on_failure:
+    enabled: true
+    initial_interval: 1s
+    max_interval: 10s
+    max_elapsed_time: 60s
+  sending_queue:
+    queue_size: 100
+    num_consumers: 4

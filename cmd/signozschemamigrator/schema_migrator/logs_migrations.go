@@ -548,5 +548,40 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2003
+	{
+		MigrationID: 2003,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "event_name",
+					Type:  LowCardinalityColumnType{ColumnTypeString},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "event_name",
+					Type:  LowCardinalityColumnType{ColumnTypeString},
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "event_name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "event_name"},
+			},
+		},
+	},
+	// Next migration id will be 2004
 }
