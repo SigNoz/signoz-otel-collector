@@ -1,0 +1,10 @@
+signozmetricreductionrules:
+signozmetricreductionrules/all_fields:
+  dsn: tcp://clickhouse:9000
+  poll_interval: 5s
+signozmetricreductionrules/dsn_empty:
+  dsn: ""
+signozmetricreductionrules/poll_interval_below_minimum:
+  poll_interval: 4s
+signozmetricreductionrules/unknown_field:
+  rules_table: distributed_metric_reduction_rules
