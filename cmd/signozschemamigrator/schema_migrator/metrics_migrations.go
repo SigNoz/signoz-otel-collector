@@ -322,10 +322,10 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Columns: []Column{
 					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "description", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Codec: "ZSTD(1)"},
 					{Name: "attr_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "attr_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "attr_datatype", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
@@ -350,10 +350,10 @@ var MetricsMigrations = []SchemaMigrationRecord{
 				Columns: []Column{
 					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "description", Type: ColumnTypeString, Codec: "ZSTD(1)"},
-					{Name: "unit", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
-					{Name: "is_monotonic", Type: ColumnTypeBool, Codec: "ZSTD(1)"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Codec: "ZSTD(1)"},
 					{Name: "attr_name", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "attr_type", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
 					{Name: "attr_datatype", Type: LowCardinalityColumnType{ColumnTypeString}, Codec: "ZSTD(1)"},
@@ -2283,5 +2283,51 @@ var MetricsMigrations = []SchemaMigrationRecord{
 			DropTableOperation{Database: "signoz_metrics", Table: "samples_v4_reduced_sum_5m_mv"},
 			DropTableOperation{Database: "signoz_metrics", Table: "samples_v4_reduced_last_5m_mv"},
 		},
+	},
+	{
+		MigrationID: 1012,
+		UpItems: []Operation{
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "metadata",
+				Column:   Column{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_metadata",
+				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_metadata",
+				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_metadata",
+				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(1)"},
+			},
+			AlterTableModifyColumn{
+				Database: "signoz_metrics",
+				Table:    "distributed_metadata",
+				Column:   Column{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Codec: "ZSTD(1)"},
+			},
+		},
+		DownItems: []Operation{},
 	},
 }
