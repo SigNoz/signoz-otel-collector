@@ -78,9 +78,9 @@ var MeterMigrations = []SchemaMigrationRecord{
 				Columns: []Column{
 					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
-					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
-					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false"},
 					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(5)"},
 					{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
@@ -120,9 +120,9 @@ var MeterMigrations = []SchemaMigrationRecord{
 				Columns: []Column{
 					{Name: "temporality", Type: LowCardinalityColumnType{ColumnTypeString}, Default: "'Unspecified'"},
 					{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
-					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
-					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+					{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
+					{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
+					{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 					{Name: "is_monotonic", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeBool}}, Default: "false"},
 					{Name: "labels", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Codec: "ZSTD(5)"},
 					{Name: "fingerprint", Type: ColumnTypeUInt64, Codec: "Delta(8), ZSTD(1)"},
@@ -211,17 +211,17 @@ var MeterMigrations = []SchemaMigrationRecord{
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "samples_agg_1d",
-				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "samples_agg_1d",
-				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "samples_agg_1d",
-				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
@@ -236,17 +236,17 @@ var MeterMigrations = []SchemaMigrationRecord{
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "distributed_samples_agg_1d",
-				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "description", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "distributed_samples_agg_1d",
-				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "unit", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
 				Table:    "distributed_samples_agg_1d",
-				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{LowCardinalityColumnType{ColumnTypeString}}}, Default: "'default'"},
+				Column:   Column{Name: "type", Type: SimpleAggregateFunction{FunctionName: "anyLast", Arguments: []ColumnType{ColumnTypeString}}, Default: "'default'"},
 			},
 			AlterTableModifyColumn{
 				Database: "signoz_meter",
