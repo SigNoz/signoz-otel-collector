@@ -6,6 +6,16 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
+// Suffixes of the flattened metric names that histograms and summaries are written as.
+const (
+	CountSuffix     = ".count"
+	SumSuffix       = ".sum"
+	MinSuffix       = ".min"
+	MaxSuffix       = ".max"
+	BucketSuffix    = ".bucket"
+	QuantilesSuffix = ".quantile"
+)
+
 // ProtectedLabels can never be aggregated away: le/quantile are series identity,
 // the dunder keys are baked into every fingerprint, and deployment.environment is
 // a physical column and part of the sharding key.
@@ -58,19 +68,23 @@ type RuleSet map[string]*ReductionRule
 // Source hands out the latest RuleSet. Callers take one RuleSet per batch so a poll
 // never splits a batch across two rule sets.
 type Source interface {
+	Enabled() bool
 	Current() RuleSet
 }
 
-// FromHost returns the extension with this id, or an error when it is missing
-// or is not a Source.
-func FromHost(host component.Host, id component.ID) (Source, error) {
-	ext, ok := host.GetExtensions()[id]
+// FromHost returns the extension with this id, nil when id is nil, or an error when the
+// extension is missing or is not a Source.
+func FromHost(host component.Host, id *component.ID) (Source, error) {
+	if id == nil {
+		return nil, nil
+	}
+	ext, ok := host.GetExtensions()[*id]
 	if !ok {
-		return nil, fmt.Errorf("metric reduction rules extension %q not found", id)
+		return nil, fmt.Errorf("metric reduction rules extension %q not found", *id)
 	}
 	source, ok := ext.(Source)
 	if !ok {
-		return nil, fmt.Errorf("extension %q is not a metric reduction rules extension", id)
+		return nil, fmt.Errorf("extension %q is not a metric reduction rules extension", *id)
 	}
 	return source, nil
 }

@@ -180,13 +180,34 @@ func TestRulesExtension_PollFails_LastRulesKept(t *testing.T) {
 	}
 }
 
-func TestRulesExtension_ShutdownWithoutStart_ClosesConnection(t *testing.T) {
-	tt := componenttest.NewTelemetry()
-	t.Cleanup(func() { require.NoError(t, tt.Shutdown(context.Background())) })
-	e, conn := newTestExtension(t, tt, zap.NewNop())
-	conn.ExpectClose()
+func TestRulesExtension_Shutdown_ClosesConnection(t *testing.T) {
+	testCases := []struct {
+		name    string
+		enabled bool
+		start   bool
+	}{
+		{name: "Enabled_WithoutStart", enabled: true, start: false},
+		{name: "Disabled_StartRunsNoPoll", enabled: false, start: true},
+	}
 
-	require.NoError(t, e.Shutdown(context.Background()))
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tt := componenttest.NewTelemetry()
+			t.Cleanup(func() { require.NoError(t, tt.Shutdown(context.Background())) })
+			e, conn := newTestExtension(t, tt, zap.NewNop())
+			e.cfg.Enabled = testCase.enabled
+			if testCase.start {
+				require.NoError(t, e.Start(context.Background(), componenttest.NewNopHost()))
+			}
+			conn.ExpectClose()
 
-	assert.NoError(t, conn.ExpectationsWereMet())
+			require.NoError(t, e.Shutdown(context.Background()))
+
+			assert.Equal(t, testCase.enabled, e.Enabled())
+			assert.Nil(t, e.Current())
+			_, err := tt.GetMetric("otelcol.signozmetricreductionrules.polls")
+			assert.Error(t, err, "no poll ran")
+			assert.NoError(t, conn.ExpectationsWereMet())
+		})
+	}
 }

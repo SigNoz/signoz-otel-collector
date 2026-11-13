@@ -17,6 +17,7 @@ import (
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
 	v1 "github.com/SigNoz/signoz-otel-collector/pkg/metering/v1"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 	"github.com/google/uuid"
 )
 
@@ -30,6 +31,7 @@ type meterConnector struct {
 	logsMeter              metering.Logs
 	tracesMeter            metering.Traces
 	metricsMeter           metering.Metrics
+	rules                  metricreductionrule.Source
 	dimensions             map[string]struct{}
 	aggregatedMeterMetrics *aggregatedMeterMetrics
 	started                bool
@@ -77,6 +79,11 @@ func (*meterConnector) Capabilities() consumer.Capabilities {
 }
 
 func (meterconnector *meterConnector) Start(ctx context.Context, host component.Host) error {
+	rules, err := metricreductionrule.FromHost(host, meterconnector.config.Extension)
+	if err != nil {
+		return err
+	}
+	meterconnector.rules = rules
 	meterconnector.started = true
 	meterconnector.wg.Add(1)
 	go func() {
@@ -173,8 +180,8 @@ func (meterconnector *meterConnector) buildMetrics() pmetric.Metrics {
 		scopeMetrics.Scope().SetName("signozmeterconnector")
 		// add connector id for single-writer in case of multiple connectors
 		scopeMetrics.Scope().Attributes().PutStr("connector_id", meterconnector.id.String())
-		// for each resource metric key we need 6 metrics (2 for each telemetry data type)
-		scopeMetrics.Metrics().EnsureCapacity(6)
+		// for each resource metric key we need 7 metrics (2 for spans and logs, 3 for metrics)
+		scopeMetrics.Metrics().EnsureCapacity(7)
 
 		// generate the metrics from the aggregated telemetry data collected in memory
 		meterconnector.collectLogMeterMetrics(scopeMetrics, meterMetrics, timestamp)
@@ -261,7 +268,7 @@ func (meterconnector *meterConnector) collectTraceMeterMetrics(scopeMetrics pmet
 
 // generate metrics from the stored dimensions and data for metrics
 func (meterconnector *meterConnector) collectMetricMeterMetrics(scopeMetrics pmetric.ScopeMetrics, meterMetrics *meterMetric, timestamp pcommon.Timestamp) {
-	if meterMetrics.metricDataPointCount == 0 {
+	if meterMetrics.metricDataPointIngestedCount == 0 {
 		return
 	}
 
@@ -294,6 +301,21 @@ func (meterconnector *meterConnector) collectMetricMeterMetrics(scopeMetrics pme
 	if meterMetrics.attrs.Len() != 0 {
 		meterMetrics.attrs.CopyTo(dataPoint.Attributes())
 	}
+
+	metric = scopeMetrics.Metrics().AppendEmpty()
+	metric.SetName(metricNameMetricsDataPointsIngestedCount)
+	metric.SetDescription(metricDescMetricsDataPointsIngestedCount)
+	metric.SetUnit("1")
+	metric.SetEmptySum()
+	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	metric.Sum().SetIsMonotonic(true)
+
+	dataPoint = metric.Sum().DataPoints().AppendEmpty()
+	dataPoint.SetTimestamp(timestamp)
+	dataPoint.SetIntValue(int64(meterMetrics.metricDataPointIngestedCount))
+	if meterMetrics.attrs.Len() != 0 {
+		meterMetrics.attrs.CopyTo(dataPoint.Attributes())
+	}
 }
 
 // reset the in-memory stored dimensions/metrics state
@@ -318,15 +340,20 @@ func (meterconnector *meterConnector) aggregateMeterMetricsFromTraces(traces ptr
 
 // generate the aggregated data from the metrics data stream
 func (meterconnector *meterConnector) aggregateMeterMetricsFromMetrics(metrics pmetric.Metrics) {
+	var rules metricreductionrule.RuleSet
+	if meterconnector.rules != nil && meterconnector.rules.Enabled() {
+		rules = meterconnector.rules.Current()
+	}
 	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
 		resourceMetric := metrics.ResourceMetrics().At(i)
 		resourceAttr := resourceMetric.Resource().Attributes()
 		resourceMetricDimensions := meterconnector.buildDimensionsMapFromResourceAttributes(resourceAttr)
 
 		count := meterconnector.metricsMeter.CountPerResource(resourceMetric)
+		routed := meterconnector.metricsMeter.CountRoutedPerResource(resourceMetric, rules)
 		size := meterconnector.metricsMeter.SizePerResource(resourceMetric)
 		// update the meter metrics data against the resource metric key
-		meterconnector.aggregatedMeterMetrics.UpdateMetricDataPointsMeterMetrics(resourceMetricDimensions, count, size)
+		meterconnector.aggregatedMeterMetrics.UpdateMetricDataPointsMeterMetrics(resourceMetricDimensions, count-routed, count, size)
 	}
 }
 

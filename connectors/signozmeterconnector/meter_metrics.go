@@ -8,13 +8,14 @@ import (
 )
 
 type meterMetric struct {
-	spanCount            int
-	spanSize             int
-	metricDataPointCount int
-	metricDataPointSize  int
-	logCount             int
-	logSize              int
-	attrs                pcommon.Map
+	spanCount                    int
+	spanSize                     int
+	metricDataPointCount         int
+	metricDataPointIngestedCount int
+	metricDataPointSize          int
+	logCount                     int
+	logSize                      int
+	attrs                        pcommon.Map
 }
 
 type aggregatedMeterMetrics struct {
@@ -28,7 +29,7 @@ func newAggregatedMeterMetrics() *aggregatedMeterMetrics {
 	}
 }
 
-func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcommon.Map, count, size int) {
+func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcommon.Map, count, ingestedCount, size int) {
 	key := pdatautil.MapHash(attrs)
 	agm.Lock()
 	defer agm.Unlock()
@@ -39,6 +40,7 @@ func (agm *aggregatedMeterMetrics) UpdateMetricDataPointsMeterMetrics(attrs pcom
 		agm.meterMetrics[key] = meterMetrics
 	}
 	meterMetrics.metricDataPointCount += count
+	meterMetrics.metricDataPointIngestedCount += ingestedCount
 	meterMetrics.metricDataPointSize += size
 }
 

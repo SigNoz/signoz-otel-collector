@@ -52,6 +52,24 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "extension",
+			expect: &Config{
+				Dimensions: []Dimension{
+					{
+						Name: "service.name",
+					},
+					{
+						Name: "deployment.environment",
+					},
+					{
+						Name: "host.name",
+					},
+				},
+				MetricsFlushInterval: time.Hour * 1,
+				Extension:            &rulesID,
+			},
+		},
+		{
 			name: "custom_metrics_flush_interval",
 			expect: &Config{
 				Dimensions: []Dimension{

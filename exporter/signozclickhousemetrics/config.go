@@ -2,7 +2,6 @@ package signozclickhousemetrics
 
 import (
 	"errors"
-	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configoptional"
@@ -27,6 +26,9 @@ type Config struct {
 	MetadataTable   string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
+	// Extension is the signozmetricreductionrules extension to read reduction rules from.
+	// Reduction is on when it is set and the extension is enabled.
+	Extension *component.ID `mapstructure:"extension"`
 
 	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
 	// written per batch; 1.0 (default) writes all. Opt-in; lowering it trades
@@ -34,14 +36,10 @@ type Config struct {
 	MetadataWriteSampleRatio float64 `mapstructure:"metadata_write_sample_ratio"`
 }
 
-// ReductionConfig configures cardinality control. When enabled, samples and series
-// land in the buffer tables with a reduced fingerprint from per-metric label-drop rules.
+// ReductionConfig configures cardinality control. When the signozmetricreductionrules
+// extension is enabled, samples and series land in the buffer tables with a reduced
+// fingerprint from per-metric label-drop rules.
 type ReductionConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-	// PollInterval is how often the rules table is re-read. effective_from is set
-	// ahead by the writer so poll cadence doesn't affect correctness within that margin.
-	PollInterval time.Duration `mapstructure:"poll_interval"`
-	RulesTable   string        `mapstructure:"rules_table"`
 	// BufferSamplesTable and BufferTimeSeriesTable replace SamplesTable and
 	// TimeSeriesTable as the write targets when reduction is enabled.
 	BufferSamplesTable    string `mapstructure:"buffer_samples_table"`
@@ -71,21 +69,6 @@ func (cfg *Config) Validate() error {
 
 	if cfg.MetadataWriteSampleRatio <= 0 || cfg.MetadataWriteSampleRatio > 1 {
 		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
-	}
-
-	if cfg.Reduction.Enabled {
-		if cfg.Reduction.PollInterval < 5*time.Second {
-			return errors.New("reduction.poll_interval must be at least 5s")
-		}
-		if cfg.Reduction.RulesTable == "" {
-			return errors.New("reduction.rules_table must be specified")
-		}
-		if cfg.Reduction.BufferSamplesTable == "" {
-			return errors.New("reduction.buffer_samples_table must be specified")
-		}
-		if cfg.Reduction.BufferTimeSeriesTable == "" {
-			return errors.New("reduction.buffer_time_series_table must be specified")
-		}
 	}
 
 	return nil
