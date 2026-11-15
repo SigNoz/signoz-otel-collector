@@ -1153,6 +1153,52 @@ func TestBuildKeyWithDimensionsOverflow(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestBuildKeyExistingOperationDoesNotOverflow(t *testing.T) {
+	mexp := &mocks.MetricsExporter{}
+	tcon := &mocks.TracesConsumer{}
+
+	observedZapCore, _ := observer.New(zap.DebugLevel)
+	observedLogger := zap.New(observedZapCore)
+
+	defaultNullValue := pcommon.NewValueStr("defaultNullValue")
+	p := newProcessorImp(
+		mexp,
+		tcon,
+		&defaultNullValue,
+		pmetric.AggregationTemporalityCumulative.String(),
+		observedLogger,
+		[]ExcludePattern{},
+	)
+
+	resAttr := pcommon.NewMap()
+	serviceName := "simple_service"
+
+	// Fill the operation tracking map beyond the configured limit.
+	for i := 0; i <= p.maxNumberOfOperationsToTrackPerService; i++ {
+		span := ptrace.NewSpan()
+		span.SetName(fmt.Sprintf("operation-%d", i))
+
+		buf := &bytes.Buffer{}
+		p.buildKey(buf, serviceName, span, []dimension{}, resAttr)
+	}
+
+	// Send an operation that was already tracked.
+	span := ptrace.NewSpan()
+	span.SetName("operation-0")
+
+	buf := &bytes.Buffer{}
+	p.buildKey(buf, serviceName, span, []dimension{}, resAttr)
+
+	// An existing operation must retain its original name.
+	assert.Contains(t, buf.String(), "operation-0")
+	assert.NotContains(t, buf.String(), overflowOperation)
+	dims := p.buildDimensionKVs(serviceName, span, []dimension{}, resAttr)
+
+	operationValue, found := dims.Get(operationKey)
+	assert.True(t, found)
+	assert.Equal(t, "operation-0", operationValue.AsString())
+}
+
 func TestParseTimesFromKeyOrNow(t *testing.T) {
 	interval := time.Minute
 

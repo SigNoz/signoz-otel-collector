@@ -1177,10 +1177,11 @@ func (p *processorImp) buildDimensionKVs(serviceName string, span ptrace.Span, o
 	if len(p.serviceToOperations) > p.maxNumberOfServicesToTrack {
 		serviceName = overflowServiceName
 	}
-	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+	operations := p.serviceToOperations[serviceName]
+	if _, exists := operations[spanName]; !exists &&
+		len(operations) > p.maxNumberOfOperationsToTrackPerService {
 		spanName = overflowOperation
 	}
-
 	dims := pcommon.NewMap()
 	dims.EnsureCapacity(4 + len(optionalDims))
 	dims.PutStr(serviceNameKey, serviceName)
@@ -1264,7 +1265,10 @@ func (p *processorImp) buildKey(dest *bytes.Buffer, serviceName string, span ptr
 			zap.Int("maxNumberOfServicesToTrack", p.maxNumberOfServicesToTrack))
 		serviceName = overflowServiceName
 	}
-	if len(p.serviceToOperations[serviceName]) > p.maxNumberOfOperationsToTrackPerService {
+	operations := p.serviceToOperations[serviceName]
+
+	if _, exists := operations[spanName]; !exists &&
+		len(operations) > p.maxNumberOfOperationsToTrackPerService {
 		p.logger.Warn("Too many operations to track, using overflow operation name",
 			zap.Int("maxNumberOfOperationsToTrackPerService", p.maxNumberOfOperationsToTrackPerService),
 			zap.String("serviceName", serviceName))
