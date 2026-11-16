@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// Config defines configuration for the metric reduction rules extension.
 type Config struct {
 	DSN string `mapstructure:"dsn"`
 
@@ -14,7 +13,6 @@ type Config struct {
 	PollInterval time.Duration `mapstructure:"poll_interval"`
 }
 
-// Validate checks if the extension configuration is valid
 func (cfg *Config) Validate() error {
 	if cfg.DSN == "" {
 		return errors.New("dsn must be specified")
