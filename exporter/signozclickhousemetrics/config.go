@@ -72,5 +72,14 @@ func (cfg *Config) Validate() error {
 		return errors.New("metadata_write_sample_ratio must be in (0, 1]")
 	}
 
+	if cfg.Rules != nil {
+		if cfg.Reduction.BufferSamplesTable == "" {
+			return errors.New("reduction.buffer_samples_table must be specified")
+		}
+		if cfg.Reduction.BufferTimeSeriesTable == "" {
+			return errors.New("reduction.buffer_time_series_table must be specified")
+		}
+	}
+
 	return nil
 }

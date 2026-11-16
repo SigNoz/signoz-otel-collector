@@ -78,13 +78,11 @@ func TestMetrics_CountGaugeMetrics(t *testing.T) {
 			expectedRouted: 0,
 		},
 		{
-			name:       "ExcludedMetric_WithRule_NotCountedNorRouted",
-			count:      pmetricsgen.Count{GaugeMetricsCount: 1, GaugeDataPointCount: 10},
-			metricName: "signoz.collector.uptime",
-			rules:      metricreductionrule.RuleSet{"signoz.collector.uptime": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0)},
-			// signoz* metrics are excluded = 0
-			expected: 0,
-			// excluded metrics are never routed = 0 routed
+			name:           "ExcludedMetric_WithRule_NotCountedNorRouted",
+			count:          pmetricsgen.Count{GaugeMetricsCount: 1, GaugeDataPointCount: 10},
+			metricName:     "signoz.collector.uptime",
+			rules:          metricreductionrule.RuleSet{"signoz.collector.uptime": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0)},
+			expected:       0,
 			expectedRouted: 0,
 		},
 	}
