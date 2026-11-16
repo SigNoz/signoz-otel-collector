@@ -336,17 +336,16 @@ func Test_reductionSkipsExponentialHistogram(t *testing.T) {
 }
 
 func Test_reductionRoutedMatchesMeter(t *testing.T) {
-	// points are stamped base+0s, base+1s, ...; NaN and no-recorded points restart at base+0s
-	const base, afterFirstPoint = 1727286182000, 1727286183000
+	// data point j is at 1727286182000 + j*1000 ms; NaN and no-recorded points restart at j=0
 	exp := newReductionExporter(t, metricreductionrule.RuleSet{
-		"system.memory.usage0":         metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, afterFirstPoint),
-		"system.cpu.time1":             metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, base),
-		"http.server.duration0":        metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, base),
-		"http.server.duration0.sum":    metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, base),
-		"http.server.duration0.min":    metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, afterFirstPoint),
-		"http.server.duration0.bucket": metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, afterFirstPoint),
-		"zk.duration0.count":           metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, base),
-		"zk.duration0.quantile":        metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, afterFirstPoint),
+		"system.memory.usage0":         metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286183000),
+		"system.cpu.time1":             metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286182000),
+		"http.server.duration0":        metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286182000),
+		"http.server.duration0.sum":    metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286182000),
+		"http.server.duration0.min":    metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286183000),
+		"http.server.duration0.bucket": metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286183000),
+		"zk.duration0.count":           metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286182000),
+		"zk.duration0.quantile":        metricreductionrule.NewReductionRule(labelSet("resource.attr_0"), false, 1727286183000),
 	})
 
 	metrics := pmetricsgen.Generate(pmetricsgen.WithCount(pmetricsgen.Count{
