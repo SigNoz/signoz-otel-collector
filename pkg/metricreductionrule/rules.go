@@ -72,19 +72,28 @@ type Source interface {
 	Current() RuleSet
 }
 
-// FromHost returns the extension with this id, nil when id is nil, or an error when the
+// Config names the signozmetricreductionrules extension a component reads rules from,
+// the way configauth.Config names an authenticator.
+type Config struct {
+	// Extension is the ID of the signozmetricreductionrules extension.
+	Extension component.ID `mapstructure:"extension"`
+	// prevent unkeyed literal initialization
+	_ struct{}
+}
+
+// FromHost returns the extension named in cfg, nil when cfg is nil, or an error when the
 // extension is missing or is not a Source.
-func FromHost(host component.Host, id *component.ID) (Source, error) {
-	if id == nil {
+func FromHost(host component.Host, cfg *Config) (Source, error) {
+	if cfg == nil {
 		return nil, nil
 	}
-	ext, ok := host.GetExtensions()[*id]
+	ext, ok := host.GetExtensions()[cfg.Extension]
 	if !ok {
-		return nil, fmt.Errorf("metric reduction rules extension %q not found", *id)
+		return nil, fmt.Errorf("metric reduction rules extension %q not found", cfg.Extension)
 	}
 	source, ok := ext.(Source)
 	if !ok {
-		return nil, fmt.Errorf("extension %q is not a metric reduction rules extension", *id)
+		return nil, fmt.Errorf("extension %q is not a metric reduction rules extension", cfg.Extension)
 	}
 	return source, nil
 }

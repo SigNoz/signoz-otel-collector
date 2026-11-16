@@ -4,7 +4,7 @@ Reads metric reduction rules from ClickHouse and serves them to other components
 
 The extension polls the rules table at `poll_interval` and keeps the latest row per metric. A failed poll keeps the last loaded rules. Start runs one poll before pipelines start and never fails on a poll error; with no rules, nothing is reduced. With `enabled: false`, the extension never polls and serves no rules.
 
-The `signozclickhousemetrics` exporter and the `signozmeter` connector read `enabled` and the rules from the extension named in their `extension` field. Name it in both, so the meter subtracts what the exporter condenses.
+The `signozclickhousemetrics` exporter and the `signozmeter` connector read `enabled` and the rules from the extension named in their `rules.extension` field. Name it in both, so the meter subtracts what the exporter condenses.
 
 Rows that are deleted, have an unknown `match_type`, drop no labels, or drop a protected label (`le`, `quantile`, `__name__`, `__temporality__`, `deployment.environment`) are skipped.
 
@@ -24,11 +24,13 @@ extensions:
 
 exporters:
   signozclickhousemetrics:
-    extension: signozmetricreductionrules
+    rules:
+      extension: signozmetricreductionrules
 
 connectors:
   signozmeter:
-    extension: signozmetricreductionrules
+    rules:
+      extension: signozmetricreductionrules
 
 service:
   extensions: [signozmetricreductionrules]

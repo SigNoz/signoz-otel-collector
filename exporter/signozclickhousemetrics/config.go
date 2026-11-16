@@ -3,6 +3,7 @@ package signozclickhousemetrics
 import (
 	"errors"
 
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
@@ -26,9 +27,9 @@ type Config struct {
 	MetadataTable   string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
-	// Extension is the signozmetricreductionrules extension to read reduction rules from.
+	// Rules names the signozmetricreductionrules extension to read reduction rules from.
 	// Reduction is on when it is set and the extension is enabled.
-	Extension *component.ID `mapstructure:"extension"`
+	Rules *metricreductionrule.Config `mapstructure:"rules"`
 
 	// MetadataWriteSampleRatio, in (0, 1], is the fraction of metadata rows
 	// written per batch; 1.0 (default) writes all. Opt-in; lowering it trades

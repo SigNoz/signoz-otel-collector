@@ -121,7 +121,7 @@ func TestMetricsToMetrics(t *testing.T) {
 			cfg: &Config{
 				Dimensions:           []Dimension{{Name: "resource.attr_0"}},
 				MetricsFlushInterval: time.Millisecond,
-				Extension:            &rulesID,
+				Rules:                &metricreductionrule.Config{Extension: rulesID},
 			},
 			host: testHost{rulesID: testSource{enabled: false, rules: metricreductionrule.RuleSet{
 				"system.memory.usage0": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0),
@@ -136,7 +136,7 @@ func TestMetricsToMetrics(t *testing.T) {
 			cfg: &Config{
 				Dimensions:           []Dimension{{Name: "resource.attr_0"}},
 				MetricsFlushInterval: time.Millisecond,
-				Extension:            &rulesID,
+				Rules:                &metricreductionrule.Config{Extension: rulesID},
 			},
 			host: testHost{rulesID: testSource{enabled: true, rules: metricreductionrule.RuleSet{
 				"system.memory.usage0": metricreductionrule.NewReductionRule(map[string]struct{}{"pod": {}}, false, 0),

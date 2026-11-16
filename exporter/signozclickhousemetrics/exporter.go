@@ -291,7 +291,7 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 }
 
 func (c *clickhouseMetricsExporter) Start(ctx context.Context, host component.Host) error {
-	rules, err := metricreductionrule.FromHost(host, c.cfg.Extension)
+	rules, err := metricreductionrule.FromHost(host, c.cfg.Rules)
 	if err != nil {
 		return err
 	}

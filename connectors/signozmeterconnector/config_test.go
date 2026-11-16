@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SigNoz/signoz-otel-collector/connectors/signozmeterconnector/internal/metadata"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -52,7 +53,7 @@ func TestLoadConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "extension",
+			name: "rules",
 			expect: &Config{
 				Dimensions: []Dimension{
 					{
@@ -66,7 +67,7 @@ func TestLoadConfig(t *testing.T) {
 					},
 				},
 				MetricsFlushInterval: time.Hour * 1,
-				Extension:            &rulesID,
+				Rules:                &metricreductionrule.Config{Extension: rulesID},
 			},
 		},
 		{

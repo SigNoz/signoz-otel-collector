@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/collector/component"
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 )
 
 // metric definitions for different telemetry signals
@@ -39,9 +39,9 @@ type Config struct {
 	// MetricsEmitInterval is the time period between when metrics are flushed or emitted to the configured MetricsExporter.
 	MetricsFlushInterval time.Duration `mapstructure:"metrics_flush_interval"`
 
-	// Extension is the signozmetricreductionrules extension whose rules decide which data
+	// Rules names the signozmetricreductionrules extension whose rules decide which data
 	// points are indexed.
-	Extension *component.ID `mapstructure:"extension"`
+	Rules *metricreductionrule.Config `mapstructure:"rules"`
 
 	// prevent unkeyed literal initialization
 	_ struct{}

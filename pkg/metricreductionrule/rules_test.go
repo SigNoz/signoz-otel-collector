@@ -83,6 +83,7 @@ func (source) Current() RuleSet {
 
 func TestFromHost(t *testing.T) {
 	id := component.MustNewID("signozmetricreductionrules")
+	cfg := &Config{Extension: id}
 	rulesExtension := source{}
 	notSource := struct {
 		component.StartFunc
@@ -91,20 +92,20 @@ func TestFromHost(t *testing.T) {
 
 	testCases := []struct {
 		name       string
-		id         *component.ID
+		cfg        *Config
 		extensions map[component.ID]component.Component
 		expected   Source
 		err        string
 	}{
 		{name: "NoExtensionNamed_Nil", extensions: map[component.ID]component.Component{id: rulesExtension}},
-		{name: "ExtensionNamed_Found", id: &id, extensions: map[component.ID]component.Component{id: rulesExtension}, expected: rulesExtension},
-		{name: "ExtensionNamedButMissing_Error", id: &id, extensions: map[component.ID]component.Component{component.MustNewID("file_storage"): rulesExtension}, err: `metric reduction rules extension "signozmetricreductionrules" not found`},
-		{name: "ExtensionNotSource_Error", id: &id, extensions: map[component.ID]component.Component{id: notSource}, err: `extension "signozmetricreductionrules" is not a metric reduction rules extension`},
+		{name: "ExtensionNamed_Found", cfg: cfg, extensions: map[component.ID]component.Component{id: rulesExtension}, expected: rulesExtension},
+		{name: "ExtensionNamedButMissing_Error", cfg: cfg, extensions: map[component.ID]component.Component{component.MustNewID("file_storage"): rulesExtension}, err: `metric reduction rules extension "signozmetricreductionrules" not found`},
+		{name: "ExtensionNotSource_Error", cfg: cfg, extensions: map[component.ID]component.Component{id: notSource}, err: `extension "signozmetricreductionrules" is not a metric reduction rules extension`},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got, err := FromHost(host(testCase.extensions), testCase.id)
+			got, err := FromHost(host(testCase.extensions), testCase.cfg)
 			if testCase.err != "" {
 				assert.EqualError(t, err, testCase.err)
 				assert.Nil(t, got)

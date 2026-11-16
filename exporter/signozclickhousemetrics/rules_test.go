@@ -460,7 +460,7 @@ func Test_writeBatchReductionEnabled(t *testing.T) {
 	conn.ExpectClose()
 
 	cfg := reductionTestConfig()
-	cfg.Extension = &rulesID
+	cfg.Rules = &metricreductionrule.Config{Extension: rulesID}
 	cfg.Database = ""
 	cfg.Reduction.BufferSamplesTable = ""
 	cfg.Reduction.BufferTimeSeriesTable = ""
@@ -488,7 +488,7 @@ func Test_StartReduction(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		extension          *component.ID
+		rules              *metricreductionrule.Config
 		extensions         testHost
 		expectedSamples    string
 		expectedTimeSeries string
@@ -497,21 +497,21 @@ func Test_StartReduction(t *testing.T) {
 		expectedErr                 string
 	}{
 		{
-			name:               "NoExtensionNamed_RawTables",
+			name:               "NoRules_RawTables",
 			extensions:         testHost{rulesID: testSource{enabled: true}},
 			expectedSamples:    "INSERT INTO signoz_metrics.distributed_samples_v4 (",
 			expectedTimeSeries: "INSERT INTO signoz_metrics.distributed_time_series_v4 (",
 		},
 		{
 			name:               "ExtensionDisabled_RawTables",
-			extension:          &rulesID,
+			rules:              &metricreductionrule.Config{Extension: rulesID},
 			extensions:         testHost{rulesID: testSource{enabled: false}},
 			expectedSamples:    "INSERT INTO signoz_metrics.distributed_samples_v4 (",
 			expectedTimeSeries: "INSERT INTO signoz_metrics.distributed_time_series_v4 (",
 		},
 		{
 			name:                        "ExtensionEnabled_BufferTables",
-			extension:                   &rulesID,
+			rules:                       &metricreductionrule.Config{Extension: rulesID},
 			extensions:                  testHost{rulesID: testSource{enabled: true}},
 			expectedSamples:             "INSERT INTO signoz_metrics.distributed_samples_v4_buffer (",
 			expectedTimeSeries:          "INSERT INTO signoz_metrics.distributed_time_series_v4_buffer (",
@@ -519,13 +519,13 @@ func Test_StartReduction(t *testing.T) {
 		},
 		{
 			name:        "ExtensionNamedButMissing_Error",
-			extension:   &rulesID,
+			rules:       &metricreductionrule.Config{Extension: rulesID},
 			extensions:  testHost{},
 			expectedErr: `metric reduction rules extension "signozmetricreductionrules" not found`,
 		},
 		{
 			name:        "ExtensionNotSource_Error",
-			extension:   &rulesID,
+			rules:       &metricreductionrule.Config{Extension: rulesID},
 			extensions:  testHost{rulesID: notSource},
 			expectedErr: `extension "signozmetricreductionrules" is not a metric reduction rules extension`,
 		},
@@ -553,7 +553,7 @@ func Test_StartReduction(t *testing.T) {
 				zap.NewNop(),
 			)
 			cfg := createDefaultConfig().(*Config)
-			cfg.Extension = testCase.extension
+			cfg.Rules = testCase.rules
 			exp, err := NewClickHouseExporter(
 				WithConn(conn),
 				WithUsageCollector(usageCollector),

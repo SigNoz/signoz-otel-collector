@@ -79,7 +79,7 @@ func (*meterConnector) Capabilities() consumer.Capabilities {
 }
 
 func (meterconnector *meterConnector) Start(ctx context.Context, host component.Host) error {
-	rules, err := metricreductionrule.FromHost(host, meterconnector.config.Extension)
+	rules, err := metricreductionrule.FromHost(host, meterconnector.config.Rules)
 	if err != nil {
 		return err
 	}
