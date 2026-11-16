@@ -93,8 +93,10 @@ const (
 		scope_name,
 		scope_version,
 		scope_string,
-		inserted_at
+		inserted_at,
+		event_name
 		) VALUES (
+			?,
 			?,
 			?,
 			?,
@@ -152,6 +154,7 @@ type Record struct {
 	bodyJSONPromoted string
 	scopeName        string
 	scopeVersion     string
+	eventName        string
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -261,11 +264,10 @@ type clickhouseLogsExporter struct {
 	keysCache *ttlcache.Cache[string, struct{}]
 	rfCache   *ttlcache.Cache[string, struct{}]
 
-	shouldSkipKeyValue    atomic.Value // stores map[string]shouldSkipKey
-	maxDistinctValues     int
-	fetchKeysInterval     time.Duration
-	shutdownFuncs         []func() error
-	maxAllowedDataAgeDays int
+	shouldSkipKeyValue atomic.Value // stores map[string]shouldSkipKey
+	maxDistinctValues  int
+	fetchKeysInterval  time.Duration
+	shutdownFuncs      []func() error
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
@@ -279,11 +281,6 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		return nil, err
 	}
 
-	maxAllowedDataAgeDays := defaultMaxAllowedDataAgeDays
-	if cfg.MaxAllowedDataAgeDays != nil {
-		maxAllowedDataAgeDays = *cfg.MaxAllowedDataAgeDays
-	}
-
 	e := &clickhouseLogsExporter{
 		insertLogsSQLV2:           renderInsertLogsSQLV2(),
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
@@ -294,7 +291,6 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
-		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -466,8 +462,6 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 }
 
 func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.Logs) error {
-	oldestAllowedTs := uint64(time.Now().Add(-time.Duration(e.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano())
-
 	start := time.Now()
 	chLen := 5
 
@@ -589,6 +583,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.scopeVersion,
 					rec.scopeMap.StringData,
 					time.Now(),
+					rec.eventName,
 				)
 				if err := insertLogsStmtV2.Append(args...); err != nil {
 					return fmt.Errorf("StatementAppendLogsV2:%w", err)
@@ -644,10 +639,6 @@ producerIteration:
 					if ts == 0 {
 						ts = ots
 					}
-					if ts < oldestAllowedTs {
-						e.logger.Debug("skipping log", zap.Uint64("ts", ts), zap.Uint64("oldestAllowedTs", oldestAllowedTs))
-						return nil
-					}
 
 					id, err := ksuid.NewRandomWithTime(time.Unix(0, int64(ts)))
 					if err != nil {
@@ -695,6 +686,7 @@ producerIteration:
 						bodyJSONPromoted: promoted,
 						scopeName:        scopeName,
 						scopeVersion:     scopeVersion,
+						eventName:        record.EventName(),
 						resourceMap:      resourcesMap,
 						scopeMap:         scopeMap,
 						attrsMap:         attrsMap,
@@ -799,11 +791,10 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		return getStringifiedBody(body), "{}", "{}"
 	}
 
-	bodyJSON := pcommon.NewValueMap()
-	if body.Type() == pcommon.ValueTypeMap {
-		// switch the reference to bodyJSON
-		bodyJSON = body
-	} else {
+	// switch the reference to bodyJSON
+	bodyJSON := body
+	if body.Type() != pcommon.ValueTypeMap {
+		bodyJSON = pcommon.NewValueMap()
 		bodyJSON.Map().PutStr(bodyNonMapKey, getStringifiedBody(body))
 		e.nonMapBodyCounter.Add(ctx, 1)
 	}
@@ -823,6 +814,9 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 }
 
 func getJSONColumnBody(body pcommon.Value) string {
+	if body.Map().Len() == 0 {
+		return "{}"
+	}
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	if err != nil {
 		return "{}"
