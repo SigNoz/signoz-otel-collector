@@ -1194,6 +1194,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
+		// a key cached for a failed Send makes the retry skip the row
+		pending := make(map[string]struct{}, len(timeSeries))
 		for i := range timeSeries {
 			ts := &timeSeries[i]
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
@@ -1206,6 +1208,9 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				if value := item.Value(); value {
 					continue
 				}
+			}
+			if _, ok := pending[cacheKey]; ok {
+				continue
 			}
 			if c.cfg.Reduction.Enabled {
 				err = statement.Append(
@@ -1249,9 +1254,15 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
+			pending[cacheKey] = struct{}{}
+		}
+		if err := statement.Send(); err != nil {
+			return err
+		}
+		for cacheKey := range pending {
 			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
 		}
-		return statement.Send()
+		return nil
 	}
 
 	writeSamples := func(ctx context.Context, samples []sample) error {

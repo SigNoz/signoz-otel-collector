@@ -2,6 +2,7 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -1226,4 +1227,37 @@ func Test_shutdown(t *testing.T) {
 	for ok := range errChan {
 		assert.Error(t, ok)
 	}
+}
+
+func Test_writeTimeSeriesCachesOnlyAfterSend(t *testing.T) {
+	conn, err := cmock.NewClickHouseNative(nil)
+	require.NoError(t, err)
+	conn.MatchExpectationsInOrder(false)
+
+	samplesSQL := "INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	timeSeriesSQL := "INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	metadataSQL := "INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	chExporter, err := NewClickHouseExporter(
+		WithConn(conn),
+		WithConfig(&Config{}),
+		WithLogger(zaptest.NewLogger(t)),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+
+	// ClickHouse refuses writes like this while its replicated tables initialize after a restart.
+	conn.ExpectPrepareBatch(samplesSQL)
+	conn.ExpectPrepareBatch(timeSeriesSQL).ExpectSend().WillReturnError(errors.New("code: 667, message: Table is not initialized yet"))
+	conn.ExpectPrepareBatch(metadataSQL)
+	require.Error(t, chExporter.PushMetrics(context.Background(), metrics))
+	require.Equal(t, 0, chExporter.cache.Len(), "a failed Send must leave nothing cached, or the retry skips the rows")
+
+	conn.ExpectPrepareBatch(samplesSQL)
+	conn.ExpectPrepareBatch(timeSeriesSQL)
+	conn.ExpectPrepareBatch(metadataSQL)
+	require.NoError(t, chExporter.PushMetrics(context.Background(), metrics))
+	require.Positive(t, chExporter.cache.Len(), "a successful Send caches the rows it wrote")
+	require.NoError(t, conn.ExpectationsWereMet())
 }
