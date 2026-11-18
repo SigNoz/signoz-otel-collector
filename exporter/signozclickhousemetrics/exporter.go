@@ -234,6 +234,10 @@ func NewClickHouseExporter(opts ...ExporterOption) (*clickhouseMetricsExporter, 
 		}
 	}
 
+	if chExporter.enableExpHist {
+		chExporter.logger.Warn("enable_exp_hist no longer writes DD sketches: exponential histogram percentiles are unavailable; only .count, .sum, .min and .max samples are written")
+	}
+
 	if chExporter.cfg.Reduction.Enabled {
 		chExporter.samplesSQL = fmt.Sprintf(bufferSamplesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferSamplesTable)
 		chExporter.timeSeriesSQL = fmt.Sprintf(bufferTimeSeriesSQLTmpl, chExporter.cfg.Database, chExporter.cfg.Reduction.BufferTimeSeriesTable)
