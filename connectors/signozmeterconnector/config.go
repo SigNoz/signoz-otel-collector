@@ -3,6 +3,8 @@ package signozmeterconnector
 import (
 	"fmt"
 	"time"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/metricreductionrule"
 )
 
 // metric definitions for different telemetry signals
@@ -13,10 +15,15 @@ const (
 	metricNameSpansSize  = "signoz.meter.span.size"
 	metricDescSpansSize  = "The size of spans observed."
 
-	metricNameMetricsDataPointsCount = "signoz.meter.metric.datapoint.count"
-	metricDescMetricsDataPointsCount = "The number of data points observed."
-	metricNameMetricsDataPointsSize  = "signoz.meter.metric.datapoint.size"
-	metricDescMetricsDataPointsSize  = "The size of data points observed."
+	// ingested counts every data point received. indexed (datapoint.count) is what is
+	// stored and queryable: ingested minus the data points reduction rules condense.
+	// SigNoz adds the condensed rows to datapoint.count separately.
+	metricNameMetricsDataPointsCount         = "signoz.meter.metric.datapoint.count"
+	metricDescMetricsDataPointsCount         = "The number of data points indexed."
+	metricNameMetricsDataPointsIngestedCount = "signoz.meter.metric.datapoint.ingested.count"
+	metricDescMetricsDataPointsIngestedCount = "The number of data points ingested."
+	metricNameMetricsDataPointsSize          = "signoz.meter.metric.datapoint.size"
+	metricDescMetricsDataPointsSize          = "The size of data points observed."
 
 	metricNameLogsCount = "signoz.meter.log.count"
 	metricDescLogsCount = "The number of log records observed."
@@ -31,6 +38,10 @@ type Config struct {
 
 	// MetricsEmitInterval is the time period between when metrics are flushed or emitted to the configured MetricsExporter.
 	MetricsFlushInterval time.Duration `mapstructure:"metrics_flush_interval"`
+
+	// Rules names the signozmetricreductionrules extension whose rules decide which data
+	// points are indexed.
+	Rules *metricreductionrule.Config `mapstructure:"rules"`
 
 	// prevent unkeyed literal initialization
 	_ struct{}

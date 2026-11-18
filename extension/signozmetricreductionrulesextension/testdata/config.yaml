@@ -1,5 +1,6 @@
 signozmetricreductionrules:
 signozmetricreductionrules/all_fields:
+  enabled: true
   dsn: tcp://clickhouse:9000
   poll_interval: 5s
 signozmetricreductionrules/dsn_empty:

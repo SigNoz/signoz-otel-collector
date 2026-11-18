@@ -56,6 +56,9 @@ func newExtension(cfg *Config, settings component.TelemetrySettings, conn clickh
 }
 
 func (e *rulesExtension) Start(ctx context.Context, host component.Host) error {
+	if !e.cfg.Enabled {
+		return nil
+	}
 	// fail open: with no rules loaded everything is written unreduced, which is always correct
 	pollCtx, cancel := context.WithTimeout(ctx, rulesPollTimeout)
 	e.pollReductionRules(pollCtx)
@@ -69,6 +72,10 @@ func (e *rulesExtension) Shutdown(ctx context.Context) error {
 	e.wg.Wait()
 	e.telemetry.Shutdown()
 	return e.conn.Close()
+}
+
+func (e *rulesExtension) Enabled() bool {
+	return e.cfg.Enabled
 }
 
 // Current returns the active rules, or nil.
