@@ -16,7 +16,7 @@ import (
 	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opencensus.io/stats/view"
