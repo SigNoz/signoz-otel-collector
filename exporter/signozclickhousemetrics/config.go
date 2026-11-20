@@ -23,8 +23,9 @@ type Config struct {
 	Database        string `mapstructure:"database"`
 	SamplesTable    string `mapstructure:"samples_table"`
 	TimeSeriesTable string `mapstructure:"time_series_table"`
-	ExpHistTable    string `mapstructure:"exp_hist_table"`
-	MetadataTable   string `mapstructure:"metadata_table"`
+	// Deprecated: ignored; DD sketches are no longer written.
+	ExpHistTable  string `mapstructure:"exp_hist_table"`
+	MetadataTable string `mapstructure:"metadata_table"`
 
 	Reduction ReductionConfig `mapstructure:"reduction"`
 

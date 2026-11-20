@@ -5,7 +5,7 @@ import (
 	"log"
 	"testing"
 
-	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"go.uber.org/zap/zaptest"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
