@@ -20,10 +20,10 @@ Optional:
 - `database` (default `signoz_metrics`)
 - `samples_table` (default `distributed_samples_v4`)
 - `time_series_table` (default `distributed_time_series_v4`)
-- `exp_hist_table` (default `distributed_exp_hist`)
+- `exp_hist_table`: deprecated and ignored
 - `metadata_table` (default `distributed_metadata`)
-- `enable_exp_hist` (default `false`): write exponential histograms as DD
-  sketches to the exp-hist table.
+- `enable_exp_hist` (default `false`): write the count, sum, min and max of
+  delta exponential histograms as samples. DD sketches are no longer written.
 - `metadata_write_sample_ratio` (default `1.0`, range `(0, 1]`): fraction of
   attribute-metadata rows written per batch. Metadata rows are deduplicated
   within a batch; lowering the ratio additionally samples them, trading
@@ -70,7 +70,6 @@ views derive the rest:
 ```
 exporter --> samples_v4 --> samples_v4_agg_5m --> samples_v4_agg_30m      (pre-aggregates)
          --> time_series_v4 --> _6hrs --> _1day --> _1week                (series presence, hour to week epochs)
-         --> exp_hist                                                     (if enable_exp_hist)
          --> metadata, usage                                              (attribute catalog, ingest accounting)
 ```
 
