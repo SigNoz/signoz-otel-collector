@@ -11,7 +11,6 @@ import (
 
 type batch struct {
 	samples  []sample
-	expHist  []exponentialHistogramSample
 	ts       []ts
 	metadata []metadata
 	// per-batch dedup of metadata rows by identity (metaKey)
@@ -23,7 +22,6 @@ type batch struct {
 func newBatch(logger *zap.Logger, samplesHint, tsHint, metadataHint int) *batch {
 	return &batch{
 		samples:  make([]sample, 0, max(samplesHint, 0)),
-		expHist:  make([]exponentialHistogramSample, 0),
 		ts:       make([]ts, 0, max(tsHint, 0)),
 		metadata: make([]metadata, 0, max(metadataHint, 0)),
 		metaIdx:  make(map[metaKey]int, max(metadataHint, 0)),
@@ -86,8 +84,4 @@ func (b *batch) addSample(sample *sample) {
 
 func (b *batch) addTs(ts *ts) {
 	b.ts = append(b.ts, *ts)
-}
-
-func (b *batch) addExpHist(expHist *exponentialHistogramSample) {
-	b.expHist = append(b.expHist, *expHist)
 }
