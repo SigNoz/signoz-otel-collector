@@ -1118,6 +1118,8 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 		}
 		defer func() { _ = statement.Close() }()
 
+		seenKeys := make(map[string]struct{}, len(timeSeries))
+		pendingCacheKeys := make([]string, 0, len(timeSeries))
 		for i := range timeSeries {
 			ts := &timeSeries[i]
 			roundedUnixMilli := ts.unixMilli / 3600000 * 3600000
@@ -1126,8 +1128,12 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 				// a series whose rule drops nothing is its own reduction: keep raw+reduced rows distinct
 				cacheKey += ":reduced"
 			}
+			if _, seen := seenKeys[cacheKey]; seen {
+				continue
+			}
 			if item := c.cache.Get(cacheKey); item != nil {
 				if value := item.Value(); value {
+					seenKeys[cacheKey] = struct{}{}
 					continue
 				}
 			}
@@ -1173,9 +1179,16 @@ func (c *clickhouseMetricsExporter) writeBatch(ctx context.Context, batch *batch
 			if err != nil {
 				return err
 			}
+			seenKeys[cacheKey] = struct{}{}
+			pendingCacheKeys = append(pendingCacheKeys, cacheKey)
+		}
+		if err := statement.Send(); err != nil {
+			return err
+		}
+		for _, cacheKey := range pendingCacheKeys {
 			c.cache.Set(cacheKey, true, ttlcache.DefaultTTL)
 		}
-		return statement.Send()
+		return nil
 	}
 
 	writeSamples := func(ctx context.Context, samples []sample) error {
