@@ -689,7 +689,7 @@ producerIteration:
 
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
-					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(record.Attributes(), promotedAttrPaths).Map().AsRaw(), id.String())
+					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(record.Attributes(), promotedAttrPaths), id.String())
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
@@ -835,14 +835,14 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		body = originalBody
 	}
 
-	return getStringifiedBody(body), getJSONColumnBody(bodyJSON), getJSONColumnBody(promoted)
+	return getStringifiedBody(body), getJSONColumnBody(bodyJSON.Map().AsRaw()), getJSONColumnBody(promoted)
 }
 
-func getJSONColumnBody(body pcommon.Value) string {
-	if body.Map().Len() == 0 {
+func getJSONColumnBody(body map[string]any) string {
+	if len(body) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
+	b, err := json.Marshal(utils.SanitizeJSON(body))
 	if err != nil {
 		return "{}"
 	}

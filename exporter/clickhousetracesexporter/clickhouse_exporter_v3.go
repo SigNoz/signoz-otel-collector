@@ -172,9 +172,12 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 
 // getAttributesJSON serializes span attributes, alternative is to typecast
 // each attribute since the slice of any can't be inserted.
-func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
+func getAttributesJSON(attrs map[string]any, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
+	if len(attrs) == 0 {
+		return "{}"
+	}
 	// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-	b, err := json.Marshal(utils.SanitizeJSON(attrs.AsRaw()))
+	b, err := json.Marshal(utils.SanitizeJSON(attrs))
 	if err != nil {
 		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
 			zap.Error(err),
@@ -347,7 +350,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
-	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
+	attributesJSON := getAttributesJSON(otelSpan.Attributes().AsRaw(), otelSpan.TraceID(), otelSpan.SpanID())
 
 	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
 
@@ -379,7 +382,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		BillableAttributesNumber: billableNumberAttrs,
 		AttributesBool:           attrMap.BoolMap,
 		Attributes:               attributesJSON,
-		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,

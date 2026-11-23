@@ -6,38 +6,38 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-var emptyPromoted = pcommon.NewValueMap()
-
 // BuildPromotedPaths extracts the given promoted paths from source into a new map, leaving source untouched.
-// With no promoted paths it returns a shared empty map, which callers must not modify.
-func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) pcommon.Value {
-	if len(promotedPaths) == 0 {
-		return emptyPromoted
-	}
-
-	promoted := pcommon.NewValueMap()
-	pm := promoted.Map()
+// It returns nil when no path is found.
+func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) map[string]any {
+	var promoted map[string]any
 	for path := range promotedPaths {
-		extractPromotedPath(source, pm, path, path)
+		v, ok := extractPromotedPath(source, path)
+		if !ok {
+			continue
+		}
+		if promoted == nil {
+			promoted = make(map[string]any, len(promotedPaths))
+		}
+		promoted[path] = v
 	}
 	return promoted
 }
 
-// extractPromotedPath walks source by remainingPath and copies the value into promotedMap
-// at fullPath, preferring a literal key match at each level before descending on '.'.
-func extractPromotedPath(source pcommon.Map, promotedMap pcommon.Map, fullPath, remainingPath string) {
+// extractPromotedPath walks source by remainingPath and returns the raw value,
+// preferring a literal key match at each level before descending on '.'.
+func extractPromotedPath(source pcommon.Map, remainingPath string) (any, bool) {
 	if v, ok := source.Get(remainingPath); ok {
 		if v.Type() != pcommon.ValueTypeMap { // ignore map values for extraction
-			v.CopyTo(promotedMap.PutEmpty(fullPath))
-			return
+			return v.AsRaw(), true
 		}
 	}
 
 	head, tail, ok := strings.Cut(remainingPath, ".")
 	if !ok { // no nested path to check
-		return
+		return nil, false
 	}
 	if v, ok := source.Get(head); ok && v.Type() == pcommon.ValueTypeMap { // if value is not map, that means full path doesn't exist
-		extractPromotedPath(v.Map(), promotedMap, fullPath, tail)
+		return extractPromotedPath(v.Map(), tail)
 	}
+	return nil, false
 }

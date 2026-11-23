@@ -1026,7 +1026,7 @@ func Test_getAttributesJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotJSON := getAttributesJSON(tt.attrs, pcommon.TraceID{}, pcommon.SpanID{})
+			gotJSON := getAttributesJSON(tt.attrs.AsRaw(), pcommon.TraceID{}, pcommon.SpanID{})
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal([]byte(gotJSON), &got))

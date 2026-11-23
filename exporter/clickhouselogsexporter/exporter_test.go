@@ -1007,5 +1007,5 @@ func TestGetJSONColumnBodyEmptyMap(t *testing.T) {
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	require.NoError(t, err)
 
-	assert.Equal(t, string(b), getJSONColumnBody(body))
+	assert.Equal(t, string(b), getJSONColumnBody(body.Map().AsRaw()))
 }
