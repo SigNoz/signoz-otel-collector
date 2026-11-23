@@ -2,9 +2,11 @@ package clickhouselogsexporter
 
 import (
 	"context"
+	"errors"
 	"log"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -267,6 +269,173 @@ func TestExporterPushLogsDataEventNameNotBilled(t *testing.T) {
 			// Only body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25) count.
 			assert.Equal(t, float64(25+2+25), billedBytes())
 
+			assert.NoError(t, exporter.Shutdown(context.Background()))
+			eventually(t, func() bool { return mock.ExpectationsWereMet() == nil })
+		})
+	}
+}
+
+// logsRowRecorder records the args appended to the logs_v2 batch, which the mock discards.
+type logsRowRecorder struct {
+	driver.Conn
+	mu   sync.Mutex
+	rows [][]any
+}
+
+func (c *logsRowRecorder) PrepareBatch(ctx context.Context, query string, opts ...driver.PrepareBatchOption) (driver.Batch, error) {
+	b, err := c.Conn.PrepareBatch(ctx, query, opts...)
+	if err != nil || !strings.Contains(query, "distributed_logs_v2 (") {
+		return b, err
+	}
+	return &recordingBatch{Batch: b, recorder: c}, nil
+}
+
+type recordingBatch struct {
+	driver.Batch
+	recorder *logsRowRecorder
+}
+
+func (b *recordingBatch) Append(v ...any) error {
+	b.recorder.mu.Lock()
+	b.recorder.rows = append(b.recorder.rows, v)
+	b.recorder.mu.Unlock()
+	return b.Batch.Append(v...)
+}
+
+func TestDoFetchPromotedPaths(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		initialAttributePaths  map[string]struct{}
+		bodyRows               [][]any
+		attributeRows          [][]any
+		attributeErr           error
+		expectedBodyPaths      map[string]struct{}
+		expectedAttributePaths map[string]struct{}
+	}{
+		{
+			name:                   "BodyAndAttributePaths_BothStored",
+			initialAttributePaths:  map[string]struct{}{},
+			bodyRows:               [][]any{{"message"}},
+			attributeRows:          [][]any{{"http.method"}, {"user.id"}},
+			expectedBodyPaths:      map[string]struct{}{"message": {}},
+			expectedAttributePaths: map[string]struct{}{"http.method": {}, "user.id": {}},
+		},
+		{
+			name:                   "AttributeFetchFails_KeepsPreviousAttributePaths",
+			initialAttributePaths:  map[string]struct{}{"service.version": {}},
+			bodyRows:               [][]any{{"level"}},
+			attributeErr:           errors.New("clickhouse unavailable"),
+			expectedBodyPaths:      map[string]struct{}{"level": {}},
+			expectedAttributePaths: map[string]struct{}{"service.version": {}},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+			require.NoError(t, err)
+
+			cols := []cmock.ColumnType{{Name: "field_name", Type: "String"}}
+			mock.ExpectSelect("column_name = 'body_promoted' AND field_context = 'body'").WillReturnRows(cmock.NewRows(cols, testCase.bodyRows))
+			attributeSelect := mock.ExpectSelect("column_name = 'attributes_promoted' AND field_context = 'attribute'")
+			if testCase.attributeErr != nil {
+				attributeSelect.WillReturnError(testCase.attributeErr)
+			} else {
+				attributeSelect.WillReturnRows(cmock.NewRows(cols, testCase.attributeRows))
+			}
+
+			exporter := setupTestExporter(t, mock)
+			exporter.promotedAttributePaths.Store(testCase.initialAttributePaths)
+
+			exporter.doFetchPromotedPaths()
+
+			assert.Equal(t, testCase.expectedBodyPaths, exporter.promotedPaths.Load())
+			assert.Equal(t, testCase.expectedAttributePaths, exporter.promotedAttributePaths.Load())
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestExporterPushLogsDataAttributesPromoted(t *testing.T) {
+	testCases := []struct {
+		name           string
+		promotedPaths  map[string]struct{}
+		attributes     map[string]any
+		expectedColumn string
+	}{
+		{
+			name:           "PromotedPath_OnlyPromotedAttributeWritten",
+			promotedPaths:  map[string]struct{}{"http.method": {}},
+			attributes:     map[string]any{"http.method": "GET", "user.id": "42"},
+			expectedColumn: `{"http.method":"GET"}`,
+		},
+		{
+			name:           "NestedPromotedPath_ExtractedByDottedPath",
+			promotedPaths:  map[string]struct{}{"k8s.pod": {}},
+			attributes:     map[string]any{"k8s": map[string]any{"pod": "api-0", "node": "n1"}},
+			expectedColumn: `{"k8s.pod":"api-0"}`,
+		},
+		{
+			name:           "NoPromotedPaths_EmptyObject",
+			promotedPaths:  map[string]struct{}{},
+			attributes:     map[string]any{"region": "us-east-1"},
+			expectedColumn: "{}",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+			require.NoError(t, err)
+
+			tagStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_tag_attributes_v2")
+			attributeKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_attribute_keys")
+			resourceKeysStmt := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_resource_keys")
+			logsStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2.*")
+			logsResourceStatementV2 := mock.ExpectPrepareBatch("INSERT INTO signoz_logs.distributed_logs_v2_resource.*")
+			tagStatementV2.ExpectAppend()
+			tagStatementV2.ExpectSend()
+			attributeKeysStmt.ExpectAppend()
+			attributeKeysStmt.ExpectSend()
+			resourceKeysStmt.ExpectAppend()
+			resourceKeysStmt.ExpectSend()
+			logsStatementV2.ExpectAppend()
+			logsStatementV2.ExpectSend()
+			logsResourceStatementV2.ExpectAppend()
+			logsResourceStatementV2.ExpectSend()
+			mock.ExpectExec(".*insert into signoz_logs.distributed_usage.*").WithArgs()
+			mock.ExpectClose()
+
+			recorder := &logsRowRecorder{Conn: mock}
+			exporter := setupTestExporter(t, recorder)
+			exporter.promotedAttributePaths.Store(testCase.promotedPaths)
+
+			logs := plogsgen.Generate()
+			require.NoError(t, logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Attributes().FromRaw(testCase.attributes))
+
+			require.NoError(t, exporter.pushLogsData(context.Background(), logs))
+
+			recorder.mu.Lock()
+			rows := recorder.rows
+			recorder.mu.Unlock()
+			require.Len(t, rows, 1)
+			// attributes_promoted is the 18th column of insertLogsSQLTemplateV2.
+			assert.Equal(t, testCase.expectedColumn, rows[0][17])
+
+			eventually(t, func() bool {
+				viewRows, err := view.RetrieveData(SigNozLogsBytes)
+				if err != nil {
+					return false
+				}
+				for _, row := range viewRows {
+					for _, tg := range row.Tags {
+						if tg.Key == usage.TagExporterIdKey && tg.Value == exporter.id.String() {
+							return true
+						}
+					}
+				}
+				return false
+			})
 			assert.NoError(t, exporter.Shutdown(context.Background()))
 			eventually(t, func() bool { return mock.ExpectationsWereMet() == nil })
 		})
@@ -838,5 +1007,5 @@ func TestGetJSONColumnBodyEmptyMap(t *testing.T) {
 	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
 	require.NoError(t, err)
 
-	assert.Equal(t, string(b), getJSONColumnBody(body))
+	assert.Equal(t, string(b), getJSONColumnBody(body.Map().AsRaw()))
 }

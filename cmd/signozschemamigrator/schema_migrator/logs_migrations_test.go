@@ -23,6 +23,8 @@ func TestLogsMigrationsExactNature(t *testing.T) {
 			LogsMigrations[9],  // 2004 (sync)
 			LogsMigrations[10], // 2005 (sync)
 			LogsMigrations[11], // 2006 (sync)
+			LogsMigrations[12], // 2007 (sync)
+			LogsMigrations[13], // 2008 (sync)
 		},
 		[]SchemaMigrationRecord{
 			LogsMigrations[0], // 1000 (async)

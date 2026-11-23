@@ -8,9 +8,8 @@ import (
 )
 
 func TestInvalidBodyType(t *testing.T) {
-	body := pcommon.NewValueStr("test log")
-	promoted := BuildPromotedPaths(body.Map(), map[string]struct{}{})
-	assert.Equal(t, pcommon.NewValueMap(), promoted)
+	promoted := BuildPromotedPaths(nil, map[string]struct{}{})
+	assert.Nil(t, promoted)
 }
 
 func TestPromotedPathSeparation(t *testing.T) {
@@ -66,7 +65,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			promotedPaths: map[string]struct{}{
 				"user": {},
 			},
-			expectedPromoted: map[string]interface{}{},
+			expectedPromoted: nil,
 		},
 		{
 			name: "array_leaf_found_promoted",
@@ -203,7 +202,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 				},
 			},
 			promotedPaths:    map[string]struct{}{},
-			expectedPromoted: map[string]interface{}{},
+			expectedPromoted: nil,
 		},
 		{
 			name: "non_existent_paths",
@@ -215,7 +214,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 				"non.existent.path": {},
 				"another.missing":   {},
 			},
-			expectedPromoted: map[string]interface{}{},
+			expectedPromoted: nil,
 		},
 		{
 			name: "mixed_literal_and_nested",
@@ -305,15 +304,14 @@ func TestPromotedPathSeparation(t *testing.T) {
 			assert.NoError(t, err, "failed to convert map to pcommon.Map")
 
 			// Extract promoted paths
-			promoted := BuildPromotedPaths(body.Map(), tc.promotedPaths)
+			promoted := BuildPromotedPaths(body.Map().AsRaw(), tc.promotedPaths)
 
 			// Convert results back to interface{} for comparison
 			actualBody := body.Map().AsRaw()
-			actualPromoted := promoted.Map().AsRaw()
 
 			// Assertions
 			assert.Equal(t, tc.body, actualBody, "Body should stay the same after extraction")
-			assert.Equal(t, tc.expectedPromoted, actualPromoted, "Promoted should match expected")
+			assert.Equal(t, tc.expectedPromoted, promoted, "Promoted should match expected")
 		})
 	}
 }
