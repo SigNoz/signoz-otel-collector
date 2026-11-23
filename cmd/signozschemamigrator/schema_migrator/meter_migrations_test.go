@@ -21,6 +21,8 @@ func TestMeterMigrationsExactNature(t *testing.T) {
 			MeterMigrations[3],
 			MeterMigrations[4],
 		},
-		[]SchemaMigrationRecord{},
+		[]SchemaMigrationRecord{
+			MeterMigrations[5],
+		},
 	)
 }
