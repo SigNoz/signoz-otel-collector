@@ -88,6 +88,7 @@ const (
 		attributes_string,
 		attributes_number,
 		attributes_bool,
+		attributes,
 		resources_string,
 		resource,
 		scope_name,
@@ -152,6 +153,7 @@ type Record struct {
 	body             string
 	bodyJSON         string
 	bodyJSONPromoted string
+	attributesJSON   string
 	scopeName        string
 	scopeVersion     string
 	eventName        string
@@ -577,6 +579,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.attrsMap.StringData,
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
+					rec.attributesJSON,
 					rec.resourceMap.StringData,
 					rec.resourceMap.StringData,
 					rec.scopeName,
@@ -668,6 +671,8 @@ producerIteration:
 						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
 					}
 
+					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
+
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
 					recordStream <- &Record{
@@ -684,6 +689,7 @@ producerIteration:
 						body:             body,
 						bodyJSON:         bodyJSON,
 						bodyJSONPromoted: promoted,
+						attributesJSON:   attributesJSON,
 						scopeName:        scopeName,
 						scopeVersion:     scopeVersion,
 						eventName:        record.EventName(),
@@ -844,6 +850,21 @@ func getStringifiedBody(body pcommon.Value) string {
 		strBody = body.AsString()
 	}
 	return strBody
+}
+
+func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID string) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(utils.SanitizeJSON(raw))
+	if err != nil {
+		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
+			zap.Error(err),
+			zap.String("log_id", logID),
+		)
+		return "{}"
+	}
+	return string(b)
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
