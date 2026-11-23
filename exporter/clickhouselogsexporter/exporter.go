@@ -689,7 +689,7 @@ producerIteration:
 
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
-					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(record.Attributes(), promotedAttrPaths), id.String())
+					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedAttrPaths), id.String())
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
@@ -824,9 +824,12 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		e.nonMapBodyCounter.Add(ctx, 1)
 	}
 
+	bodyRaw := bodyJSON.Map().AsRaw()
+	bodyJSONColumn := getJSONColumnBody(bodyRaw)
+
 	// promoted paths extraction using cached set
 	promotedSet := e.promotedPaths.Load().(map[string]struct{})
-	promoted := utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
+	promoted := utils.BuildPromotedPaths(bodyRaw, promotedSet)
 
 	if e.cfg.BodyJSONEnabled {
 		// set body to empty string
@@ -835,7 +838,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		body = originalBody
 	}
 
-	return getStringifiedBody(body), getJSONColumnBody(bodyJSON.Map().AsRaw()), getJSONColumnBody(promoted)
+	return getStringifiedBody(body), bodyJSONColumn, getJSONColumnBody(promoted)
 }
 
 func getJSONColumnBody(body map[string]any) string {

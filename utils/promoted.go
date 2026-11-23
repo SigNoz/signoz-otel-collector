@@ -2,13 +2,11 @@ package utils
 
 import (
 	"strings"
-
-	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 // BuildPromotedPaths extracts the given promoted paths from source into a new map, leaving source untouched.
-// It returns nil when no path is found.
-func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) map[string]any {
+// Values are shared with source, not copied. It returns nil when no path is found.
+func BuildPromotedPaths(source map[string]any, promotedPaths map[string]struct{}) map[string]any {
 	var promoted map[string]any
 	for path := range promotedPaths {
 		v, ok := extractPromotedPath(source, path)
@@ -23,12 +21,12 @@ func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) m
 	return promoted
 }
 
-// extractPromotedPath walks source by remainingPath and returns the raw value,
+// extractPromotedPath walks source by remainingPath and returns the value,
 // preferring a literal key match at each level before descending on '.'.
-func extractPromotedPath(source pcommon.Map, remainingPath string) (any, bool) {
-	if v, ok := source.Get(remainingPath); ok {
-		if v.Type() != pcommon.ValueTypeMap { // ignore map values for extraction
-			return v.AsRaw(), true
+func extractPromotedPath(source map[string]any, remainingPath string) (any, bool) {
+	if v, ok := source[remainingPath]; ok {
+		if _, isMap := v.(map[string]any); !isMap { // ignore map values for extraction
+			return v, true
 		}
 	}
 
@@ -36,8 +34,8 @@ func extractPromotedPath(source pcommon.Map, remainingPath string) (any, bool) {
 	if !ok { // no nested path to check
 		return nil, false
 	}
-	if v, ok := source.Get(head); ok && v.Type() == pcommon.ValueTypeMap { // if value is not map, that means full path doesn't exist
-		return extractPromotedPath(v.Map(), tail)
+	if nested, ok := source[head].(map[string]any); ok { // if value is not map, that means full path doesn't exist
+		return extractPromotedPath(nested, tail)
 	}
 	return nil, false
 }

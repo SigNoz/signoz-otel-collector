@@ -350,7 +350,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
-	attributesJSON := getAttributesJSON(otelSpan.Attributes().AsRaw(), otelSpan.TraceID(), otelSpan.SpanID())
+	attrsRaw := otelSpan.Attributes().AsRaw()
+	attributesJSON := getAttributesJSON(attrsRaw, otelSpan.TraceID(), otelSpan.SpanID())
 
 	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
 
@@ -382,7 +383,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		BillableAttributesNumber: billableNumberAttrs,
 		AttributesBool:           attrMap.BoolMap,
 		Attributes:               attributesJSON,
-		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,

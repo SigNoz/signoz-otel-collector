@@ -8,8 +8,7 @@ import (
 )
 
 func TestInvalidBodyType(t *testing.T) {
-	body := pcommon.NewValueStr("test log")
-	promoted := BuildPromotedPaths(body.Map(), map[string]struct{}{})
+	promoted := BuildPromotedPaths(nil, map[string]struct{}{})
 	assert.Nil(t, promoted)
 }
 
@@ -305,7 +304,7 @@ func TestPromotedPathSeparation(t *testing.T) {
 			assert.NoError(t, err, "failed to convert map to pcommon.Map")
 
 			// Extract promoted paths
-			promoted := BuildPromotedPaths(body.Map(), tc.promotedPaths)
+			promoted := BuildPromotedPaths(body.Map().AsRaw(), tc.promotedPaths)
 
 			// Convert results back to interface{} for comparison
 			actualBody := body.Map().AsRaw()
