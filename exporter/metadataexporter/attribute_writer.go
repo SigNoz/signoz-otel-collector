@@ -38,7 +38,7 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 	stmt, err := w.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		w.logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
-		return nil
+		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
@@ -99,6 +99,7 @@ func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) err
 	written, err := w.writeToStatementBatch(ctx, stmt, records, pipeline.SignalLogs)
 	if err != nil {
 		w.logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
+		return err
 	}
 	skipped := totalLogRecords - written
 	w.logger.Debug("pushed logs attributes", zap.Int("total_log_records", totalLogRecords), zap.Int("skipped_log_records", skipped))

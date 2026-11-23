@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
 )
 
@@ -90,6 +91,23 @@ func createDefaultConfig() component.Config {
 }
 
 type metadataExporterFactory struct {
+	openConn func(dsn string) (driver.Conn, error)
+}
+
+func (f *metadataExporterFactory) newExporter(
+	ctx context.Context,
+	cfg Config,
+	set exporter.Settings,
+) (*metadataExporter, error) {
+	openConn := f.openConn
+	if openConn == nil {
+		openConn = openClickHouseConn
+	}
+	conn, err := openConn(cfg.DSN)
+	if err != nil {
+		return nil, err
+	}
+	return newMetadataExporter(ctx, cfg, set, conn)
 }
 
 func (f *metadataExporterFactory) createTracesExporter(
@@ -98,7 +116,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(ctx, oCfg, set)
+	exp, err := f.newExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +126,7 @@ func (f *metadataExporterFactory) createTracesExporter(
 		&oCfg,
 		exp.PushTraces,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
@@ -120,7 +139,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(ctx, oCfg, set)
+	exp, err := f.newExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +149,7 @@ func (f *metadataExporterFactory) createMetricsExporter(
 		&oCfg,
 		exp.PushMetrics,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
@@ -142,7 +162,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	oCfg := *(cfg.(*Config)) // Clone the config
-	exp, err := newMetadataExporter(ctx, oCfg, set)
+	exp, err := f.newExporter(ctx, oCfg, set)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +172,7 @@ func (f *metadataExporterFactory) createLogsExporter(
 		&oCfg,
 		exp.PushLogs,
 		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithTimeout(oCfg.TimeoutConfig),
 		exporterhelper.WithRetry(oCfg.BackOffConfig),
 		exporterhelper.WithQueue(oCfg.QueueBatchConfig),
 		exporterhelper.WithStart(exp.Start),
