@@ -20,6 +20,37 @@ func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) p
 	return promoted
 }
 
+// BuildPromotedPathsRaw is BuildPromotedPaths over a raw map; it returns nil when no path matches.
+func BuildPromotedPathsRaw(source map[string]any, promotedPaths map[string]struct{}) map[string]any {
+	var promoted map[string]any
+	for path := range promotedPaths {
+		if v, ok := extractPromotedPathRaw(source, path); ok {
+			if promoted == nil {
+				promoted = make(map[string]any, len(promotedPaths))
+			}
+			promoted[path] = v
+		}
+	}
+	return promoted
+}
+
+func extractPromotedPathRaw(source map[string]any, remainingPath string) (any, bool) {
+	if v, ok := source[remainingPath]; ok {
+		if _, isMap := v.(map[string]any); !isMap {
+			return v, true
+		}
+	}
+
+	head, tail, ok := strings.Cut(remainingPath, ".")
+	if !ok {
+		return nil, false
+	}
+	if nested, ok := source[head].(map[string]any); ok {
+		return extractPromotedPathRaw(nested, tail)
+	}
+	return nil, false
+}
+
 // extractPromotedPath walks source by remainingPath and copies the value into promotedMap
 // at fullPath, preferring a literal key match at each level before descending on '.'.
 func extractPromotedPath(source pcommon.Map, promotedMap pcommon.Map, fullPath, remainingPath string) {

@@ -687,9 +687,9 @@ producerIteration:
 						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
 					}
 
-					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
-					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(record.Attributes(), promotedAttrPaths).Map().AsRaw(), id.String())
+					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPathsRaw(attrsRaw, promotedAttrPaths), id.String())
+					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)

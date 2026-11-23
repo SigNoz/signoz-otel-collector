@@ -314,6 +314,13 @@ func TestPromotedPathSeparation(t *testing.T) {
 			// Assertions
 			assert.Equal(t, tc.body, actualBody, "Body should stay the same after extraction")
 			assert.Equal(t, tc.expectedPromoted, actualPromoted, "Promoted should match expected")
+
+			promotedRaw := BuildPromotedPathsRaw(actualBody, tc.promotedPaths)
+			if len(actualPromoted) == 0 {
+				assert.Nil(t, promotedRaw)
+			} else {
+				assert.Equal(t, actualPromoted, promotedRaw)
+			}
 		})
 	}
 }
