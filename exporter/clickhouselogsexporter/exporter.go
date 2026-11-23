@@ -89,6 +89,7 @@ const (
 		attributes_number,
 		attributes_bool,
 		attributes,
+		attributes_promoted,
 		resources_string,
 		resource,
 		scope_name,
@@ -97,6 +98,8 @@ const (
 		inserted_at,
 		event_name
 		) VALUES (
+			?,
+			?,
 			?,
 			?,
 			?,
@@ -140,23 +143,24 @@ type attributeMap struct {
 // Record represents a prepared log record, ready to be appended to ClickHouse batches.
 type Record struct {
 	// batch columns
-	tsBucketStart    uint64
-	resourceFP       string
-	ts               uint64
-	ots              uint64
-	id               string
-	traceID          string
-	spanID           string
-	traceFlags       uint32
-	severityText     string
-	severityNum      uint8
-	body             string
-	bodyJSON         string
-	bodyJSONPromoted string
-	attributesJSON   string
-	scopeName        string
-	scopeVersion     string
-	eventName        string
+	tsBucketStart          uint64
+	resourceFP             string
+	ts                     uint64
+	ots                    uint64
+	id                     string
+	traceID                string
+	spanID                 string
+	traceFlags             uint32
+	severityText           string
+	severityNum            uint8
+	body                   string
+	bodyJSON               string
+	bodyJSONPromoted       string
+	attributesJSON         string
+	attributesJSONPromoted string
+	scopeName              string
+	scopeVersion           string
+	eventName              string
 	// attribute/tag maps to be appended by the single consumer
 	resourceMap attributeMap
 	scopeMap    attributeMap
@@ -273,7 +277,9 @@ type clickhouseLogsExporter struct {
 
 	// promotedPaths holds a set of JSON paths that should be promoted.
 	// Accessed via atomic.Value to allow lock-free reads on hot path.
-	promotedPaths             atomic.Value // stores map[string]struct{}
+	promotedPaths          atomic.Value // stores map[string]struct{}
+	promotedAttributePaths atomic.Value // stores map[string]struct{}
+
 	promotedPathsSyncInterval time.Duration
 }
 
@@ -300,6 +306,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 
 	// Ensure promotedPaths is always initialized so reads and type assertions are safe
 	e.promotedPaths.Store(map[string]struct{}{})
+	e.promotedAttributePaths.Store(map[string]struct{}{})
 
 	return e, nil
 }
@@ -384,13 +391,22 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 }
 
 func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
-	// Query Evolution Table for promoted paths
-	// Format: signal, col_name, col_type, field_context, field_name, release_time
-	// Example: logs, body_promoted, JSON, body, user.name, Jan 10
+	if paths, err := e.fetchPromotedPathsForColumn(constants.BodyPromotedColumn, "body"); err == nil {
+		e.promotedPaths.Store(paths)
+	}
+	if paths, err := e.fetchPromotedPathsForColumn(constants.LogsColumnAttributesPromoted, "attribute"); err == nil {
+		e.promotedAttributePaths.Store(paths)
+	}
+}
+
+// Format: signal, col_name, col_type, field_context, field_name, release_time
+// Example: logs, body_promoted, JSON, body, user.name, Jan 10
+func (e *clickhouseLogsExporter) fetchPromotedPathsForColumn(columnName, fieldContext string) (map[string]struct{}, error) {
 	query := fmt.Sprintf(
-		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = 'body' AND field_name != '__all__' SETTINGS max_threads = 1`,
+		`SELECT field_name FROM %s WHERE signal = 'logs' AND column_name = '%s' AND field_context = '%s' AND field_name != '__all__' SETTINGS max_threads = 1`,
 		distributedColumnEvolutionTable,
-		constants.BodyPromotedColumn,
+		columnName,
+		fieldContext,
 	)
 	e.logger.Debug("fetching promoted paths from evolution table", zap.String("query", query))
 
@@ -399,14 +415,13 @@ func (e *clickhouseLogsExporter) doFetchPromotedPaths() {
 	}{}
 	if err := e.db.Select(context.Background(), &rows, query); err != nil {
 		e.logger.Error("error while fetching promoted paths from evolution table", zap.Error(err))
-		return
+		return nil, err
 	}
 	updated := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
 		updated[r.FieldName] = struct{}{}
 	}
-
-	e.promotedPaths.Store(updated)
+	return updated, nil
 }
 
 // Shutdown will shutdown the exporter.
@@ -580,6 +595,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 					rec.attrsMap.NumberData,
 					rec.attrsMap.BoolData,
 					rec.attributesJSON,
+					rec.attributesJSONPromoted,
 					rec.resourceMap.StringData,
 					rec.resourceMap.StringData,
 					rec.scopeName,
@@ -671,33 +687,37 @@ producerIteration:
 						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
 					}
 
+					utils.SanitizeJSON(attrsRaw)
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
+					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
+					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedAttrPaths), id.String())
 
 					originalBody, hasOriginalBody := record.Attributes().Get(constants.OriginalBodyAttributeKey)
 					body, bodyJSON, promoted := e.processBody(groupCtx, record.Body(), originalBody, hasOriginalBody)
 					recordStream <- &Record{
-						tsBucketStart:    uint64(lBucketStart),
-						resourceFP:       fp,
-						ts:               ts,
-						ots:              ots,
-						id:               id.String(),
-						traceID:          utils.TraceIDToHexOrEmptyString(record.TraceID()),
-						spanID:           utils.SpanIDToHexOrEmptyString(record.SpanID()),
-						traceFlags:       uint32(record.Flags()),
-						severityText:     record.SeverityText(),
-						severityNum:      uint8(record.SeverityNumber()),
-						body:             body,
-						bodyJSON:         bodyJSON,
-						bodyJSONPromoted: promoted,
-						attributesJSON:   attributesJSON,
-						scopeName:        scopeName,
-						scopeVersion:     scopeVersion,
-						eventName:        record.EventName(),
-						resourceMap:      resourcesMap,
-						scopeMap:         scopeMap,
-						attrsMap:         attrsMap,
-						logFields:        attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:       int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						tsBucketStart:          uint64(lBucketStart),
+						resourceFP:             fp,
+						ts:                     ts,
+						ots:                    ots,
+						id:                     id.String(),
+						traceID:                utils.TraceIDToHexOrEmptyString(record.TraceID()),
+						spanID:                 utils.SpanIDToHexOrEmptyString(record.SpanID()),
+						traceFlags:             uint32(record.Flags()),
+						severityText:           record.SeverityText(),
+						severityNum:            uint8(record.SeverityNumber()),
+						body:                   body,
+						bodyJSON:               bodyJSON,
+						bodyJSONPromoted:       promoted,
+						attributesJSON:         attributesJSON,
+						attributesJSONPromoted: attributesJSONPromoted,
+						scopeName:              scopeName,
+						scopeVersion:           scopeVersion,
+						eventName:              record.EventName(),
+						resourceMap:            resourcesMap,
+						scopeMap:               scopeMap,
+						attrsMap:               attrsMap,
+						logFields:              attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
+						recordSize:             int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
 					}
 					return nil
 				})
@@ -805,9 +825,13 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		e.nonMapBodyCounter.Add(ctx, 1)
 	}
 
+	bodyRaw := bodyJSON.Map().AsRaw()
+	utils.SanitizeJSON(bodyRaw)
+	bodyJSONColumn := getJSONColumnBody(bodyRaw)
+
 	// promoted paths extraction using cached set
 	promotedSet := e.promotedPaths.Load().(map[string]struct{})
-	promoted := utils.BuildPromotedPaths(bodyJSON.Map(), promotedSet)
+	promoted := utils.BuildPromotedPaths(bodyRaw, promotedSet)
 
 	if e.cfg.BodyJSONEnabled {
 		// set body to empty string
@@ -816,14 +840,14 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 		body = originalBody
 	}
 
-	return getStringifiedBody(body), getJSONColumnBody(bodyJSON), getJSONColumnBody(promoted)
+	return getStringifiedBody(body), bodyJSONColumn, getJSONColumnBody(promoted)
 }
 
-func getJSONColumnBody(body pcommon.Value) string {
-	if body.Map().Len() == 0 {
+func getJSONColumnBody(body map[string]any) string {
+	if len(body) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(utils.SanitizeJSON(body.Map().AsRaw()))
+	b, err := json.Marshal(body)
 	if err != nil {
 		return "{}"
 	}
@@ -856,7 +880,7 @@ func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID str
 	if len(raw) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(utils.SanitizeJSON(raw))
+	b, err := json.Marshal(raw)
 	if err != nil {
 		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
 			zap.Error(err),
