@@ -856,12 +856,7 @@ func getStringifiedBody(body pcommon.Value) string {
 // JSON column, which parses it server-side. A marshal failure is logged and falls back to
 // an empty object rather than failing the batch.
 func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID string) string {
-	b, err := json.Marshal(raw)
-	if err != nil {
-		// NaN/Inf doubles break json.Marshal for the whole map; sanitize lazily and retry.
-		sanitizeJSONFloats(raw)
-		b, err = json.Marshal(raw)
-	}
+	b, err := json.Marshal(utils.SanitizeJSON(raw))
 	if err != nil {
 		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
 			zap.Error(err),
@@ -870,30 +865,6 @@ func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID str
 		return "{}"
 	}
 	return string(b)
-}
-
-// sanitizeJSONFloats replaces NaN/Inf float64 values (recursively, in place) with nil so
-// json.Marshal does not reject the whole value.
-func sanitizeJSONFloats(v any) any {
-	switch val := v.(type) {
-	case float64:
-		if utils.IsValidFloat(val) {
-			return val
-		}
-		return nil
-	case map[string]any:
-		for k, vv := range val {
-			val[k] = sanitizeJSONFloats(vv)
-		}
-		return val
-	case []any:
-		for i, vv := range val {
-			val[i] = sanitizeJSONFloats(vv)
-		}
-		return val
-	default:
-		return v
-	}
 }
 
 func (e *clickhouseLogsExporter) addAttrsToAttributeKeysStatement(
