@@ -6,49 +6,21 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
+var emptyPromoted = pcommon.NewValueMap()
+
 // BuildPromotedPaths extracts the given promoted paths from source into a new map, leaving source untouched.
+// With no promoted paths it returns a shared empty map, which callers must not modify.
 func BuildPromotedPaths(source pcommon.Map, promotedPaths map[string]struct{}) pcommon.Value {
-	promoted := pcommon.NewValueMap()
 	if len(promotedPaths) == 0 {
-		return promoted
+		return emptyPromoted
 	}
 
+	promoted := pcommon.NewValueMap()
 	pm := promoted.Map()
 	for path := range promotedPaths {
 		extractPromotedPath(source, pm, path, path)
 	}
 	return promoted
-}
-
-// BuildPromotedPathsRaw is BuildPromotedPaths over a raw map; it returns nil when no path matches.
-func BuildPromotedPathsRaw(source map[string]any, promotedPaths map[string]struct{}) map[string]any {
-	var promoted map[string]any
-	for path := range promotedPaths {
-		if v, ok := extractPromotedPathRaw(source, path); ok {
-			if promoted == nil {
-				promoted = make(map[string]any, len(promotedPaths))
-			}
-			promoted[path] = v
-		}
-	}
-	return promoted
-}
-
-func extractPromotedPathRaw(source map[string]any, remainingPath string) (any, bool) {
-	if v, ok := source[remainingPath]; ok {
-		if _, isMap := v.(map[string]any); !isMap {
-			return v, true
-		}
-	}
-
-	head, tail, ok := strings.Cut(remainingPath, ".")
-	if !ok {
-		return nil, false
-	}
-	if nested, ok := source[head].(map[string]any); ok {
-		return extractPromotedPathRaw(nested, tail)
-	}
-	return nil, false
 }
 
 // extractPromotedPath walks source by remainingPath and copies the value into promotedMap
