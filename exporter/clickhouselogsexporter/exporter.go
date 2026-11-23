@@ -687,6 +687,7 @@ producerIteration:
 						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
 					}
 
+					utils.SanitizeJSON(attrsRaw)
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
 					attributesJSONPromoted := e.getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedAttrPaths), id.String())
@@ -825,6 +826,7 @@ func (e *clickhouseLogsExporter) processBody(ctx context.Context, body pcommon.V
 	}
 
 	bodyRaw := bodyJSON.Map().AsRaw()
+	utils.SanitizeJSON(bodyRaw)
 	bodyJSONColumn := getJSONColumnBody(bodyRaw)
 
 	// promoted paths extraction using cached set
@@ -845,7 +847,7 @@ func getJSONColumnBody(body map[string]any) string {
 	if len(body) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(utils.SanitizeJSON(body))
+	b, err := json.Marshal(body)
 	if err != nil {
 		return "{}"
 	}
@@ -878,7 +880,7 @@ func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID str
 	if len(raw) == 0 {
 		return "{}"
 	}
-	b, err := json.Marshal(utils.SanitizeJSON(raw))
+	b, err := json.Marshal(raw)
 	if err != nil {
 		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
 			zap.Error(err),

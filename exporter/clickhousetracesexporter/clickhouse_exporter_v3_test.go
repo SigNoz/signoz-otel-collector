@@ -13,6 +13,7 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
@@ -1026,7 +1027,9 @@ func Test_getAttributesJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotJSON := getAttributesJSON(tt.attrs.AsRaw(), pcommon.TraceID{}, pcommon.SpanID{})
+			attrs := tt.attrs.AsRaw()
+			utils.SanitizeJSON(attrs)
+			gotJSON := getAttributesJSON(attrs, pcommon.TraceID{}, pcommon.SpanID{})
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal([]byte(gotJSON), &got))

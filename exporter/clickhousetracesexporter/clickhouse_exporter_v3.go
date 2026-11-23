@@ -176,8 +176,7 @@ func getAttributesJSON(attrs map[string]any, traceID pcommon.TraceID, spanID pco
 	if len(attrs) == 0 {
 		return "{}"
 	}
-	// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-	b, err := json.Marshal(utils.SanitizeJSON(attrs))
+	b, err := json.Marshal(attrs)
 	if err != nil {
 		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
 			zap.Error(err),
@@ -351,6 +350,8 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	tenant := usage.GetTenantNameFromResource()
 
 	attrsRaw := otelSpan.Attributes().AsRaw()
+	// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
+	utils.SanitizeJSON(attrsRaw)
 	attributesJSON := getAttributesJSON(attrsRaw, otelSpan.TraceID(), otelSpan.SpanID())
 
 	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
