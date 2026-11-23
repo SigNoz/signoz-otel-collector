@@ -84,4 +84,4 @@ jobs:
       GITHUB_EVENT_NAME: release
       # the clickhouse logs-system-exporter sidecar runs this image too but is pinned on its own, so only the
       # collector deployment and the telemetrystore migrator job are released
-      GITHUB_EVENT_PAYLOAD: '{"path": "${{ needs.prepare.outputs.path }}", "image": "us-central1-docker.pkg.dev/signoz-registry/signoz-otel-collector/signoz-otel-collector", "tag": "${{ needs.prepare.outputs.version }}", "containers": "collector check ready bootstrap sync async"}'
+      GITHUB_EVENT_PAYLOAD: '{"path": "${{ needs.prepare.outputs.path }}", "image": "us-central1-docker.pkg.dev/signoz-registry/signoz-otel-collector/signoz-otel-collector", "tag": "${{ needs.prepare.outputs.version }}", "containers": ["collector", "check", "ready", "bootstrap", "sync", "async"]}'
