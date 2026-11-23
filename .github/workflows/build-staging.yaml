@@ -43,7 +43,6 @@ jobs:
         env:
           LABEL: ${{ github.event.label.name }}
         run: |
-          # merges to main release the base every overlay inherits, a staging:<deployment> label releases that overlay
           if [[ "${GITHUB_EVENT_NAME}" == push ]]; then
             path="overlays/staging/*/signoz/base"
           else
