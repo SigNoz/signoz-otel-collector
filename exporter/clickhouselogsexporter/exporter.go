@@ -853,6 +853,9 @@ func getStringifiedBody(body pcommon.Value) string {
 }
 
 func (e *clickhouseLogsExporter) getAttributesJSON(raw map[string]any, logID string) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
 	b, err := json.Marshal(utils.SanitizeJSON(raw))
 	if err != nil {
 		e.logger.Warn("failed to marshal log attributes to json, storing empty object",
