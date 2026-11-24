@@ -211,13 +211,18 @@ func TestExporterPushLogsData(t *testing.T) {
 	})
 }
 
-func TestExporterPushLogsDataEventNameNotBilled(t *testing.T) {
+func TestExporterPushLogsDataBilledSize(t *testing.T) {
 	testCases := []struct {
-		name      string
-		eventName string
+		name          string
+		eventName     string
+		attributes    map[string]any
+		expectedBytes float64
 	}{
-		{name: "EventNameEmpty_BilledBodyAttrsResource", eventName: ""},
-		{name: "EventNameSet_SameBilledSize", eventName: strings.Repeat("signoz.deployment", 100)},
+		// body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25)
+		{name: "EventNameEmpty_BilledBodyAttrsResource", eventName: "", expectedBytes: 25 + 2 + 25},
+		{name: "EventNameSet_SameBilledSize", eventName: strings.Repeat("signoz.deployment", 100), expectedBytes: 25 + 2 + 25},
+		// attributes {"v":null} (10)
+		{name: "NaNAttribute_BilledAsNull", attributes: map[string]any{"v": math.NaN()}, expectedBytes: 25 + 10 + 25},
 	}
 
 	for _, testCase := range testCases {
@@ -245,7 +250,9 @@ func TestExporterPushLogsDataEventNameNotBilled(t *testing.T) {
 
 			exporter := setupTestExporter(t, mock)
 			logs := plogsgen.Generate()
-			logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetEventName(testCase.eventName)
+			record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+			record.SetEventName(testCase.eventName)
+			require.NoError(t, record.Attributes().FromRaw(testCase.attributes))
 
 			require.NoError(t, exporter.pushLogsData(context.Background(), logs))
 
@@ -266,8 +273,7 @@ func TestExporterPushLogsDataEventNameNotBilled(t *testing.T) {
 			}
 			eventually(t, func() bool { return billedBytes() > 0 })
 
-			// Only body "This is a test log record" (25) + attributes {} (2) + resource {"resource.0":"resource"} (25) count.
-			assert.Equal(t, float64(25+2+25), billedBytes())
+			assert.Equal(t, testCase.expectedBytes, billedBytes())
 
 			assert.NoError(t, exporter.Shutdown(context.Background()))
 			eventually(t, func() bool { return mock.ExpectationsWereMet() == nil })
@@ -353,6 +359,39 @@ func TestDoFetchPromotedPaths(t *testing.T) {
 			assert.Equal(t, testCase.expectedAttributePaths, exporter.promotedAttributePaths.Load())
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})
+	}
+}
+
+type selectStartedConn struct {
+	driver.Conn
+	started chan struct{}
+	once    sync.Once
+}
+
+func (c *selectStartedConn) Select(ctx context.Context, dest any, query string, args ...any) error {
+	c.once.Do(func() { close(c.started) })
+	return c.Conn.Select(ctx, dest, query, args...)
+}
+
+func TestDoFetchPromotedPathsCancelledOnClose(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.ExpectSelect("column_name = 'body_promoted'").WillDelay(time.Hour)
+
+	conn := &selectStartedConn{Conn: mock, started: make(chan struct{})}
+	exporter := setupTestExporter(t, conn)
+	done := make(chan struct{})
+	go func() {
+		exporter.doFetchPromotedPaths()
+		close(done)
+	}()
+	<-conn.started
+	exporter.cancelClose()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("promoted paths fetch not cancelled on close")
 	}
 }
 
