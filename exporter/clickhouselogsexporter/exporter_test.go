@@ -356,6 +356,26 @@ func TestDoFetchPromotedPaths(t *testing.T) {
 	}
 }
 
+func TestDoFetchPromotedPathsCancelledOnClose(t *testing.T) {
+	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
+	require.NoError(t, err)
+	mock.ExpectSelect("column_name = 'body_promoted'").WillDelay(time.Hour)
+
+	exporter := setupTestExporter(t, mock)
+	done := make(chan struct{})
+	go func() {
+		exporter.doFetchPromotedPaths()
+		close(done)
+	}()
+	exporter.cancelClose()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("promoted paths fetch not cancelled on close")
+	}
+}
+
 func TestExporterPushLogsDataAttributesPromoted(t *testing.T) {
 	testCases := []struct {
 		name           string

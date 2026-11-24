@@ -261,8 +261,9 @@ type clickhouseLogsExporter struct {
 
 	limiter chan struct{}
 
-	wg        *sync.WaitGroup
-	closeChan chan struct{}
+	wg          *sync.WaitGroup
+	closeCtx    context.Context
+	cancelClose context.CancelFunc
 
 	durationHistogram metric.Float64Histogram
 	nonMapBodyCounter metric.Int64Counter
@@ -294,12 +295,12 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
 		cfg:                       cfg,
 		wg:                        new(sync.WaitGroup),
-		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 	}
+	e.closeCtx, e.cancelClose = context.WithCancel(context.Background())
 	for _, opt := range opts {
 		opt(e)
 	}
@@ -330,7 +331,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 
 	keys := []shouldSkipKey{}
 
-	err := e.db.Select(context.Background(), &keys, query)
+	err := e.db.Select(e.closeCtx, &keys, query)
 	if err != nil {
 		e.logger.Error("error while fetching should skip keys", zap.Error(err))
 	}
@@ -357,7 +358,7 @@ func (e *clickhouseLogsExporter) fetchShouldSkipKeys() {
 		defer e.wg.Done()
 		for {
 			select {
-			case <-e.closeChan:
+			case <-e.closeCtx.Done():
 				return
 			case <-ticker.C:
 				e.doFetchShouldSkipKeys()
@@ -381,7 +382,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPaths() {
 		defer e.wg.Done()
 		for {
 			select {
-			case <-e.closeChan:
+			case <-e.closeCtx.Done():
 				return
 			case <-ticker.C:
 				e.doFetchPromotedPaths()
@@ -413,7 +414,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPathsForColumn(columnName, fieldCo
 	rows := []struct {
 		FieldName string `ch:"field_name"`
 	}{}
-	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+	if err := e.db.Select(e.closeCtx, &rows, query); err != nil {
 		e.logger.Error("error while fetching promoted paths from evolution table", zap.Error(err))
 		return nil, err
 	}
@@ -426,7 +427,7 @@ func (e *clickhouseLogsExporter) fetchPromotedPathsForColumn(columnName, fieldCo
 
 // Shutdown will shutdown the exporter.
 func (e *clickhouseLogsExporter) Shutdown(_ context.Context) error {
-	close(e.closeChan)
+	e.cancelClose()
 	e.wg.Wait()
 	for _, shutdownFunc := range e.shutdownFuncs {
 		if err := shutdownFunc(); err != nil {
@@ -494,7 +495,7 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	}
 
 	select {
-	case <-e.closeChan:
+	case <-e.closeCtx.Done():
 		return errors.New("shutdown has been called")
 	default:
 	}
