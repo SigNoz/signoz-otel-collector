@@ -455,25 +455,50 @@ func (m *MigrationManager) getConn(hostAddr string) (clickhouse.Conn, error) {
 	return conn, nil
 }
 
-func (m *MigrationManager) waitForMutationsOnHost(ctx context.Context, hostAddr string) error {
+// serverUUID is unique per server and the same whichever server coordinates the query.
+type replica struct {
+	id   string
+	name string
+}
+
+func (m *MigrationManager) replicas(ctx context.Context) ([]replica, error) {
+	if m.development {
+		return nil, nil
+	}
+	rows, err := m.conn.Query(ctx, "SELECT DISTINCT toString(serverUUID()) AS id, concat(hostName(), ':', toString(tcpPort())) AS name FROM clusterAllReplicas($1, system.one) ORDER BY name SETTINGS skip_unavailable_shards = 0", m.clusterName)
+	if err != nil {
+		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var replicas []replica
+	for rows.Next() {
+		var r replica
+		if err := rows.Scan(&r.id, &r.name); err != nil {
+			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+		}
+		replicas = append(replicas, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
+	}
+	return replicas, nil
+}
+
+func (m *MigrationManager) waitForMutationsOnHost(ctx context.Context, r replica) error {
 	// reset backoff
 	m.backoff.Reset()
 
-	m.logger.Info("Fetching mutations on host", zap.String("host", hostAddr))
-	conn, err := m.getConn(hostAddr)
-	if err != nil {
-		return err
-	}
+	m.logger.Info("Fetching mutations on host", zap.String("host", r.name))
 	for {
 		if m.backoff.NextBackOff() == backoff.Stop {
 			return errors.New("backoff stopped")
 		}
 		var mutations []Mutation
-		if err := conn.Select(ctx, &mutations, "SELECT database, table, command, mutation_id, latest_fail_reason FROM system.mutations WHERE is_done = 0"); err != nil {
+		if err := m.conn.Select(ctx, &mutations, "SELECT database, table, command, mutation_id, latest_fail_reason FROM clusterAllReplicas($1, system.mutations) WHERE toString(serverUUID()) = $2 AND is_done = 0 SETTINGS skip_unavailable_shards = 0", m.clusterName, r.id); err != nil {
 			return err
 		}
 		if len(mutations) != 0 {
-			m.logger.Info("Waiting for mutations to be completed", zap.Int("count", len(mutations)), zap.String("host", hostAddr))
+			m.logger.Info("Waiting for mutations to be completed", zap.Int("count", len(mutations)), zap.String("host", r.name))
 			for _, mutation := range mutations {
 				m.logger.Info("Mutation details",
 					zap.String("database", mutation.Database),
@@ -486,7 +511,7 @@ func (m *MigrationManager) waitForMutationsOnHost(ctx context.Context, hostAddr 
 			time.Sleep(m.backoff.NextBackOff())
 			continue
 		}
-		m.logger.Info("No mutations found on host", zap.String("host", hostAddr))
+		m.logger.Info("No mutations found on host", zap.String("host", r.name))
 		break
 	}
 	return nil
@@ -494,13 +519,13 @@ func (m *MigrationManager) waitForMutationsOnHost(ctx context.Context, hostAddr 
 
 // WaitForRunningMutations waits for all the mutations to be completed on all the hosts in the cluster.
 func (m *MigrationManager) WaitForRunningMutations(ctx context.Context) error {
-	addrs, err := m.HostAddrs()
+	replicas, err := m.replicas(ctx)
 	if err != nil {
 		return err
 	}
-	for _, hostAddr := range addrs {
-		m.logger.Info("Waiting for mutations on host", zap.String("host", hostAddr))
-		if err := m.waitForMutationsOnHost(ctx, hostAddr); err != nil {
+	for _, r := range replicas {
+		m.logger.Info("Waiting for mutations on host", zap.String("host", r.name))
+		if err := m.waitForMutationsOnHost(ctx, r); err != nil {
 			return errors.Join(ErrFailedToWaitForMutations, err)
 		}
 	}
