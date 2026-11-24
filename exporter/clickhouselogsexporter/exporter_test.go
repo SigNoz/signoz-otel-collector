@@ -362,17 +362,31 @@ func TestDoFetchPromotedPaths(t *testing.T) {
 	}
 }
 
+// selectStartedConn signals when the first Select starts.
+type selectStartedConn struct {
+	driver.Conn
+	started chan struct{}
+	once    sync.Once
+}
+
+func (c *selectStartedConn) Select(ctx context.Context, dest any, query string, args ...any) error {
+	c.once.Do(func() { close(c.started) })
+	return c.Conn.Select(ctx, dest, query, args...)
+}
+
 func TestDoFetchPromotedPathsCancelledOnClose(t *testing.T) {
 	mock, err := cmock.NewClickHouseWithQueryMatcher(nil, sqlmock.QueryMatcherRegexp)
 	require.NoError(t, err)
 	mock.ExpectSelect("column_name = 'body_promoted'").WillDelay(time.Hour)
 
-	exporter := setupTestExporter(t, mock)
+	conn := &selectStartedConn{Conn: mock, started: make(chan struct{})}
+	exporter := setupTestExporter(t, conn)
 	done := make(chan struct{})
 	go func() {
 		exporter.doFetchPromotedPaths()
 		close(done)
 	}()
+	<-conn.started
 	exporter.cancelClose()
 
 	select {
