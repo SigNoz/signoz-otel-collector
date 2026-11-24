@@ -680,14 +680,8 @@ producerIteration:
 					if len(resourcesMap.StringData) > 100 {
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
-					// record size calculation
 					attrsRaw := record.Attributes().AsRaw()
 					delete(attrsRaw, constants.OriginalBodyAttributeKey)
-					attrBytes, err := json.Marshal(attrsRaw)
-					if err != nil {
-						e.logger.Error("failed to marshal log attributes for record size calculation", zap.Error(err))
-					}
-
 					utils.SanitizeJSON(attrsRaw)
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
@@ -718,7 +712,7 @@ producerIteration:
 						scopeMap:               scopeMap,
 						attrsMap:               attrsMap,
 						logFields:              attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:             int64(len([]byte(record.Body().AsString())) + len(attrBytes) + len(resBytes)),
+						recordSize:             int64(len([]byte(record.Body().AsString())) + len(attributesJSON) + len(resBytes)),
 					}
 					return nil
 				})
