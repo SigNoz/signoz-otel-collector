@@ -5,9 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/netip"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -16,7 +14,6 @@ import (
 )
 
 var (
-	ErrFailedToGetConn                  = errors.New("failed to get conn")
 	ErrFailedToGetHostAddrs             = errors.New("failed to get host addrs")
 	ErrFailedToCreateDBs                = errors.New("failed to create dbs")
 	ErrFailedToRunOperation             = errors.New("failed to run operation")
@@ -71,18 +68,15 @@ type SchemaMigrationRecord struct {
 
 // MigrationManager is the manager for the schema migrations.
 type MigrationManager struct {
-	// addrs is the list of addresses of the hosts in the cluster.
-	addrs    []string
-	addrsMux sync.Mutex
-	conn     clickhouse.Conn
-	connOpts clickhouse.Options
-	conns    map[string]clickhouse.Conn
+	conn clickhouse.Conn
 
 	clusterName        string
 	replicationEnabled bool
 	logger             *zap.Logger
 	backoff            *backoff.ExponentialBackOff
 	development        bool
+
+	distributionQueueGracePeriod time.Duration
 }
 
 type Option func(*MigrationManager)
@@ -93,9 +87,9 @@ func NewMigrationManager(opts ...Option) (*MigrationManager, error) {
 		logger: zap.NewNop(),
 		// the default backoff is good enough for our use case
 		// no mutation should be running for more than 15 minutes, if it is, we should fail fast
-		backoff:            backoff.NewExponentialBackOff(),
-		replicationEnabled: false,
-		conns:              make(map[string]clickhouse.Conn),
+		backoff:                      backoff.NewExponentialBackOff(),
+		replicationEnabled:           false,
+		distributionQueueGracePeriod: 2 * time.Minute,
 	}
 	for _, opt := range opts {
 		opt(mgr)
@@ -127,12 +121,6 @@ func WithReplicationEnabled(replicationEnabled bool) Option {
 func WithConn(conn clickhouse.Conn) Option {
 	return func(mgr *MigrationManager) {
 		mgr.conn = conn
-	}
-}
-
-func WithConnOptions(opts clickhouse.Options) Option {
-	return func(mgr *MigrationManager) {
-		mgr.connOpts = opts
 	}
 }
 
@@ -363,98 +351,6 @@ func (m *MigrationManager) RunSquashedMigrations(ctx context.Context) error {
 	return nil
 }
 
-// HostAddrs returns the addresses of the all hosts in the cluster.
-func (m *MigrationManager) HostAddrs() ([]string, error) {
-	if m.development {
-		return nil, nil
-	}
-	m.addrsMux.Lock()
-	defer m.addrsMux.Unlock()
-	if len(m.addrs) != 0 {
-		return m.addrs, nil
-	}
-
-	hostAddrs := make(map[string]struct{})
-	query := "SELECT DISTINCT host_address, port FROM system.clusters WHERE host_address NOT IN ['localhost', '127.0.0.1', '::1'] AND cluster = $1"
-	rows, err := m.conn.Query(context.Background(), query, m.clusterName)
-	if err != nil {
-		return nil, errors.Join(ErrFailedToGetHostAddrs, err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var hostAddr string
-		var port uint16
-		if err := rows.Scan(&hostAddr, &port); err != nil {
-			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
-		}
-
-		addr, err := netip.ParseAddr(hostAddr)
-		if err != nil {
-			return nil, errors.Join(ErrFailedToGetHostAddrs, err)
-		}
-
-		addrPort := netip.AddrPortFrom(addr, port)
-		hostAddrs[addrPort.String()] = struct{}{}
-	}
-
-	if len(hostAddrs) != 0 {
-		// connect to other host and do the same thing
-		for hostAddr := range hostAddrs {
-			m.logger.Info("Connecting to new host", zap.String("host", hostAddr))
-			opts := m.connOpts
-			opts.Addr = []string{hostAddr}
-			conn, err := clickhouse.Open(&opts)
-			if err != nil {
-				return nil, errors.Join(ErrFailedToGetConn, err)
-			}
-			rows, err := conn.Query(context.Background(), query, m.clusterName)
-			if err != nil {
-				return nil, errors.Join(ErrFailedToGetConn, err)
-			}
-			defer func() { _ = rows.Close() }()
-			for rows.Next() {
-				var hostAddr string
-				var port uint16
-				if err := rows.Scan(&hostAddr, &port); err != nil {
-					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
-				}
-
-				addr, err := netip.ParseAddr(hostAddr)
-				if err != nil {
-					return nil, errors.Join(ErrFailedToGetHostAddrs, err)
-				}
-
-				addrPort := netip.AddrPortFrom(addr, port)
-				hostAddrs[addrPort.String()] = struct{}{}
-			}
-			break
-		}
-	}
-
-	addrs := make([]string, 0, len(hostAddrs))
-	for addr := range hostAddrs {
-		addrs = append(addrs, addr)
-	}
-	m.addrs = addrs
-	return addrs, nil
-}
-
-func (m *MigrationManager) getConn(hostAddr string) (clickhouse.Conn, error) {
-	m.addrsMux.Lock()
-	defer m.addrsMux.Unlock()
-	if conn, ok := m.conns[hostAddr]; ok {
-		return conn, nil
-	}
-	opts := m.connOpts
-	opts.Addr = []string{hostAddr}
-	conn, err := clickhouse.Open(&opts)
-	if err != nil {
-		return nil, err
-	}
-	m.conns[hostAddr] = conn
-	return conn, nil
-}
-
 // serverUUID is unique per server and the same whichever server coordinates the query.
 type replica struct {
 	id   string
@@ -597,11 +493,11 @@ func (m *MigrationManager) getDistributedDDLQueue(ctx context.Context) ([]Distri
 	return ddlQueue, nil
 }
 
-func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, conn clickhouse.Conn, db, table string) error {
-	errCountQuery := "SELECT count(*) FROM system.distribution_queue WHERE database = $1 AND table = $2 AND (error_count != 0 OR is_blocked = 1)"
+func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, r replica, db, table string) error {
+	errCountQuery := "SELECT count(*) FROM clusterAllReplicas($1, system.distribution_queue) WHERE toString(serverUUID()) = $2 AND database = $3 AND table = $4 AND (error_count != 0 OR is_blocked = 1) SETTINGS skip_unavailable_shards = 0"
 
 	var errCount uint64
-	if err := conn.QueryRow(ctx, errCountQuery, db, table).Scan(&errCount); err != nil {
+	if err := m.conn.QueryRow(ctx, errCountQuery, m.clusterName, r.id, db, table).Scan(&errCount); err != nil {
 		return errors.Join(ErrFailedToWaitForDistributionQueue, err)
 	}
 
@@ -609,31 +505,39 @@ func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, c
 		return ErrDistributionQueueError
 	}
 
-	query := "SELECT count(*) FROM system.distribution_queue WHERE database = $1 AND table = $2 AND data_files > 0"
+	query := "SELECT count(*) FROM clusterAllReplicas($1, system.distribution_queue) WHERE toString(serverUUID()) = $2 AND database = $3 AND table = $4 AND data_files > 0 SETTINGS skip_unavailable_shards = 0"
 	// Should this be configurable and/or higher?
-	t := time.NewTimer(2 * time.Minute)
+	t := time.NewTimer(m.distributionQueueGracePeriod)
 	defer t.Stop()
 	minimumInsertsCompletedChan := make(chan struct{})
 	errChan := make(chan error)
+	pollCtx, stopPolling := context.WithCancel(ctx)
+	defer stopPolling()
 
 	// count for the number of inserts in the queue with non-zero data_files
 	go func() {
 		insertsInQueue := 0
-		for {
+		for pollCtx.Err() == nil {
 			var errCount uint64
-			if err := conn.QueryRow(ctx, errCountQuery, db, table).Scan(&errCount); err != nil {
-				errChan <- errors.Join(ErrFailedToWaitForDistributionQueue, err)
+			if err := m.conn.QueryRow(pollCtx, errCountQuery, m.clusterName, r.id, db, table).Scan(&errCount); err != nil {
+				select {
+				case errChan <- errors.Join(ErrFailedToWaitForDistributionQueue, err):
+				case <-pollCtx.Done():
+				}
 				return
 			}
 			if errCount != 0 {
-				errChan <- ErrDistributionQueueError
+				select {
+				case errChan <- ErrDistributionQueueError:
+				case <-pollCtx.Done():
+				}
 				return
 			}
 
 			var count uint64
 			// if the count of inserts in the queue with non-zero data_files is greater than 0, then it counts towards
 			// one insert, while technically it is more than one insert, we are mainly interested in number of such actions
-			if err := conn.QueryRow(ctx, query, db, table).Scan(&count); err != nil {
+			if err := m.conn.QueryRow(pollCtx, query, m.clusterName, r.id, db, table).Scan(&count); err != nil {
 				m.logger.Error("Failed to fetch inserts in queue, will retry", zap.Error(err))
 				continue
 			}
@@ -641,7 +545,10 @@ func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, c
 				insertsInQueue++
 			}
 			if insertsInQueue >= 16 {
-				minimumInsertsCompletedChan <- struct{}{}
+				select {
+				case minimumInsertsCompletedChan <- struct{}{}:
+				case <-pollCtx.Done():
+				}
 				return
 			}
 		}
@@ -671,16 +578,12 @@ func (m *MigrationManager) waitForDistributionQueueOnHost(ctx context.Context, c
 // for the table.
 // We need to do this for all hosts in the cluster.
 func (m *MigrationManager) WaitForDistributionQueue(ctx context.Context, db, table string) error {
-	addrs, err := m.HostAddrs()
+	replicas, err := m.replicas(ctx)
 	if err != nil {
 		return errors.Join(ErrFailedToWaitForDistributionQueue, err)
 	}
-	for _, hostAddr := range addrs {
-		conn, err := m.getConn(hostAddr)
-		if err != nil {
-			return errors.Join(ErrFailedToWaitForDistributionQueue, err)
-		}
-		if err := m.waitForDistributionQueueOnHost(ctx, conn, db, table); err != nil {
+	for _, r := range replicas {
+		if err := m.waitForDistributionQueueOnHost(ctx, r, db, table); err != nil {
 			return errors.Join(ErrFailedToWaitForDistributionQueue, err)
 		}
 	}

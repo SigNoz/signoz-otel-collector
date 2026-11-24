@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,18 +13,36 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/zap"
 )
 
-// recordingConn records Select arguments, which the mock does not check.
+// recordingConn records Select and QueryRow arguments, which the mock does not check.
 type recordingConn struct {
 	driver.Conn
-	selectCalls [][]any
+	mu            sync.Mutex
+	selectCalls   [][]any
+	queryRowCalls [][]any
 }
 
 func (c *recordingConn) Select(ctx context.Context, dest any, query string, args ...any) error {
+	c.mu.Lock()
 	c.selectCalls = append(c.selectCalls, args)
+	c.mu.Unlock()
 	return c.Conn.Select(ctx, dest, query, args...)
+}
+
+func (c *recordingConn) QueryRow(ctx context.Context, query string, args ...any) driver.Row {
+	c.mu.Lock()
+	c.queryRowCalls = append(c.queryRowCalls, args)
+	c.mu.Unlock()
+	return c.Conn.QueryRow(ctx, query, args...)
+}
+
+func (c *recordingConn) recordedQueryRowCalls() [][]any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.queryRowCalls
 }
 
 type mockManager struct {
@@ -165,11 +184,123 @@ func TestWaitForRunningMutations(t *testing.T) {
 	}
 }
 
+func TestWaitForDistributionQueue(t *testing.T) {
+	errorsQuery := "SELECT count(*) FROM clusterAllReplicas($1, system.distribution_queue) WHERE toString(serverUUID()) = $2 AND database = $3 AND table = $4 AND (error_count != 0 OR is_blocked = 1) SETTINGS skip_unavailable_shards = 0"
+	pendingQuery := "SELECT count(*) FROM clusterAllReplicas($1, system.distribution_queue) WHERE toString(serverUUID()) = $2 AND database = $3 AND table = $4 AND data_files > 0 SETTINGS skip_unavailable_shards = 0"
+	count := func(n uint64) *mockhouse.Row {
+		return mockhouse.NewRow([]mockhouse.ColumnType{{Name: "count()", Type: "UInt64"}}, []any{n})
+	}
+	onReplica := func(id string, n int) [][]any {
+		calls := make([][]any, n)
+		for i := range calls {
+			calls[i] = []any{"cluster-b", id, "signoz_logs", "distributed_logs_v2"}
+		}
+		return calls
+	}
+	drains := func(mock mockhouse.ClickConnMockCommon) {
+		mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+		for range 16 {
+			mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+			mock.ExpectQueryRow(pendingQuery).WillReturnRow(count(1))
+		}
+	}
+
+	testCases := []struct {
+		name        string
+		gracePeriod time.Duration
+		expect      func(mock mockhouse.ClickConnMockCommon)
+		wantErr     error
+		wantCalls   [][]any
+		minDuration time.Duration
+	}{
+		{
+			name: "ReplicaWithErrors_Fails",
+			expect: func(mock mockhouse.ClickConnMockCommon) {
+				mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(1))
+			},
+			wantErr:   ErrDistributionQueueError,
+			wantCalls: onReplica(replicaID(1), 1),
+		},
+		{
+			name: "PendingInsertsOnEveryReplica_Returns",
+			expect: func(mock mockhouse.ClickConnMockCommon) {
+				drains(mock)
+				drains(mock)
+			},
+			wantCalls: append(onReplica(replicaID(1), 33), onReplica(replicaID(2), 33)...),
+		},
+		{
+			name: "PendingReadFails_Retries",
+			expect: func(mock mockhouse.ClickConnMockCommon) {
+				mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+				mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+				mock.ExpectQueryRow(pendingQuery).WillReturnRow(count(0)).WillReturnError(errors.New("code: 159, message: Timeout exceeded"))
+				for range 16 {
+					mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+					mock.ExpectQueryRow(pendingQuery).WillReturnRow(count(1))
+				}
+				drains(mock)
+			},
+			wantCalls: append(onReplica(replicaID(1), 35), onReplica(replicaID(2), 33)...),
+		},
+		{
+			name: "ErrorsReadFails_ReturnsError",
+			expect: func(mock mockhouse.ClickConnMockCommon) {
+				mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+				mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0)).WillReturnError(errors.New("code: 279, message: All connection tries failed"))
+			},
+			wantErr:   ErrFailedToWaitForDistributionQueue,
+			wantCalls: onReplica(replicaID(1), 2),
+		},
+		{
+			name:        "NoInserts_EachReplicaWaitsItsGracePeriodAndStopsPolling",
+			gracePeriod: 50 * time.Millisecond,
+			expect: func(mock mockhouse.ClickConnMockCommon) {
+				for range 2 {
+					mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0))
+					// The driver fails a query whose context is cancelled.
+					mock.ExpectQueryRow(errorsQuery).WillReturnRow(count(0)).WillReturnError(context.Canceled).WillDelay(time.Hour)
+				}
+			},
+			wantCalls:   append(onReplica(replicaID(1), 2), onReplica(replicaID(2), 2)...),
+			minDuration: 100 * time.Millisecond,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+			var opts []Option
+			if testCase.gracePeriod != 0 {
+				opts = append(opts, func(mgr *MigrationManager) { mgr.distributionQueueGracePeriod = testCase.gracePeriod })
+			}
+			// Both replicas are named clickhouse:9000: each must still be checked on its own.
+			m := newMockManager(t, "cluster-b", nil, opts...)
+			m.expectReplicas("cluster-b", "clickhouse:9000", "clickhouse:9000")
+			testCase.expect(m.mock)
+
+			start := time.Now()
+			err := m.manager.WaitForDistributionQueue(context.Background(), "signoz_logs", "distributed_logs_v2")
+
+			if testCase.wantErr != nil {
+				assert.ErrorIs(t, err, testCase.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.GreaterOrEqual(t, time.Since(start), testCase.minDuration)
+			assert.Equal(t, testCase.wantCalls, m.recorder.recordedQueryRowCalls())
+		})
+	}
+}
+
 func TestDevelopmentModeSkipsReplicaChecks(t *testing.T) {
 	m := newMockManager(t, "cluster-c", nil, WithDevelopment(true))
 
 	assert.NoError(t, m.manager.WaitForRunningMutations(context.Background()))
+	assert.NoError(t, m.manager.WaitForDistributionQueue(context.Background(), "signoz_traces", "distributed_signoz_index_v3"))
 	assert.Empty(t, m.recorder.selectCalls)
+	assert.Empty(t, m.recorder.recordedQueryRowCalls())
 	assert.NoError(t, m.mock.ExpectationsWereMet())
 }
 
