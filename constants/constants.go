@@ -5,6 +5,7 @@ const (
 	BodyV2ColumnPrefix       = "body_v2."
 	BodyPromotedColumn       = "body_promoted"
 	BodyPromotedColumnPrefix = "body_promoted."
+	LogsAttributesColumn     = "attributes"
 
 	SignozInternalAttrPrefix = "signoz.__internal__."
 	OriginalBodyAttributeKey = SignozInternalAttrPrefix + "original_body"
@@ -18,4 +19,5 @@ const (
 	FieldKeysTableLastSeenColumn = "last_seen"
 
 	TracesColumnAttributesPromoted = "attributes_promoted"
+	LogsColumnAttributesPromoted   = "attributes_promoted"
 )
