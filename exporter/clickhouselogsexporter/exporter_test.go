@@ -362,7 +362,6 @@ func TestDoFetchPromotedPaths(t *testing.T) {
 	}
 }
 
-// selectStartedConn signals when the first Select starts.
 type selectStartedConn struct {
 	driver.Conn
 	started chan struct{}
