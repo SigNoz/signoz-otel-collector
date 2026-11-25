@@ -30,8 +30,8 @@ import (
 //   - "rpc.client.call.exception", "rpc.server.call.exception" (development)
 //     https://opentelemetry.io/docs/specs/semconv/rpc/rpc-exceptions/
 //
-// The OTel semconv naming pattern for domain-specific exception events follows 
-// the pattern: "{domain}.{component}.{operation}.exception", 
+// The OTel semconv naming pattern for domain-specific exception events follows
+// the pattern: "{domain}.{component}.{operation}.exception",
 // we match on the suffix ".exception" to be forward compatible with new conventions.
 func IsExceptionEvent(eventName string) bool {
 	return eventName == "exception" || strings.HasSuffix(eventName, ".exception")

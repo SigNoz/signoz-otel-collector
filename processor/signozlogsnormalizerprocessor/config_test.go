@@ -1,13 +1,13 @@
 package signozlogsnormalizerprocessor
 
 import (
-	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 )
 

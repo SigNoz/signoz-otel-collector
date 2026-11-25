@@ -1,12 +1,12 @@
 package clickhousesystemtablesreceiver
 
 import (
-	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 )
 

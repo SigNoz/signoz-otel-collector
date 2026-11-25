@@ -4,7 +4,6 @@
 package signozawsfirehosereceiver
 
 import (
-	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configtls"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"

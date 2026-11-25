@@ -12,6 +12,7 @@ import (
 
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/SigNoz/signoz-otel-collector/constants"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/plogsgen"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -19,7 +20,6 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opencensus.io/stats/view"

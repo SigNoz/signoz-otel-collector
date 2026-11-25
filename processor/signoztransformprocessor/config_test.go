@@ -5,12 +5,12 @@ package signoztransformprocessor
 
 import (
 	"errors"
-	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
 	"github.com/SigNoz/signoz-otel-collector/processor/signoztransformprocessor/internal/common"
