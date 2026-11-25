@@ -4,6 +4,7 @@
 package signozawsfirehosereceiver
 
 import (
+	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	"github.com/SigNoz/signoz-otel-collector/receiver/signozawsfirehosereceiver/internal/metadata"
 )
@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			err = xconfmap.Validate(cfg)
+			err = confmap.Validate(cfg)
 			if configType == "invalid" {
 				assert.Error(t, err)
 			} else {

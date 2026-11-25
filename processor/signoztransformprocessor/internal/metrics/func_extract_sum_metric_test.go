@@ -285,7 +285,7 @@ func Test_extractSumMetric(t *testing.T) {
 			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 			tt.input.CopyTo(scopeMetrics.Metrics().AppendEmpty())
 			metric := scopeMetrics.Metrics().At(0)
-			ctx := ottlmetric.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric)
+			ctx := ottlmetric.NewTransformContext(resourceMetrics, scopeMetrics, metric)
 			_, err = evaluate(nil, ctx)
 			assert.Equal(t, tt.wantErr, err)
 

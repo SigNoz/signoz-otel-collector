@@ -1,6 +1,7 @@
 package signozlogsnormalizerprocessor
 
 import (
+	"go.opentelemetry.io/collector/confmap"
 	"path/filepath"
 	"testing"
 
@@ -8,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 func withDefaults(mutate func(*Config)) Config {
@@ -55,12 +55,12 @@ func TestLoadConfig(t *testing.T) {
 			require.NoError(t, err)
 			if testCase.expectErr {
 				if err := sub.Unmarshal(cfg); err == nil {
-					assert.Error(t, xconfmap.Validate(cfg))
+					assert.Error(t, confmap.Validate(cfg))
 				}
 				return
 			}
 			require.NoError(t, sub.Unmarshal(cfg))
-			require.NoError(t, xconfmap.Validate(cfg))
+			require.NoError(t, confmap.Validate(cfg))
 			assert.Equal(t, testCase.expected, *cfg.(*Config))
 		})
 	}

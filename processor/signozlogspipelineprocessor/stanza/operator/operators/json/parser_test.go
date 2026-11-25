@@ -46,7 +46,7 @@ func TestParserStringFailure(t *testing.T) {
 	parser := newTestParser(t)
 	_, err := parser.parse("invalid")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "expected { character for map value")
+	require.Contains(t, err.Error(), "invalid character 'i' looking for beginning of value")
 }
 
 func TestParserByteFailure(t *testing.T) {

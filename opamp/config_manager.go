@@ -114,7 +114,7 @@ func (a *agentConfigManager) Set(remoteControlledConfig *remoteControlledConfig)
 
 // createEffectiveConfigMsg creates a protobuf message that contains the effective config.
 func (a *agentConfigManager) CreateEffectiveConfigMsg(override []byte) (*protobufs.EffectiveConfig, error) {
-	agentConfigFile := &protobufs.AgentConfigFile{
+	agentConfigFile := &protobufs.AgentConfigObject{
 		ContentType: "text/yaml",
 	}
 
@@ -130,7 +130,7 @@ func (a *agentConfigManager) CreateEffectiveConfigMsg(override []byte) (*protobu
 
 	return &protobufs.EffectiveConfig{
 		ConfigMap: &protobufs.AgentConfigMap{
-			ConfigMap: map[string]*protobufs.AgentConfigFile{
+			ConfigMap: map[string]*protobufs.AgentConfigObject{
 				collectorConfigKey: agentConfigFile,
 			},
 		},

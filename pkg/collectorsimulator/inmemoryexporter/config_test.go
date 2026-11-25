@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/confmap"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 func TestValidate(t *testing.T) {
@@ -37,7 +36,7 @@ func TestValidate(t *testing.T) {
 			err := tt.rawConf.Unmarshal(cfg)
 			require.NoError(t, err, "could not UnmarshalConfig")
 
-			err = xconfmap.Validate(cfg)
+			err = confmap.Validate(cfg)
 			if tt.errorExpected {
 				require.NotNilf(t, err, "Invalid config did not return validation error: %v", cfg)
 			} else {

@@ -4,6 +4,7 @@ package move
 
 import (
 	"fmt"
+	signozstanzaentry "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/entry"
 
 	"go.opentelemetry.io/collector/component"
 
@@ -45,7 +46,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		return nil, err
 	}
 
-	if c.To == entry.NewNilField() || c.From == entry.NewNilField() {
+	if c.To == signozstanzaentry.NewNilField() || c.From == signozstanzaentry.NewNilField() {
 		return nil, fmt.Errorf("move: missing to or from field")
 	}
 

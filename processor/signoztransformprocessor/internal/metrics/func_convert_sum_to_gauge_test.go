@@ -86,7 +86,7 @@ func Test_convertSumToGauge(t *testing.T) {
 			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 			metric.CopyTo(scopeMetrics.Metrics().AppendEmpty())
 			metricRef := scopeMetrics.Metrics().At(0)
-			ctx := ottldatapoint.NewTransformContextPtr(resourceMetrics, scopeMetrics, metricRef, pmetric.NewNumberDataPoint())
+			ctx := ottldatapoint.NewTransformContext(resourceMetrics, scopeMetrics, metricRef, pmetric.NewNumberDataPoint())
 
 			exprFunc, _ := convertSumToGauge()
 

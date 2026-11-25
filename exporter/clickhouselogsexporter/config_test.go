@@ -70,6 +70,7 @@ func TestLoadConfig(t *testing.T) {
 				FlushTimeout: 200 * time.Millisecond,
 				Sizer:        exporterhelper.RequestSizerTypeItems,
 				MinSize:      8192,
+				Partition:    exporterhelper.NewDefaultPartitionConfig(),
 			}),
 		}),
 		AttributesLimits: AttributesLimits{
