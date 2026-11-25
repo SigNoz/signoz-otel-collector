@@ -548,5 +548,196 @@ ORDER BY name ASC`,
 			},
 		},
 	},
-	// Next migration id will be 2003
+	{
+		MigrationID: 2003,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "event_name",
+					Type:  LowCardinalityColumnType{ColumnTypeString},
+					Codec: "ZSTD(1)",
+				},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "event_name",
+					Type:  LowCardinalityColumnType{ColumnTypeString},
+					Codec: "ZSTD(1)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "event_name"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "event_name"},
+			},
+		},
+	},
+	{
+		// Expression must match the query builder's LOWER(body_v2.message) to be used.
+		MigrationID: 2004,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_message_token_idx",
+					Expression:  fmt.Sprintf("lower(%s.message)", constants.BodyV2Column),
+					Type:        "tokenbf_v1(10000, 2, 0)",
+					Granularity: 1,
+				},
+			},
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "body_v2_message_ngram_idx",
+					Expression:  fmt.Sprintf("lower(%s.message)", constants.BodyV2Column),
+					Type:        "ngrambf_v1(4, 15000, 3, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "body_v2_message_token_idx"},
+			},
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "body_v2_message_ngram_idx"},
+			},
+		},
+	},
+	{
+		MigrationID: 2005,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "attributes",
+					Type:  JSONColumnType{MaxDynamicPaths: utils.ToPointer[uint](0)},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes_bool"},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "attributes"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "attributes"},
+			},
+		},
+	},
+	{
+		MigrationID: 2006,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "attributes_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "attributes_paths_tokenbf"},
+			},
+		},
+	},
+	{
+		MigrationID: 2007,
+		UpItems: []Operation{
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+			AlterTableAddColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column: Column{
+					Name:  "attributes_promoted",
+					Type:  JSONColumnType{},
+					Codec: "ZSTD(1)",
+				},
+				After: &Column{Name: "attributes"},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "distributed_logs_v2",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+			AlterTableDropColumn{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Column:   Column{Name: "attributes_promoted"},
+			},
+		},
+	},
+	{
+		MigrationID: 2008,
+		UpItems: []Operation{
+			AlterTableAddIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index: Index{
+					Name:        "attributes_promoted_paths_tokenbf",
+					Expression:  JSONPathsIndexExpr("attributes_promoted"),
+					Type:        "tokenbf_v1(1024, 2, 0)",
+					Granularity: 1,
+				},
+			},
+		},
+		DownItems: []Operation{
+			AlterTableDropIndex{
+				Database: "signoz_logs",
+				Table:    "logs_v2",
+				Index:    Index{Name: "attributes_promoted_paths_tokenbf"},
+			},
+		},
+	},
+	// Next migration id will be 2009
 }

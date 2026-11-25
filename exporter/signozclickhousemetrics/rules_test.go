@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -236,7 +236,7 @@ func Test_reductionHistogramFlattenedRules(t *testing.T) {
 		"http.server.duration0.bucket": {keys: labelSet("resource.attr_0")},
 		"http.server.duration0.count":  {keys: labelSet("resource.attr_0")},
 	})
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 0)
 	batch := exp.prepareBatch(context.Background(), metrics)
 
 	require.NotEmpty(t, batch.samples)
@@ -309,10 +309,10 @@ func Test_collectUsageForSample(t *testing.T) {
 	})
 
 	assert.True(t, exp.collectUsageForSample(&sample{metricName: "http.server.duration0.count"}))
+	assert.True(t, exp.collectUsageForSample(&sample{metricName: "chi.foo"}))
 
 	// internal metrics
 	assert.False(t, exp.collectUsageForSample(&sample{metricName: "signoz.collector.foo"}))
-	assert.False(t, exp.collectUsageForSample(&sample{metricName: "chi.foo"}))
 	assert.False(t, exp.collectUsageForSample(&sample{metricName: "otelcol.foo"}))
 
 	// reduced
@@ -358,7 +358,6 @@ func Test_writeBatchReductionEnabled(t *testing.T) {
 	conn.MatchExpectationsInOrder(false)
 	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, reduced_fingerprint, is_monotonic, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, reduced_fingerprint, is_reduced, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 	conn.ExpectClose()
 

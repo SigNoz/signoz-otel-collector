@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -28,6 +29,59 @@ func SpanIDToHexOrEmptyString(spanID pcommon.SpanID) string {
 func IsValidFloat(value float64) bool {
 	// Check for NaN, +/-Inf
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+const (
+	// ClickHouse rejects JSON text nested 1024 levels deep, and 149 directly nested arrays.
+	maxJSONDepth      = 1000
+	maxJSONArrayDepth = 128
+)
+
+// SanitizeJSON rewrites, in place, the values ClickHouse rejects in JSON text:
+// NaN/Inf become null (encoding/json errors out on them), float64 values outside the Int64 range
+// are written in exponent form, since Go prints them as integer literals ClickHouse cannot store,
+// and maps or slices nested past maxJSONDepth, or slices past maxJSONArrayDepth, become their JSON text.
+func SanitizeJSON(v any) any {
+	return sanitizeJSON(v, 0, 0, true)
+}
+
+func sanitizeJSON(v any, depth, arrayDepth int, limitDepth bool) any {
+	switch val := v.(type) {
+	case float64:
+		if !IsValidFloat(val) {
+			return nil
+		}
+		if val >= 1<<63 || val <= -(1<<63) {
+			return json.Number(strconv.FormatFloat(val, 'e', -1, 64))
+		}
+		return val
+	case map[string]any:
+		if limitDepth && depth >= maxJSONDepth {
+			return jsonText(val)
+		}
+		for k, vv := range val {
+			val[k] = sanitizeJSON(vv, depth+1, 0, limitDepth)
+		}
+		return val
+	case []any:
+		if limitDepth && (depth >= maxJSONDepth || arrayDepth >= maxJSONArrayDepth) {
+			return jsonText(val)
+		}
+		for i, vv := range val {
+			val[i] = sanitizeJSON(vv, depth+1, arrayDepth+1, limitDepth)
+		}
+		return val
+	default:
+		return v
+	}
+}
+
+func jsonText(v any) string {
+	b, err := json.Marshal(sanitizeJSON(v, 0, 0, false))
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 type TagType string

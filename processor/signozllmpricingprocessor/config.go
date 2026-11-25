@@ -2,7 +2,8 @@ package signozllmpricingprocessor // import "github.com/SigNoz/signoz-otel-colle
 
 import (
 	"fmt"
-	"path"
+
+	"github.com/SigNoz/signoz-otel-collector/pkg/llmpricing"
 )
 
 type CacheMode string
@@ -36,6 +37,8 @@ type PricingConfig struct {
 	Rules []PricingRule `mapstructure:"rules"`
 }
 
+// Pattern entries are case-sensitive prefixes of the model attribute, matching the
+// model itself and its snapshot forms (see llmpricing.Pattern); a trailing "*" matches any suffix.
 type PricingRule struct {
 	Name    string           `mapstructure:"name"`
 	Pattern []string         `mapstructure:"pattern"`
@@ -79,11 +82,8 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("default_pricing.rules[%d]: pattern must not be empty", i)
 		}
 		for j, p := range r.Pattern {
-			if p == "" {
-				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: pattern must not be empty", i, j)
-			}
-			if _, err := path.Match(p, ""); err != nil {
-				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: invalid glob pattern %q: %w", i, j, p, err)
+			if err := llmpricing.ValidatePattern(p); err != nil {
+				return fmt.Errorf("default_pricing.rules[%d].pattern[%d]: %w", i, j, err)
 			}
 		}
 		if r.Cache.Mode != CacheModeSubtract && r.Cache.Mode != CacheModeAdditive && r.Cache.Mode != "" {

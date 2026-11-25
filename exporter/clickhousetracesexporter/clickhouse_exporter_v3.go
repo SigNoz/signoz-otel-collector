@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-json"
 
@@ -173,14 +172,11 @@ func populateEventsV3(events ptrace.SpanEventSlice, span *SpanV3, lowCardinalExc
 
 // getAttributesJSON serializes span attributes, alternative is to typecast
 // each attribute since the slice of any can't be inserted.
-func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
-	raw := attrs.AsRaw()
-	b, err := json.Marshal(raw)
-	if err != nil {
-		// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
-		sanitizeJSONFloats(raw)
-		b, err = json.Marshal(raw)
+func getAttributesJSON(attrs map[string]any, traceID pcommon.TraceID, spanID pcommon.SpanID) string {
+	if len(attrs) == 0 {
+		return "{}"
 	}
+	b, err := json.Marshal(attrs)
 	if err != nil {
 		zap.S().Warn("failed to marshal span attributes to json, storing empty object",
 			zap.Error(err),
@@ -190,30 +186,6 @@ func getAttributesJSON(attrs pcommon.Map, traceID pcommon.TraceID, spanID pcommo
 		return "{}"
 	}
 	return string(b)
-}
-
-// sanitizeJSONFloats hanldes NaN/Inf float64 values, encoding/json errors out
-// for these values, so a single malformed double attribute could not fail the whole span.
-func sanitizeJSONFloats(v any) any {
-	switch val := v.(type) {
-	case float64:
-		if utils.IsValidFloat(val) {
-			return val
-		}
-		return nil
-	case map[string]any:
-		for k, vv := range val {
-			val[k] = sanitizeJSONFloats(vv)
-		}
-		return val
-	case []any:
-		for i, vv := range val {
-			val[i] = sanitizeJSONFloats(vv)
-		}
-		return val
-	default:
-		return v
-	}
 }
 
 type attributesData struct {
@@ -377,7 +349,10 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 
 	tenant := usage.GetTenantNameFromResource()
 
-	attributesJSON := getAttributesJSON(otelSpan.Attributes(), otelSpan.TraceID(), otelSpan.SpanID())
+	attrsRaw := otelSpan.Attributes().AsRaw()
+	// handling NaN/Inf double, which breaks encoding/json marshal, failing the whole map.
+	utils.SanitizeJSON(attrsRaw)
+	attributesJSON := getAttributesJSON(attrsRaw, otelSpan.TraceID(), otelSpan.SpanID())
 
 	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
 
@@ -409,7 +384,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		BillableAttributesNumber: billableNumberAttrs,
 		AttributesBool:           attrMap.BoolMap,
 		Attributes:               attributesJSON,
-		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(otelSpan.Attributes(), promotedPaths).Map(), otelSpan.TraceID(), otelSpan.SpanID()),
+		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
 
 		ResourcesString:         resourceAttrs,
 		BillableResourcesString: billableResourceAttrs,
@@ -444,8 +419,6 @@ func tsBucket(ts int64, bucketSize int64) int64 {
 func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrace.Traces) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
-
-	oldestAllowedTs := time.Now().Add(-time.Duration(s.maxAllowedDataAgeDays) * 24 * time.Hour).UnixNano()
 
 	resourcesSeen := map[int64]map[string]string{}
 
@@ -484,25 +457,6 @@ func (s *clickhouseTracesExporter) pushTraceDataV3(ctx context.Context, td ptrac
 
 				for k := 0; k < spans.Len(); k++ {
 					span := spans.At(k)
-					ts := uint64(span.StartTimestamp())
-					if ts < uint64(oldestAllowedTs) {
-						s.logger.Debug(
-							"skipping span outside allowed time window",
-							zap.Uint64("start_ts", ts),
-							zap.Int64("oldest_allowed_ts", oldestAllowedTs),
-							zap.String("service_name", serviceName),
-							zap.String("span_name", span.Name()),
-							zap.String("trace_id", utils.TraceIDToHexOrEmptyString(span.TraceID())),
-							zap.String("span_id", utils.SpanIDToHexOrEmptyString(span.SpanID())),
-							zap.String("parent_span_id", utils.SpanIDToHexOrEmptyString(span.ParentSpanID())),
-							zap.String("start_time", span.StartTimestamp().AsTime().Format(time.RFC3339)),
-							zap.String("end_time", span.EndTimestamp().AsTime().Format(time.RFC3339)),
-							zap.String("span_kind", span.Kind().String()),
-							zap.String("status_code", span.Status().Code().String()),
-							zap.String("status_message", span.Status().Message()),
-						)
-						continue
-					}
 
 					lBucketStart := tsBucket(int64(span.StartTimestamp()/1000000000), distributedTracesResourceV2Seconds)
 					if _, exists := resourcesSeen[int64(lBucketStart)]; !exists {

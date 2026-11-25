@@ -3,7 +3,8 @@ exporters:
     prometheus:
         endpoint: 0.0.0.0:8889
 extensions:
-    zpages: {}
+    zpages:
+        endpoint: localhost:0
 processors:
     batch:
         send_batch_size: 100000 # changed
@@ -11,8 +12,10 @@ processors:
 receivers:
     otlp:
         protocols:
-            grpc: null
-            http: null
+            grpc:
+                endpoint: localhost:0
+            http:
+                endpoint: localhost:0
 service:
     extensions:
         - zpages

@@ -13,10 +13,11 @@ import (
 	driver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/ptracesgen"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	goccyjson "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
-	cmock "github.com/srikanthccv/ClickHouse-go-mock"
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opencensus.io/stats/view"
@@ -1014,7 +1015,7 @@ func Test_getAttributesJSON(t *testing.T) {
 			want: map[string]any{"mixed_slice": []any{[]any{"a"}, "oops"}},
 		},
 		{
-			// The exhaustive NaN/Inf/nesting matrix lives in Test_sanitizeJSONFloats.
+			// The exhaustive NaN/Inf/nesting matrix lives in utils.TestSanitizeJSON.
 			name: "NaN double is sanitized to null, siblings preserved",
 			attrs: makeMap(func(m pcommon.Map) {
 				m.PutDouble("nan", math.NaN())
@@ -1026,62 +1027,12 @@ func Test_getAttributesJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotJSON := getAttributesJSON(tt.attrs, pcommon.TraceID{}, pcommon.SpanID{})
+			attrs := tt.attrs.AsRaw()
+			utils.SanitizeJSON(attrs)
+			gotJSON := getAttributesJSON(attrs, pcommon.TraceID{}, pcommon.SpanID{})
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal([]byte(gotJSON), &got))
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func Test_sanitizeJSONFloats(t *testing.T) {
-	tests := []struct {
-		name string
-		in   any
-		want any
-	}{
-		{name: "valid float unchanged", in: 3.14, want: 3.14},
-		{name: "NaN becomes nil", in: math.NaN(), want: nil},
-		{name: "+Inf becomes nil", in: math.Inf(1), want: nil},
-		{name: "-Inf becomes nil", in: math.Inf(-1), want: nil},
-		{name: "non-float scalar untouched", in: "hello", want: "hello"},
-		{
-			name: "map with mixed valid/invalid floats",
-			in: map[string]any{
-				"good": 1.0,
-				"bad":  math.NaN(),
-				"str":  "x",
-			},
-			want: map[string]any{
-				"good": 1.0,
-				"bad":  nil,
-				"str":  "x",
-			},
-		},
-		{
-			name: "slice with mixed valid/invalid floats",
-			in:   []any{1.0, math.NaN(), "x"},
-			want: []any{1.0, nil, "x"},
-		},
-		{
-			name: "deeply nested slice-of-map-of-slice",
-			in: []any{
-				map[string]any{
-					"scores": []any{math.Inf(-1), 2.0},
-				},
-			},
-			want: []any{
-				map[string]any{
-					"scores": []any{nil, 2.0},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeJSONFloats(tt.in)
 			assert.Equal(t, tt.want, got)
 		})
 	}

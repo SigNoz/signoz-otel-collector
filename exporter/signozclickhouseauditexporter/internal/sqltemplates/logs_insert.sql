@@ -1,0 +1,33 @@
+INSERT INTO {{ident .Database}}.{{ident .TableName}} (
+    ts_bucket_start,
+    resource_fingerprint,
+    timestamp,
+    observed_timestamp,
+    id,
+    trace_id,
+    span_id,
+    trace_flags,
+    severity_text,
+    severity_number,
+    body,
+    scope,
+    attributes,
+    resource,
+    event_name
+) VALUES (
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?
+)

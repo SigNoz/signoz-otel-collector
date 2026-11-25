@@ -1,7 +1,6 @@
 COMMIT_SHA ?= $(shell git rev-parse HEAD)
 REPONAME ?= signoz
 IMAGE_NAME ?= signoz-otel-collector
-MIGRATOR_IMAGE_NAME ?= signoz-schema-migrator
 CONFIG_FILE ?= ./config/default-config.yaml
 DOCKER_TAG ?= latest
 
@@ -35,7 +34,6 @@ test:
 .PHONY: build
 build:
 	go build -o .build/${GOOS}-${GOARCH}/signoz-otel-collector ./cmd/signozotelcollector
-	go build -o .build/${GOOS}-${GOARCH}/signoz-schema-migrator ./cmd/signozschemamigrator
 
 .PHONY: amd64
 amd64:
@@ -75,24 +73,6 @@ build-signoz-collector:
 		--no-cache -f cmd/signozotelcollector/Dockerfile --progress plain \
 		--tag $(REPONAME)/$(IMAGE_NAME):$(DOCKER_TAG) .
 
-.PHONY: build-signoz-schema-migrator
-build-signoz-schema-migrator:
-	@echo "------------------"
-	@echo  "--> Build schema migrator docker image"
-	@echo "------------------"
-	docker build --build-arg TARGETPLATFORM="linux/amd64" \
-		--no-cache -f cmd/signozschemamigrator/Dockerfile --progress plain \
-		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
-
-.PHONY: build-and-push-signoz-schema-migrator
-build-and-push-signoz-schema-migrator:
-	@echo "------------------"
-	@echo  "--> Build and push schema migrator docker image"
-	@echo "------------------"
-	docker buildx build --platform linux/amd64,linux/arm64 --progress plain \
-		--no-cache --push -f cmd/signozschemamigrator/Dockerfile \
-		--tag $(REPONAME)/$(MIGRATOR_IMAGE_NAME):$(DOCKER_TAG) .
-
 .PHONY: lint
 lint:
 	@echo "Running linters..."
@@ -109,4 +89,6 @@ migrator:
 	@echo "------------------"
 	@echo "--> Running schema migrator for $(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)"
 	@echo "------------------"
-	go run cmd/signozschemamigrator/main.go sync --dsn "clickhouse://$(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)" --dev
+	go run ./cmd/signozotelcollector migrate bootstrap --clickhouse-dsn "tcp://$(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)" --clickhouse-replication=false
+	go run ./cmd/signozotelcollector migrate sync up --clickhouse-dsn "tcp://$(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)" --clickhouse-replication=false
+	go run ./cmd/signozotelcollector migrate async up --clickhouse-dsn "tcp://$(CLICKHOUSE_HOST):$(CLICKHOUSE_PORT)" --clickhouse-replication=false

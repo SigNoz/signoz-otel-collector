@@ -4,19 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
-	cmock "github.com/srikanthccv/ClickHouse-go-mock"
 	"go.uber.org/zap/zaptest"
 
-	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/SigNoz/signoz-otel-collector/pkg/pdatagen/pmetricsgen"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/assert"
@@ -160,7 +158,7 @@ func Test_prepareBatchSum(t *testing.T) {
 }
 
 func Test_prepareBatchHistogram(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -417,45 +415,13 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 		assert.Equal(t, sample.value, curSample.value)
 	}
 
-	expectedExpHistSamples := []exponentialHistogramSample{
-		{
-			env:         "",
-			temporality: pmetric.AggregationTemporalityDelta,
-			metricName:  "http.server.duration1",
-			unixMilli:   1727286182000,
-			sketch: chproto.DD{
-				Mapping: &chproto.IndexMapping{Gamma: math.Pow(2, math.Pow(2, float64(-2)))},
-				PositiveValues: &chproto.Store{
-					ContiguousBinIndexOffset: 1,
-					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
-				},
-				NegativeValues: &chproto.Store{
-					ContiguousBinIndexOffset: 1,
-					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
-				},
-				ZeroCount: 0,
-			},
-		},
-	}
-
-	for idx, sample := range expectedExpHistSamples {
-		curSample := batch.expHist[idx]
-		assert.Equal(t, sample.env, curSample.env)
-		assert.Equal(t, sample.temporality, curSample.temporality)
-		assert.Equal(t, sample.metricName, curSample.metricName)
-		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
-		assert.Equal(t, sample.sketch, curSample.sketch)
-	}
-
 	// metadata
 	// count, sum, min, max
 	// 1 => resource attr
 	// 4 => scope attr + __scope.version__ + __scope.schema_url__ + __scope.name__
 	// 2 => point attr + __temporality__
-	// sketch
-	// 2 => point attr + __temporality__
 
-	assert.Equal(t, len(batch.metadata), 4*(1+4+2)+(2))
+	assert.Equal(t, len(batch.metadata), 4*(1+4+2))
 	for _, item := range batch.metadata {
 		metaSuffix := false
 		if strings.HasSuffix(item.metricName, countSuffix) || strings.HasSuffix(item.metricName, sumSuffix) {
@@ -467,11 +433,6 @@ func Test_prepareBatchExponentialHistogram(t *testing.T) {
 			metaSuffix = true
 			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityUnspecified)
 			assert.Equal(t, item.typ, pmetric.MetricTypeGauge)
-		}
-		if !metaSuffix {
-			metaSuffix = true
-			assert.Equal(t, item.typ, pmetric.MetricTypeExponentialHistogram)
-			assert.Equal(t, item.temporality, pmetric.AggregationTemporalityDelta)
 		}
 		assert.True(t, metaSuffix)
 	}
@@ -598,7 +559,7 @@ func Benchmark_prepareBatchSum(b *testing.B) {
 func Benchmark_prepareBatchHistogram(b *testing.B) {
 	// 1k histogram * 10 datapoints * 20 buckets = 200k samples in total
 	// each with 30 total attributes
-	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10, 0, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1000, 10, 10, 10, 10, 20, 20, 0, 0)
 	b.ResetTimer()
 	b.ReportAllocs()
 	exp, err := NewClickHouseExporter(
@@ -693,7 +654,7 @@ func Test_prepareBatchGaugeWithStaleNan(t *testing.T) {
 }
 
 func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 0, 1)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 0, 1)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -883,7 +844,7 @@ func Test_prepareBatchHistogramWithNoRecordedValue(t *testing.T) {
 }
 
 func Test_prepareBatchHistogramWithNan(t *testing.T) {
-	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 1, 0)
+	metrics := pmetricsgen.GenerateHistogramMetrics(1, 1, 1, 1, 1, 20, 20, 1, 0)
 	exp, err := NewClickHouseExporter(
 		WithLogger(zap.NewNop()),
 		WithConfig(&Config{}),
@@ -1119,37 +1080,6 @@ func Test_prepareBatchExponentialHistogramWithNoRecordedValue(t *testing.T) {
 		assert.Equal(t, sample.flags, curSample.flags)
 	}
 
-	expectedExpHistSamples := []exponentialHistogramSample{
-		{
-			env:         "",
-			temporality: pmetric.AggregationTemporalityDelta,
-			metricName:  "http.server.duration1",
-			unixMilli:   1727286182000,
-			flags:       1,
-			sketch: chproto.DD{
-				Mapping: &chproto.IndexMapping{Gamma: math.Pow(2, math.Pow(2, float64(-2)))},
-				PositiveValues: &chproto.Store{
-					ContiguousBinIndexOffset: 1,
-					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
-				},
-				NegativeValues: &chproto.Store{
-					ContiguousBinIndexOffset: 1,
-					ContiguousBinCounts:      []float64{0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 11, 1, 1, 1, 1, 10},
-				},
-				ZeroCount: 0,
-			},
-		},
-	}
-
-	for idx, sample := range expectedExpHistSamples {
-		curSample := batch.expHist[idx]
-		assert.Equal(t, sample.env, curSample.env)
-		assert.Equal(t, sample.temporality, curSample.temporality)
-		assert.Equal(t, sample.metricName, curSample.metricName)
-		assert.Equal(t, sample.unixMilli, curSample.unixMilli)
-		assert.Equal(t, sample.sketch, curSample.sketch)
-		assert.Equal(t, sample.flags, curSample.flags)
-	}
 }
 
 func Test_prepareBatchExponentialHistogramWithNan(t *testing.T) {
@@ -1176,7 +1106,6 @@ func Test_shutdown(t *testing.T) {
 	conn.MatchExpectationsInOrder(false)
 	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")                                                                                                         //samples query
 	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //time series query
-	conn.ExpectPrepareBatch("INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, count, sum, min, max, sketch, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")                                                                      //exp hist query
 	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")             //metadata query
 	conn.ExpectExec("insert into signoz_metrics.distributed_usage values ($1, $2, $3, $4, $5)")                                                                                                                                                                                     // usage exporter query
 	conn.ExpectClose()

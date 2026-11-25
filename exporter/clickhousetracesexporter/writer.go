@@ -74,7 +74,8 @@ type SpanWriter struct {
 
 	maxDistinctValues         int
 	fetchShouldSkipKeysTicker *time.Ticker
-	done                      chan struct{}
+	closeCtx                  context.Context
+	cancelClose               context.CancelFunc
 
 	promotedAttributePaths    atomic.Value // stores map[string]struct{}; lock-free reads on hot path
 	promotedPathsSyncInterval time.Duration
@@ -90,8 +91,8 @@ func NewSpanWriter(options ...WriterOption) *SpanWriter {
 		attributeKeyTable: defaultAttributeKeyTable,
 		indexTableV3:      defaultIndexTableV3,
 		resourceTableV3:   defaultResourceTableV3,
-		done:              make(chan struct{}),
 	}
+	writer.closeCtx, writer.cancelClose = context.WithCancel(context.Background())
 	for _, option := range options {
 		option(writer)
 	}
@@ -125,7 +126,7 @@ func (e *SpanWriter) doFetchShouldSkipKeys() {
 
 	keys := []shouldSkipKey{}
 
-	err := e.db.Select(context.Background(), &keys, query)
+	err := e.db.Select(e.closeCtx, &keys, query)
 	if err != nil {
 		e.logger.Error("error while fetching should skip keys", zap.Error(err))
 	}
@@ -142,7 +143,7 @@ func (e *SpanWriter) doFetchShouldSkipKeys() {
 func (e *SpanWriter) fetchShouldSkipKeys() {
 	for {
 		select {
-		case <-e.done:
+		case <-e.closeCtx.Done():
 			return
 		case <-e.fetchShouldSkipKeysTicker.C:
 			e.doFetchShouldSkipKeys()
@@ -160,7 +161,7 @@ func (e *SpanWriter) doFetchPromotedPaths() {
 	rows := []struct {
 		FieldName string `ch:"field_name"`
 	}{}
-	if err := e.db.Select(context.Background(), &rows, query); err != nil {
+	if err := e.db.Select(e.closeCtx, &rows, query); err != nil {
 		e.logger.Error("error while fetching promoted attribute paths", zap.Error(err))
 		return
 	}
@@ -180,7 +181,7 @@ func (e *SpanWriter) fetchPromotedPaths() {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-e.done:
+		case <-e.closeCtx.Done():
 			return
 		case <-ticker.C:
 			e.doFetchPromotedPaths()
@@ -634,7 +635,7 @@ func (w *SpanWriter) Stop() {
 	if w.rfCache != nil {
 		w.rfCache.Stop()
 	}
-	close(w.done)
+	w.cancelClose()
 }
 
 // Close closes the writer
