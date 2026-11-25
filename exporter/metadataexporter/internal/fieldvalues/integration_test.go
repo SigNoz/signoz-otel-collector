@@ -135,13 +135,13 @@ const relatedQuery = `SELECT string_value
 FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = ? AND field_context = ?
   AND first_seen < toDateTime(?, 'UTC')
-  AND last_seen >= toDateTime('2026-09-22 00:00:00', 'UTC')
+  AND last_seen >= toDateTime('%[1]s 00:00:00', 'UTC')
   AND resource_hash IN (
       SELECT resource_hash FROM signoz_metadata.distributed_field_values_sets AS r
       WHERE signal = 'logs' AND field_name = 'deployment.environment.name'
         AND field_context = 'resource' AND string_value = 'prod')
-  AND %s IN (
-      SELECT %s FROM signoz_metadata.distributed_field_values_sets AS c
+  AND %[2]s IN (
+      SELECT %[3]s FROM signoz_metadata.distributed_field_values_sets AS c
       WHERE signal = 'logs' AND field_name = 'severity_text'
         AND field_context = 'log' AND string_value = 'ERROR')
 GROUP BY string_value
@@ -157,19 +157,19 @@ func TestIntegrationExampleOneQuickFilter(t *testing.T) {
 	require.NoError(t, e.WriteLogs(context.Background(), exampleLogs()))
 	flush(t, conn)
 
-	attrQuery := fmt.Sprintf(relatedQuery, "(resource_hash, attrs_hash)", "resource_hash, attrs_hash")
-	assert.Equal(t, []string{"POST"}, queryStrings(t, conn, attrQuery, "http.method", "attribute", "2026-09-22 11:00:00"))
-	assert.Equal(t, []string{"POST", "PUT"}, queryStrings(t, conn, attrQuery, "http.method", "attribute", "2026-09-22 15:00:00"))
+	attrQuery := fmt.Sprintf(relatedQuery, testDate, "(resource_hash, attrs_hash)", "resource_hash, attrs_hash")
+	assert.Equal(t, []string{"POST"}, queryStrings(t, conn, attrQuery, "http.method", "attribute", testDate+" 11:00:00"))
+	assert.Equal(t, []string{"POST", "PUT"}, queryStrings(t, conn, attrQuery, "http.method", "attribute", testDate+" 15:00:00"))
 
-	resourceQuery := fmt.Sprintf(relatedQuery, "resource_hash", "resource_hash")
-	assert.Equal(t, []string{"checkout", "payments"}, queryStrings(t, conn, resourceQuery, "service.name", "resource", "2026-09-22 12:00:00"),
+	resourceQuery := fmt.Sprintf(relatedQuery, testDate, "resource_hash", "resource_hash")
+	assert.Equal(t, []string{"checkout", "payments"}, queryStrings(t, conn, resourceQuery, "service.name", "resource", testDate+" 12:00:00"),
 		"exclude-self: the service filter drops its own condition")
 
 	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqCombinedMerge(12)(holders)))
 FROM signoz_metadata.distributed_field_values_daily
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.method' AND field_context = 'attribute'
-  AND field_data_type = 'string' AND day = '2026-09-22'
-GROUP BY string_value`)
+  AND field_data_type = 'string' AND day = ?
+GROUP BY string_value`, testDate)
 	assert.Equal(t, []string{"GET:2", "POST:1", "PUT:1"}, plain, "plain values with holders from the view")
 
 	require.NoError(t, e.WriteLogs(context.Background(), exampleLogs()))
@@ -344,11 +344,11 @@ func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
 	flush(t, conn)
 
 	assert.Equal(t, []string{
-		"GET 2026-09-22 10:00:00 2026-09-23 00:00:00",
-		"PUT 2026-09-23 00:00:00 2026-09-23 00:00:00",
+		"GET " + testDate + " 10:00:00 " + testNextDate + " 00:00:00",
+		"PUT " + testNextDate + " 00:00:00 " + testNextDate + " 00:00:00",
 	}, queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(min(first_seen), 'UTC'), ' ', toString(max(last_seen), 'UTC'))
 FROM signoz_metadata.field_values_sets WHERE field_name = 'http.method' GROUP BY string_value ORDER BY string_value`))
-	assert.Equal(t, []string{"GET 2026-09-22", "GET 2026-09-23", "PUT 2026-09-23"},
+	assert.Equal(t, []string{"GET " + testDate, "GET " + testNextDate, "PUT " + testNextDate},
 		queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(day)) FROM signoz_metadata.field_values_daily
 WHERE field_name = 'http.method' GROUP BY string_value, day ORDER BY string_value, day`))
 }

@@ -17,7 +17,22 @@ import (
 	"go.uber.org/zap"
 )
 
-var testDay = time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+// testDay is noon of the last Tuesday that has a full day after it. It is
+// inside the TTL of the tables, and the day after it is in the same week
+// partition.
+var testDay = func() time.Time {
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	tuesday := today.AddDate(0, 0, -((int(today.Weekday()) + 5) % 7))
+	if !tuesday.Before(today) {
+		tuesday = tuesday.AddDate(0, 0, -7)
+	}
+	return tuesday.Add(12 * time.Hour)
+}()
+
+var (
+	testDate     = testDay.Format(time.DateOnly)
+	testNextDate = testDay.AddDate(0, 0, 1).Format(time.DateOnly)
+)
 
 type fakeWriter struct {
 	rows []row
