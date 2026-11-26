@@ -13,11 +13,13 @@ import (
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/config"
 	"github.com/SigNoz/signoz-otel-collector/cmd/signozotelcollector/migrate"
 	"github.com/SigNoz/signoz-otel-collector/constants"
+	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 	"github.com/SigNoz/signoz-otel-collector/service"
 	"github.com/SigNoz/signoz-otel-collector/signozcol"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	otelcolFeatureGate "go.opentelemetry.io/collector/featuregate"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -90,6 +92,11 @@ func main() {
 
 			return err
 		},
+	}
+
+	// Keep gates upstream turned on after v0.144.0 off; --feature-gates can still turn them on.
+	if err := signozcolFeatureGate.ApplyDefaults(otelcolFeatureGate.GlobalRegistry()); err != nil {
+		logger.Fatal("failed to apply feature gate defaults", zap.Error(err))
 	}
 
 	config.Clickhouse.RegisterFlags(rootCmd)
