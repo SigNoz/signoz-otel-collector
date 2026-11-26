@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -99,6 +100,22 @@ func TestLogsSizeWithExcludedSigNozInternalAttrs(t *testing.T) {
 
 	record.Attributes().PutStr("k", "v")
 	assert.Equal(t, 10*(8*(10+20+5)+7+2+2+100)+7, meter.Size(logs))
+}
+
+func TestLogsSizeWithNonFiniteAttrs(t *testing.T) {
+	logs := plogsgen.Generate(
+		plogsgen.WithLogRecordCount(1),
+		plogsgen.WithResourceAttributeCount(0),
+		plogsgen.WithBody(""),
+	)
+	attrs := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Attributes()
+	attrs.PutStr("a", "b")
+	attrs.PutDouble("nan", math.NaN())
+	attrs.PutDouble("inf", math.Inf(1))
+
+	meter := NewLogs(zap.NewNop())
+	// resource {} (2) + attributes {"a":"b","inf":null,"nan":null} (31)
+	assert.Equal(t, 2+31, meter.Size(logs))
 }
 
 func benchmarkLogsSize(b *testing.B, expectedSize int, options ...plogsgen.GenerationOption) {

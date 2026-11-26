@@ -2,6 +2,7 @@ package v1
 
 import (
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
+	"github.com/SigNoz/signoz-otel-collector/utils"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.uber.org/zap"
 )
@@ -40,8 +41,11 @@ func (meter *logs) SizePerResource(rld plog.ResourceLogs) int {
 
 		for k := 0; k < scopeLogs.LogRecords().Len(); k++ {
 			logRecord := scopeLogs.LogRecords().At(k)
+			// Sanitized like the clickhouselogsexporter attributes column, so NaN/Inf don't fail the marshal.
+			attrs := logRecord.Attributes().AsRaw()
+			utils.SanitizeJSON(attrs)
 			total += resourceAttributesSize +
-				meter.Sizer.SizeOfMapStringAny(logRecord.Attributes().AsRaw()) +
+				meter.Sizer.SizeOfMapStringAny(attrs) +
 				len([]byte(logRecord.Body().AsString()))
 		}
 	}
