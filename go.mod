@@ -935,6 +935,10 @@ require (
 )
 
 replace (
+
+	// goccy/go-json 0.12 rejects JSON that 0.10.5 accepts (raw tabs/newlines in
+	// strings, 01, 1.). Keep 0.10.5 so the upgrade doesn't change JSON parsing.
+	github.com/goccy/go-json => github.com/goccy/go-json v0.10.5
 	github.com/segmentio/ksuid => github.com/signoz/ksuid v1.0.4
 	github.com/vjeantet/grok => github.com/signoz/grok v1.0.3
 
