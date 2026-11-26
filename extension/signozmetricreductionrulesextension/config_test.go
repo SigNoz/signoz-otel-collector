@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
-	"go.opentelemetry.io/collector/confmap/xconfmap"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -45,13 +45,13 @@ func TestLoadConfig(t *testing.T) {
 			if testCase.expectErr != "" {
 				err := sub.Unmarshal(cfg)
 				if err == nil {
-					err = xconfmap.Validate(cfg)
+					err = confmap.Validate(cfg)
 				}
 				assert.ErrorContains(t, err, testCase.expectErr)
 				return
 			}
 			require.NoError(t, sub.Unmarshal(cfg))
-			require.NoError(t, xconfmap.Validate(cfg))
+			require.NoError(t, confmap.Validate(cfg))
 			assert.Equal(t, testCase.expected, *cfg.(*Config))
 		})
 	}

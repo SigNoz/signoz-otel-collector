@@ -11,8 +11,8 @@ import (
 
 	signozlogspipelinestanzaoperator "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator"
 	signozstanzahelper "github.com/SigNoz/signoz-otel-collector/processor/signozlogspipelineprocessor/stanza/operator/helper"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/errors"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/operator"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza/stanzaerrors"
 )
 
 const operatorType = "regex_parser"
@@ -67,7 +67,7 @@ func (c Config) Build(set component.TelemetrySettings) (operator.Operator, error
 		}
 	}
 	if namedCaptureGroups == 0 {
-		return nil, errors.NewError(
+		return nil, stanzaerrors.NewError(
 			"no named capture groups in regex pattern",
 			"use named capture groups like '^(?P<my_key>.*)$' to specify the key name for the parsed field",
 		)

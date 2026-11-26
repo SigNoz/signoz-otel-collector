@@ -100,7 +100,7 @@ func Test_ConvertSummaryCountValToSum(t *testing.T) {
 			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 			tt.input.CopyTo(scopeMetrics.Metrics().AppendEmpty())
 			metric := scopeMetrics.Metrics().At(0)
-			ctx := ottldatapoint.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric, pmetric.NewNumberDataPoint())
+			ctx := ottldatapoint.NewTransformContext(resourceMetrics, scopeMetrics, metric, pmetric.NewNumberDataPoint())
 			_, err = evaluate(nil, ctx)
 			assert.Nil(t, err)
 

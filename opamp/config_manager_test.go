@@ -130,7 +130,7 @@ func TestNewAgentConfigManagerApply(t *testing.T) {
 	assert.NoError(t, err)
 	newEffCfg := &protobufs.AgentRemoteConfig{
 		Config: &protobufs.AgentConfigMap{
-			ConfigMap: map[string]*protobufs.AgentConfigFile{
+			ConfigMap: map[string]*protobufs.AgentConfigObject{
 				"collector.yaml": {
 					ContentType: "text/yaml",
 					Body:        newContent,

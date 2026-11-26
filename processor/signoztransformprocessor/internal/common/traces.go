@@ -36,7 +36,7 @@ func (t traceStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces) er
 			sspans := rspans.ScopeSpans().At(j)
 			spans := sspans.Spans()
 			for k := 0; k < spans.Len(); k++ {
-				tCtx := ottlspan.NewTransformContextPtr(rspans, sspans, spans.At(k))
+				tCtx := ottlspan.NewTransformContext(rspans, sspans, spans.At(k))
 				err := t.Execute(ctx, tCtx)
 				if err != nil {
 					return err
@@ -69,7 +69,7 @@ func (s spanEventStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces
 				span := spans.At(k)
 				spanEvents := span.Events()
 				for n := 0; n < spanEvents.Len(); n++ {
-					tCtx := ottlspanevent.NewTransformContextPtr(rspans, sspans, span, spanEvents.At(n))
+					tCtx := ottlspanevent.NewTransformContext(rspans, sspans, span, spanEvents.At(n))
 					err := s.Execute(ctx, tCtx)
 					if err != nil {
 						return err

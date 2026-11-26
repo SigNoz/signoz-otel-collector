@@ -106,7 +106,7 @@ func makeTestOttlLogContext(
 	resourceLogs := plog.NewResourceLogs()
 	scopeLogs := resourceLogs.ScopeLogs().AppendEmpty()
 	logRecord := scopeLogs.LogRecords().AppendEmpty()
-	
+
 	logRecord.Body().SetStr(body)
 	_ = logRecord.Attributes().FromRaw(attributes)
 	_ = resourceLogs.Resource().Attributes().FromRaw(resource)
@@ -114,5 +114,5 @@ func makeTestOttlLogContext(
 	logRecord.SetSeverityText(severityText)
 	logRecord.SetSeverityNumber(severity)
 
-	return ottllog.NewTransformContextPtr(resourceLogs, scopeLogs, logRecord)
+	return ottllog.NewTransformContext(resourceLogs, scopeLogs, logRecord)
 }

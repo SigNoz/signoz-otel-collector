@@ -181,7 +181,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/riakreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/saphanareceiver"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signalfxreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/signalfxreceiver" //nolint:staticcheck
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/simpleprometheusreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/skywalkingreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/snmpreceiver"
@@ -382,7 +382,7 @@ func Components() (otelcol.Factories, error) {
 		attributesprocessor.NewFactory(),
 		cumulativetodeltaprocessor.NewFactory(),
 		coralogixprocessor.NewFactory(),
-		datadogsemanticsprocessor.NewFactory(),
+		datadogsemanticsprocessor.NewFactory(), //nolint:staticcheck
 		deltatorateprocessor.NewFactory(),
 		deltatocumulativeprocessor.NewFactory(),
 		dnslookupprocessor.NewFactory(),
