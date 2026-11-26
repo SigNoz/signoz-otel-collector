@@ -94,7 +94,6 @@ func main() {
 		},
 	}
 
-	// Keep gates upstream turned on after v0.144.0 off; --feature-gates can still turn them on.
 	if err := signozcolFeatureGate.ApplyDefaults(otelcolFeatureGate.GlobalRegistry()); err != nil {
 		logger.Fatal("failed to apply feature gate defaults", zap.Error(err))
 	}

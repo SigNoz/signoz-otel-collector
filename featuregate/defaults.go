@@ -5,9 +5,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// DisabledByDefault lists the feature gates that upstream turned on by default
-// after v0.144.0. We keep them off so the collector behaves as it did on v0.144.0.
-// Any of them can still be turned on with --feature-gates=<id>.
+// DisabledByDefault can be overridden with --feature-gates.
 var DisabledByDefault = []string{
 	"connector.spanmetrics.includeCollectorInstanceID",
 	"datadog.EnableScopeConvention",
@@ -42,8 +40,7 @@ var DisabledByDefault = []string{
 	"service.partialReloadReceivers",
 }
 
-// ApplyDefaults turns off the gates in DisabledByDefault. Call it before the
-// --feature-gates flag is parsed so the flag can override these defaults.
+// ApplyDefaults must run before --feature-gates is parsed.
 func ApplyDefaults(reg *featuregate.Registry) error {
 	var errs error
 	for _, id := range DisabledByDefault {

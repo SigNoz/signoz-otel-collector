@@ -10,9 +10,6 @@ import (
 	signozcolFeatureGate "github.com/SigNoz/signoz-otel-collector/featuregate"
 )
 
-// The components are linked into this binary, so every gate in the list must be
-// registered and must be off after ApplyDefaults. A gate that upstream removes or
-// marks stable makes this test fail.
 func TestApplyDefaults(t *testing.T) {
 	reg := featuregate.GlobalRegistry()
 	require.NoError(t, signozcolFeatureGate.ApplyDefaults(reg))
@@ -27,7 +24,6 @@ func TestApplyDefaults(t *testing.T) {
 		assert.False(t, on, "gate %s is enabled", id)
 	}
 
-	// The flag still overrides the defaults.
 	flag := signozcolFeatureGate.NewFlag(reg)
 	require.NoError(t, flag.Set("receiver.kubeletstats.cpuUsageScrapeBased"))
 	t.Cleanup(func() { _ = reg.Set("receiver.kubeletstats.cpuUsageScrapeBased", false) })
