@@ -37,3 +37,4 @@ jobs:
     with:
       PRIMUS_REF: main
       GO_VERSION: 1.27
+      GO_LINT_TIMEOUT: 30m0s
