@@ -179,6 +179,17 @@ func linkKey(metricNameHash, resourceHash uint64) uint64 {
 	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ resourceHash ^ 'L')
 }
 
+// limitField is the id of a field for the value limits. The limit of a
+// metric label is for each metric: a label with many values on one metric
+// must not take the values of the same label from the other metrics. Logs,
+// traces and the resource fields of metrics have the empty name.
+func limitField(metricNameHash uint64, f fieldID) fieldID {
+	if metricNameHash == emptyNameHash {
+		return f
+	}
+	return fieldID(mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(f) ^ 'V'))
+}
+
 func labelKey(metricNameHash uint64, f fieldID) uint64 {
 	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(f) ^ 'K')
 }

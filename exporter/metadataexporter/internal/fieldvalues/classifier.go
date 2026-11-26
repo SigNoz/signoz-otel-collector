@@ -12,9 +12,15 @@ import (
 // overField is a field and a UTC day on which the field had more values than
 // its limit. It is one row of field_days_over_limit.
 type overField struct {
-	ctx  fieldContext
-	name string
-	day  uint64
+	// metric is the metric of a label, and empty for all other fields.
+	metric string
+	ctx    fieldContext
+	name   string
+	day    uint64
+}
+
+func (f overField) id() fieldID {
+	return limitField(nameHash(f.metric), fieldIDOf(f.ctx, f.name))
 }
 
 // classification is what the database knows about the fields of one signal:
@@ -43,10 +49,10 @@ func (c *classification) isOver(f fieldID) bool {
 
 // The day is read as a number: the driver gives a Date as a time in the time
 // zone of the server.
-const flaggedQuery = `SELECT field_context, field_name, toUInt16(max(day))
+const flaggedQuery = `SELECT metric_name, field_context, field_name, toUInt16(max(day))
 FROM signoz_metadata.distributed_field_days_over_limit
 WHERE signal = ? AND source = ? AND day >= ?
-GROUP BY field_context, field_name`
+GROUP BY metric_name, field_context, field_name`
 
 // rowsOfValues leaves out the rows that are not values of a field: the link
 // rows of metrics, and the key rows of the resource fields of a metric.
@@ -57,28 +63,28 @@ const rowsOfValues = `signal = ? AND source = ? AND toDate(last_seen, 'UTC') >= 
 // row for each value, so that ClickHouse can read the projection in place of
 // the rows of the sets. A condition on last_seen itself, or a subquery in
 // place of the list of fields, makes ClickHouse read the rows of the sets.
-const overLimitQuery = `SELECT field_context, field_name
+const overLimitQuery = `SELECT metric_name, field_context, field_name
 FROM
 (
-    SELECT field_context, field_name, string_value, number_value
+    SELECT metric_name, field_context, field_name, string_value, number_value
     FROM signoz_metadata.distributed_field_values_sets
     WHERE ` + rowsOfValues + `%s
-    GROUP BY field_context, field_name, string_value, number_value
+    GROUP BY metric_name, field_context, field_name, string_value, number_value
 )
-GROUP BY field_context, field_name
+GROUP BY metric_name, field_context, field_name
 HAVING count() > if(field_context = 'resource', ?, ?)`
 
 const notFlagged = `
-      AND (field_context, field_name) NOT IN ?`
+      AND (metric_name, field_context, field_name) NOT IN ?`
 
-const knownFieldsQuery = `SELECT field_context, field_name
+const knownFieldsQuery = `SELECT metric_name, field_context, field_name
 FROM signoz_metadata.distributed_field_values_sets
 WHERE ` + rowsOfValues + `%s
-GROUP BY field_context, field_name
+GROUP BY metric_name, field_context, field_name
 ORDER BY count() DESC
 LIMIT ?`
 
-const overInsertQuery = "INSERT INTO signoz_metadata.distributed_field_days_over_limit (signal, source, field_context, field_name, day)"
+const overInsertQuery = "INSERT INTO signoz_metadata.distributed_field_days_over_limit (signal, source, metric_name, field_context, field_name, day)"
 
 type classifier struct {
 	conn          driver.Conn
@@ -109,7 +115,7 @@ func (c *classifier) refresh(ctx context.Context, prev *classification, now time
 	var rows []overField
 	flag := func(fields []overField) {
 		for _, f := range fields {
-			id := fieldIDOf(f.ctx, f.name)
+			id := f.id()
 			if known, ok := over[id]; ok && known.day >= f.day {
 				continue
 			}
@@ -155,17 +161,18 @@ func (c *classifier) flagged(ctx context.Context, today uint64) (map[fieldID]ove
 	out := make(map[fieldID]overField)
 	for rows.Next() {
 		var (
-			ctxName, name string
-			day           uint16
+			metric, ctxName, name string
+			day                   uint16
 		)
-		if err := rows.Scan(&ctxName, &name, &day); err != nil {
+		if err := rows.Scan(&metric, &ctxName, &name, &day); err != nil {
 			return nil, err
 		}
 		fc, ok := parseFieldContext(ctxName)
 		if !ok {
 			return nil, fmt.Errorf("unknown field context %q", ctxName)
 		}
-		out[fieldIDOf(fc, name)] = overField{ctx: fc, name: name, day: uint64(day)}
+		f := overField{metric: metric, ctx: fc, name: name, day: uint64(day)}
+		out[f.id()] = f
 	}
 	return out, rows.Err()
 }
@@ -180,7 +187,7 @@ func (c *classifier) valueRows(day uint64, skip map[fieldID]overField) (clause s
 	}
 	fields := make([]clickhouse.GroupSet, 0, len(skip))
 	for _, f := range skip {
-		fields = append(fields, clickhouse.GroupSet{Value: []any{f.ctx.String(), f.name}})
+		fields = append(fields, clickhouse.GroupSet{Value: []any{f.metric, f.ctx.String(), f.name}})
 	}
 	return notFlagged, append(args, fields)
 }
@@ -197,11 +204,12 @@ func (c *classifier) overLimit(ctx context.Context, day uint64, skip map[fieldID
 	defer func() { _ = rows.Close() }()
 	var out []overField
 	for rows.Next() {
-		fc, name, err := scanField(rows)
+		f, err := scanField(rows)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, overField{ctx: fc, name: name, day: day})
+		f.day = day
+		out = append(out, f)
 	}
 	return out, rows.Err()
 }
@@ -218,11 +226,11 @@ func (c *classifier) knownFields(ctx context.Context, since uint64, over map[fie
 		known = append(known, f)
 	}
 	for rows.Next() {
-		fc, name, err := scanField(rows)
+		f, err := scanField(rows)
 		if err != nil {
 			return nil, err
 		}
-		known = append(known, fieldIDOf(fc, name))
+		known = append(known, f.id())
 	}
 	return known, rows.Err()
 }
@@ -237,23 +245,23 @@ func (c *classifier) write(ctx context.Context, fields []overField) error {
 	}
 	defer func() { _ = stmt.Close() }()
 	for _, f := range fields {
-		if err := stmt.Append(c.signal, c.source, f.ctx.String(), f.name, dayString(f.day)); err != nil {
+		if err := stmt.Append(c.signal, c.source, f.metric, f.ctx.String(), f.name, dayString(f.day)); err != nil {
 			return err
 		}
 	}
 	return stmt.Send()
 }
 
-func scanField(rows driver.Rows) (fieldContext, string, error) {
-	var ctxName, name string
-	if err := rows.Scan(&ctxName, &name); err != nil {
-		return 0, "", err
+func scanField(rows driver.Rows) (overField, error) {
+	var metric, ctxName, name string
+	if err := rows.Scan(&metric, &ctxName, &name); err != nil {
+		return overField{}, err
 	}
 	fc, ok := parseFieldContext(ctxName)
 	if !ok {
-		return 0, "", fmt.Errorf("unknown field context %q", ctxName)
+		return overField{}, fmt.Errorf("unknown field context %q", ctxName)
 	}
-	return fc, name, nil
+	return overField{metric: metric, ctx: fc, name: name}, nil
 }
 
 func dayTime(day uint64) time.Time {

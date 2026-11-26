@@ -38,6 +38,8 @@ const fieldStateBytes = 96
 // values per field, decides the daily budget of high-cardinality fields, and
 // owns the field places.
 type tracker struct {
+	// maxFields is the number of field places, or 0 when the budget alone
+	// bounds the places.
 	maxFields int
 	fields    map[fieldID]*fieldState
 	budget    *budget
@@ -59,7 +61,7 @@ func (t *tracker) reset(known []fieldID) {
 
 func (t *tracker) place(known []fieldID) {
 	for _, f := range known {
-		if len(t.fields) >= t.maxFields {
+		if t.maxFields != 0 && len(t.fields) >= t.maxFields {
 			return
 		}
 		if _, ok := t.fields[f]; !ok {
@@ -73,7 +75,13 @@ func (t *tracker) state(f fieldID) *fieldState {
 	if st, ok := t.fields[f]; ok {
 		return st
 	}
-	if len(t.fields) >= t.maxFields {
+	if t.maxFields == 0 {
+		// The states and their values get half of the budget at most, so
+		// that the labels of many metrics leave room for the resource states.
+		if t.bytes+fieldStateBytes > t.budget.limit/2 {
+			return nil
+		}
+	} else if len(t.fields) >= t.maxFields {
 		return nil
 	}
 	return t.newState(f)

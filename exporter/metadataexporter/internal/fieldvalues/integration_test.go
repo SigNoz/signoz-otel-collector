@@ -229,7 +229,7 @@ FROM signoz_metadata.distributed_field_days_over_limit`)
 	// rows of the first one, and writes the row of the field and the day.
 	other := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
 	setNow(other, time.Now().UTC().Truncate(24*time.Hour).Add(12*time.Hour))
-	other.refresh()
+	other.refresh(refreshTimeout)
 	require.NotNil(t, other.class.Load())
 	assert.True(t, other.class.Load().isOver(userID))
 	assert.False(t, other.class.Load().isOver(method))
@@ -237,7 +237,7 @@ FROM signoz_metadata.distributed_field_days_over_limit`)
 
 	// The first collector has the field in its own count. The row is there,
 	// so it writes no second one.
-	e.refresh()
+	e.refresh(refreshTimeout)
 	assert.True(t, e.class.Load().isOver(userID))
 	assert.Equal(t, []string{"logs attribute user.id 1"}, overRows())
 
@@ -371,7 +371,9 @@ func TestIntegrationInsertsAreAsync(t *testing.T) {
 	conn := integrationConn(t)
 	e := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
 	setNow(e, testDay)
-	since := time.Now().UnixMicro()
+	// The clock of the server gives the start, as query_log has its times.
+	var since int64
+	require.NoError(t, conn.QueryRow(context.Background(), "SELECT toUnixTimestamp64Micro(now64(6))").Scan(&since))
 	require.NoError(t, e.WriteLogs(context.Background(), exampleLogs()))
 	flush(t, conn)
 	require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH LOGS"))
@@ -401,7 +403,7 @@ func TestIntegrationReadsCanUseTheProjection(t *testing.T) {
 (signal, source, metric_name, field_context, field_name, field_data_type, string_value, resource_hash, attrs_hash, in_hash, first_seen, last_seen, inserted_at)
 VALUES ('logs', '', '', 'attribute', 'http.method', 'string', 'GET', 1, 1, true, now(), now(), now()),
        ('metrics', '', 'http_requests', 'attribute', 'code', 'string', '200', 1, 1, true, now(), now(), now())`))
-	skip := []clickhouse.GroupSet{{Value: []any{"attribute", "user.id"}}}
+	skip := []clickhouse.GroupSet{{Value: []any{"", "attribute", "user.id"}}}
 	for _, tc := range []struct {
 		name   string
 		query  string
@@ -446,8 +448,8 @@ func userLogs(users int) plog.Logs {
 func overLimitRows(t *testing.T, conn driver.Conn) []string {
 	t.Helper()
 	require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH DISTRIBUTED ON CLUSTER "+integrationCluster()+" signoz_metadata.distributed_field_days_over_limit"))
-	return queryStrings(t, conn, `SELECT concat(signal, ' ', toString(field_context), ' ', field_name, ' ', toString(day))
-FROM signoz_metadata.distributed_field_days_over_limit GROUP BY signal, field_context, field_name, day`)
+	return queryStrings(t, conn, `SELECT concat(signal, ' ', if(metric_name = '', '', concat(metric_name, ' ')), toString(field_context), ' ', field_name, ' ', toString(day))
+FROM signoz_metadata.distributed_field_days_over_limit GROUP BY signal, metric_name, field_context, field_name, day`)
 }
 
 // A field that passes its limit after the last refresh of a day gets its row
@@ -467,14 +469,14 @@ func TestIntegrationClassifierReadsTheDayThatEnded(t *testing.T) {
 
 	late := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
 	setNow(late, today.Add(cfg.Classification.RefreshInterval+5*time.Minute))
-	late.refresh()
+	late.refresh(refreshTimeout)
 	require.NotNil(t, late.class.Load())
 	assert.False(t, late.class.Load().isOver(userID), "after the first interval of the day, the day that ended is not read")
 	assert.Empty(t, overLimitRows(t, conn))
 
 	inTime := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
 	setNow(inTime, today.Add(5*time.Minute))
-	inTime.refresh()
+	inTime.refresh(refreshTimeout)
 	require.NotNil(t, inTime.class.Load())
 	assert.True(t, inTime.class.Load().isOver(userID))
 	assert.Equal(t, []string{"logs attribute user.id " + today.AddDate(0, 0, -1).Format(time.DateOnly)}, overLimitRows(t, conn))
@@ -493,7 +495,7 @@ func TestIntegrationClassifierLookback(t *testing.T) {
 
 	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
 	setNow(e, today.Add(12*time.Hour))
-	e.refresh()
+	e.refresh(refreshTimeout)
 	class := e.class.Load()
 	require.NotNil(t, class)
 	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "last.day")), "the last day of the lookback")
@@ -501,8 +503,7 @@ func TestIntegrationClassifierLookback(t *testing.T) {
 	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "other.signal")))
 }
 
-// The rows of a metric label have the metric name, and the limit of a label
-// is for all metrics together.
+// The limit of a metric label is for each metric.
 func TestIntegrationClassifierFindsMetricLabelsOverTheLimit(t *testing.T) {
 	conn := integrationConn(t)
 	cfg := testConfig()
@@ -513,11 +514,11 @@ func TestIntegrationClassifierFindsMetricLabelsOverTheLimit(t *testing.T) {
 	rm := md.ResourceMetrics().AppendEmpty()
 	rm.Resource().Attributes().PutStr("service.name", "checkout")
 	sm := rm.ScopeMetrics().AppendEmpty()
-	for i, name := range []string{"http_requests", "http_errors"} {
+	for name, pids := range map[string]int{"http_requests": 4, "http_errors": 2} {
 		m := sm.Metrics().AppendEmpty()
 		m.SetName(name)
 		gauge := m.SetEmptyGauge()
-		for pid := i * 2; pid < i*2+2; pid++ {
+		for pid := 0; pid < pids; pid++ {
 			dp := gauge.DataPoints().AppendEmpty()
 			dp.Attributes().PutStr("pid", fmt.Sprintf("%d", pid))
 			dp.Attributes().PutStr("method", "GET")
@@ -530,11 +531,12 @@ func TestIntegrationClassifierFindsMetricLabelsOverTheLimit(t *testing.T) {
 
 	other := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
 	setNow(other, noon)
-	other.refresh()
+	other.refresh(refreshTimeout)
 	class := other.class.Load()
 	require.NotNil(t, class)
-	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "pid")), "2 values in each of 2 metrics are 4 values of the label")
-	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "method")))
-	assert.False(t, class.isOver(fieldIDOf(contextResource, linkField)), "link rows are not values")
-	assert.Equal(t, []string{"metrics attribute pid " + noon.Format(time.DateOnly)}, overLimitRows(t, conn))
+	pid := fieldIDOf(contextAttribute, "pid")
+	assert.True(t, class.isOver(limitField(nameHash("http_requests"), pid)))
+	assert.False(t, class.isOver(limitField(nameHash("http_errors"), pid)), "the same label of a metric with few values")
+	assert.False(t, class.isOver(limitField(nameHash("http_requests"), fieldIDOf(contextAttribute, "method"))))
+	assert.Equal(t, []string{"metrics http_requests attribute pid " + noon.Format(time.DateOnly)}, overLimitRows(t, conn))
 }

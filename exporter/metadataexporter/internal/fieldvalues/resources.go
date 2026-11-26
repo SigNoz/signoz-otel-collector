@@ -6,7 +6,9 @@ type resourceState struct {
 	// dropped are the fields that left the hash of this resource.
 	dropped map[fieldID]struct{}
 	// stepSets and stepPairs count the new set keys and the new keys of pairs
-	// outside the hash in the current step. Each step has its own limit.
+	// outside the hash in the current step. Each step has its own limit. A
+	// batch adds its counts when its insert succeeds, so a failed insert does
+	// not use up the limits.
 	stepSets  int
 	stepPairs int
 	// sketches count the values of each field, from half the set limit on.
@@ -68,13 +70,17 @@ func (rs *resourceState) isDropped(f fieldID) bool {
 }
 
 // observe adds the values of a new set to the sketches. A field without a
-// sketch when the budget is full is not counted, so it cannot be dropped.
-func (rs *resourceState) observe(pairs []pair, table *resourceTable) {
+// sketch is not counted, so it cannot be dropped: a field of keep, and any
+// field when the budget is full.
+func (rs *resourceState) observe(pairs []pair, table *resourceTable, keep map[string]struct{}) {
 	if rs.sketches == nil {
 		rs.sketches = make(map[fieldID]*sketch)
 	}
 	for i := range pairs {
 		p := &pairs[i]
+		if _, ok := keep[p.name]; ok {
+			continue
+		}
 		s, ok := rs.sketches[p.field]
 		if !ok {
 			if !table.take(sketchBytes) {

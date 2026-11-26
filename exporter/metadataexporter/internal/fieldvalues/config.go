@@ -28,7 +28,8 @@ type LimitsConfig struct {
 	// MaxValueBytes is the longest value that is stored.
 	MaxValueBytes int `mapstructure:"max_value_bytes"`
 	// MaxFieldsPerSignal is the number of field places per day on one
-	// collector.
+	// collector, for logs and traces. For metrics, the memory of the tracker
+	// bounds the places, as each label has a place for each metric.
 	MaxFieldsPerSignal int `mapstructure:"max_fields_per_signal"`
 	// MaxSetsPerResource is the number of new sets per resource per window on
 	// one collector, for each coarse step.
@@ -80,7 +81,9 @@ type Config struct {
 	Cache          CacheConfig          `mapstructure:"cache"`
 	Classification ClassificationConfig `mapstructure:"classification"`
 
-	// AlwaysInclude names fields that always stay in the hash, with no limits.
+	// AlwaysInclude names fields that have no value limit and that no coarse
+	// step takes out of the hash. A resource at its set limit with no other
+	// field to take out still goes to its overflow set.
 	AlwaysInclude []string `mapstructure:"always_include"`
 
 	// AsyncInsertBusyTimeout turns on async inserts: the server joins the

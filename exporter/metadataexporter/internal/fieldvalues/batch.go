@@ -88,6 +88,13 @@ type batch struct {
 	lastResourceHash uint64
 	lastLink         uint64
 	keysChecked      map[uint64]struct{}
+	// steps holds the new sets and the new pairs outside the hash that this
+	// batch adds to the step of each resource.
+	steps map[*resourceState]stepCount
+}
+
+type stepCount struct {
+	sets, pairs int
 }
 
 func newBatchBuffers() *batch {
@@ -95,6 +102,7 @@ func newBatchBuffers() *batch {
 		pending:      make(map[uint64]cacheClass),
 		pendingAhead: make(map[uint64]struct{}),
 		keysChecked:  make(map[uint64]struct{}),
+		steps:        make(map[*resourceState]stepCount),
 		lastResource: -1,
 		owners:       [2]map[uint64][]int{make(map[uint64][]int), make(map[uint64][]int)},
 		stats:        batchStats{leftOut: make(map[leftOutReason]int)},
@@ -122,6 +130,7 @@ func (b *batch) reset() {
 	b.refs = b.refs[:0]
 	b.lastResource, b.lastResourceHash, b.lastLink = -1, 0, 0
 	clear(b.keysChecked)
+	clear(b.steps)
 	b.state, b.class = nil, nil
 }
 
@@ -232,8 +241,9 @@ func (b *batch) seenMillis(ts, fallback pcommon.Timestamp) uint64 {
 	return min(ms, b.window.End-1)
 }
 
-// decide applies the value rules to one pair of logs or traces.
-func (b *batch) decide(p *pair, resource bool) mode {
+// decide applies the value rules to one pair. A label of a metric has the
+// metric name and its hash; all other pairs have the empty name.
+func (b *batch) decide(p *pair, resource bool, metricNameHash uint64, metricName string) mode {
 	if p.typ != typeNumber {
 		if p.str == "" {
 			return modeSkip
@@ -252,9 +262,16 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		}
 	}
 	tr := b.state.tracker
-	st := tr.state(p.field)
+	field := limitField(metricNameHash, p.field)
+	st := tr.state(field)
 	if st == nil {
 		if b.metrics {
+			// With no state, a label is not counted and stays in the set. A
+			// label that the classifier has over the limit leaves the set,
+			// with no sample.
+			if b.class.isOver(field) {
+				return modeSkip
+			}
 			return modeInHash
 		}
 		b.leaveOut(reasonFieldPlaces, 1)
@@ -266,7 +283,7 @@ func (b *batch) decide(p *pair, resource bool) mode {
 	}
 
 	passing := false
-	if !st.over && !b.class.isOver(p.field) {
+	if !st.over && !b.class.isOver(field) {
 		if st.values.has(p.vh) {
 			return modeInHash
 		}
@@ -280,61 +297,58 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		// leaves the hash on this collector for the rest of the day.
 		st.over = true
 		passing = true
-		b.flagOver(p)
+		b.flagOver(field, p, metricName)
 	}
 	if resource {
-		b.countOutside(st, p, limit)
+		if !st.spent && !st.values.has(p.vh) {
+			// The values of a resource field outside the identity are
+			// counted up to the limit. Then the field is flagged for today
+			// and its values are freed. Without the count, a resource field
+			// over its limit gets no row for the day from this collector.
+			if st.values.len() >= limit {
+				b.flagOver(field, p, metricName)
+				tr.spend(st)
+			} else if !tr.add(st, p.vh) {
+				tr.spend(st)
+			}
+		}
 		return modeOutside
 	}
-	return b.sample(st, p, passing)
+	if !st.spent && st.values.len() > limit {
+		b.flagOver(field, p, metricName)
+	}
+	return b.sample(st, p.vh, passing)
 }
 
 // flagOver records that this collector counted more values of the field than
 // its limit today. The refresh writes the row of the field and the day.
-func (b *batch) flagOver(p *pair) {
-	b.state.overFlags[p.field] = overField{ctx: p.ctx, name: p.name, day: b.dayStart / dayMillis}
-}
-
-// countOutside counts the values of a resource field that is outside the
-// identity, up to its limit plus one. Then the field is flagged for today
-// and its values are freed. Without the count, a resource field over its
-// limit gets no row for the day from this collector.
-func (b *batch) countOutside(st *fieldState, p *pair, limit int) {
-	tr := b.state.tracker
-	switch {
-	case st.spent || st.values.has(p.vh):
-	case st.values.len() >= limit:
-		b.flagOver(p)
-		tr.spend(st)
-	case !tr.add(st, p.vh):
-		tr.spend(st)
-	}
+func (b *batch) flagOver(field fieldID, p *pair, metricName string) {
+	b.state.overFlags[field] = overField{metric: metricName, ctx: p.ctx, name: p.name, day: b.dayStart / dayMillis}
 }
 
 // sample takes a value of a field over the limit into the daily sample, up to
 // the limit plus one values per day. The value that passes the limit is not
 // held back by the spread of the sample, so the classifiers of the other
 // collectors see the field over the limit at once.
-func (b *batch) sample(st *fieldState, p *pair, passing bool) mode {
+func (b *batch) sample(st *fieldState, vh uint64, passing bool) mode {
 	tr := b.state.tracker
 	switch {
 	case st.spent:
 		b.leaveOut(reasonSampleBudget, 1)
 		return modeSkip
-	case st.values.has(p.vh):
+	case st.values.has(vh):
 		return modeSkip
 	case st.values.len() > int(b.limits.MaxRecordFieldValues):
-		b.flagOver(p)
 		tr.spend(st)
 		b.leaveOut(reasonSampleBudget, 1)
 		return modeSkip
 	case !passing && !b.sampleDue(st):
 		return modeSkip
-	case !tr.add(st, p.vh):
+	case !tr.add(st, vh):
 		b.leaveOut(reasonTrackerFull, 1)
 		return modeSkip
 	}
-	b.samples = append(b.samples, sampleRef{st: st, vh: p.vh})
+	b.samples = append(b.samples, sampleRef{st: st, vh: vh})
 	return modeSample
 }
 
@@ -367,7 +381,7 @@ func (b *batch) resource(pairs []pair, seen uint64) resourceRef {
 func (b *batch) resourceRows(pairs []pair, seen uint64) uint64 {
 	identity, outside := b.in[:0], b.out[:0]
 	for i := range pairs {
-		switch b.decide(&pairs[i], true) {
+		switch b.decide(&pairs[i], true, emptyNameHash, "") {
 		case modeInHash:
 			identity = append(identity, pairs[i])
 		case modeOutside:
@@ -415,7 +429,7 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 	in, out, samples := b.in[:0], b.out[:0], b.sampled[:0]
 	for i := range recordPairs {
 		p := &recordPairs[i]
-		switch b.decide(p, false) {
+		switch b.decide(p, false, emptyNameHash, "") {
 		case modeInHash:
 			if rs != nil && rs.isDropped(p.field) {
 				out = append(out, *p)
@@ -428,7 +442,7 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 	}
 	for i := range eventPairs {
 		p := &eventPairs[i]
-		switch b.decide(p, false) {
+		switch b.decide(p, false, emptyNameHash, "") {
 		case modeInHash:
 			out = append(out, *p)
 		case modeSample:
@@ -445,14 +459,19 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 	k := setKey(res.hash, ah)
 	known, ahead := b.lookup(k)
 	if !known {
-		if rs.stepSets >= b.limits.MaxSetsPerResource/2 {
-			rs.observe(in, b.state.resources)
+		if b.stepSets(rs) >= b.limits.MaxSetsPerResource/2 {
+			rs.observe(in, b.state.resources, b.alwaysInclude)
 		}
-		for rs.stepSets >= b.limits.MaxSetsPerResource || rs.stepPairs >= b.limits.MaxOutsidePairsPerResource {
+		for b.stepSets(rs) >= b.limits.MaxSetsPerResource || b.stepPairs(rs) >= b.limits.MaxOutsidePairsPerResource {
 			if !rs.stepUp() {
-				rs.overflow = true
+				// With no field to drop, a full set limit moves the resource
+				// to its overflow set. A full pair limit alone does not: the
+				// set stays exact, and its new pairs outside the hash go to
+				// the overflow set below.
+				rs.overflow = b.stepSets(rs) >= b.limits.MaxSetsPerResource
 				break
 			}
+			delete(b.steps, rs)
 			in, out = moveDropped(rs, in, out)
 			b.in, b.out = in, out
 			ah = setHash(in)
@@ -474,7 +493,9 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 				b.emit(k, "", &in[i], res.hash, ah, true, seen)
 			}
 			b.remember(k, classExact)
-			rs.stepSets++
+			c := b.steps[rs]
+			c.sets++
+			b.steps[rs] = c
 		}
 	}
 	if known && ahead {
@@ -491,17 +512,27 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 		// A known set can keep getting new pairs outside its hash, such as a
 		// new path in a coarse set. Past the limit of the step, they go into
 		// the overflow set, which holds each pair of the resource once.
-		if !b.room(classExact) || rs.stepPairs >= b.limits.MaxOutsidePairsPerResource {
+		if !b.room(classExact) || b.stepPairs(rs) >= b.limits.MaxOutsidePairsPerResource {
 			b.overflowPair(res, out[i:i+1], seen)
 			continue
 		}
 		b.emit(pk, "", &out[i], res.hash, ah, false, seen)
 		b.remember(pk, classExact)
-		rs.stepPairs++
+		c := b.steps[rs]
+		c.pairs++
+		b.steps[rs] = c
 	}
 	for i := range samples {
 		b.emit(0, "", &samples[i], res.hash, ah, false, seen)
 	}
+}
+
+func (b *batch) stepSets(rs *resourceState) int {
+	return rs.stepSets + b.steps[rs].sets
+}
+
+func (b *batch) stepPairs(rs *resourceState) int {
+	return rs.stepPairs + b.steps[rs].pairs
 }
 
 // overflow writes a record into the overflow set of its resource: every pair

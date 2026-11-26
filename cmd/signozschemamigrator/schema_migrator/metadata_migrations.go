@@ -210,7 +210,7 @@ GROUP BY signal, source, field_name, field_context, field_data_type, metric_name
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
 						PartitionBy: "toMonday(day)",
-						OrderBy:     "(signal, source, field_context, field_name, day)",
+						OrderBy:     "(signal, source, metric_name, field_context, field_name, day)",
 						TTL:         "day + toIntervalDay(30)",
 						Settings: TableSettings{
 							{Name: "ttl_only_drop_parts", Value: "1"},
@@ -280,6 +280,7 @@ var fieldValuesSetsColumns = []Column{
 var fieldDaysOverLimitColumns = []Column{
 	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "field_context", Type: fieldContextColumnType},
 	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "day", Type: ColumnTypeDate},

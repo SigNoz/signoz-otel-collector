@@ -64,6 +64,9 @@ exporters:
   than `max_record_field_values` values in a UTC day leaves the hash. Its
   values are still written, up to the limit plus one per collector per day
   (the sample).
+- **Types.** Resource and scope attributes are written as strings, whatever
+  their type in the data, because the logs and traces exporters store them
+  as strings. Record attributes keep their type.
 - **Resources.** The resource fields with up to `max_resource_field_values`
   values per day make the identity of a resource. A resource field over the
   limit leaves the identity, but all its values are still written.
@@ -71,8 +74,12 @@ exporters:
   reads filter on it.
 - **Limits per resource.** When a resource reaches `max_sets_per_resource` new
   sets in a step of a window, the field with the most values leaves its hash
-  (a coarse set). The last step is one overflow set per resource. Pairs
-  outside the hash are limited the same way.
+  (a coarse set). The last step is one overflow set per resource. A field of
+  `always_include` is never the field that leaves. When the pairs outside the
+  hash reach `max_outside_pairs_per_resource` and no field can leave, the
+  sets stay exact and only the new pairs outside the hash go to the overflow
+  set. A resource counts its sets and pairs when their insert succeeds, so a
+  failed insert does not use up its limits.
 - **Time.** Each row is written once per window per collector. A record time
   of 0, or more than 5 minutes in the future, becomes the time of the batch. A
   record time before the window becomes the start of the window, so a late
@@ -94,8 +101,14 @@ exporters:
     resources that differ only in that field (one resource per process, for
     example) are one series. Histograms and summaries write only their
     `.count` series. The labels of a new series follow the value rules of logs
-    and traces: a label with more than `max_record_field_values` values leaves
-    the set, which is then the labels that stay, and keeps a daily sample.
+    and traces, for each metric: a label with more than
+    `max_record_field_values` values on a metric leaves the sets of that
+    metric, which are then the labels that stay, and keeps a daily sample.
+    The same label of another metric is not changed. The states of these
+    counts have no limit of places. They get half of the tracker memory at
+    most, at about 160 bytes for each metric and label: 6,075 metrics with 33
+    labels each need 32 MB. A label with no state is not counted and stays in
+    the set, unless the classifier has it over the limit.
     Such series are not cached, so a label with a value per point cannot fill
     the cache. The rows of a resource are written once, with no metric name. A
     link row (no metric name, the field `__name__`, the metric name as value)
@@ -121,7 +134,8 @@ exporters:
   day. In the first `refresh_interval` of a UTC day, the writer does the read
   one more time for the day that ended. The first refresh interval and the
   refresh after a day change start after a random time, so the collectors of
-  a tenant do not read together.
+  a tenant do not read together. The start of the writer waits up to 5 s for
+  the first read.
 
 ## Reads
 
@@ -188,7 +202,9 @@ are written anyway.
 | `signoz_metadata_exporter_field_values_resources_overflowed` | resources that started to use their overflow set in the window |
 | `signoz_metadata_exporter_field_values_resources_untracked` | resources of a batch without a state, because the tracker memory is full |
 | `signoz_metadata_exporter_field_values_keys_written_ahead` | keys written for the next window |
-| `signoz_metadata_exporter_field_values_insert_errors` | failed inserts |
+| `signoz_metadata_exporter_field_values_insert_errors` | failed inserts. A failed flush of an async insert is not counted: it shows only as `FlushError` in `system.asynchronous_insert_log` |
+| `signoz_metadata_exporter_field_values_classifier_errors` | failed reads or writes of the fields over the limit |
+| `signoz_metadata_exporter_field_values_classification_time` | Unix time of the last read of the fields over the limit that passed, or 0 |
 | `signoz_metadata_exporter_field_values_rows_skipped_shared` | rows that another collector already wrote in the window |
 | `signoz_metadata_exporter_field_values_shared_cache_errors` | failed calls to the shared cache |
 | `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys in the local cache, and its capacity, by `part`: `exact`, `reserve`, `ahead` |

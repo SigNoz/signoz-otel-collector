@@ -72,7 +72,9 @@ func (b *batch) addRecords(in *recordsInput) {
 
 // appendAttrPairs converts attributes to pairs. Nested maps become dotted
 // names; slices are kept as their JSON string. A top-level key equal to skip
-// is left out.
+// is left out. Resource and scope attributes are strings, whatever their
+// type in the data: the logs and traces exporters store them as strings, and
+// a reader asks for the values of a field with the data type of its key.
 func appendAttrPairs(dst []pair, ctx fieldContext, m pcommon.Map, skip string) []pair {
 	m.Range(func(k string, v pcommon.Value) bool {
 		if skip == "" || k != skip {
@@ -84,6 +86,9 @@ func appendAttrPairs(dst []pair, ctx fieldContext, m pcommon.Map, skip string) [
 }
 
 func appendAttrPair(dst []pair, ctx fieldContext, name string, v pcommon.Value) []pair {
+	if t := v.Type(); (ctx == contextResource || ctx == contextScope) && t != pcommon.ValueTypeMap && t != pcommon.ValueTypeEmpty {
+		return append(dst, stringPair(ctx, name, v.AsString()))
+	}
 	switch v.Type() {
 	case pcommon.ValueTypeStr:
 		dst = append(dst, stringPair(ctx, name, v.Str()))

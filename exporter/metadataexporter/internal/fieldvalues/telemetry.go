@@ -23,6 +23,7 @@ type telemetry struct {
 	resourcesOverflowed metric.Int64Counter
 	insertErrors        metric.Int64Counter
 	classifierErrors    metric.Int64Counter
+	classifiedAt        atomic.Int64
 	rowsSkippedShared   metric.Int64Counter
 	sharedCacheErrors   metric.Int64Counter
 	resourcesUntracked  metric.Int64Counter
@@ -104,6 +105,16 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 		if err != nil {
 			return nil, err
 		}
+	}
+	_, err := meter.Int64ObservableGauge("signoz_metadata_exporter_field_values_classification_time",
+		metric.WithDescription("Unix time of the last read of the fields over the limit that passed, or 0 when none passed since the start. Without a read, the fields over the limit start each day inside the sets."),
+		metric.WithUnit("s"),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(t.classifiedAt.Load(), t.attrs)
+			return nil
+		}))
+	if err != nil {
+		return nil, err
 	}
 	return t, nil
 }

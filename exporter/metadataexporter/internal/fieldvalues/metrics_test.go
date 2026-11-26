@@ -238,3 +238,82 @@ func TestMetricsResourceFieldOverTheLimitLeavesTheIdentity(t *testing.T) {
 	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
 	assert.Empty(t, w.take())
 }
+
+// A label with many values on one metric leaves the sets of that metric
+// only. The same label of another metric keeps all of its values.
+func TestMetricLabelLimitIsForEachMetric(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 5
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	ctx := context.Background()
+	gauge := func(name string, values ...string) pmetric.Metrics {
+		md := pmetric.NewMetrics()
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("service.name", "svc")
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName(name)
+		g := m.SetEmptyGauge()
+		for _, v := range values {
+			dp := g.DataPoints().AppendEmpty()
+			dp.SetTimestamp(at("10:00"))
+			dp.Attributes().PutStr("device", v)
+		}
+		return md
+	}
+	devices := func(metric string) []string {
+		var out []string
+		for _, r := range w.take() {
+			if r.metricName == metric && r.p.name == "device" {
+				out = append(out, fmt.Sprintf("%s in_hash=%v", r.p.str, r.inHash))
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	var veths []string
+	for i := 0; i < 50; i++ {
+		veths = append(veths, fmt.Sprintf("veth%02d", i))
+	}
+	require.NoError(t, e.WriteMetrics(ctx, gauge("system.network.io", veths...)))
+	assert.Len(t, devices("system.network.io"), 6, "the limit plus one values")
+
+	require.NoError(t, e.WriteMetrics(ctx, gauge("system.disk.io", "nvme0n1", "nvme1n1", "nvme2n1")))
+	assert.Equal(t, []string{"nvme0n1 in_hash=true", "nvme1n1 in_hash=true", "nvme2n1 in_hash=true"}, devices("system.disk.io"))
+
+	e.mu.Lock()
+	flags := maps.Clone(e.state.overFlags)
+	e.mu.Unlock()
+	assert.Equal(t, map[fieldID]overField{
+		limitField(nameHash("system.network.io"), fieldIDOf(contextAttribute, "device")): {metric: "system.network.io", ctx: contextAttribute, name: "device", day: utcDay(testDay)},
+	}, flags)
+}
+
+// When the tracker has no room for the state of a label, the label is not
+// counted. It stays in the set, unless the classifier has it over the limit.
+func TestMetricLabelWithNoStateFollowsTheClassifier(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	e.mu.Lock()
+	e.state.budget.limit = 0
+	e.mu.Unlock()
+	e.class.Store(&classification{over: map[fieldID]overField{
+		limitField(nameHash("system.network.io"), fieldIDOf(contextAttribute, "device")): {metric: "system.network.io", ctx: contextAttribute, name: "device"},
+	}})
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "svc")
+	for _, name := range []string{"system.network.io", "system.disk.io"} {
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName(name)
+		dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		dp.Attributes().PutStr("device", "d1")
+	}
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	inHash := map[string]bool{}
+	for _, r := range w.take() {
+		if r.p.name == "device" {
+			inHash[r.metricName] = r.inHash
+		}
+	}
+	assert.Equal(t, map[string]bool{"system.network.io": false, "system.disk.io": true}, inHash)
+}

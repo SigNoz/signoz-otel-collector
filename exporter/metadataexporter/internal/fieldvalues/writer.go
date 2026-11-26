@@ -27,7 +27,10 @@ const (
 	maxMemoryBytes     = 1 << 30
 	defaultMemoryBytes = 256 << 20
 	refreshTimeout     = 30 * time.Second
-	warnInterval       = time.Minute
+	// startRefreshTimeout bounds the first read of the classifier, which
+	// Start waits for.
+	startRefreshTimeout = 5 * time.Second
+	warnInterval        = time.Minute
 	// sharedTimeout bounds each call to the shared cache, so a slow cache
 	// cannot hold up the export.
 	sharedTimeout = 2 * time.Second
@@ -139,7 +142,13 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 		alwaysInclude[name] = struct{}{}
 	}
 	state := &signalState{overFlags: make(map[fieldID]overField)}
-	state.tracker = newTracker(cfg.Limits.MaxFieldsPerSignal, &state.budget)
+	places := cfg.Limits.MaxFieldsPerSignal
+	if set.Signal == pipeline.SignalMetrics {
+		// A metric label has a state for each metric, so the count of the
+		// fields does not bound the states. The budget does.
+		places = 0
+	}
+	state.tracker = newTracker(places, &state.budget)
 	state.resources = newResourceTable(&state.budget)
 	w := &Writer{
 		cfg:            cfg,
@@ -231,11 +240,15 @@ func (w *Writer) allocate() error {
 	return nil
 }
 
-// Start begins the reads of the classifier.
+// Start begins the reads of the classifier. It waits for the first read, so
+// that the first pushes know the fields over the limit: without the read,
+// each such field makes new sets up to its limit on each start of a
+// collector.
 func (w *Writer) Start() {
 	if w.classifier == nil {
 		return
 	}
+	w.refresh(startRefreshTimeout)
 	w.wg.Add(1)
 	go w.refreshLoop()
 }
@@ -261,13 +274,12 @@ func (w *Writer) Shutdown() error {
 	return nil
 }
 
-// refreshLoop runs the classifier at the start, and then at each interval.
+// refreshLoop runs the classifier at each interval.
 // The first interval and the refresh after a day change start after a random
 // time, so that the collectors of a tenant do not read together.
 func (w *Writer) refreshLoop() {
 	defer w.wg.Done()
 	interval := w.cfg.Classification.RefreshInterval
-	w.refresh()
 	timer := time.NewTimer(rand.N(interval))
 	defer timer.Stop()
 	for {
@@ -275,7 +287,7 @@ func (w *Writer) refreshLoop() {
 		case <-w.stop:
 			return
 		case <-timer.C:
-			w.refresh()
+			w.refresh(refreshTimeout)
 			timer.Reset(interval)
 		case <-w.refreshNow:
 			// The read for the day that ended is correct only in the first
@@ -285,13 +297,13 @@ func (w *Writer) refreshLoop() {
 				return
 			case <-time.After(rand.N(interval / 3)):
 			}
-			w.refresh()
+			w.refresh(refreshTimeout)
 		}
 	}
 }
 
-func (w *Writer) refresh() {
-	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+func (w *Writer) refresh(timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	go func() {
 		select {
@@ -317,10 +329,11 @@ func (w *Writer) refresh() {
 		w.warn("failed to write the fields over the limit", zap.Error(writeErr))
 	}
 	w.class.Store(next)
+	w.tel.classifiedAt.Store(w.now().Unix())
 	w.mu.Lock()
 	if writeErr == nil {
 		for _, f := range own {
-			id := fieldIDOf(f.ctx, f.name)
+			id := f.id()
 			if w.state.overFlags[id].day == f.day {
 				delete(w.state.overFlags, id)
 			}
@@ -539,6 +552,10 @@ func (w *Writer) release(b *batch) {
 func (w *Writer) commit(b *batch) {
 	st := w.state
 	st.cache.apply(b.window.Start, b.pending, b.pendingAhead)
+	for rs, c := range b.steps {
+		rs.stepSets += c.sets
+		rs.stepPairs += c.pairs
+	}
 	w.tel.cacheUsed[classExact].Store(int64(st.cache.used[classExact]))
 	w.tel.cacheUsed[classReserve].Store(int64(st.cache.used[classReserve]))
 	w.tel.cacheUsed[partAhead].Store(int64(st.cache.nextUsed))

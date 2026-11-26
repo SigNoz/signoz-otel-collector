@@ -253,7 +253,7 @@ func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64)
 		if p.field == 0 {
 			p.setHashes()
 		}
-		switch b.decide(p, false) {
+		switch b.decide(p, false, s.nameHash, s.name) {
 		case modeInHash:
 			in = append(in, *p)
 		case modeSample:
