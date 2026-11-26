@@ -26,12 +26,11 @@ func TestKeyCacheCountsTheKeysOfTheWindow(t *testing.T) {
 	day := 20000 * dayMillis
 	c.rotate(day)
 	k1, k2 := mix64(1), mix64(2)
+	noon := day + 12*hourMillis
 
-	write, _ := c.plan(k1, day, day+1000)
-	assert.True(t, write, "a new key is written")
-	c.apply(day, map[uint64]cacheClass{k1: classExact, k2: classReserve}, nil)
-	write, _ = c.plan(k1, day, day+2000)
-	assert.False(t, write, "an applied key is known")
+	assert.False(t, c.known(k1, day, noon), "a new key is written")
+	c.apply(day, noon, map[uint64]cacheClass{k1: classExact, k2: classReserve})
+	assert.True(t, c.known(k1, day, noon+1000), "an applied key is known")
 	assert.Equal(t, [2]int{1, 1}, c.used)
 
 	c.limit = [2]int{1, 1}
@@ -39,47 +38,59 @@ func TestKeyCacheCountsTheKeysOfTheWindow(t *testing.T) {
 	assert.False(t, c.room(classReserve, 1))
 }
 
-func TestKeyCacheKeysWrittenAheadBecomeTheNextWindow(t *testing.T) {
+const (
+	hourMillis   = uint64(time.Hour / time.Millisecond)
+	minuteMillis = uint64(time.Minute / time.Millisecond)
+)
+
+// The window of this key starts 30 minutes after the window of the clock.
+const keyAtHalfPast = 30 * minuteMillis
+
+func TestKeyCacheWindowOfAKeyStartsAtItsOwnTime(t *testing.T) {
 	c := newTestKeyCache(t)
 	day, next := 20000*dayMillis, 20001*dayMillis
+	k := keyAtHalfPast
 	c.rotate(day)
-	k := mix64(1)
-	write, _ := c.plan(k, day, day+1000)
-	require.True(t, write, "plan makes the bucket of the window; apply ignores keys of a bucket that does not exist")
-	c.apply(day, map[uint64]cacheClass{k: classExact}, nil)
-
-	_, ahead := c.plan(k, day, next-1)
-	assert.True(t, ahead, "at the end of the pre-write window every known key is due")
-	c.apply(day, nil, map[uint64]struct{}{k: {}})
-	assert.Equal(t, 1, c.nextUsed)
-	_, ahead = c.plan(k, day, next-1)
-	assert.False(t, ahead, "a key written ahead is not due again")
+	require.False(t, c.known(k, day, day+10*hourMillis))
+	c.apply(day, day+10*hourMillis, map[uint64]cacheClass{k: classExact})
 
 	c.rotate(next)
-	assert.Equal(t, [2]int{1, 0}, c.used, "after one step, the keys written ahead count for the window")
-	write, _ = c.plan(k, next, next+1000)
-	assert.False(t, write, "and they are known")
+	assert.Equal(t, [2]int{0, 0}, c.used, "no key is carried into the new window")
+	assert.True(t, c.known(k, next, next+29*minuteMillis), "before its own window starts, the key of the last window is known")
+	assert.False(t, c.known(k, next, next+30*minuteMillis), "then it is written again")
+	c.apply(next, next+30*minuteMillis, map[uint64]cacheClass{k: classExact})
+	assert.True(t, c.known(k, next, next+31*minuteMillis))
 
 	c.rotate(next + 2*dayMillis)
-	assert.Equal(t, [2]int{0, 0}, c.used, "after a gap, nothing is carried")
+	assert.False(t, c.known(k, next+2*dayMillis, next+2*dayMillis+minuteMillis), "after a gap, no key is known")
 }
 
-func TestKeyCacheAppliesKeysWrittenAheadAfterTheWindowChanged(t *testing.T) {
+// A set that is seen only in the first minutes of each day, such as a job at
+// 00:05, must get its rows each day.
+func TestKeyCacheKeySeenOnlyBeforeItsOwnTimeIsWrittenEachDay(t *testing.T) {
 	c := newTestKeyCache(t)
-	day, next := 20000*dayMillis, 20001*dayMillis
-	c.rotate(day)
-	k := mix64(1)
-	write, _ := c.plan(k, day, day+1000)
-	require.True(t, write, "plan makes the bucket of the window; apply ignores keys of a bucket that does not exist")
-	c.apply(day, map[uint64]cacheClass{k: classExact}, nil)
-	_, ahead := c.plan(k, day, next-1)
-	require.True(t, ahead)
+	k := keyAtHalfPast
+	for d := uint64(20000); d < 20003; d++ {
+		day := d * dayMillis
+		c.rotate(day)
+		assert.False(t, c.known(k, day, day+5*minuteMillis), "day %d", d)
+		c.apply(day, day+5*minuteMillis, map[uint64]cacheClass{k: classExact})
+		assert.True(t, c.known(k, day, day+6*minuteMillis), "day %d", d)
+		assert.Equal(t, [2]int{0, 0}, c.used, "the key counts for the last window, which holds it")
+	}
+}
 
-	c.rotate(next)
-	c.apply(day, nil, map[uint64]struct{}{k: {}})
-	assert.Equal(t, [2]int{1, 0}, c.used, "a batch of the last window adds its keys written ahead to the window")
-	write, _ = c.plan(k, next, next+1000)
-	assert.False(t, write)
+func TestKeyCacheKeepsNewKeysInTheWindowWhenTheLastBucketIsFull(t *testing.T) {
+	c := newTestKeyCache(t)
+	day := 20000 * dayMillis
+	k := keyAtHalfPast
+	c.rotate(day)
+	c.prevFree = 0
+	require.False(t, c.known(k, day, day+5*minuteMillis))
+	c.apply(day, day+5*minuteMillis, map[uint64]cacheClass{k: classExact})
+	assert.True(t, c.known(k, day, day+6*minuteMillis))
+	assert.True(t, c.known(k, day, day+31*minuteMillis), "the key is in the window of the clock, so it is not written again")
+	assert.Equal(t, [2]int{1, 0}, c.used)
 }
 
 func TestKeyCacheSize(t *testing.T) {

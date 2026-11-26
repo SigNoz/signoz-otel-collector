@@ -31,7 +31,8 @@ type SharedCache interface {
 const (
 	redisBuckets = 256
 	// redisKeepAfterWindow keeps the keys of a window for 2 hours after the
-	// window ends, for late records and clock skew between collectors.
+	// window ends, for late records, clock skew between collectors, and the
+	// keys whose own window starts up to pre_write_window later.
 	redisKeepAfterWindow = 2 * time.Hour
 )
 

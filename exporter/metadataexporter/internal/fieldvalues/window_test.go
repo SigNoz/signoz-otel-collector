@@ -18,8 +18,6 @@ import (
 
 var (
 	midnight = testDay.Truncate(24 * time.Hour).Add(24 * time.Hour)
-	// lastMillisecond is the end of the pre-write window of testDay, when
-	// every key is due.
 	lastMillisecond = midnight.Add(-time.Millisecond)
 )
 
@@ -45,7 +43,9 @@ func seenTimes(rows []row) map[uint64]int {
 // at its start. Before, it kept its time: the set was cached for the new day
 // with rows of the day before, and wrote nothing more all day.
 func TestLateRecordIsStampedInItsWindow(t *testing.T) {
-	e, w := newTestExporter(t, testConfig(), pipeline.SignalLogs)
+	cfg := testConfig()
+	cfg.Cache.PreWriteWindow = 0
+	e, w := newTestExporter(t, cfg, pipeline.SignalLogs)
 	ctx := context.Background()
 	late := logsAt(midnight.Add(-time.Minute), checkout, map[string]any{"http.method": "GET"})
 
@@ -97,37 +97,54 @@ func mustClock(clock string) time.Duration {
 	return time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute
 }
 
-// In the last hour of the day, a key seen again is written for the next day,
-// at a time set by its hash. At midnight it is already cached, so the new day
-// does not start with a burst of all sets.
-func TestKeysAreWrittenAheadInThePreWriteWindow(t *testing.T) {
+// A set of yesterday is written again in the first hour of the day, at a time
+// set by its hash, so the new day does not start with a burst of all sets.
+// Nothing is written for the new day before a record of that day.
+func TestKnownSetsAreWrittenAgainSpreadOverTheStartOfTheDay(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalLogs)
 	ctx := context.Background()
 	known := map[string]any{"http.method": "GET"}
-	fresh := map[string]any{"http.method": "PUT"}
+	push := func(at time.Time, attrs map[string]any) []row {
+		setNow(e, at)
+		require.NoError(t, e.WriteLogs(ctx, logsAt(at, checkout, attrs)))
+		return w.take()
+	}
 
 	require.NoError(t, e.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", known})))
 	assert.Len(t, w.take(), 3)
+	assert.Empty(t, push(lastMillisecond, known), "a set seen at the end of the day gets no row of the next day")
 
-	setNow(e, midnight.Add(-time.Hour))
-	require.NoError(t, e.WriteLogs(ctx, logsAt(midnight.Add(-time.Hour), checkout, known)))
-	assert.Empty(t, w.take(), "at the start of the pre-write window almost no key is due")
+	rows := push(midnight.Add(30*time.Second), map[string]any{"http.method": "PUT"})
+	assert.Equal(t, []string{"{http.method=PUT}"}, setList(rows), "a new set is written at once")
 
-	setNow(e, lastMillisecond)
-	ld := logsAt(lastMillisecond, checkout, known)
-	addRecord(ld, lastMillisecond, fresh)
-	require.NoError(t, e.WriteLogs(ctx, ld))
-	rows := w.take()
-	assert.Equal(t, map[uint64]int{millis(midnight): 3, millis(lastMillisecond): 1}, seenTimes(rows),
-		"the known set and the resource are written ahead; the new set PUT is written for today only")
+	pushes := map[uint64]int{}
+	for at := midnight; !at.After(midnight.Add(time.Hour)); at = at.Add(time.Minute) {
+		for _, r := range push(at, known) {
+			assert.Equal(t, millis(at), r.seenMillis)
+			pushes[r.seenMillis]++
+		}
+	}
+	counts := make([]int, 0, len(pushes))
+	for at, n := range pushes {
+		assert.Greater(t, at, millis(midnight), "no key is written at the start of the day")
+		counts = append(counts, n)
+	}
+	assert.ElementsMatch(t, []int{1, 2}, counts, "the set and the resource are each written once, at their own times")
+}
 
-	after := midnight.Add(30 * time.Second)
-	setNow(e, after)
-	ld = logsAt(after, checkout, known)
-	addRecord(ld, after, fresh)
-	require.NoError(t, e.WriteLogs(ctx, ld))
-	rows = w.take()
-	assert.Equal(t, []string{"{http.method=PUT}"}, setList(rows), "only the set that was not written ahead is written at midnight")
+// A record that is the only one of its set today, and comes before the time
+// of the set, gives no row today: the set has its row of yesterday. A read
+// that starts today does not find this set.
+func TestSetThatStopsBeforeItsOwnTimeHasNoRowToday(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalLogs)
+	ctx := context.Background()
+	known := map[string]any{"http.method": "GET"}
+	require.NoError(t, e.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", known})))
+	w.take()
+
+	setNow(e, midnight.Add(time.Second))
+	require.NoError(t, e.WriteLogs(ctx, logsAt(midnight.Add(time.Second), checkout, known)))
+	assert.Empty(t, w.take())
 }
 
 func addRecord(ld plog.Logs, ts time.Time, attrs map[string]any) {
@@ -136,31 +153,30 @@ func addRecord(ld plog.Logs, ts time.Time, attrs map[string]any) {
 	_ = lr.Attributes().FromRaw(attrs)
 }
 
-func TestKeysWrittenAheadAreCachedWhenTheWindowChangesDuringTheInsert(t *testing.T) {
+func TestKeysAreCachedWhenTheWindowChangesDuringTheInsert(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalLogs)
 	ctx := context.Background()
 	known := map[string]any{"http.method": "GET"}
-	require.NoError(t, e.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", known})))
-	w.take()
 
 	setNow(e, lastMillisecond)
 	e.mu.Lock()
 	b := e.newBatch()
 	addLogs(b, logsAt(lastMillisecond, checkout, known))
 	e.mu.Unlock()
-	require.Len(t, b.pendingAhead, 2, "the set and the resource")
+	require.Len(t, b.pending, 2, "the set and the resource")
 
 	setNow(e, midnight.Add(time.Second))
 	e.mu.Lock()
 	e.release(e.newBatch())
 	e.commit(b)
 	e.mu.Unlock()
+	assert.Equal(t, [2]int{0, 0}, e.state.cache.used, "the keys do not count for the new window")
 
-	require.NoError(t, e.WriteLogs(ctx, logsAt(midnight.Add(time.Minute), checkout, known)))
-	assert.Empty(t, w.take(), "the keys written ahead are the keys of the new window")
+	require.NoError(t, e.WriteLogs(ctx, logsAt(midnight.Add(time.Second), checkout, known)))
+	assert.Empty(t, w.take(), "the keys are known as keys of the last window")
 }
 
-func TestSharedCacheKnowsKeysWrittenAhead(t *testing.T) {
+func TestSharedCacheKnowsTheKeysOfTheLastWindow(t *testing.T) {
 	shared := newMapCache()
 	a, wa := newTestExporterWith(t, testConfig(), Settings{Signal: pipeline.SignalLogs, Shared: shared}, &fakeWriter{})
 	b, wb := newTestExporterWith(t, testConfig(), Settings{Signal: pipeline.SignalLogs, Shared: shared}, &fakeWriter{})
@@ -168,13 +184,15 @@ func TestSharedCacheKnowsKeysWrittenAhead(t *testing.T) {
 	known := map[string]any{"http.method": "GET"}
 
 	require.NoError(t, a.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", known})))
-	setNow(a, lastMillisecond)
-	require.NoError(t, a.WriteLogs(ctx, logsAt(lastMillisecond, checkout, known)))
-	assert.Len(t, wa.take(), 6, "today and ahead")
+	assert.Len(t, wa.take(), 3)
 
-	setNow(b, midnight.Add(time.Minute))
-	require.NoError(t, b.WriteLogs(ctx, logsAt(midnight.Add(time.Minute), checkout, known)))
-	assert.Empty(t, wb.take(), "collector A wrote these keys ahead for today")
+	setNow(b, midnight.Add(time.Second))
+	require.NoError(t, b.WriteLogs(ctx, logsAt(midnight.Add(time.Second), checkout, known)))
+	assert.Empty(t, wb.take(), "before the own time of a key, collector B reads the window in which collector A wrote it")
+
+	setNow(b, midnight.Add(2*time.Hour))
+	require.NoError(t, b.WriteLogs(ctx, logsAt(midnight.Add(2*time.Hour), checkout, known)))
+	assert.Len(t, wb.take(), 3, "then the key is new in the window of today")
 }
 
 // The daily sample of a field over the limit grows with the time of the day
@@ -288,24 +306,29 @@ func TestWindowConfigIsValidated(t *testing.T) {
 	}
 }
 
-func TestMetricsKeysAreWrittenAhead(t *testing.T) {
+func TestMetricsKeysAreWrittenAgainInTheFirstHourOfTheDay(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
 	ctx := context.Background()
 	require.NoError(t, e.WriteMetrics(ctx, testMetrics()))
 	first := len(w.take())
+	push := func(at time.Time) []row {
+		md := testMetrics()
+		setTimestamps(md, at)
+		setNow(e, at)
+		require.NoError(t, e.WriteMetrics(ctx, md))
+		return w.take()
+	}
+	assert.Empty(t, push(lastMillisecond), "no row of the next day")
 
-	md := testMetrics()
-	setTimestamps(md, lastMillisecond)
-	setNow(e, lastMillisecond)
-	require.NoError(t, e.WriteMetrics(ctx, md))
-	rows := w.take()
-	assert.Len(t, rows, first)
-	assert.Equal(t, map[uint64]int{millis(midnight): first}, seenTimes(rows))
-
-	setNow(e, midnight.Add(time.Minute))
-	setTimestamps(md, midnight.Add(time.Minute))
-	require.NoError(t, e.WriteMetrics(ctx, md))
-	assert.Empty(t, w.take())
+	total := 0
+	for at := midnight; !at.After(midnight.Add(time.Hour)); at = at.Add(time.Minute) {
+		for _, r := range push(at) {
+			assert.Equal(t, millis(at), r.seenMillis)
+			total++
+		}
+	}
+	assert.Equal(t, first, total)
+	assert.Empty(t, push(midnight.Add(2*time.Hour)))
 }
 
 func setTimestamps(md pmetric.Metrics, ts time.Time) {

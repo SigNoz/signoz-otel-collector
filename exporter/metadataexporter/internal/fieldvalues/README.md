@@ -50,7 +50,7 @@ exporters:
         max_bytes: 0            # 0: the writers of the process share 10% of the Go memory limit
         reserve_share: 0.1
         window: 24h             # each set, pair and resource is written once per window; divides 24h
-        pre_write_window: 1h    # 0 disables the spread of new windows and of the daily sample
+        pre_write_window: 1h    # the start of a window over which its writes are spread; 0 disables it and the spread of the daily sample
       classification:
         refresh_interval: 15m
         lookback_days: 7
@@ -84,12 +84,24 @@ exporters:
   of 0, or more than 5 minutes in the future, becomes the time of the batch. A
   record time before the window becomes the start of the window, so a late
   record cannot stamp the window with the time of an earlier one.
-- **Spread.** In the last `pre_write_window` of a window, a key seen again is
-  also written for the next window, at its start. `pkg/timebucketedset` makes
-  each key due from a time set by its hash, so a new window does not start
-  with a burst of all active sets. The daily sample of each high-cardinality
-  field grows with the time of the day over the first `pre_write_window` of
-  the UTC day.
+- **Spread.** The window of a key starts later than the window of the clock,
+  by a time under `pre_write_window` that the hash of the key sets. With the
+  defaults, a set whose time is 00:40 is written once between 00:40 UTC and
+  00:40 UTC of the next day. A new day then does not start with a burst of
+  all active sets, and a set seen at the end of a day gets no row of the next
+  day. The costs:
+  - A set that is new before its time is written at once, and one more time
+    after its time. A collector that starts in the first `pre_write_window`
+    of a day writes most of its sets two times.
+  - A set of yesterday whose only records of today come before its time has
+    no row of today. A read that starts today does not find it; a read that
+    starts yesterday does.
+  - The sets of yesterday count again for the limits of their resource, in
+    the order of their times. A set that is new before its time counts two
+    times.
+
+  The daily sample of each high-cardinality field grows with the time of the
+  day over the first `pre_write_window` of the UTC day.
 - **Signals.**
   - Logs: attributes, severity, scope, and the paths of JSON bodies when the
     JSON config is enabled.
@@ -152,6 +164,9 @@ exporters:
   read must not set `force_optimize_projection`.
 - The rows of the field `__name__` are links, not values: a read of values or
   of keys leaves them out.
+- A read must start at least one day before the time it asks for. In the
+  first `pre_write_window` of a UTC day, most sets of the day before have no
+  row of the new day yet, and a set that stops in that time gets none.
 - Reads of distributed tables with `IN` subqueries need
   `distributed_product_mode = 'local'`, and an alias on each distributed table
   with the old analyzer.
@@ -201,13 +216,12 @@ are written anyway.
 | `signoz_metadata_exporter_field_values_left_out` | pairs not written, by `reason`: `value_length`, `field_places`, `sample_budget` (every pair of a field after its sample is full), `cache_full`, `tracker_full` |
 | `signoz_metadata_exporter_field_values_resources_overflowed` | resources that started to use their overflow set in the window |
 | `signoz_metadata_exporter_field_values_resources_untracked` | resources of a batch without a state, because the tracker memory is full |
-| `signoz_metadata_exporter_field_values_keys_written_ahead` | keys written for the next window |
 | `signoz_metadata_exporter_field_values_insert_errors` | failed inserts. A failed flush of an async insert is not counted: it shows only as `FlushError` in `system.asynchronous_insert_log` |
 | `signoz_metadata_exporter_field_values_classifier_errors` | failed reads or writes of the fields over the limit |
 | `signoz_metadata_exporter_field_values_classification_time` | Unix time of the last read of the fields over the limit that passed, or 0 |
 | `signoz_metadata_exporter_field_values_rows_skipped_shared` | rows that another collector already wrote in the window |
 | `signoz_metadata_exporter_field_values_shared_cache_errors` | failed calls to the shared cache |
-| `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys in the local cache, and its capacity, by `part`: `exact`, `reserve`, `ahead` |
+| `signoz_metadata_exporter_field_values_cache_keys`, `..._cache_capacity` | keys in the local cache, and its capacity, by `part`: `exact`, `reserve` |
 | `signoz_metadata_exporter_field_values_tracker_bytes`, `..._tracker_capacity_bytes` | memory of the value tracker and the resource states, and its limit |
 | `otelcol.timebucketedset.*` | the key cache: plans by result, applied keys, buckets, evictions (see `pkg/timebucketedset`) |
 

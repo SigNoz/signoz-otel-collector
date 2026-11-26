@@ -42,7 +42,6 @@ type batchStats struct {
 	leftOut             map[leftOutReason]int
 	resourcesOverflowed int
 	resourcesUntracked  int
-	keysWrittenAhead    int
 }
 
 // batch builds the rows of one export call. It runs under the writer lock,
@@ -56,8 +55,9 @@ type batch struct {
 	state         *signalState
 	class         *classification
 	nowMillis     uint64
-	// preWriteMillis is the length of the pre-write window, or 0.
-	preWriteMillis uint64
+	// spreadMillis is the time at the start of a UTC day over which the
+	// daily sample is spread, or 0.
+	spreadMillis uint64
 	// metrics keeps a metric label with no field place in the set, as the
 	// labels of a metric are its keys.
 	metrics bool
@@ -65,13 +65,10 @@ type batch struct {
 	rows         []row
 	pending      map[uint64]cacheClass
 	pendingCount [2]int
-	// pendingAhead holds the keys written ahead for the next window.
-	pendingAhead map[uint64]struct{}
 
 	// owners maps a pending key to the rows it writes, so the rows can be
-	// dropped when a shared cache knows the key. Index 0 is the window, 1 the
-	// next window.
-	owners  [2]map[uint64][]int
+	// dropped when a shared cache knows the key.
+	owners  map[uint64][]int
 	samples []sampleRef
 	stats   batchStats
 
@@ -100,11 +97,10 @@ type stepCount struct {
 func newBatchBuffers() *batch {
 	return &batch{
 		pending:      make(map[uint64]cacheClass),
-		pendingAhead: make(map[uint64]struct{}),
 		keysChecked:  make(map[uint64]struct{}),
 		steps:        make(map[*resourceState]stepCount),
 		lastResource: -1,
-		owners:       [2]map[uint64][]int{make(map[uint64][]int), make(map[uint64][]int)},
+		owners:       make(map[uint64][]int),
 		stats:        batchStats{leftOut: make(map[leftOutReason]int)},
 	}
 }
@@ -116,9 +112,7 @@ func (b *batch) reset() {
 	b.rows = b.rows[:0]
 	clear(b.pending)
 	b.pendingCount = [2]int{}
-	clear(b.pendingAhead)
-	clear(b.owners[0])
-	clear(b.owners[1])
+	clear(b.owners)
 	clear(b.samples)
 	b.samples = b.samples[:0]
 	clear(b.stats.leftOut)
@@ -140,26 +134,12 @@ type resourceRef struct {
 	ready bool
 }
 
-// lookup reports whether a key was written in the window, and whether its
-// rows are now due to be written ahead for the next window. In the last
-// preWriteMillis of the window, pkg/timebucketedset makes each known key due
-// from a time set by its hash, so the next window fills over this time and not
-// at its start.
-func (b *batch) lookup(k uint64) (known, ahead bool) {
+// lookup reports whether a key was written in its window.
+func (b *batch) lookup(k uint64) bool {
 	if _, ok := b.pending[k]; ok {
-		return true, false
+		return true
 	}
-	write, next := b.state.cache.plan(k, b.window.Start, b.nowMillis)
-	if write {
-		return false, false
-	}
-	if !next {
-		return true, false
-	}
-	if _, ok := b.pendingAhead[k]; ok {
-		return true, false
-	}
-	return true, b.state.cache.roomNext(b.state.inflightAhead + len(b.pendingAhead) + 1)
+	return b.state.cache.known(k, b.window.Start, b.nowMillis)
 }
 
 func (b *batch) room(class cacheClass) bool {
@@ -193,7 +173,7 @@ func (b *batch) leaveOut(reason leftOutReason, n int) {
 // sample value, which the tracker deduplicates.
 func (b *batch) emit(owner uint64, metricName string, p *pair, resourceHash, attrsHash uint64, inHash bool, seen uint64) {
 	if owner != 0 {
-		b.owners[0][owner] = append(b.owners[0][owner], len(b.rows))
+		b.owners[owner] = append(b.owners[owner], len(b.rows))
 	}
 	b.rows = append(b.rows, row{
 		metricName:   metricName,
@@ -203,23 +183,6 @@ func (b *batch) emit(owner uint64, metricName string, p *pair, resourceHash, att
 		inHash:       inHash,
 		seenMillis:   seen,
 	})
-}
-
-// emitAhead writes the rows of a key for the next window, at its start.
-func (b *batch) emitAhead(k uint64, metricName string, pairs []pair, resourceHash, attrsHash uint64, inHash bool) {
-	for i := range pairs {
-		b.owners[1][k] = append(b.owners[1][k], len(b.rows))
-		b.rows = append(b.rows, row{
-			metricName:   metricName,
-			p:            pairs[i],
-			resourceHash: resourceHash,
-			attrsHash:    attrsHash,
-			inHash:       inHash,
-			seenMillis:   b.window.End,
-		})
-	}
-	b.pendingAhead[k] = struct{}{}
-	b.stats.keysWrittenAhead++
 }
 
 // seenMillis is the record time, or the fallback time, in milliseconds. A
@@ -352,16 +315,16 @@ func (b *batch) sample(st *fieldState, vh uint64, passing bool) mode {
 	return modeSample
 }
 
-// sampleDue spreads the daily sample over the first preWriteMillis of the UTC
+// sampleDue spreads the daily sample over the first spreadMillis of the UTC
 // day: until then, the values a field holds may not pass the share of its
 // budget that the elapsed time of the day gives.
 func (b *batch) sampleDue(st *fieldState) bool {
 	elapsed := b.nowMillis - b.dayStart
-	if b.preWriteMillis == 0 || elapsed >= b.preWriteMillis {
+	if b.spreadMillis == 0 || elapsed >= b.spreadMillis {
 		return true
 	}
 	budget := b.limits.MaxRecordFieldValues + 1
-	return uint64(st.values.len()+1)*b.preWriteMillis <= budget*elapsed
+	return uint64(st.values.len()+1)*b.spreadMillis <= budget*elapsed
 }
 
 // resource writes the rows of the resource of a log record or span, and
@@ -391,7 +354,7 @@ func (b *batch) resourceRows(pairs []pair, seen uint64) uint64 {
 	b.in, b.out = identity, outside
 	rh := setHash(identity)
 	rk := resourceKey(emptyNameHash, rh)
-	if known, ahead := b.lookup(rk); !known {
+	if !b.lookup(rk) {
 		if class, ok := b.classFor(); ok {
 			for i := range identity {
 				b.emit(rk, "", &identity[i], rh, resourceAttrsHash, true, seen)
@@ -400,15 +363,10 @@ func (b *batch) resourceRows(pairs []pair, seen uint64) uint64 {
 		} else {
 			b.leaveOut(reasonCacheFull, len(identity))
 		}
-	} else if ahead {
-		b.emitAhead(rk, "", identity, rh, resourceAttrsHash, true)
 	}
 	for i := range outside {
 		k := pairKey(rh, resourceAttrsHash, &outside[i])
-		if known, ahead := b.lookup(k); known {
-			if ahead {
-				b.emitAhead(k, "", outside[i:i+1], rh, resourceAttrsHash, false)
-			}
+		if b.lookup(k) {
 			continue
 		}
 		if class, ok := b.classFor(); ok {
@@ -457,7 +415,7 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 
 	ah := setHash(in)
 	k := setKey(res.hash, ah)
-	known, ahead := b.lookup(k)
+	known := b.lookup(k)
 	if !known {
 		if b.stepSets(rs) >= b.limits.MaxSetsPerResource/2 {
 			rs.observe(in, b.state.resources, b.alwaysInclude)
@@ -476,7 +434,7 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 			b.in, b.out = in, out
 			ah = setHash(in)
 			k = setKey(res.hash, ah)
-			if known, ahead = b.lookup(k); known {
+			if known = b.lookup(k); known {
 				break
 			}
 		}
@@ -498,15 +456,9 @@ func (b *batch) record(res resourceRef, recordPairs, eventPairs []pair, seen uin
 			b.steps[rs] = c
 		}
 	}
-	if known && ahead {
-		b.emitAhead(k, "", in, res.hash, ah, true)
-	}
 	for i := range out {
 		pk := pairKey(res.hash, ah, &out[i])
-		if known, ahead := b.lookup(pk); known {
-			if ahead {
-				b.emitAhead(pk, "", out[i:i+1], res.hash, ah, false)
-			}
+		if b.lookup(pk) {
 			continue
 		}
 		// A known set can keep getting new pairs outside its hash, such as a
@@ -556,10 +508,7 @@ func (b *batch) overflowPair(res resourceRef, p []pair, seen uint64) {
 		b.stats.resourcesOverflowed++
 	}
 	k := pairKey(res.hash, overflowAttrsHash, &p[0])
-	if known, ahead := b.lookup(k); known {
-		if ahead {
-			b.emitAhead(k, "", p, res.hash, overflowAttrsHash, false)
-		}
+	if b.lookup(k) {
 		return
 	}
 	class, ok := b.classFor()

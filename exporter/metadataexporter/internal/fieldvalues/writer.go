@@ -73,11 +73,9 @@ type signalState struct {
 	budget    budget
 	tracker   *tracker
 	resources *resourceTable
-	// inflight and inflightAhead count the cache keys of batches that are
-	// being inserted, so that concurrent batches do not pass the room of the
-	// cache together.
-	inflight      [2]int
-	inflightAhead int
+	// inflight counts the cache keys of batches that are being inserted, so
+	// that concurrent batches do not pass the room of the cache together.
+	inflight [2]int
 	// overFlags holds the fields that this collector saw over their limit by
 	// its own count, until the refresh writes their rows.
 	overFlags map[fieldID]overField
@@ -85,21 +83,21 @@ type signalState struct {
 
 // Writer writes the field values of one signal.
 type Writer struct {
-	cfg            Config
-	signal         pipeline.Signal
-	logger         *zap.Logger
-	rows           rowWriter
-	telemetry      component.TelemetrySettings
-	exporterID     string
-	shared         SharedCache
-	classifier     *classifier
-	bodyJSON       *BodyJSONLimits
-	alwaysInclude  map[string]struct{}
-	tel            *telemetry
-	now            func() time.Time
-	widthMillis    uint64
-	preWriteMillis uint64
-	autoMemory     bool
+	cfg           Config
+	signal        pipeline.Signal
+	logger        *zap.Logger
+	rows          rowWriter
+	telemetry     component.TelemetrySettings
+	exporterID    string
+	shared        SharedCache
+	classifier    *classifier
+	bodyJSON      *BodyJSONLimits
+	alwaysInclude map[string]struct{}
+	tel           *telemetry
+	now           func() time.Time
+	widthMillis   uint64
+	spreadMillis  uint64
+	autoMemory    bool
 
 	mu      sync.Mutex
 	state   *signalState
@@ -151,22 +149,22 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	state.tracker = newTracker(places, &state.budget)
 	state.resources = newResourceTable(&state.budget)
 	w := &Writer{
-		cfg:            cfg,
-		signal:         set.Signal,
-		logger:         set.Logger,
-		rows:           rows,
-		telemetry:      set.Telemetry,
-		exporterID:     set.ExporterID,
-		shared:         set.Shared,
-		bodyJSON:       set.BodyJSON,
-		alwaysInclude:  alwaysInclude,
-		tel:            tel,
-		now:            time.Now,
-		widthMillis:    uint64(cfg.Cache.Window.Milliseconds()),
-		preWriteMillis: uint64(cfg.Cache.PreWriteWindow.Milliseconds()),
-		state:          state,
-		refreshNow:     make(chan struct{}, 1),
-		stop:           make(chan struct{}),
+		cfg:           cfg,
+		signal:        set.Signal,
+		logger:        set.Logger,
+		rows:          rows,
+		telemetry:     set.Telemetry,
+		exporterID:    set.ExporterID,
+		shared:        set.Shared,
+		bodyJSON:      set.BodyJSON,
+		alwaysInclude: alwaysInclude,
+		tel:           tel,
+		now:           time.Now,
+		widthMillis:   uint64(cfg.Cache.Window.Milliseconds()),
+		spreadMillis:  uint64(cfg.Cache.PreWriteWindow.Milliseconds()),
+		state:         state,
+		refreshNow:    make(chan struct{}, 1),
+		stop:          make(chan struct{}),
 	}
 	w.batches.New = func() any { return newBatchBuffers() }
 	if cfg.Cache.MaxBytes == 0 {
@@ -229,7 +227,6 @@ func (w *Writer) allocate() error {
 	exact, reserve := w.state.cache.capacity()
 	w.tel.cacheCapacity[classExact].Store(int64(exact))
 	w.tel.cacheCapacity[classReserve].Store(int64(reserve))
-	w.tel.cacheCapacity[partAhead].Store(int64(exact))
 	w.tel.trackerCapacity.Store(int64(w.state.budget.limit))
 	w.logger.Info("field values memory",
 		zap.String("signal", w.signal.String()),
@@ -387,7 +384,6 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	st := w.state
 	st.inflight[classExact] += b.pendingCount[classExact]
 	st.inflight[classReserve] += b.pendingCount[classReserve]
-	st.inflightAhead += len(b.pendingAhead)
 	w.mu.Unlock()
 	defer w.release(b)
 	w.tel.recordBatch(ctx, b.stats)
@@ -401,7 +397,6 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	w.mu.Lock()
 	st.inflight[classExact] -= b.pendingCount[classExact]
 	st.inflight[classReserve] -= b.pendingCount[classReserve]
-	st.inflightAhead -= len(b.pendingAhead)
 	if err == nil {
 		w.commit(b)
 	} else {
@@ -431,25 +426,33 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	return nil
 }
 
-// windows gives the window of the batch and the next window.
+// windows gives the window of the batch and the window before it, which is
+// still the window of the keys whose own window did not start.
 func (b *batch) windows() [2]Window {
 	width := b.window.End - b.window.Start
-	return [2]Window{b.window, {Start: b.window.End, End: b.window.End + width}}
+	return [2]Window{b.window, {Start: b.window.Start - width, End: b.window.Start}}
 }
 
 // dropShared removes the rows whose keys the shared cache already has in their
 // window, and returns the keys to add to the shared cache after the insert,
-// for the window and the next window. On an error of the shared cache, all
-// rows are kept.
+// for each of the two windows. On an error of the shared cache, all rows are
+// kept.
 func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, [2][]uint64) {
 	var add [2][]uint64
 	if w.shared == nil {
 		return b.rows, add
 	}
+	var pending [2][]uint64
+	for k := range b.pending {
+		g := 0
+		if b.state.cache.early(k, b.window.Start, b.nowMillis) {
+			g = 1
+		}
+		pending[g] = append(pending[g], k)
+	}
 	windows := b.windows()
 	var drop map[int]struct{}
-	for g := range windows {
-		keys := pendingKeys(b, g)
+	for g, keys := range pending {
 		if len(keys) == 0 {
 			continue
 		}
@@ -467,7 +470,7 @@ func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, [2][]uint64) 
 				add[g] = append(add[g], k)
 				continue
 			}
-			for _, r := range b.owners[g][k] {
+			for _, r := range b.owners[k] {
 				if drop == nil {
 					drop = make(map[int]struct{})
 				}
@@ -486,21 +489,6 @@ func (w *Writer) dropShared(ctx context.Context, b *batch) ([]row, [2][]uint64) 
 	}
 	w.tel.rowsSkippedShared.Add(ctx, int64(len(drop)), w.tel.attrs)
 	return rows, add
-}
-
-func pendingKeys(b *batch, group int) []uint64 {
-	if group == 0 {
-		keys := make([]uint64, 0, len(b.pending))
-		for k := range b.pending {
-			keys = append(keys, k)
-		}
-		return keys
-	}
-	keys := make([]uint64, 0, len(b.pendingAhead))
-	for k := range b.pendingAhead {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 // newBatch moves the state to the current window and day, and returns an
@@ -533,7 +521,7 @@ func (w *Writer) newBatch() *batch {
 	b.state = st
 	b.class = w.class.Load()
 	b.nowMillis = now
-	b.preWriteMillis = w.preWriteMillis
+	b.spreadMillis = w.spreadMillis
 	b.metrics = w.signal == pipeline.SignalMetrics
 	return b
 }
@@ -546,19 +534,16 @@ func (w *Writer) release(b *batch) {
 	w.batches.Put(b)
 }
 
-// commit caches the keys of a written batch. When the window changed while
-// the batch was inserted, its keys written ahead are the keys of the new
-// window.
+// commit caches the keys of a written batch.
 func (w *Writer) commit(b *batch) {
 	st := w.state
-	st.cache.apply(b.window.Start, b.pending, b.pendingAhead)
+	st.cache.apply(b.window.Start, b.nowMillis, b.pending)
 	for rs, c := range b.steps {
 		rs.stepSets += c.sets
 		rs.stepPairs += c.pairs
 	}
 	w.tel.cacheUsed[classExact].Store(int64(st.cache.used[classExact]))
 	w.tel.cacheUsed[classReserve].Store(int64(st.cache.used[classReserve]))
-	w.tel.cacheUsed[partAhead].Store(int64(st.cache.nextUsed))
 	w.tel.trackerUsed.Store(int64(st.budget.used))
 }
 

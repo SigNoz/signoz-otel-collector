@@ -120,7 +120,7 @@ func BenchmarkKeyCache(b *testing.B) {
 	require.NoError(b, err)
 	window, now := uint64(20000)*dayMillis, uint64(20000)*dayMillis+1000
 	c.rotate(window)
-	c.plan(1, window, now)
+	c.known(1, window, now)
 	keys := make(map[uint64]cacheClass, 1<<20)
 	for i := 0; i < 1<<20; i++ {
 		keys[mix64(uint64(i)+1)] = classExact
@@ -130,15 +130,15 @@ func BenchmarkKeyCache(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			batch[mix64(uint64(i)+1)] = classExact
 			if len(batch) == 1000 {
-				c.apply(window, batch, nil)
+				c.apply(window, now, batch)
 				clear(batch)
 			}
 		}
 	})
-	c.apply(window, keys, nil)
-	b.Run("plan", func(b *testing.B) {
+	c.apply(window, now, keys)
+	b.Run("known", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			c.plan(mix64(uint64(i%(1<<20))+1), window, now)
+			c.known(mix64(uint64(i%(1<<20))+1), window, now)
 		}
 	})
 }
@@ -166,7 +166,6 @@ func TestConcurrentPushes(t *testing.T) {
 	assert.LessOrEqual(t, w.state.cache.used[classExact], 5000)
 	assert.LessOrEqual(t, w.state.cache.used[classReserve], 500)
 	assert.Equal(t, [2]int{0, 0}, w.state.inflight)
-	assert.Zero(t, w.state.inflightAhead)
 }
 
 // BenchmarkWriteCorrelatedNewData is BenchmarkWrite*NewData with correlated

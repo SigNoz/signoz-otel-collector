@@ -54,11 +54,12 @@ type CacheConfig struct {
 	// Window is the time in which each set, pair and resource is written once
 	// per collector. It must divide a UTC day.
 	Window time.Duration `mapstructure:"window"`
-	// PreWriteWindow is the last part of each window in which the keys seen
-	// are also written for the next window, each at a time set by its hash.
-	// It spreads the writes of a new window over this time. The daily sample
-	// of high-cardinality fields is spread over the first PreWriteWindow of
-	// each UTC day. 0 disables both.
+	// PreWriteWindow is the time at the start of each window over which the
+	// writes of the keys of the last window are spread: the window of a key
+	// starts later than the window of the clock, by a time under
+	// PreWriteWindow that its hash sets. The daily sample of high-cardinality
+	// fields is spread over the first PreWriteWindow of each UTC day. 0
+	// disables both.
 	PreWriteWindow time.Duration `mapstructure:"pre_write_window"`
 }
 

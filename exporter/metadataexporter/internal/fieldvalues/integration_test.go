@@ -347,7 +347,8 @@ func TestIntegrationBodyPairs(t *testing.T) {
 FROM signoz_metadata.distributed_field_values_sets WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type, string_value, number_value`))
 }
 
-// Rows written ahead and late records land on the day of their window.
+// A set seen at the end of a day gets no row of the next day. A late record
+// lands on the day of its window.
 func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
 	conn := integrationConn(t)
 	e := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
@@ -361,7 +362,7 @@ func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
 	flush(t, conn)
 
 	assert.Equal(t, []string{
-		"GET " + testDate + " 10:00:00 " + testNextDate + " 00:00:00",
+		"GET " + testDate + " 10:00:00 " + testDate + " 10:00:00",
 		"PUT " + testNextDate + " 00:00:00 " + testNextDate + " 00:00:00",
 	}, queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(min(first_seen), 'UTC'), ' ', toString(max(last_seen), 'UTC'))
 FROM signoz_metadata.distributed_field_values_sets WHERE field_name = 'http.method' GROUP BY string_value ORDER BY string_value`))
