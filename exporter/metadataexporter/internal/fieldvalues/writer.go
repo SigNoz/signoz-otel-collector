@@ -1,12 +1,12 @@
 // Package fieldvalues writes the field values store of the metadata exporter:
-// the pair table signoz_metadata.field_values_sets, from which the
-// field_values_daily view is built. Plain values, related values and metric
-// keys are read from these two tables.
+// the pair table signoz_metadata.field_values_sets with its projection, and
+// the days on which a field was over its limit in field_days_over_limit.
 package fieldvalues
 
 import (
 	"context"
 	"math"
+	"math/rand/v2"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -75,6 +75,9 @@ type signalState struct {
 	// cache together.
 	inflight      [2]int
 	inflightAhead int
+	// overFlags holds the fields that this collector saw over their limit by
+	// its own count, until the refresh writes their rows.
+	overFlags map[fieldID]overField
 }
 
 // Writer writes the field values of one signal.
@@ -125,6 +128,7 @@ func New(cfg Config, set Settings) (*Writer, error) {
 		recordLimit:   cfg.Limits.MaxRecordFieldValues,
 		resourceLimit: cfg.Limits.MaxResourceFieldValues,
 		maxFields:     cfg.Limits.MaxFieldsPerSignal,
+		endedWindow:   cfg.Classification.RefreshInterval,
 	}
 	return w, nil
 }
@@ -134,7 +138,7 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	for _, name := range cfg.AlwaysInclude {
 		alwaysInclude[name] = struct{}{}
 	}
-	state := &signalState{}
+	state := &signalState{overFlags: make(map[fieldID]overField)}
 	state.tracker = newTracker(cfg.Limits.MaxFieldsPerSignal, &state.budget)
 	state.resources = newResourceTable(&state.budget)
 	w := &Writer{
@@ -227,7 +231,7 @@ func (w *Writer) allocate() error {
 	return nil
 }
 
-// Start begins the reads of field_values_daily.
+// Start begins the reads of the classifier.
 func (w *Writer) Start() {
 	if w.classifier == nil {
 		return
@@ -257,18 +261,30 @@ func (w *Writer) Shutdown() error {
 	return nil
 }
 
+// refreshLoop runs the classifier at the start, and then at each interval.
+// The first interval and the refresh after a day change start after a random
+// time, so that the collectors of a tenant do not read together.
 func (w *Writer) refreshLoop() {
 	defer w.wg.Done()
-	ticker := time.NewTicker(w.cfg.Classification.RefreshInterval)
-	defer ticker.Stop()
+	interval := w.cfg.Classification.RefreshInterval
 	w.refresh()
+	timer := time.NewTimer(rand.N(interval))
+	defer timer.Stop()
 	for {
 		select {
 		case <-w.stop:
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			w.refresh()
+			timer.Reset(interval)
 		case <-w.refreshNow:
+			// The read for the day that ended is correct only in the first
+			// interval of the new day.
+			select {
+			case <-w.stop:
+				return
+			case <-time.After(rand.N(interval / 3)):
+			}
 			w.refresh()
 		}
 	}
@@ -284,19 +300,38 @@ func (w *Writer) refresh() {
 		case <-ctx.Done():
 		}
 	}()
-	next, err := w.classifier.refresh(ctx, w.class.Load(), utcDay(w.now()))
+	w.mu.Lock()
+	own := make([]overField, 0, len(w.state.overFlags))
+	for _, f := range w.state.overFlags {
+		own = append(own, f)
+	}
+	w.mu.Unlock()
+	next, writeErr, err := w.classifier.refresh(ctx, w.class.Load(), w.now(), own)
 	if err != nil {
-		w.warn("failed to read field_values_daily", zap.Error(err))
+		w.tel.classifierErrors.Add(ctx, 1, w.tel.attrs)
+		w.warn("failed to read the fields over the limit", zap.Error(err))
 		return
+	}
+	if writeErr != nil {
+		w.tel.classifierErrors.Add(ctx, 1, w.tel.attrs)
+		w.warn("failed to write the fields over the limit", zap.Error(writeErr))
 	}
 	w.class.Store(next)
 	w.mu.Lock()
+	if writeErr == nil {
+		for _, f := range own {
+			id := fieldIDOf(f.ctx, f.name)
+			if w.state.overFlags[id].day == f.day {
+				delete(w.state.overFlags, id)
+			}
+		}
+	}
 	w.state.tracker.place(next.known)
 	w.mu.Unlock()
 }
 
 func utcDay(t time.Time) uint64 {
-	return uint64(t.UTC().Unix() / 86400)
+	return uint64(t.Unix() / 86400)
 }
 
 func (w *Writer) WriteLogs(ctx context.Context, ld plog.Logs) error {

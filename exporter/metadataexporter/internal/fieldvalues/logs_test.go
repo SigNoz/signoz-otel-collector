@@ -2,6 +2,8 @@ package fieldvalues
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"sort"
 	"testing"
 	"time"
@@ -72,9 +74,9 @@ func TestLogsHighCardinalityFieldKeepsDailySample(t *testing.T) {
 		"{http.method=POST, user.id=u2}",
 	}, setList(w.take()), "u4 passes the limit and goes into {GET} outside the hash; u5 is past the budget")
 
-	// Day 1 showed 4 values in field_values_daily, so user.id starts day 2
+	// Day 1 gave user.id a row in field_days_over_limit, so it starts day 2
 	// outside the hash.
-	e.class.Store(&classification{overClosedDays: map[fieldID]struct{}{fieldIDOf(contextAttribute, "user.id"): {}}})
+	e.class.Store(&classification{over: map[fieldID]overField{fieldIDOf(contextAttribute, "user.id"): {ctx: contextAttribute, name: "user.id"}}})
 	setNow(e, testDay.Add(24*time.Hour))
 	day2 := logsOf(checkout,
 		logRecord{"08:00", map[string]any{"http.method": "GET", "user.id": "u6"}},
@@ -289,7 +291,7 @@ func TestLogsServiceNameHasNoLimit(t *testing.T) {
 }
 
 // The value that passes the limit is written at once, also in the first hour
-// of the day, so that field_values_daily shows the field over the limit.
+// of the day, so that the classifiers see the field over the limit.
 func TestLogsValueThatPassesTheLimitIsNotHeldBack(t *testing.T) {
 	cfg := testConfig()
 	cfg.Limits.MaxRecordFieldValues = 2
@@ -309,4 +311,56 @@ func TestLogsValueThatPassesTheLimitIsNotHeldBack(t *testing.T) {
 	}
 	sort.Strings(values)
 	assert.Equal(t, []string{"user.id=u1", "user.id=u2", "user.id=u3"}, values, "u3 passes the limit and is written; u4 waits for the spread")
+}
+
+// A collector flags a field for the day when its own count of the values of
+// the field passes the limit. A field that is over the limit from the start
+// of the day is counted too, so that it gets a row for each day.
+func TestOwnCountFlagsTheFieldForTheDay(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 3
+	cfg.Limits.MaxResourceFieldValues = 2
+	e, _ := newTestExporter(t, cfg, pipeline.SignalLogs)
+	ctx := context.Background()
+	userID := fieldIDOf(contextAttribute, "user.id")
+	version := fieldIDOf(contextResource, "k8s.object.resource_version")
+	flags := func() map[fieldID]overField {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return maps.Clone(e.state.overFlags)
+	}
+	write := func(versions int, users ...string) {
+		for v := 0; v < versions; v++ {
+			require.NoError(t, e.WriteLogs(ctx, logsOf(map[string]any{"k8s.object.resource_version": fmt.Sprintf("v%d", v)},
+				logRecord{"10:00", map[string]any{"http.method": "GET"}})))
+		}
+		for _, u := range users {
+			require.NoError(t, e.WriteLogs(ctx, logsOf(checkout, logRecord{"10:00", map[string]any{"user.id": u}})))
+		}
+	}
+	day1 := utcDay(testDay)
+
+	write(2, "u1", "u2", "u3")
+	assert.Empty(t, flags(), "at the limit")
+	write(3, "u1", "u2", "u3", "u4")
+	assert.Equal(t, map[fieldID]overField{
+		userID:  {ctx: contextAttribute, name: "user.id", day: day1},
+		version: {ctx: contextResource, name: "k8s.object.resource_version", day: day1},
+	}, flags(), "the value that passes the limit flags the field")
+
+	e.mu.Lock()
+	clear(e.state.overFlags)
+	e.mu.Unlock()
+	e.class.Store(&classification{over: map[fieldID]overField{
+		userID:  {ctx: contextAttribute, name: "user.id", day: day1},
+		version: {ctx: contextResource, name: "k8s.object.resource_version", day: day1},
+	}})
+	setNow(e, testDay.Add(24*time.Hour))
+	write(2, "u5", "u6", "u7", "u8")
+	assert.Empty(t, flags(), "day 2: the sample has the limit plus one values, and the resource field is at its limit")
+	write(3, "u9")
+	assert.Equal(t, map[fieldID]overField{
+		userID:  {ctx: contextAttribute, name: "user.id", day: day1 + 1},
+		version: {ctx: contextResource, name: "k8s.object.resource_version", day: day1 + 1},
+	}, flags(), "day 2: one more value flags the field for the new day")
 }

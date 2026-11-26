@@ -22,6 +22,7 @@ type telemetry struct {
 	valuesLeftOut       metric.Int64Counter
 	resourcesOverflowed metric.Int64Counter
 	insertErrors        metric.Int64Counter
+	classifierErrors    metric.Int64Counter
 	rowsSkippedShared   metric.Int64Counter
 	sharedCacheErrors   metric.Int64Counter
 	resourcesUntracked  metric.Int64Counter
@@ -52,6 +53,7 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 		{&t.resourcesOverflowed, "signoz_metadata_exporter_field_values_resources_overflowed", "Resources that started to write into their overflow set in the window."},
 		{&t.insertErrors, "signoz_metadata_exporter_field_values_insert_errors", "Failed inserts. Their keys are not cached, so the next sighting writes them again."},
 		{&t.rowsSkippedShared, "signoz_metadata_exporter_field_values_rows_skipped_shared", "Rows not written because the shared cache shows that another collector wrote them in the window."},
+		{&t.classifierErrors, "signoz_metadata_exporter_field_values_classifier_errors", "Failed reads or writes of the fields over the limit. The writer keeps the classification of the last refresh."},
 		{&t.sharedCacheErrors, "signoz_metadata_exporter_field_values_shared_cache_errors", "Failed reads or writes of the shared cache. The rows are written anyway."},
 		{&t.resourcesUntracked, "signoz_metadata_exporter_field_values_resources_untracked", "Resources of a batch without a state, because the memory of the tracker is full. Their records write into the overflow set."},
 		{&t.keysWrittenAhead, "signoz_metadata_exporter_field_values_keys_written_ahead", "Keys written for the next window in the pre-write window."},

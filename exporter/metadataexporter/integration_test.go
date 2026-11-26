@@ -22,9 +22,10 @@ import (
 )
 
 // The integration test needs a ClickHouse server with a cluster for the
-// distributed tables. It recreates the signoz_metadata database.
+// distributed tables. It recreates the signoz_metadata database on every node
+// of the cluster.
 //
-//	FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:19000 FIELDVALUES_CLICKHOUSE_CLUSTER=c1 go test -run Integration ./exporter/metadataexporter/
+//	FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:19000 FIELDVALUES_CLICKHOUSE_CLUSTER=c1 go test -p 1 -run Integration ./exporter/metadataexporter/
 func integrationSchema(t *testing.T) (driver.Conn, string) {
 	t.Helper()
 	dsn := os.Getenv("FIELDVALUES_CLICKHOUSE_DSN")
@@ -42,21 +43,14 @@ func integrationSchema(t *testing.T) (driver.Conn, string) {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	ctx := context.Background()
-	require.NoError(t, conn.Exec(ctx, "DROP DATABASE IF EXISTS signoz_metadata SYNC"))
-	require.NoError(t, conn.Exec(ctx, "CREATE DATABASE signoz_metadata"))
+	require.NoError(t, conn.Exec(ctx, "DROP DATABASE IF EXISTS signoz_metadata ON CLUSTER "+cluster+" SYNC"))
+	require.NoError(t, conn.Exec(ctx, "CREATE DATABASE signoz_metadata ON CLUSTER "+cluster))
 	for _, migration := range schemamigrator.MetadataMigrations {
 		if migration.MigrationID != 1000 && migration.MigrationID != 1003 {
 			continue
 		}
 		for _, op := range migration.UpItems {
-			if create, ok := op.(schemamigrator.CreateTableOperation); ok {
-				if d, ok := create.Engine.(schemamigrator.Distributed); ok {
-					d.Cluster = cluster
-					create.Engine = d
-				}
-				op = create
-			}
-			require.NoError(t, conn.Exec(ctx, op.ToSQL()), op.ToSQL())
+			require.NoError(t, conn.Exec(ctx, op.OnCluster(cluster).ToSQL()), op.ToSQL())
 		}
 	}
 	return conn, dsn
@@ -65,10 +59,18 @@ func integrationSchema(t *testing.T) (driver.Conn, string) {
 func countRows(t *testing.T, conn driver.Conn, query string) uint64 {
 	t.Helper()
 	ctx := context.Background()
-	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH ASYNC INSERT QUEUE"))
-	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_field_values_sets"))
-	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH ASYNC INSERT QUEUE"))
-	require.NoError(t, conn.Exec(ctx, "SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_attributes_metadata"))
+	cluster := os.Getenv("FIELDVALUES_CLICKHOUSE_CLUSTER")
+	if cluster == "" {
+		cluster = "c1"
+	}
+	for _, q := range []string{
+		"SYSTEM FLUSH ASYNC INSERT QUEUE ON CLUSTER " + cluster,
+		"SYSTEM FLUSH DISTRIBUTED ON CLUSTER " + cluster + " signoz_metadata.distributed_field_values_sets",
+		"SYSTEM FLUSH ASYNC INSERT QUEUE ON CLUSTER " + cluster,
+		"SYSTEM FLUSH DISTRIBUTED ON CLUSTER " + cluster + " signoz_metadata.distributed_attributes_metadata",
+	} {
+		require.NoError(t, conn.Exec(ctx, q), q)
+	}
 	var n uint64
 	require.NoError(t, conn.QueryRow(ctx, query).Scan(&n))
 	return n

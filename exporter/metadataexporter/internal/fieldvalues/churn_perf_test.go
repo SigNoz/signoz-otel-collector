@@ -105,7 +105,7 @@ func TestPerfChurn(t *testing.T) {
 		// CREATE TABLE AS keeps the partition key of the table unless the
 		// copy sets its own.
 		engine := "ENGINE = AggregatingMergeTree PARTITION BY tuple()"
-		settings := "SETTINGS allow_nullable_key = 1"
+		settings := "SETTINGS allow_nullable_key = 1, deduplicate_merge_projection_mode = 'rebuild'"
 		if l.partition != "" {
 			engine = "ENGINE = AggregatingMergeTree PARTITION BY " + l.partition
 			settings += ", ttl_only_drop_parts = 1"
@@ -166,7 +166,7 @@ FROM system.part_log WHERE event_type = 'MergeParts' AND database = 'signoz_meta
 		fmt.Fprintf(&report, "| %s | %d | %s | %s | %d |\n", l.name, merges, formatBytes(read), formatBytes(written), parts)
 	}
 
-	for _, table := range []string{"field_values_sets", "field_values_sets_flat", "field_values_sets_by_day", "field_values_daily", "field_keys_daily"} {
+	for _, table := range []string{"field_values_sets", "field_values_sets_flat", "field_values_sets_by_day"} {
 		require.NoError(t, conn.Exec(ctx, "OPTIMIZE TABLE signoz_metadata."+table+" FINAL"))
 	}
 
@@ -282,8 +282,8 @@ WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '
   AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.field_values_sets
       WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'service.name' AND string_value = 'deploy-001')
 GROUP BY string_value LIMIT 1001`, []any{from}},
-		{"keys of k8s.* (issue 13042)", `SELECT field_name, field_context FROM signoz_metadata.field_keys_daily
-WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND day >= toDate(fromUnixTimestamp($1), 'UTC')
+		{"keys of k8s.* (issue 13042)", `SELECT field_name, field_context FROM signoz_metadata.field_values_sets
+WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND toDate(last_seen, 'UTC') >= toDate(fromUnixTimestamp($1), 'UTC')
 GROUP BY field_name, field_context LIMIT 1001`, []any{from}},
 	} {
 		comment := fmt.Sprintf("churn-metric-%s-%s", q.name, run)

@@ -1,18 +1,23 @@
 # Field values writer
 
 The field values writer is part of the metadata exporter. It writes the field
-values store, from which the query service reads plain values, related values,
-and metric keys:
+values store, from which the query service reads plain values and related
+values:
 
 - `signoz_metadata.field_values_sets`: one row for each pair of each set (a
   set is the `field = value` pairs of a record, apart from its resource; for
   metrics, a set is one series), and one row for each resource field and
   value of each resource. The table is partitioned by the week of each row,
   so reads of a short window skip older weeks and TTL drops whole weeks.
-- `signoz_metadata.field_values_daily`: a view with one row per value per
-  day, and the number of sets that hold the value.
-- `signoz_metadata.field_keys_daily`: a view with one row per metric, field
-  and day, for key reads that must not scan values.
+  Its projection `p_field_values` has one row per field, metric, value and
+  UTC day in each part, for the reads that need one row per value: the values
+  of a field with no filter, the values of a label for all metrics, and the
+  classifier. A projection is stored in the part of its table, so it adds no
+  part. An AggregatingMergeTree table needs
+  `deduplicate_merge_projection_mode = 'rebuild'` for it, and each merge then
+  computes the projection again.
+- `signoz_metadata.field_days_over_limit`: one row per field and UTC day on
+  which the field had more values than its limit.
 
 Migration 1003 of the schema migrator creates the tables.
 
@@ -94,7 +99,7 @@ exporters:
     Such series are not cached, so a label with a value per point cannot fill
     the cache. The rows of a resource are written once, with no metric name. A
     link row (no metric name, the field `__name__`, the metric name as value)
-    ties each metric to each of its resources and stays out of the views, and
+    ties each metric to each of its resources, and
     a key row (the metric name, a resource field, no value) gives each metric
     its resource keys. Each metric label gets at least one row per day, so the
     keys of a metric are complete.
@@ -104,9 +109,19 @@ exporters:
   writer does not wait for the flush, so the export does not wait either; a
   failed flush is not seen, and its keys stay cached with no rows until the
   window ends. Clusters with more shards need a longer timeout.
-- **Classification.** Every `refresh_interval`, the writer reads
-  `field_values_daily` for the fields over the limit today, and once per day
-  for the closed days of the lookback and the fields of yesterday.
+- **Classification.** A field is over its limit when
+  `field_days_over_limit` has a row for it on one of the `lookback_days`,
+  today included. Without the lookback, a field with a value per record
+  starts each day inside the set identity. Every `refresh_interval`, the
+  writer reads those rows. It then reads from the projection the other fields
+  with more values than their limit today, and writes a row for each. The
+  fields that have a row are left out of that read, as they hold most of the
+  values. A writer whose own count of a field passes the limit also writes
+  the row of the day, so a field that stays over its limit has a row for each
+  day. In the first `refresh_interval` of a UTC day, the writer does the read
+  one more time for the day that ended. The first refresh interval and the
+  refresh after a day change start after a random time, so the collectors of
+  a tenant do not read together.
 
 ## Reads
 
@@ -114,7 +129,15 @@ exporters:
   name) whose `resource_hash` is in the link rows of the metric.
 - Metrics of a resource: the values of the link rows whose `resource_hash` is
   in the resource rows that match.
-- Keys of a metric or of a group of metrics: `field_keys_daily`.
+- Values of a field with no filter: `GROUP BY` the value columns with the
+  condition `toDate(last_seen, 'UTC') >= day`, which is the shape of the
+  projection. ClickHouse reads the rows of the sets, with no notice, for a
+  statement with a condition on `last_seen` itself or on a column that the
+  projection does not have. With a metric name, ClickHouse can read the rows
+  of the metric in place of the projection when they are fewer, so such a
+  read must not set `force_optimize_projection`.
+- The rows of the field `__name__` are links, not values: a read of values or
+  of keys leaves them out.
 - Reads of distributed tables with `IN` subqueries need
   `distributed_product_mode = 'local'`, and an alias on each distributed table
   with the old analyzer.
@@ -145,7 +168,7 @@ key cache share.
 The last quarter is for the value tracker (8 to 16 bytes per value) and the
 resource states. The values of a field are freed when the field passes its
 limit and its sample is full. When this memory is full, new values are not
-counted (the reads of `field_values_daily` and the coarse sets still bound the
+counted (the reads of the classifier and the coarse sets still bound the
 field), and records of new resources go into their overflow set.
 
 The work on the pdata (pairs, hashes, metric fingerprints) runs before the

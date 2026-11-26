@@ -61,7 +61,7 @@ type CacheConfig struct {
 	PreWriteWindow time.Duration `mapstructure:"pre_write_window"`
 }
 
-// ClassificationConfig controls the reads of field_values_daily.
+// ClassificationConfig controls the reads of the fields over the limit.
 type ClassificationConfig struct {
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
 	// LookbackDays is the number of days, today included, on which a field
@@ -141,8 +141,8 @@ func (c *Config) Validate() error {
 	if c.AsyncInsertBusyTimeout < 0 {
 		errs = append(errs, errors.New("field_values: async_insert_busy_timeout must be at least 0"))
 	}
-	if c.Classification.RefreshInterval <= 0 {
-		errs = append(errs, errors.New("field_values.classification: refresh_interval must be positive"))
+	if c.Classification.RefreshInterval < time.Second {
+		errs = append(errs, errors.New("field_values.classification: refresh_interval must be at least 1s"))
 	}
 	if c.Classification.LookbackDays < 1 || c.Classification.LookbackDays > 30 {
 		errs = append(errs, errors.New("field_values.classification: lookback_days must be between 1 and 30"))

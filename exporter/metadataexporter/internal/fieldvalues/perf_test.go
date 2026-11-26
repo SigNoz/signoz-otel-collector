@@ -51,7 +51,7 @@ func TestPerfReadsOverDays(t *testing.T) {
 	flush(t, conn)
 	ctx := context.Background()
 	var rows uint64
-	require.NoError(t, conn.QueryRow(ctx, "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
+	require.NoError(t, conn.QueryRow(ctx, "SELECT count() FROM signoz_metadata.distributed_field_values_sets").Scan(&rows))
 	t.Logf("%d days x %d batches of 1,000 log records: %d rows in field_values_sets before merges", days, batches, rows)
 
 	related := `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
@@ -63,10 +63,10 @@ WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'htt
       WHERE signal = 'logs' AND source = '' AND field_name = 'http.method' AND field_context = 'attribute' AND string_value = 'GET')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`
-	plain := `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
+	plain := `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
-  AND day >= toDate(fromUnixTimestamp64Milli(?), 'UTC') AND day < toDate(fromUnixTimestamp64Milli(?), 'UTC') + 1
-GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`
+  AND toDate(last_seen, 'UTC') >= toDate(fromUnixTimestamp64Milli(?), 'UTC')
+GROUP BY string_value ORDER BY count() DESC LIMIT 51`
 
 	end := last.Add(12 * time.Hour).UnixMilli()
 	for _, window := range []int{1, days} {
@@ -76,7 +76,7 @@ GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`
 			args      []any
 		}{
 			{"related values", related, []any{uint64(end / 1000), uint64(startDay / 1000)}},
-			{"plain values", plain, []any{startDay, end - 1}},
+			{"plain values", plain, []any{startDay}},
 		} {
 			comment := fmt.Sprintf("fieldvalues-days-%s-%d", q.name, window)
 			var durations []time.Duration

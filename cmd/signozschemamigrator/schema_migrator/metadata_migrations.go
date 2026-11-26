@@ -172,6 +172,13 @@ var MetadataMigrations = []SchemaMigrationRecord{
 				Database: "signoz_metadata",
 				Table:    "field_values_sets",
 				Columns:  fieldValuesSetsColumns,
+				Projections: []Projection{
+					{
+						Name: "p_field_values",
+						Query: `SELECT signal, source, field_name, field_context, field_data_type, metric_name, string_value, number_value, toDate(last_seen, 'UTC'), max(last_seen), count()
+GROUP BY signal, source, field_name, field_context, field_data_type, metric_name, string_value, number_value, toDate(last_seen, 'UTC')`,
+					},
+				},
 				Engine: AggregatingMergeTree{
 					MergeTree: MergeTree{
 						PartitionBy: "toMonday(last_seen)",
@@ -180,6 +187,8 @@ var MetadataMigrations = []SchemaMigrationRecord{
 						Settings: TableSettings{
 							{Name: "allow_nullable_key", Value: "1"},
 							{Name: "ttl_only_drop_parts", Value: "1"},
+							// An AggregatingMergeTree table refuses a projection with the default mode.
+							{Name: "deduplicate_merge_projection_mode", Value: "'rebuild'"},
 						},
 					},
 				},
@@ -196,60 +205,13 @@ var MetadataMigrations = []SchemaMigrationRecord{
 			},
 			CreateTableOperation{
 				Database: "signoz_metadata",
-				Table:    "field_values_daily",
-				Columns:  fieldValuesDailyColumns,
-				Engine: AggregatingMergeTree{
-					MergeTree: MergeTree{
-						PartitionBy: "toMonday(day)",
-						OrderBy:     "(signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, day)",
-						TTL:         "day + toIntervalDay(35)",
-						Settings: TableSettings{
-							{Name: "allow_nullable_key", Value: "1"},
-							{Name: "ttl_only_drop_parts", Value: "1"},
-						},
-					},
-				},
-			},
-			CreateTableOperation{
-				Database: "signoz_metadata",
-				Table:    "distributed_field_values_daily",
-				Columns:  fieldValuesDailyColumns,
-				Engine: Distributed{
-					Database:    "signoz_metadata",
-					Table:       "field_values_daily",
-					ShardingKey: "rand()",
-				},
-			},
-			CreateMaterializedViewOperation{
-				Database:  "signoz_metadata",
-				ViewName:  "field_values_daily_mv",
-				DestTable: "field_values_daily",
-				Query: `SELECT
-    signal,
-    source,
-    scope_metric AS metric_name,
-    field_context,
-    field_name,
-    field_data_type,
-    string_value,
-    number_value,
-    toDate(first_seen, 'UTC') AS day,
-    uniqCombinedState(12)(cityHash64(resource_hash, attrs_hash)) AS holders
-FROM signoz_metadata.field_values_sets
-ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
-WHERE NOT (field_values_sets.metric_name != '' AND field_values_sets.field_context = 'resource')
-  AND field_values_sets.field_name != '__name__'
-GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, string_value, number_value, day`,
-			},
-			CreateTableOperation{
-				Database: "signoz_metadata",
-				Table:    "field_keys_daily",
-				Columns:  fieldKeysDailyColumns,
+				Table:    "field_days_over_limit",
+				Columns:  fieldDaysOverLimitColumns,
 				Engine: ReplacingMergeTree{
 					MergeTree: MergeTree{
 						PartitionBy: "toMonday(day)",
-						OrderBy:     "(signal, source, metric_name, field_name, field_context, field_data_type, day)",
-						TTL:         "day + toIntervalDay(35)",
+						OrderBy:     "(signal, source, field_context, field_name, day)",
+						TTL:         "day + toIntervalDay(30)",
 						Settings: TableSettings{
 							{Name: "ttl_only_drop_parts", Value: "1"},
 						},
@@ -258,56 +220,23 @@ GROUP BY signal, source, scope_metric, field_context, field_name, field_data_typ
 			},
 			CreateTableOperation{
 				Database: "signoz_metadata",
-				Table:    "distributed_field_keys_daily",
-				Columns:  fieldKeysDailyColumns,
+				Table:    "distributed_field_days_over_limit",
+				Columns:  fieldDaysOverLimitColumns,
 				Engine: Distributed{
 					Database:    "signoz_metadata",
-					Table:       "field_keys_daily",
+					Table:       "field_days_over_limit",
 					ShardingKey: "rand()",
 				},
-			},
-			CreateMaterializedViewOperation{
-				Database:  "signoz_metadata",
-				ViewName:  "field_keys_daily_mv",
-				DestTable: "field_keys_daily",
-				Query: `SELECT
-    signal,
-    source,
-    scope_metric AS metric_name,
-    field_context,
-    field_name,
-    field_data_type,
-    toDate(first_seen, 'UTC') AS day
-FROM signoz_metadata.field_values_sets
-ARRAY JOIN if(field_values_sets.metric_name = '', [''], [field_values_sets.metric_name, '']) AS scope_metric
-WHERE field_values_sets.field_name != '__name__'
-GROUP BY signal, source, scope_metric, field_context, field_name, field_data_type, day`,
 			},
 		},
 		DownItems: []Operation{
 			DropTableOperation{
 				Database: "signoz_metadata",
-				Table:    "field_keys_daily_mv",
+				Table:    "distributed_field_days_over_limit",
 			},
 			DropTableOperation{
 				Database: "signoz_metadata",
-				Table:    "distributed_field_keys_daily",
-			},
-			DropTableOperation{
-				Database: "signoz_metadata",
-				Table:    "field_keys_daily",
-			},
-			DropTableOperation{
-				Database: "signoz_metadata",
-				Table:    "field_values_daily_mv",
-			},
-			DropTableOperation{
-				Database: "signoz_metadata",
-				Table:    "distributed_field_values_daily",
-			},
-			DropTableOperation{
-				Database: "signoz_metadata",
-				Table:    "field_values_daily",
+				Table:    "field_days_over_limit",
 			},
 			DropTableOperation{
 				Database: "signoz_metadata",
@@ -348,25 +277,10 @@ var fieldValuesSetsColumns = []Column{
 	{Name: "inserted_at", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
 }
 
-var fieldKeysDailyColumns = []Column{
+var fieldDaysOverLimitColumns = []Column{
 	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "field_context", Type: fieldContextColumnType},
 	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_data_type", Type: fieldDataTypeColumnType},
 	{Name: "day", Type: ColumnTypeDate},
-}
-
-var fieldValuesDailyColumns = []Column{
-	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_context", Type: fieldContextColumnType},
-	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_data_type", Type: fieldDataTypeColumnType},
-	{Name: "string_value", Type: ColumnTypeString},
-	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
-	{Name: "day", Type: ColumnTypeDate},
-	{Name: "holders", Type: AggregateFunction{FunctionName: "uniqCombined(12)", Arguments: []ColumnType{ColumnTypeUInt64}}},
 }

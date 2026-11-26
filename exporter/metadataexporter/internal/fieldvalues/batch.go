@@ -272,7 +272,7 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		}
 		if st.values.len() < limit {
 			// When the tracker is full, the value is not counted. The reads of
-			// field_values_daily and the coarse sets still bound the field.
+			// the classifier and the coarse sets still bound the field.
 			tr.add(st, p.vh)
 			return modeInHash
 		}
@@ -280,39 +280,61 @@ func (b *batch) decide(p *pair, resource bool) mode {
 		// leaves the hash on this collector for the rest of the day.
 		st.over = true
 		passing = true
+		b.flagOver(p)
 	}
 	if resource {
-		if !st.spent {
-			tr.spend(st)
-		}
+		b.countOutside(st, p, limit)
 		return modeOutside
 	}
-	return b.sample(st, p.vh, passing)
+	return b.sample(st, p, passing)
+}
+
+// flagOver records that this collector counted more values of the field than
+// its limit today. The refresh writes the row of the field and the day.
+func (b *batch) flagOver(p *pair) {
+	b.state.overFlags[p.field] = overField{ctx: p.ctx, name: p.name, day: b.dayStart / dayMillis}
+}
+
+// countOutside counts the values of a resource field that is outside the
+// identity, up to its limit plus one. Then the field is flagged for today
+// and its values are freed. Without the count, a resource field over its
+// limit gets no row for the day from this collector.
+func (b *batch) countOutside(st *fieldState, p *pair, limit int) {
+	tr := b.state.tracker
+	switch {
+	case st.spent || st.values.has(p.vh):
+	case st.values.len() >= limit:
+		b.flagOver(p)
+		tr.spend(st)
+	case !tr.add(st, p.vh):
+		tr.spend(st)
+	}
 }
 
 // sample takes a value of a field over the limit into the daily sample, up to
 // the limit plus one values per day. The value that passes the limit is not
-// held back by the spread of the sample, so field_values_daily shows the
-// field over the limit at once.
-func (b *batch) sample(st *fieldState, vh uint64, passing bool) mode {
+// held back by the spread of the sample, so the classifiers of the other
+// collectors see the field over the limit at once.
+func (b *batch) sample(st *fieldState, p *pair, passing bool) mode {
 	tr := b.state.tracker
 	switch {
 	case st.spent:
 		b.leaveOut(reasonSampleBudget, 1)
 		return modeSkip
-	case st.values.has(vh):
+	case st.values.has(p.vh):
 		return modeSkip
 	case st.values.len() > int(b.limits.MaxRecordFieldValues):
+		b.flagOver(p)
 		tr.spend(st)
 		b.leaveOut(reasonSampleBudget, 1)
 		return modeSkip
 	case !passing && !b.sampleDue(st):
 		return modeSkip
-	case !tr.add(st, vh):
+	case !tr.add(st, p.vh):
 		b.leaveOut(reasonTrackerFull, 1)
 		return modeSkip
 	}
-	b.samples = append(b.samples, sampleRef{st: st, vh: vh})
+	b.samples = append(b.samples, sampleRef{st: st, vh: p.vh})
 	return modeSample
 }
 

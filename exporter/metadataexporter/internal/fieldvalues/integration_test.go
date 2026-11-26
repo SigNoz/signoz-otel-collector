@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pipeline"
 	"go.uber.org/zap"
 
@@ -22,13 +23,23 @@ import (
 )
 
 // The integration test needs a ClickHouse server with a cluster for the
-// distributed tables. It recreates the signoz_metadata database.
+// distributed tables. It recreates the signoz_metadata database on every node
+// of the cluster. FIELDVALUES_CLICKHOUSE_REPLICATED=1 makes replicated tables,
+// for a cluster with replicas and a keeper.
 //
-//	FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:19000 FIELDVALUES_CLICKHOUSE_CLUSTER=c1 go test -run Integration ./exporter/metadataexporter/internal/fieldvalues/
+//	FIELDVALUES_CLICKHOUSE_DSN=tcp://localhost:19000 FIELDVALUES_CLICKHOUSE_CLUSTER=c1 go test -p 1 -run Integration ./exporter/metadataexporter/internal/fieldvalues/
 const (
-	dsnEnv     = "FIELDVALUES_CLICKHOUSE_DSN"
-	clusterEnv = "FIELDVALUES_CLICKHOUSE_CLUSTER"
+	dsnEnv        = "FIELDVALUES_CLICKHOUSE_DSN"
+	clusterEnv    = "FIELDVALUES_CLICKHOUSE_CLUSTER"
+	replicatedEnv = "FIELDVALUES_CLICKHOUSE_REPLICATED"
 )
+
+func integrationCluster() string {
+	if cluster := os.Getenv(clusterEnv); cluster != "" {
+		return cluster
+	}
+	return "c1"
+}
 
 func integrationConn(t *testing.T) driver.Conn {
 	t.Helper()
@@ -36,10 +47,7 @@ func integrationConn(t *testing.T) driver.Conn {
 	if dsn == "" {
 		t.Skipf("set %s to run the ClickHouse integration test", dsnEnv)
 	}
-	cluster := os.Getenv(clusterEnv)
-	if cluster == "" {
-		cluster = "c1"
-	}
+	cluster := integrationCluster()
 	opts, err := clickhouse.ParseDSN(dsn)
 	require.NoError(t, err)
 	conn, err := clickhouse.Open(opts)
@@ -47,8 +55,8 @@ func integrationConn(t *testing.T) driver.Conn {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	ctx := context.Background()
-	require.NoError(t, conn.Exec(ctx, "DROP DATABASE IF EXISTS signoz_metadata SYNC"))
-	require.NoError(t, conn.Exec(ctx, "CREATE DATABASE signoz_metadata"))
+	require.NoError(t, conn.Exec(ctx, "DROP DATABASE IF EXISTS signoz_metadata ON CLUSTER "+cluster+" SYNC"))
+	require.NoError(t, conn.Exec(ctx, "CREATE DATABASE signoz_metadata ON CLUSTER "+cluster))
 	var migration *schemamigrator.SchemaMigrationRecord
 	for i := range schemamigrator.MetadataMigrations {
 		if schemamigrator.MetadataMigrations[i].MigrationID == 1003 {
@@ -57,12 +65,9 @@ func integrationConn(t *testing.T) driver.Conn {
 	}
 	require.NotNil(t, migration)
 	for _, op := range migration.UpItems {
-		if create, ok := op.(schemamigrator.CreateTableOperation); ok {
-			if d, ok := create.Engine.(schemamigrator.Distributed); ok {
-				d.Cluster = cluster
-				create.Engine = d
-			}
-			op = create
+		op = op.OnCluster(cluster)
+		if os.Getenv(replicatedEnv) != "" {
+			op = op.WithReplication()
 		}
 		require.NoError(t, conn.Exec(ctx, op.ToSQL()), op.ToSQL())
 	}
@@ -74,12 +79,17 @@ func integrationConn(t *testing.T) driver.Conn {
 // the async settings, so the shard queues them again.
 func flush(t *testing.T, conn driver.Conn) {
 	t.Helper()
-	for _, q := range []string{
-		"SYSTEM FLUSH ASYNC INSERT QUEUE",
-		"SYSTEM FLUSH DISTRIBUTED signoz_metadata.distributed_field_values_sets",
-		"SYSTEM FLUSH ASYNC INSERT QUEUE",
-	} {
-		require.NoError(t, conn.Exec(context.Background(), q))
+	cluster := integrationCluster()
+	queries := []string{
+		"SYSTEM FLUSH ASYNC INSERT QUEUE ON CLUSTER " + cluster,
+		"SYSTEM FLUSH DISTRIBUTED ON CLUSTER " + cluster + " signoz_metadata.distributed_field_values_sets",
+		"SYSTEM FLUSH ASYNC INSERT QUEUE ON CLUSTER " + cluster,
+	}
+	if os.Getenv(replicatedEnv) != "" {
+		queries = append(queries, "SYSTEM SYNC REPLICA ON CLUSTER "+cluster+" signoz_metadata.field_values_sets")
+	}
+	for _, q := range queries {
+		require.NoError(t, conn.Exec(context.Background(), q), q)
 	}
 }
 
@@ -165,17 +175,17 @@ func TestIntegrationExampleOneQuickFilter(t *testing.T) {
 	assert.Equal(t, []string{"checkout", "payments"}, queryStrings(t, conn, resourceQuery, "service.name", "resource", testDate+" 12:00:00"),
 		"exclude-self: the service filter drops its own condition")
 
-	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(uniqCombinedMerge(12)(holders)))
-FROM signoz_metadata.distributed_field_values_daily
+	plain := queryStrings(t, conn, `SELECT concat(string_value, ':', toString(count()))
+FROM signoz_metadata.distributed_field_values_sets
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.method' AND field_context = 'attribute'
-  AND field_data_type = 'string' AND day = ?
-GROUP BY string_value`, testDate)
-	assert.Equal(t, []string{"GET:2", "POST:1", "PUT:1"}, plain, "plain values with holders from the view")
+  AND toDate(last_seen, 'UTC') >= ?
+GROUP BY string_value, number_value`, testDate)
+	assert.Equal(t, []string{"GET:2", "POST:1", "PUT:1"}, plain, "plain values with the count of their sets")
 
 	require.NoError(t, e.WriteLogs(context.Background(), exampleLogs()))
 	flush(t, conn)
 	var rows uint64
-	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
+	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.distributed_field_values_sets").Scan(&rows))
 	assert.Equal(t, uint64(14), rows, "the second push of the same day writes nothing")
 }
 
@@ -202,16 +212,34 @@ func TestIntegrationClassifierFindsFieldsOverTheLimit(t *testing.T) {
 	require.NoError(t, e.WriteLogs(context.Background(), ld))
 	flush(t, conn)
 
-	values := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'logs' AND metric_name = '' AND field_name = 'user.id' AND day = toDate(now(), 'UTC')
-GROUP BY string_value`)
+	values := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'user.id' AND field_context = 'attribute'
+  AND toDate(last_seen, 'UTC') >= toDate(now(), 'UTC')
+GROUP BY string_value, number_value`)
 	assert.Equal(t, []string{"u0", "u1", "u2", "u3"}, values, "the collector writes the limit plus one values")
 
+	userID, method := fieldIDOf(contextAttribute, "user.id"), fieldIDOf(contextAttribute, "http.method")
+	overRows := func() []string {
+		require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH DISTRIBUTED ON CLUSTER "+integrationCluster()+" signoz_metadata.distributed_field_days_over_limit"))
+		return queryStrings(t, conn, `SELECT concat(signal, ' ', toString(field_context), ' ', field_name, ' ', toString(day = toDate(now(), 'UTC')))
+FROM signoz_metadata.distributed_field_days_over_limit`)
+	}
+
+	// A second collector has no count of its own. It finds the field in the
+	// rows of the first one, and writes the row of the field and the day.
+	other := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
+	setNow(other, time.Now().UTC().Truncate(24*time.Hour).Add(12*time.Hour))
+	other.refresh()
+	require.NotNil(t, other.class.Load())
+	assert.True(t, other.class.Load().isOver(userID))
+	assert.False(t, other.class.Load().isOver(method))
+	assert.Equal(t, []string{"logs attribute user.id 1"}, overRows())
+
+	// The first collector has the field in its own count. The row is there,
+	// so it writes no second one.
 	e.refresh()
-	class := e.class.Load()
-	require.NotNil(t, class)
-	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "user.id")))
-	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "http.method")))
+	assert.True(t, e.class.Load().isOver(userID))
+	assert.Equal(t, []string{"logs attribute user.id 1"}, overRows())
 
 	inHash := queryStrings(t, conn, `SELECT concat(field_name, ':', toString(min(in_hash)))
 FROM signoz_metadata.distributed_field_values_sets WHERE field_name IN ('http.method', 'user.id') GROUP BY field_name, string_value`)
@@ -228,15 +256,11 @@ func TestIntegrationMetricKeysAndSource(t *testing.T) {
 	flush(t, conn)
 
 	keys := queryStrings(t, conn, `SELECT concat(field_context, ':', field_name)
-FROM signoz_metadata.distributed_field_keys_daily
+FROM signoz_metadata.distributed_field_values_sets
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = 'http_requests'
 GROUP BY field_context, field_name`)
 	assert.Equal(t, []string{"attribute:code", "attribute:method", "resource:k8s.pod.name", "resource:service.name", "scope:library.lang"}, keys,
-		"the key view has the keys of a metric, its resource keys from the key rows")
-	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_keys_daily
-WHERE signal = 'metrics' AND field_name = '__name__' GROUP BY field_name`), "link rows are not keys")
-	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'metrics' AND field_name = '__name__' GROUP BY field_name`), "link rows are not values")
+		"the rows of a metric have its keys, its resource keys from the key rows")
 
 	podValues := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'k8s.pod.name' AND field_context = 'resource'
@@ -254,16 +278,14 @@ GROUP BY string_value
 SETTINGS distributed_product_mode = 'local'`)
 	assert.Equal(t, []string{"http_requests", "latency.count"}, metrics, "the metrics of a resource")
 
-	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'metrics' AND metric_name != '' AND field_context = 'resource' GROUP BY field_name`),
-		"key rows stay out of the daily view")
-
-	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_daily
+	assert.Empty(t, queryStrings(t, conn, `SELECT field_name FROM signoz_metadata.distributed_field_values_sets
 WHERE signal = 'metrics' AND source = '' GROUP BY field_name`), "the meter source is its own space")
 
-	allMetrics := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'code' GROUP BY string_value`)
-	assert.Equal(t, []string{"200", "500"}, allMetrics, "the view also writes each metrics row under the empty metric name")
+	allMetrics := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'metrics' AND source = 'meter' AND field_name = 'code' AND field_context = 'attribute'
+  AND toDate(last_seen, 'UTC') >= ?
+GROUP BY string_value, number_value`, testDate)
+	assert.Equal(t, []string{"200", "500"}, allMetrics, "the values of a label for all metrics need no metric name")
 }
 
 // A resource field over the limit leaves the identity of the metric resources,
@@ -287,10 +309,6 @@ SETTINGS distributed_product_mode = 'local'`)
 	resources := queryStrings(t, conn, `SELECT toString(uniqExact(resource_hash)) FROM signoz_metadata.distributed_field_values_sets
 WHERE signal = 'metrics' AND metric_name = 'process.cpu.time'`)
 	assert.Equal(t, []string{"11"}, resources, "10 processes in full, then one resource for the host")
-
-	daily := queryStrings(t, conn, `SELECT toString(uniqExact(string_value)) FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'metrics' AND metric_name = '' AND field_name = 'process.pid'`)
-	assert.Equal(t, []string{"200"}, daily)
 }
 
 func TestIntegrationSharedCacheWritesEachRowOnce(t *testing.T) {
@@ -309,7 +327,7 @@ func TestIntegrationSharedCacheWritesEachRowOnce(t *testing.T) {
 	}
 	flush(t, conn)
 	var rows uint64
-	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
+	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.distributed_field_values_sets").Scan(&rows))
 	assert.Equal(t, uint64(14), rows, "three collectors with a shared cache insert the rows of one")
 }
 
@@ -326,11 +344,10 @@ func TestIntegrationBodyPairs(t *testing.T) {
 	require.NoError(t, e.WriteLogs(context.Background(), ld))
 	flush(t, conn)
 	assert.Equal(t, []string{"user.plan:string:pro", "user.seats:number:5"}, queryStrings(t, conn, `SELECT concat(field_name, ':', toString(field_data_type), ':', if(field_data_type = 'number', toString(number_value), string_value))
-FROM signoz_metadata.distributed_field_values_daily WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type, string_value, number_value`))
+FROM signoz_metadata.distributed_field_values_sets WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type, string_value, number_value`))
 }
 
-// Rows written ahead and late records land on the day of their window in the
-// pair table and in the view.
+// Rows written ahead and late records land on the day of their window.
 func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
 	conn := integrationConn(t)
 	e := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
@@ -347,10 +364,7 @@ func TestIntegrationRowsLandOnTheDayOfTheirWindow(t *testing.T) {
 		"GET " + testDate + " 10:00:00 " + testNextDate + " 00:00:00",
 		"PUT " + testNextDate + " 00:00:00 " + testNextDate + " 00:00:00",
 	}, queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(min(first_seen), 'UTC'), ' ', toString(max(last_seen), 'UTC'))
-FROM signoz_metadata.field_values_sets WHERE field_name = 'http.method' GROUP BY string_value ORDER BY string_value`))
-	assert.Equal(t, []string{"GET " + testDate, "GET " + testNextDate, "PUT " + testNextDate},
-		queryStrings(t, conn, `SELECT concat(string_value, ' ', toString(day)) FROM signoz_metadata.field_values_daily
-WHERE field_name = 'http.method' GROUP BY string_value, day ORDER BY string_value, day`))
+FROM signoz_metadata.distributed_field_values_sets WHERE field_name = 'http.method' GROUP BY string_value ORDER BY string_value`))
 }
 
 func TestIntegrationInsertsAreAsync(t *testing.T) {
@@ -372,6 +386,155 @@ WHERE type = 'QueryFinish' AND query_kind = 'Insert' AND is_initial_query AND ev
   AND has(tables, 'signoz_metadata.distributed_field_values_sets')`, since)
 	assert.Equal(t, []string{"1 0 1000"}, inserts, "one insert for one push, async, with no wait and a busy timeout of 1 s")
 	var rows uint64
-	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.field_values_sets").Scan(&rows))
+	require.NoError(t, conn.QueryRow(context.Background(), "SELECT count() FROM signoz_metadata.distributed_field_values_sets").Scan(&rows))
 	assert.Equal(t, uint64(14), rows)
+}
+
+// ClickHouse reads the projection only for a statement of its shape, and it
+// reads the rows of the sets with no notice for any other. EXPLAIN names the
+// projection when the statement can use it, whatever the size of the table.
+func TestIntegrationReadsCanUseTheProjection(t *testing.T) {
+	conn := integrationConn(t)
+	// EXPLAIN plans no read of an empty table. The rows go to the table of
+	// this node, where EXPLAIN runs.
+	require.NoError(t, conn.Exec(context.Background(), `INSERT INTO signoz_metadata.field_values_sets
+(signal, source, metric_name, field_context, field_name, field_data_type, string_value, resource_hash, attrs_hash, in_hash, first_seen, last_seen, inserted_at)
+VALUES ('logs', '', '', 'attribute', 'http.method', 'string', 'GET', 1, 1, true, now(), now(), now()),
+       ('metrics', '', 'http_requests', 'attribute', 'code', 'string', '200', 1, 1, true, now(), now(), now())`))
+	skip := []clickhouse.GroupSet{{Value: []any{"attribute", "user.id"}}}
+	for _, tc := range []struct {
+		name   string
+		query  string
+		args   []any
+		usable bool
+	}{
+		{"fields over the limit", fmt.Sprintf(overLimitQuery, ""), []any{"logs", "", testDate, 100000, 5000}, true},
+		{"fields over the limit, without the flagged fields", fmt.Sprintf(overLimitQuery, notFlagged), []any{"logs", "", testDate, skip, 100000, 5000}, true},
+		{"known fields", fmt.Sprintf(knownFieldsQuery, ""), []any{"logs", "", testDate, 100}, true},
+		{"known fields, without the flagged fields", fmt.Sprintf(knownFieldsQuery, notFlagged), []any{"logs", "", testDate, skip, 100}, true},
+		{"values of a field", `SELECT string_value, number_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.method' AND field_context = 'attribute'
+  AND toDate(last_seen, 'UTC') >= ?
+GROUP BY string_value, number_value LIMIT 2001`, []any{testDate}, true},
+		{"values of a label of all metrics", `SELECT string_value, number_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'metrics' AND source = '' AND field_name = 'code' AND field_context = 'attribute'
+  AND toDate(last_seen, 'UTC') >= ?
+GROUP BY string_value, number_value LIMIT 2001`, []any{testDate}, true},
+		{"a condition on last_seen itself", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND field_name = 'http.method' AND last_seen >= toDateTime(?, 'UTC')
+GROUP BY string_value`, []any{testDate + " 00:00:00"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			local := strings.ReplaceAll(tc.query, "distributed_field_values_sets", "field_values_sets")
+			plan := strings.Join(queryStrings(t, conn, "EXPLAIN projections = 1 "+local, tc.args...), "\n")
+			assert.Equal(t, tc.usable, strings.Contains(plan, "p_field_values"), plan)
+		})
+	}
+}
+
+func userLogs(users int) plog.Logs {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "checkout")
+	sl := rl.ScopeLogs().AppendEmpty()
+	for i := 0; i < users; i++ {
+		sl.LogRecords().AppendEmpty().Attributes().PutStr("user.id", fmt.Sprintf("u%d", i))
+	}
+	return ld
+}
+
+func overLimitRows(t *testing.T, conn driver.Conn) []string {
+	t.Helper()
+	require.NoError(t, conn.Exec(context.Background(), "SYSTEM FLUSH DISTRIBUTED ON CLUSTER "+integrationCluster()+" signoz_metadata.distributed_field_days_over_limit"))
+	return queryStrings(t, conn, `SELECT concat(signal, ' ', toString(field_context), ' ', field_name, ' ', toString(day))
+FROM signoz_metadata.distributed_field_days_over_limit GROUP BY signal, field_context, field_name, day`)
+}
+
+// A field that passes its limit after the last refresh of a day gets its row
+// from the read for the day that ended. That read counts all values since
+// the start of that day, so it is correct only right after the day change.
+func TestIntegrationClassifierReadsTheDayThatEnded(t *testing.T) {
+	conn := integrationConn(t)
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 3
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	userID := fieldIDOf(contextAttribute, "user.id")
+
+	yesterday := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
+	setNow(yesterday, today.Add(-12*time.Hour))
+	require.NoError(t, yesterday.WriteLogs(context.Background(), userLogs(6)))
+	flush(t, conn)
+
+	late := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
+	setNow(late, today.Add(cfg.Classification.RefreshInterval+5*time.Minute))
+	late.refresh()
+	require.NotNil(t, late.class.Load())
+	assert.False(t, late.class.Load().isOver(userID), "after the first interval of the day, the day that ended is not read")
+	assert.Empty(t, overLimitRows(t, conn))
+
+	inTime := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
+	setNow(inTime, today.Add(5*time.Minute))
+	inTime.refresh()
+	require.NotNil(t, inTime.class.Load())
+	assert.True(t, inTime.class.Load().isOver(userID))
+	assert.Equal(t, []string{"logs attribute user.id " + today.AddDate(0, 0, -1).Format(time.DateOnly)}, overLimitRows(t, conn))
+}
+
+func TestIntegrationClassifierLookback(t *testing.T) {
+	conn := integrationConn(t)
+	cfg := testConfig()
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	require.NoError(t, conn.Exec(context.Background(), `INSERT INTO signoz_metadata.distributed_field_days_over_limit
+(signal, source, field_context, field_name, day) VALUES ('logs', '', 'attribute', 'last.day', ?), ('logs', '', 'attribute', 'day.before', ?), ('traces', '', 'attribute', 'other.signal', ?)`,
+		today.AddDate(0, 0, -(cfg.Classification.LookbackDays-1)).Format(time.DateOnly),
+		today.AddDate(0, 0, -cfg.Classification.LookbackDays).Format(time.DateOnly),
+		today.Format(time.DateOnly)))
+	overLimitRows(t, conn)
+
+	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalLogs)
+	setNow(e, today.Add(12*time.Hour))
+	e.refresh()
+	class := e.class.Load()
+	require.NotNil(t, class)
+	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "last.day")), "the last day of the lookback")
+	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "day.before")))
+	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "other.signal")))
+}
+
+// The rows of a metric label have the metric name, and the limit of a label
+// is for all metrics together.
+func TestIntegrationClassifierFindsMetricLabelsOverTheLimit(t *testing.T) {
+	conn := integrationConn(t)
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 3
+	noon := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
+
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "checkout")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	for i, name := range []string{"http_requests", "http_errors"} {
+		m := sm.Metrics().AppendEmpty()
+		m.SetName(name)
+		gauge := m.SetEmptyGauge()
+		for pid := i * 2; pid < i*2+2; pid++ {
+			dp := gauge.DataPoints().AppendEmpty()
+			dp.Attributes().PutStr("pid", fmt.Sprintf("%d", pid))
+			dp.Attributes().PutStr("method", "GET")
+		}
+	}
+	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
+	setNow(e, noon)
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	flush(t, conn)
+
+	other := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
+	setNow(other, noon)
+	other.refresh()
+	class := other.class.Load()
+	require.NotNil(t, class)
+	assert.True(t, class.isOver(fieldIDOf(contextAttribute, "pid")), "2 values in each of 2 metrics are 4 values of the label")
+	assert.False(t, class.isOver(fieldIDOf(contextAttribute, "method")))
+	assert.False(t, class.isOver(fieldIDOf(contextResource, linkField)), "link rows are not values")
+	assert.Equal(t, []string{"metrics attribute pid " + noon.Format(time.DateOnly)}, overLimitRows(t, conn))
 }

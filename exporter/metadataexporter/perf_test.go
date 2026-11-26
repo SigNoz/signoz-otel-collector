@@ -190,7 +190,7 @@ WHERE type = 'QueryFinish' AND query_kind = 'Insert' AND event_time >= ?`, since
 
 func truncate(t *testing.T, conn driver.Conn) {
 	t.Helper()
-	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily", "field_keys_daily"} {
+	for _, table := range []string{"attributes_metadata", "field_values_sets"} {
 		require.NoError(t, conn.Exec(context.Background(), "TRUNCATE TABLE signoz_metadata."+table))
 	}
 }
@@ -216,15 +216,15 @@ type perfQuery struct {
 }
 
 var perfQueries = []perfQuery{
-	{"plain values: logs http.route (top 50 by holders)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
-	{"plain values: logs user.id (high-cardinality sample)", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'user.id' AND field_context = 'attribute' AND day = toDate(now(), 'UTC')
-GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
-	{"type-ahead: logs http.route ILIKE '%route-1%'", `SELECT string_value FROM signoz_metadata.distributed_field_values_daily
-WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND day = toDate(now(), 'UTC') AND string_value ILIKE '%route-1%'
-GROUP BY string_value ORDER BY uniqCombinedMerge(12)(holders) DESC LIMIT 51`},
+	{"plain values: logs http.route (top 50 by sets)", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND toDate(last_seen, 'UTC') >= toDate(now(), 'UTC')
+GROUP BY string_value ORDER BY count() DESC LIMIT 51`},
+	{"plain values: logs user.id (high-cardinality sample)", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'user.id' AND field_context = 'attribute' AND toDate(last_seen, 'UTC') >= toDate(now(), 'UTC')
+GROUP BY string_value ORDER BY count() DESC LIMIT 51`},
+	{"type-ahead: logs http.route ILIKE '%route-1%'", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute' AND toDate(last_seen, 'UTC') >= toDate(now(), 'UTC') AND string_value ILIKE '%route-1%'
+GROUP BY string_value ORDER BY count() DESC LIMIT 51`},
 	{"related values: logs http.route where service.name = svc-01 and http.method = GET", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'logs' AND source = '' AND metric_name = '' AND field_name = 'http.route' AND field_context = 'attribute'
   AND last_seen >= toDateTime(toDate(now(), 'UTC'), 'UTC')
@@ -243,8 +243,8 @@ WHERE signal = 'traces' AND source = '' AND metric_name = '' AND field_name = 'n
       WHERE signal = 'traces' AND source = '' AND field_name = 'has_error' AND field_context = 'span' AND string_value = 'true')
 GROUP BY string_value ORDER BY uniq(resource_hash, attrs_hash) DESC LIMIT 51
 SETTINGS distributed_product_mode = 'local'`},
-	{"metric keys: app_metric_01", `SELECT field_context, field_name FROM signoz_metadata.distributed_field_keys_daily
-WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND day = toDate(now(), 'UTC')
+	{"metric keys: app_metric_01", `SELECT field_context, field_name FROM signoz_metadata.distributed_field_values_sets
+WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND toDate(last_seen, 'UTC') >= toDate(now(), 'UTC')
 GROUP BY field_context, field_name`},
 	{"metric label values: app_metric_01 route where service.name = svc-01", `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = '' AND metric_name = 'app_metric_01' AND field_name = 'route' AND field_context = 'attribute'
@@ -300,11 +300,11 @@ WHERE type = 'QueryFinish' AND log_comment = ? AND is_initial_query`, comment).S
 func sizeReport(t *testing.T, conn driver.Conn) string {
 	t.Helper()
 	ctx := context.Background()
-	for _, table := range []string{"attributes_metadata", "field_values_sets", "field_values_daily", "field_keys_daily"} {
+	for _, table := range []string{"attributes_metadata", "field_values_sets"} {
 		require.NoError(t, conn.Exec(ctx, "OPTIMIZE TABLE signoz_metadata."+table+" FINAL"))
 	}
 	rows, err := conn.Query(ctx, `SELECT table, sum(rows), formatReadableSize(sum(bytes_on_disk))
-FROM system.parts WHERE database = 'signoz_metadata' AND active AND table IN ('attributes_metadata', 'field_values_sets', 'field_values_daily')
+FROM system.parts WHERE database = 'signoz_metadata' AND active AND table IN ('attributes_metadata', 'field_values_sets')
 GROUP BY table ORDER BY table`)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()

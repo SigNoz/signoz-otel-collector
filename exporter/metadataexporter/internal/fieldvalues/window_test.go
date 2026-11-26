@@ -183,7 +183,7 @@ func TestSampleIsSpreadOverTheStartOfTheDay(t *testing.T) {
 	cfg := testConfig()
 	cfg.Limits.MaxRecordFieldValues = 3
 	e, w := newTestExporter(t, cfg, pipeline.SignalLogs)
-	e.class.Store(&classification{overClosedDays: map[fieldID]struct{}{fieldIDOf(contextAttribute, "user.id"): {}}})
+	e.class.Store(&classification{over: map[fieldID]overField{fieldIDOf(contextAttribute, "user.id"): {ctx: contextAttribute, name: "user.id"}}})
 	ctx := context.Background()
 	n := 0
 	samples := func(after time.Duration) int {
