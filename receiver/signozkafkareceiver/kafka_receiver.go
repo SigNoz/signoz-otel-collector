@@ -190,7 +190,9 @@ func (c *kafkaTracesConsumer) consumeLoop(ctx context.Context, handler sarama.Co
 }
 
 func (c *kafkaTracesConsumer) Shutdown(context.Context) error {
-	c.cancelConsumeLoop()
+	if c.cancelConsumeLoop != nil {
+		c.cancelConsumeLoop()
+	}
 	return c.consumerGroup.Close()
 }
 
@@ -303,7 +305,9 @@ func (c *kafkaMetricsConsumer) consumeLoop(ctx context.Context, handler sarama.C
 }
 
 func (c *kafkaMetricsConsumer) Shutdown(context.Context) error {
-	c.cancelConsumeLoop()
+	if c.cancelConsumeLoop != nil {
+		c.cancelConsumeLoop()
+	}
 	return c.consumerGroup.Close()
 }
 
@@ -443,7 +447,9 @@ func (c *kafkaLogsConsumer) consumeLoop(ctx context.Context, handler sarama.Cons
 }
 
 func (c *kafkaLogsConsumer) Shutdown(context.Context) error {
-	c.cancelConsumeLoop()
+	if c.cancelConsumeLoop != nil {
+		c.cancelConsumeLoop()
+	}
 	return c.consumerGroup.Close()
 }
 
