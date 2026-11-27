@@ -61,7 +61,6 @@ func newSyncUp(dsn string, cluster string, replication bool, timeout time.Durati
 		schemamigrator.WithClusterName(cluster),
 		schemamigrator.WithReplicationEnabled(replication),
 		schemamigrator.WithConn(conn),
-		schemamigrator.WithConnOptions(*opts),
 		schemamigrator.WithLogger(logger),
 	)
 	if err != nil {
