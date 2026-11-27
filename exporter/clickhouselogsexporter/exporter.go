@@ -681,7 +681,11 @@ producerIteration:
 						e.logger.Warn("resourcemap exceeded the limit of 100 keys")
 					}
 					attrsRaw := record.Attributes().AsRaw()
-					delete(attrsRaw, constants.OriginalBodyAttributeKey)
+					for k := range attrsRaw {
+						if isInternalAttr(k) {
+							delete(attrsRaw, k)
+						}
+					}
 					utils.SanitizeJSON(attrsRaw)
 					attributesJSON := e.getAttributesJSON(attrsRaw, id.String())
 					promotedAttrPaths := e.promotedAttributePaths.Load().(map[string]struct{})
@@ -1020,12 +1024,16 @@ func (e *clickhouseLogsExporter) addAttrsToTagStatement(
 	return nil
 }
 
+func isInternalAttr(key string) bool {
+	return strings.HasPrefix(key, constants.SignozInternalAttrPrefix)
+}
+
 func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response attributeMap) {
 	response.BoolData = map[string]bool{}
 	response.StringData = map[string]string{}
 	response.NumberData = map[string]float64{}
 	attributes.Range(func(k string, v pcommon.Value) bool {
-		if k == constants.OriginalBodyAttributeKey {
+		if isInternalAttr(k) {
 			return true
 		}
 		if forceStringValues {

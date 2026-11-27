@@ -223,6 +223,7 @@ func TestExporterPushLogsDataBilledSize(t *testing.T) {
 		{name: "EventNameSet_SameBilledSize", eventName: strings.Repeat("signoz.deployment", 100), expectedBytes: 25 + 2 + 25},
 		// attributes {"v":null} (10)
 		{name: "NaNAttribute_BilledAsNull", attributes: map[string]any{"v": math.NaN()}, expectedBytes: 25 + 10 + 25},
+		{name: "InternalAttribute_NotBilled", attributes: map[string]any{"signoz.__internal__.other": "x"}, expectedBytes: 25 + 2 + 25},
 	}
 
 	for _, testCase := range testCases {
