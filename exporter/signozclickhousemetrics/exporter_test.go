@@ -2,6 +2,7 @@ package signozclickhousemetrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	cmock "github.com/SigNoz/clickhouse-go-mock"
 	"github.com/SigNoz/signoz-otel-collector/usage"
 	"github.com/google/uuid"
@@ -1155,4 +1157,110 @@ func Test_shutdown(t *testing.T) {
 	for ok := range errChan {
 		assert.Error(t, ok)
 	}
+}
+
+type tsCountingConn struct {
+	driver.Conn
+	timeSeriesSQL string
+	mu            sync.Mutex
+	tsAppends     int
+	tsSends       int
+}
+
+func (c *tsCountingConn) PrepareBatch(ctx context.Context, query string, opts ...driver.PrepareBatchOption) (driver.Batch, error) {
+	b, err := c.Conn.PrepareBatch(ctx, query, opts...)
+	if err != nil || query != c.timeSeriesSQL {
+		return b, err
+	}
+	return &tsCountingBatch{Batch: b, parent: c}, nil
+}
+
+type tsCountingBatch struct {
+	driver.Batch
+	parent *tsCountingConn
+}
+
+func (b *tsCountingBatch) Append(v ...any) error {
+	b.parent.mu.Lock()
+	b.parent.tsAppends++
+	b.parent.mu.Unlock()
+	return b.Batch.Append(v...)
+}
+
+func (b *tsCountingBatch) Send() error {
+	b.parent.mu.Lock()
+	b.parent.tsSends++
+	b.parent.mu.Unlock()
+	return b.Batch.Send()
+}
+
+func Test_writeBatchTimeSeriesCacheOnSendFailure(t *testing.T) {
+	mockConn, err := cmock.NewClickHouseNative(nil)
+	require.NoError(t, err)
+	mockConn.MatchExpectationsInOrder(false)
+
+	samplesSQL := "INSERT INTO . (env, temporality, metric_name, fingerprint, unix_milli, value, flags, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	tsSQL := "INSERT INTO . (env, temporality, metric_name, description, unit, type, is_monotonic, fingerprint, unix_milli, labels, attrs, scope_attrs, resource_attrs, __normalized, inserted_at_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	metaSQL := "INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, attr_name, attr_type, attr_datatype, attr_string_value, first_reported_unix_milli, last_reported_unix_milli) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	// First attempt: Send fails on time series.
+	mockConn.ExpectPrepareBatch(tsSQL).ExpectSend().WillReturnError(errors.New("context deadline exceeded"))
+	mockConn.ExpectPrepareBatch(samplesSQL).ExpectSend()
+	mockConn.ExpectPrepareBatch(metaSQL).ExpectSend()
+
+	// Second attempt (retry): time series batch is appended and sent again cleanly.
+	mockConn.ExpectPrepareBatch(tsSQL).ExpectSend()
+	mockConn.ExpectPrepareBatch(samplesSQL).ExpectSend()
+	mockConn.ExpectPrepareBatch(metaSQL).ExpectSend()
+
+	// Third write in the same hour: cache hit skips re-appending time series rows.
+	mockConn.ExpectPrepareBatch(tsSQL).ExpectSend()
+	mockConn.ExpectPrepareBatch(samplesSQL).ExpectSend()
+	mockConn.ExpectPrepareBatch(metaSQL).ExpectSend()
+	mockConn.ExpectClose()
+
+	countingConn := &tsCountingConn{
+		Conn:          mockConn,
+		timeSeriesSQL: tsSQL,
+	}
+
+	exp, err := NewClickHouseExporter(
+		WithConn(countingConn),
+		WithLogger(zaptest.NewLogger(t)),
+		WithConfig(&Config{}),
+		WithMeter(noop.NewMeterProvider().Meter(internalmetadata.ScopeName)),
+	)
+	require.NoError(t, err)
+
+	metrics := pmetricsgen.GenerateGaugeMetrics(1, 1, 1, 1, 1, 0, 0)
+	b := exp.prepareBatch(context.Background(), metrics)
+	require.Equal(t, 1, len(b.ts))
+
+	// Duplicate within the same batch must still only append once after send succeeds.
+	b.ts = append(b.ts, b.ts[0])
+
+	roundedHour := uint64(b.ts[0].unixMilli / 3600000 * 3600000)
+	cacheKey := makeCacheKey(b.ts[0].fingerprint, roundedHour)
+
+	err = exp.writeBatch(context.Background(), b)
+	require.Error(t, err)
+	assert.Equal(t, 1, countingConn.tsAppends)
+	assert.Equal(t, 1, countingConn.tsSends)
+	require.Nil(t, exp.cache.Get(cacheKey), "cache must stay empty when Send fails")
+
+	err = exp.writeBatch(context.Background(), b)
+	require.NoError(t, err)
+	assert.Equal(t, 2, countingConn.tsAppends)
+	assert.Equal(t, 2, countingConn.tsSends)
+	item := exp.cache.Get(cacheKey)
+	require.NotNil(t, item, "cache must be populated after Send succeeds")
+	assert.True(t, item.Value())
+
+	err = exp.writeBatch(context.Background(), b)
+	require.NoError(t, err)
+	assert.Equal(t, 2, countingConn.tsAppends)
+	assert.Equal(t, 3, countingConn.tsSends)
+
+	require.NoError(t, exp.Shutdown(context.Background()))
+	require.NoError(t, mockConn.ExpectationsWereMet())
 }
