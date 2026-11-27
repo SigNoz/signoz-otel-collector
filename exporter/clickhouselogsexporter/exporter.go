@@ -712,7 +712,7 @@ producerIteration:
 						scopeMap:               scopeMap,
 						attrsMap:               attrsMap,
 						logFields:              attributeMap{StringData: map[string]string{"severity_text": record.SeverityText()}, NumberData: map[string]float64{"severity_number": float64(record.SeverityNumber())}},
-						recordSize:             int64(len([]byte(record.Body().AsString())) + billableAttributesSize(attrsRaw, attributesJSON) + len(resBytes)),
+						recordSize:             int64(len([]byte(record.Body().AsString())) + len(attributesJSON) + len(resBytes)),
 					}
 					return nil
 				})
