@@ -343,11 +343,16 @@ func TestIntegrationBodyPairs(t *testing.T) {
 	setNow(e, testDay)
 	ld := logsOf(checkout, logRecord{"10:00", map[string]any{"http.method": "GET"}})
 	require.NoError(t, ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().SetEmptyMap().FromRaw(map[string]any{
-		"user": map[string]any{"plan": "pro", "seats": 5},
+		"user":    map[string]any{"plan": "pro", "seats": 5},
+		"message": "order placed",
+		"items":   []any{map[string]any{"sku": "a1"}},
 	}))
 	require.NoError(t, e.WriteLogs(context.Background(), ld))
+	e.flushKeys()
+	assert.Equal(t, []string{"items:[]json", "items[].sku:string", "message:string", "user.plan:string", "user.seats:int64"}, queryStrings(t, conn, `SELECT concat(field_name, ':', field_data_type)
+FROM signoz_metadata.distributed_field_keys_v2 WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type ORDER BY field_name`))
 	flush(t, conn)
-	assert.Equal(t, []string{"user.plan:string:pro", "user.seats:number:5"}, queryStrings(t, conn, `SELECT concat(field_name, ':', toString(field_data_type), ':', if(field_data_type = 'number', toString(number_value), string_value))
+	assert.Equal(t, []string{"items[].sku:string:a1", "user.plan:string:pro", "user.seats:number:5"}, queryStrings(t, conn, `SELECT concat(field_name, ':', toString(field_data_type), ':', if(field_data_type = 'number', toString(number_value), string_value))
 FROM signoz_metadata.distributed_field_values_sets WHERE signal = 'logs' AND field_context = 'body' GROUP BY field_name, field_data_type, string_value, number_value`))
 }
 

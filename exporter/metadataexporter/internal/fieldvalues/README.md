@@ -176,8 +176,13 @@ exporters:
   - Not the same as the key tables of the exporters: the logs exporter leaves
     out keys that look random (`keycheck.IsRandomKey`), and the traces
     exporter leaves out a span attribute that is NaN. Both are keys here.
-  - The keys of JSON bodies are not written here. They stay in
-    `signoz_metadata.field_keys`, which has their array types.
+  - The paths of JSON bodies are keys with the field context `body`, when
+    the JSON config is enabled. They are the keys that the JSON writer puts
+    in `signoz_metadata.field_keys`, with the same data types: an array has
+    one key with the type of the array (`[]string`, `[]int64`, `[]float64`,
+    `[]bool`, `[]json`, `[]dynamic`), and `message` is a `string` key. The
+    limits of the JSON walk apply, so a path that the walk does not reach
+    has no key.
 - **Inserts.** One insert per push, async by default: the server joins the
   inserts of `async_insert_busy_timeout` into one part per table and shard,
   and the shards join the inserts that the distributed table sends them. The

@@ -207,11 +207,8 @@ func (b *batch) seenMillis(ts, fallback pcommon.Timestamp) uint64 {
 // decide applies the value rules to one pair. A label of a metric has the
 // metric name and its hash; all other pairs have the empty name.
 func (b *batch) decide(p *pair, resource bool, metricNameHash uint64, metricName string) mode {
-	// The key comes first: no rule below can leave a key out. The keys of
-	// JSON bodies stay in field_keys, which has their array types.
-	if p.ctx != contextBody {
-		b.state.keys.see(p, metricNameHash, metricName)
-	}
+	// The key comes first: no rule below can leave a key out.
+	b.state.keys.see(p, metricNameHash, metricName)
 	if p.typ == typeNumber {
 		if !hasValue(p.num) {
 			return modeSkip

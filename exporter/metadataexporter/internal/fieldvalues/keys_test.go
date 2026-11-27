@@ -186,3 +186,42 @@ func TestKeysAreTheSameWithSmallAndLargeLimits(t *testing.T) {
 		})
 	}
 }
+
+// The keys of a JSON body have the data types of the JSON writer. The message
+// field and an array of objects have a key and no value.
+func TestBodyKeysHaveTheTypesOfTheJSONWriter(t *testing.T) {
+	e, w := newTestExporterWith(t, testConfig(), Settings{Signal: pipeline.SignalLogs, BodyJSON: &testBodyLimits}, &fakeWriter{})
+	ld := logsOf(checkout, logRecord{"10:00", nil})
+	require.NoError(t, ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Body().SetEmptyMap().FromRaw(map[string]any{
+		"message": "order placed",
+		"user":    map[string]any{"plan": "pro", "seats": int64(4)},
+		"items":   []any{map[string]any{"sku": "a1"}},
+		"tags":    []any{"x", "y"},
+		"mixed":   []any{"x", int64(2)},
+	}))
+	require.NoError(t, e.WriteLogs(context.Background(), ld))
+	var keys []string
+	for _, k := range w.takeKeys(e) {
+		if strings.HasPrefix(k, "body ") {
+			keys = append(keys, k)
+		}
+	}
+	assert.Equal(t, []string{
+		"body items []json",
+		"body items[].sku string",
+		"body message string",
+		"body mixed []dynamic",
+		"body tags []string",
+		"body user.plan string",
+		"body user.seats int64",
+	}, keys)
+
+	var values []string
+	for _, r := range w.take() {
+		if r.p.ctx == contextBody {
+			values = append(values, r.p.name+"="+r.p.str)
+		}
+	}
+	assert.NotContains(t, values, "message=")
+	assert.NotContains(t, values, "items=")
+}

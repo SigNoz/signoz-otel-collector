@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,8 +42,9 @@ func (c *captureBatch) Append(v ...any) error {
 }
 
 // The field values writer walks JSON bodies itself. It must find the same
-// paths and values as the JSON writer, so that body suggestions do not change
-// when the store replaces the tag table.
+// paths and values as the JSON writer, and the same keys with the same data
+// types, so that body suggestions and body keys do not change when the store
+// replaces the tag table and field_keys.
 func TestFieldValuesBodyWalkMatchesTheJSONWriter(t *testing.T) {
 	deep := map[string]any{"leaf": "too deep"}
 	for i := 0; i < 12; i++ {
@@ -70,6 +72,25 @@ func TestFieldValuesBodyWalkMatchesTheJSONWriter(t *testing.T) {
 			"0f8fad5b-d9cb-469f-a165-70867728950e": "an id as a key",
 		},
 		{"deep": deep, "ok": "yes"},
+		{
+			"count":         int64(3),
+			"ratio":         0.5,
+			"nan":           math.NaN(),
+			"flag":          true,
+			"empty":         "",
+			"message":       map[string]any{"text": "a message that is a map"},
+			"objects":       []any{map[string]any{"sku": "a1"}, map[string]any{"qty": int64(2)}},
+			"mixed":         []any{map[string]any{"sku": "a1"}, "x"},
+			"ints":          []any{int64(1), int64(2)},
+			"floats":        []any{int64(1), 2.5},
+			"bools":         []any{true, false},
+			"nan_array":     []any{math.NaN()},
+			"empty_strings": []any{"", ""},
+			"nulls":         []any{nil, nil},
+			"none":          []any{},
+			"then_nested":   []any{map[string]any{"before": "walked"}, []any{"b"}, map[string]any{"after": "not walked"}},
+			"empty_objects": []any{map[string]any{}},
+		},
 	}
 	cfg := JSONConfig{MaxDepthTraverse: to.Ptr(defaultJSONMaxDepthTraverse), MaxArrayElementsAllowed: to.Ptr(defaultJSONMaxArrayElementsAllowed), MaxKeysAtLevel: to.Ptr(defaultJSONMaxKeysAtLevel)}
 	limits := fieldvalues.BodyJSONLimits{MaxDepthTraverse: *cfg.MaxDepthTraverse, MaxArrayElementsAllowed: *cfg.MaxArrayElementsAllowed, MaxKeysAtLevel: *cfg.MaxKeysAtLevel}
@@ -87,8 +108,22 @@ func TestFieldValuesBodyWalkMatchesTheJSONWriter(t *testing.T) {
 		}
 		jsonWriter := newTestWriter(t, cfg)
 		jsonWriter.logger = zap.NewNop()
-		_, err := jsonWriter.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, &typesAccumulator{}, va)
+		types := &typesAccumulator{}
+		_, err := jsonWriter.walkNode(context.Background(), "", body, 0, utils.TagTypeBodyField, 0, types, va)
 		require.NoError(t, err)
+
+		wantKeys := map[string]struct{}{}
+		types.types.Range(func(path, set any) bool {
+			for _, dataType := range set.(*typesConcurrentSet).Keys() {
+				wantKeys[path.(string)+" "+string(dataType)] = struct{}{}
+			}
+			return true
+		})
+		keys := map[string]struct{}{}
+		for _, k := range fieldvalues.BodyKeys(body, limits) {
+			keys[k] = struct{}{}
+		}
+		assert.Equal(t, wantKeys, keys, "keys of body %d", i)
 
 		var store []string
 		for _, v := range fieldvalues.BodyValues(body, limits) {
@@ -98,7 +133,15 @@ func TestFieldValuesBodyWalkMatchesTheJSONWriter(t *testing.T) {
 			}
 			store = append(store, v)
 		}
-		assert.ElementsMatch(t, capture.values, store, "body %d", i)
+		// The JSON writer stores NaN as a value. The store keeps the key and
+		// no value.
+		var want []string
+		for _, v := range capture.values {
+			if !strings.HasSuffix(v, "=NaN") {
+				want = append(want, v)
+			}
+		}
+		assert.ElementsMatch(t, want, store, "body %d", i)
 	}
 }
 

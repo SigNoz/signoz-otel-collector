@@ -69,6 +69,38 @@ func (d dataType) String() string {
 	return ""
 }
 
+// arrayType is the data type of an array in a JSON body, as the JSON writer
+// names it.
+type arrayType uint8
+
+const (
+	arrayNone arrayType = iota
+	arrayString
+	arrayInt64
+	arrayFloat64
+	arrayBool
+	arrayJSON
+	arrayDynamic
+)
+
+func (a arrayType) String() string {
+	switch a {
+	case arrayString:
+		return "[]string"
+	case arrayInt64:
+		return "[]int64"
+	case arrayFloat64:
+		return "[]float64"
+	case arrayBool:
+		return "[]bool"
+	case arrayJSON:
+		return "[]json"
+	case arrayDynamic:
+		return "[]dynamic"
+	}
+	return ""
+}
+
 // fieldID identifies a field, its context and name, within one signal.
 type fieldID uint64
 
@@ -85,6 +117,9 @@ type pair struct {
 	// isInt marks a number that the record has as an integer. Only the key
 	// of the pair uses it.
 	isInt bool
+	// array is the type of the array that holds the value in a JSON body.
+	// Only the key of the pair uses it.
+	array arrayType
 	name  string
 	str   string
 	num   float64

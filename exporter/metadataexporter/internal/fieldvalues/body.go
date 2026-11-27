@@ -1,7 +1,6 @@
 package fieldvalues
 
 import (
-	"math"
 	"strconv"
 	"strings"
 
@@ -26,8 +25,12 @@ const (
 
 // bodyPairs gives the pairs of a JSON log body: one pair for each primitive
 // value, named by its dotted path. The walk follows the JSON writer: it skips
-// the message field and keys that look like ids, stops at the depth limit,
-// and skips maps with too many keys, long arrays and nested arrays.
+// keys that look like ids, stops at the depth limit, and skips maps with too
+// many keys, long arrays and nested arrays.
+//
+// The keys also follow the JSON writer. An array has one key, with the type
+// of the array. The message field and an array of objects have a key and no
+// value: their pair has the empty string, which is never a value.
 func bodyPairs(dst []pair, body pcommon.Value, limits BodyJSONLimits) []pair {
 	if body.Type() != pcommon.ValueTypeMap {
 		return dst
@@ -36,7 +39,10 @@ func bodyPairs(dst []pair, body pcommon.Value, limits BodyJSONLimits) []pair {
 }
 
 func walkBody(dst []pair, prefix string, val pcommon.Value, level int, limits BodyJSONLimits) []pair {
-	if prefix == bodyMessageField || strings.HasPrefix(prefix, bodyMessageField+".") {
+	if prefix == bodyMessageField {
+		return append(dst, stringPair(contextBody, prefix, ""))
+	}
+	if strings.HasPrefix(prefix, bodyMessageField+".") {
 		return dst
 	}
 	if level > limits.MaxDepthTraverse && (val.Type() == pcommon.ValueTypeMap || val.Type() == pcommon.ValueTypeSlice) {
@@ -65,62 +71,105 @@ func walkBody(dst []pair, prefix string, val pcommon.Value, level int, limits Bo
 		if s.Len() == 0 || s.Len() > limits.MaxArrayElementsAllowed {
 			return dst
 		}
-		var primitives []pcommon.Value
-		var objects []pcommon.Value
+		// A nested array ends the walk of the array with no key. The objects
+		// before it are walked, as in the JSON writer.
+		var objects, strs, floats, ints, bools bool
 		for i := 0; i < s.Len(); i++ {
 			el := s.At(i)
 			switch el.Type() {
 			case pcommon.ValueTypeMap:
-				objects = append(objects, el)
+				dst = walkBody(dst, prefix+bodyArraySuffix, el, level, limits)
+				objects = true
 			case pcommon.ValueTypeSlice:
 				return dst
-			case pcommon.ValueTypeEmpty:
-			default:
-				primitives = append(primitives, el)
+			case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
+				strs = true
+			case pcommon.ValueTypeDouble:
+				floats = true
+			case pcommon.ValueTypeInt:
+				ints = true
+			case pcommon.ValueTypeBool:
+				bools = true
 			}
 		}
-		for _, el := range objects {
-			dst = walkBody(dst, prefix+bodyArraySuffix, el, level, limits)
+		primitives := strs || floats || ints || bools
+		var array arrayType
+		switch {
+		case objects && primitives:
+			array = arrayDynamic
+		case objects:
+			array = arrayJSON
+		case strs && (floats || ints || bools):
+			array = arrayDynamic
+		case strs:
+			array = arrayString
+		case floats:
+			array = arrayFloat64
+		case ints:
+			array = arrayInt64
+		case bools:
+			array = arrayBool
+		default:
+			return dst
 		}
-		for _, el := range primitives {
-			dst = appendBodyValue(dst, prefix, el)
+		if !primitives {
+			p := stringPair(contextBody, prefix, "")
+			p.array = array
+			return append(dst, p)
+		}
+		for i := 0; i < s.Len(); i++ {
+			dst = appendBodyValue(dst, prefix, s.At(i), array)
 		}
 		return dst
 	default:
-		return appendBodyValue(dst, prefix, val)
+		return appendBodyValue(dst, prefix, val, arrayNone)
 	}
 }
 
-func appendBodyValue(dst []pair, path string, val pcommon.Value) []pair {
+func appendBodyValue(dst []pair, path string, val pcommon.Value, array arrayType) []pair {
+	var p pair
 	switch val.Type() {
 	case pcommon.ValueTypeStr, pcommon.ValueTypeBytes:
-		return append(dst, stringPair(contextBody, path, val.AsString()))
+		p = stringPair(contextBody, path, val.AsString())
 	case pcommon.ValueTypeInt:
-		return append(dst, numberPair(contextBody, path, float64(val.Int())))
+		p = intPair(contextBody, path, val.Int())
 	case pcommon.ValueTypeDouble:
-		if f := val.Double(); !math.IsNaN(f) && !math.IsInf(f, 0) {
-			return append(dst, numberPair(contextBody, path, f))
-		}
+		p = numberPair(contextBody, path, val.Double())
 	case pcommon.ValueTypeBool:
-		return append(dst, boolPair(contextBody, path, val.Bool()))
+		p = boolPair(contextBody, path, val.Bool())
+	default:
+		return dst
 	}
-	return dst
+	p.array = array
+	return append(dst, p)
 }
 
-// BodyValues lists what the walk of a JSON body finds, as "path=value", with
-// "path=bool" for a bool value. The metadata exporter uses it to check the
-// walk against its JSON writer.
+// BodyValues lists the values that the walk of a JSON body finds, as
+// "path=value", with "path=bool" for a bool value. The metadata exporter uses
+// it to check the walk against its JSON writer.
 func BodyValues(body pcommon.Value, limits BodyJSONLimits) []string {
 	var out []string
 	for _, p := range bodyPairs(nil, body, limits) {
-		switch p.typ {
-		case typeNumber:
-			out = append(out, p.name+"="+strconv.FormatFloat(p.num, 'g', -1, 64))
-		case typeBool:
+		switch {
+		case p.typ == typeNumber:
+			if hasValue(p.num) {
+				out = append(out, p.name+"="+strconv.FormatFloat(p.num, 'g', -1, 64))
+			}
+		case p.typ == typeBool:
 			out = append(out, p.name+"=bool")
-		default:
+		case p.str != "":
 			out = append(out, p.name+"="+p.str)
 		}
+	}
+	return out
+}
+
+// BodyKeys lists the keys that the walk of a JSON body finds, as "path type".
+// A key that the walk finds more than once is listed more than once.
+func BodyKeys(body pcommon.Value, limits BodyJSONLimits) []string {
+	var out []string
+	for _, p := range bodyPairs(nil, body, limits) {
+		out = append(out, p.name+" "+p.keyDataType())
 	}
 	return out
 }

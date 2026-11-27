@@ -32,6 +32,8 @@ type fieldKey struct {
 // exporter of the signal stores the value.
 func (p *pair) keyDataType() string {
 	switch {
+	case p.array != arrayNone:
+		return p.array.String()
 	case p.typ == typeBool:
 		return "bool"
 	case p.typ == typeString:
@@ -75,10 +77,15 @@ func (ks *fieldKeys) rotate(day uint64) {
 // see records the key of a pair. A label of a metric has the metric name and
 // its hash.
 func (ks *fieldKeys) see(p *pair, metricNameHash uint64, metricName string) {
-	id := mix64(uint64(p.field) ^ metricNameHash*0x9e3779b97f4a7c15 ^ uint64(p.typ)<<1 ^ 'F')
-	if p.isInt {
-		id++
+	// The id covers what makes the row: the field and its data type.
+	dataType := uint64(p.typ) << 1
+	switch {
+	case p.array != arrayNone:
+		dataType = uint64(p.array) << 8
+	case p.isInt:
+		dataType |= 1
 	}
+	id := mix64(uint64(p.field) ^ metricNameHash*0x9e3779b97f4a7c15 ^ dataType<<8 ^ 'F')
 	// 0 marks an empty place of recent.
 	id |= 1 << 63
 	slot := &ks.recent[id%recentKeys]
