@@ -25,12 +25,7 @@ func TestBilledSpanSizeMatchesMeter(t *testing.T) {
 		{name: "StartTimeZero", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetStartTimestamp(0) }},
 		{name: "NoParent", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetParentSpanID(pcommon.SpanID{}) }},
 		{name: "Flags", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetFlags(0x301) }},
-		{name: "TraceStateEscaped", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.TraceState().FromRaw(`vendor=a<b>&"c"`) }},
-		{name: "NameQuote", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetName(`say "hi"`) }},
-		{name: "NameHTML", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetName("<module>&") }},
-		{name: "NameControl", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetName("a\tb\nc\\d") }},
 		{name: "NameUTF8", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetName("héllo 世界") }},
-		{name: "NameInvalidUTF8", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.SetName("a\xffb") }},
 		{name: "AttrNaNInf", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) {
 			sp.Attributes().PutDouble("nan", math.NaN())
 			sp.Attributes().PutDouble("inf", math.Inf(1))

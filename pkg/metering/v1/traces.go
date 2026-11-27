@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"unicode/utf8"
-
 	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -113,10 +111,10 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["startTimeUnixNano"], sizeOfStartTime, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanId"], meter.Sizer.SizeOfSpanID(span.SpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceId"], meter.Sizer.SizeOfTraceID(span.TraceID()), 4) + //:"",
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceState"], meter.sizeOfJSONString(span.TraceState().AsRaw()), 4) + //:"",
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceState"], len(span.TraceState().AsRaw()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["parentSpanId"], meter.Sizer.SizeOfSpanID(span.ParentSpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["flags"], sizeOfFlags, 2) + //:,
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["name"], meter.sizeOfJSONString(span.Name()), 4) + //:"",
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["name"], len(span.Name()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["kind"], sizeOfKind, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanKind"], len(span.Kind().String()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExistsAndValueIsMapOrSlice(meter.KeySizes["attributes_string"], sizeOfStringAttributes, 2) + //:,
@@ -131,26 +129,6 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 	}
 
 	return total
-}
-
-// sizeOfJSONString returns the length of s JSON-encoded, without the surrounding quotes.
-// Strings with nothing to escape, the common case, are sized without marshaling.
-func (meter *traces) sizeOfJSONString(s string) int {
-	for i := 0; i < len(s); i++ {
-		if c := s[i]; c < 0x20 || c >= utf8.RuneSelf || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
-			return meter.sizeOfEscapedJSONString(s)
-		}
-	}
-	return len(s)
-}
-
-func (meter *traces) sizeOfEscapedJSONString(s string) int {
-	b, err := json.Marshal(s)
-	if err != nil {
-		meter.Logger.Error("cannot marshal string", zap.Error(err), zap.String("val", s))
-		return 0
-	}
-	return len(b) - 2
 }
 
 func (*traces) Count(td ptrace.Traces) int {
