@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"unicode/utf8"
+
 	"github.com/goccy/go-json"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -132,7 +134,17 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 }
 
 // sizeOfJSONString returns the length of s JSON-encoded, without the surrounding quotes.
+// Strings with nothing to escape, the common case, are sized without marshaling.
 func (meter *traces) sizeOfJSONString(s string) int {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x20 || c >= utf8.RuneSelf || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
+			return meter.sizeOfEscapedJSONString(s)
+		}
+	}
+	return len(s)
+}
+
+func (meter *traces) sizeOfEscapedJSONString(s string) int {
 	b, err := json.Marshal(s)
 	if err != nil {
 		meter.Logger.Error("cannot marshal string", zap.Error(err), zap.String("val", s))
