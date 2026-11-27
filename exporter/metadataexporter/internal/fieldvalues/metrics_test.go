@@ -1,0 +1,326 @@
+package fieldvalues
+
+import (
+	"context"
+	"fmt"
+	"maps"
+	"slices"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pipeline"
+)
+
+func testMetrics() pmetric.Metrics {
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("k8s.pod.name", "p1")
+	rm.Resource().Attributes().PutStr("service.name", "checkout")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	sm.Scope().SetName("otel-go")
+	sm.Scope().SetVersion("1.0")
+	sm.Scope().Attributes().PutStr("library.lang", "go")
+
+	sum := sm.Metrics().AppendEmpty()
+	sum.SetName("http_requests")
+	sum.SetEmptySum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	for _, code := range []string{"200", "500"} {
+		dp := sum.Sum().DataPoints().AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		dp.Attributes().PutStr("code", code)
+		dp.Attributes().PutStr("method", "GET")
+	}
+
+	hist := sm.Metrics().AppendEmpty()
+	hist.SetName("latency")
+	hist.SetEmptyHistogram().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	hdp := hist.Histogram().DataPoints().AppendEmpty()
+	hdp.SetTimestamp(at("10:00"))
+	hdp.Attributes().PutStr("route", "/cart")
+	hdp.ExplicitBounds().FromRaw([]float64{0.1, 1})
+	hdp.BucketCounts().FromRaw([]uint64{1, 2, 3})
+	return md
+}
+
+func TestMetricsSetIsTheSeries(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
+	rows := w.take()
+
+	bySeries := map[uint64]string{}
+	for _, r := range rows {
+		if r.attrsHash != resourceAttrsHash {
+			bySeries[r.attrsHash] = r.metricName
+		}
+	}
+	assert.ElementsMatch(t, []string{"http_requests", "http_requests", "latency.count"}, slices.Collect(maps.Values(bySeries)),
+		"one set per series; a histogram writes only its .count series")
+
+	assert.Equal(t, []string{
+		"{code=200, library.lang=go, method=GET}",
+		"{code=500, library.lang=go, method=GET}",
+		"{library.lang=go, route=/cart}",
+	}, setList(rows), "point and scope labels; no __temporality__, __scope.*__ or le rows")
+
+	assert.Equal(t, []string{
+		"__name__=http_requests*", "__name__=latency.count*",
+		"k8s.pod.name=p1",
+		"service.name=checkout",
+	}, resourceRows(rows), "the resource once with no metric, and a link row per metric")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
+	assert.Empty(t, w.take())
+}
+
+func TestMetricsKeysSurviveAFullCache(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	// Room for metric a: its series, the resource and the link of a. Nothing
+	// more fits in the exact part.
+	e.state.cache.limit = [2]int{3, 10}
+
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "checkout")
+	sm := rm.ScopeMetrics().AppendEmpty()
+	addSum := func(name string, labels map[string]any) {
+		m := sm.Metrics().AppendEmpty()
+		m.SetName(name)
+		m.SetEmptySum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+		dp := m.Sum().DataPoints().AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		require.NoError(t, dp.Attributes().FromRaw(labels))
+	}
+	addSum("a", map[string]any{"code": "200"})
+	addSum("b", map[string]any{"code": "200", "region": "eu"})
+	addSum("b", map[string]any{"code": "500", "region": "us"})
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+
+	series := map[string]bool{}
+	for _, r := range w.take() {
+		if r.attrsHash != resourceAttrsHash {
+			series[r.metricName] = true
+		}
+	}
+	assert.Equal(t, map[string]bool{"a": true}, series, "the series of b do not fit")
+	assert.Equal(t, []string{
+		"a attribute code string",
+		"a resource service.name string",
+		"b attribute code string",
+		"b attribute region string",
+		"b resource service.name string",
+		"resource service.name string",
+	}, w.takeKeys(e), "the keys of b are complete")
+}
+
+// A resource of many metrics writes its rows once. Each metric adds one link
+// row.
+func TestMetricsResourceRowsOnceAcrossMetrics(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	ctx := context.Background()
+	pod := func(name string, metrics ...string) pmetric.Metrics {
+		md := pmetric.NewMetrics()
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("k8s.pod.name", name)
+		rm.Resource().Attributes().PutStr("k8s.namespace.name", "shop")
+		sm := rm.ScopeMetrics().AppendEmpty()
+		for _, m := range metrics {
+			g := sm.Metrics().AppendEmpty()
+			g.SetName(m)
+			g.SetEmptyGauge().DataPoints().AppendEmpty().SetTimestamp(at("10:00"))
+		}
+		return md
+	}
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p1", "cpu", "memory", "disk")))
+	assert.Equal(t, []string{
+		"__name__=cpu*", "__name__=disk*", "__name__=memory*",
+		"k8s.namespace.name=shop", "k8s.pod.name=p1",
+	}, resourceRows(w.take()))
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
+	assert.Equal(t, []string{
+		"__name__=cpu*", "__name__=memory*",
+		"k8s.namespace.name=shop", "k8s.pod.name=p2",
+	}, resourceRows(w.take()), "a new pod writes its rows and links")
+
+	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
+	assert.Empty(t, w.take())
+}
+
+// A label with a value per point makes each point a new series. Past the
+// limit, the label leaves the set: the series of a route become one set, the
+// label keeps a daily sample, and the series are not cached.
+func TestMetricsLabelOverTheLimitLeavesTheSet(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 3
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "checkout")
+	m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+	m.SetName("requests")
+	points := m.SetEmptySum().DataPoints()
+	for i := 1; i <= 10; i++ {
+		dp := points.AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		dp.Attributes().PutStr("route", "/cart")
+		dp.Attributes().PutStr("request_id", fmt.Sprintf("r%02d", i))
+	}
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+
+	assert.Equal(t, []string{
+		"{request_id=r01, route=/cart}",
+		"{request_id=r02, route=/cart}",
+		"{request_id=r03, route=/cart}",
+		"{request_id=r04*, route=/cart}",
+	}, setList(w.take()), "3 series in full; r04 passes the limit into the set of /cart; r05 on are past the sample budget")
+	assert.Equal(t, 6, e.state.cache.used[classExact],
+		"3 series, 1 coarse set, the resource and its link; the series past the limit are not cached")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	assert.Empty(t, w.take())
+}
+
+// processMetrics is the output of the process scraper on one host: one
+// resource per process, with two series each.
+func processMetrics(processes int) pmetric.Metrics {
+	md := pmetric.NewMetrics()
+	for pid := 1; pid <= processes; pid++ {
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("host.name", "node-7")
+		rm.Resource().Attributes().PutInt("process.pid", int64(pid))
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName("process.cpu.time")
+		points := m.SetEmptySum().DataPoints()
+		for _, state := range []string{"user", "system"} {
+			dp := points.AppendEmpty()
+			dp.SetTimestamp(at("10:00"))
+			dp.Attributes().PutStr("state", state)
+		}
+	}
+	return md
+}
+
+// Past the limit, process.pid leaves the identity: the processes of a host
+// are one resource with one set per series, and each pid is still written
+// once.
+func TestMetricsResourceFieldOverTheLimitLeavesTheIdentity(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxResourceFieldValues = 10
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	type counts struct{ resources, series, pidsInHash, pidsOutside int }
+	count := func(rows []row) counts {
+		resources := map[uint64]struct{}{}
+		series := map[[2]uint64]struct{}{}
+		var c counts
+		for _, r := range rows {
+			resources[r.resourceHash] = struct{}{}
+			switch {
+			case r.attrsHash != resourceAttrsHash:
+				series[[2]uint64{r.resourceHash, r.attrsHash}] = struct{}{}
+			case r.metricName == "" && r.p.name == "process.pid" && r.inHash:
+				c.pidsInHash++
+			case r.metricName == "" && r.p.name == "process.pid":
+				c.pidsOutside++
+			}
+		}
+		c.resources, c.series = len(resources), len(series)
+		return c
+	}
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	assert.Equal(t, counts{resources: 11, series: 22, pidsInHash: 10, pidsOutside: 190}, count(w.take()),
+		"10 processes in full, then one resource for the host: 2 series for each resource, and each pid once")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	assert.Equal(t, counts{resources: 1, pidsOutside: 10}, count(w.take()),
+		"the first 10 processes join the host, so their pids are written outside its identity")
+
+	require.NoError(t, e.WriteMetrics(context.Background(), processMetrics(200)))
+	assert.Empty(t, w.take())
+}
+
+// A label with many values on one metric leaves the sets of that metric
+// only. The same label of another metric keeps all of its values.
+func TestMetricLabelLimitIsForEachMetric(t *testing.T) {
+	cfg := testConfig()
+	cfg.Limits.MaxRecordFieldValues = 5
+	e, w := newTestExporter(t, cfg, pipeline.SignalMetrics)
+	ctx := context.Background()
+	gauge := func(name string, values ...string) pmetric.Metrics {
+		md := pmetric.NewMetrics()
+		rm := md.ResourceMetrics().AppendEmpty()
+		rm.Resource().Attributes().PutStr("service.name", "svc")
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName(name)
+		g := m.SetEmptyGauge()
+		for _, v := range values {
+			dp := g.DataPoints().AppendEmpty()
+			dp.SetTimestamp(at("10:00"))
+			dp.Attributes().PutStr("device", v)
+		}
+		return md
+	}
+	devices := func(metric string) []string {
+		var out []string
+		for _, r := range w.take() {
+			if r.metricName == metric && r.p.name == "device" {
+				out = append(out, fmt.Sprintf("%s in_hash=%v", r.p.str, r.inHash))
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	var veths []string
+	for i := 0; i < 50; i++ {
+		veths = append(veths, fmt.Sprintf("veth%02d", i))
+	}
+	require.NoError(t, e.WriteMetrics(ctx, gauge("system.network.io", veths...)))
+	assert.Len(t, devices("system.network.io"), 6, "the limit plus one values")
+
+	require.NoError(t, e.WriteMetrics(ctx, gauge("system.disk.io", "nvme0n1", "nvme1n1", "nvme2n1")))
+	assert.Equal(t, []string{"nvme0n1 in_hash=true", "nvme1n1 in_hash=true", "nvme2n1 in_hash=true"}, devices("system.disk.io"))
+
+	e.mu.Lock()
+	flags := maps.Clone(e.state.overFlags)
+	e.mu.Unlock()
+	assert.Equal(t, map[fieldID]overField{
+		limitField(nameHash("system.network.io"), fieldIDOf(contextAttribute, "device")): {metric: "system.network.io", ctx: contextAttribute, name: "device", day: utcDay(testDay)},
+	}, flags)
+}
+
+// When the tracker has no room for the state of a label, the label is not
+// counted. It stays in the set, unless the classifier has it over the limit.
+func TestMetricLabelWithNoStateFollowsTheClassifier(t *testing.T) {
+	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
+	e.mu.Lock()
+	e.state.budget.limit = 0
+	e.mu.Unlock()
+	e.class.Store(&classification{over: map[fieldID]overField{
+		limitField(nameHash("system.network.io"), fieldIDOf(contextAttribute, "device")): {metric: "system.network.io", ctx: contextAttribute, name: "device"},
+	}})
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	rm.Resource().Attributes().PutStr("service.name", "svc")
+	for _, name := range []string{"system.network.io", "system.disk.io"} {
+		m := rm.ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		m.SetName(name)
+		dp := m.SetEmptyGauge().DataPoints().AppendEmpty()
+		dp.SetTimestamp(at("10:00"))
+		dp.Attributes().PutStr("device", "d1")
+	}
+	require.NoError(t, e.WriteMetrics(context.Background(), md))
+	inHash := map[string]bool{}
+	for _, r := range w.take() {
+		if r.p.name == "device" {
+			inHash[r.metricName] = r.inHash
+		}
+	}
+	assert.Equal(t, map[string]bool{"system.disk.io": true}, inHash, "the label over the limit has no row")
+	assert.Subset(t, w.takeKeys(e), []string{
+		"system.disk.io attribute device string",
+		"system.network.io attribute device string",
+	}, "and it is a key of both metrics")
+}

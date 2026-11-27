@@ -23,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	kash "github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/cache"
+	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/fieldvalues"
 )
 
 const (
@@ -68,6 +69,10 @@ type metadataExporter struct {
 	// logsMetadataWriters is the ordered list of writers dispatched in parallel on
 	// every PushLogs call.
 	logsMetadataWriters []LogsMetadataWriter
+
+	// fieldValues writes the field values store. It is nil unless
+	// field_values.enabled is set.
+	fieldValues *fieldvalues.Writer
 }
 
 type writeToStatementBatchRecord struct {
@@ -89,7 +94,7 @@ func flattenJSONToStringMap(data map[string]any) map[string]string {
 	return res
 }
 
-func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings) (*metadataExporter, error) {
+func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings, signal pipeline.Signal) (*metadataExporter, error) {
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, err
@@ -233,6 +238,17 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 		e.logsMetadataWriters = append(e.logsMetadataWriters, jsonProc)
 	}
 
+	if cfg.Enabled && cfg.FieldValues.Enabled {
+		fieldValues, err := newFieldValuesWriter(cfg, set, signal, conn)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create field values writer")
+		}
+		e.fieldValues = fieldValues
+		if signal == pipeline.SignalLogs {
+			e.logsMetadataWriters = append(e.logsMetadataWriters, fieldValuesLogsWriter{w: fieldValues})
+		}
+	}
+
 	return e, nil
 }
 
@@ -241,6 +257,10 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		return nil
 	}
 	e.set.Logger.Info("starting metadata exporter")
+
+	if e.fieldValues != nil {
+		e.fieldValues.Start()
+	}
 
 	go e.periodicallyUpdateTagValueCountFromDB(
 		e.logTagValueCountCtx,
@@ -291,6 +311,12 @@ func (e *metadataExporter) Shutdown(ctx context.Context) error {
 	e.tracesTracker.Close()
 	e.metricsTracker.Close()
 	e.logsTracker.Close()
+
+	if e.fieldValues != nil {
+		if err := e.fieldValues.Shutdown(); err != nil {
+			e.set.Logger.Error("failed to shut down field values writer", zap.Error(err))
+		}
+	}
 
 	if e.keyCache != nil {
 		if err := e.keyCache.Close(ctx); err != nil {
@@ -687,6 +713,17 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	if !e.cfg.Enabled {
 		return nil
 	}
+	if e.fieldValues == nil {
+		return e.pushTracesAttributesMetadata(ctx, td)
+	}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { return e.pushTracesAttributesMetadata(gCtx, td) })
+	g.Go(func() error { return e.fieldValues.WriteTraces(gCtx, td) })
+	return g.Wait()
+}
+
+// pushTracesAttributesMetadata writes signoz_metadata.distributed_attributes_metadata.
+func (e *metadataExporter) pushTracesAttributesMetadata(ctx context.Context, td ptrace.Traces) error {
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
@@ -759,6 +796,17 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	if !e.cfg.Enabled {
 		return nil
 	}
+	if e.fieldValues == nil {
+		return e.pushMetricsAttributesMetadata(ctx, md)
+	}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { return e.pushMetricsAttributesMetadata(gCtx, md) })
+	g.Go(func() error { return e.fieldValues.WriteMetrics(gCtx, md) })
+	return g.Wait()
+}
+
+// pushMetricsAttributesMetadata writes signoz_metadata.distributed_attributes_metadata.
+func (e *metadataExporter) pushMetricsAttributesMetadata(ctx context.Context, md pmetric.Metrics) error {
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))

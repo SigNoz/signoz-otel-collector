@@ -1,0 +1,200 @@
+package fieldvalues
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pipeline"
+	"go.uber.org/zap"
+)
+
+// testDay is noon of the last Tuesday that has a full day after it. It is
+// inside the TTL of the tables, and the day after it is in the same week
+// partition.
+var testDay = func() time.Time {
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	tuesday := today.AddDate(0, 0, -((int(today.Weekday()) + 5) % 7))
+	if !tuesday.Before(today) {
+		tuesday = tuesday.AddDate(0, 0, -7)
+	}
+	return tuesday.Add(12 * time.Hour)
+}()
+
+var (
+	testDate     = testDay.Format(time.DateOnly)
+	testNextDate = testDay.AddDate(0, 0, 1).Format(time.DateOnly)
+)
+
+type fakeWriter struct {
+	rows     []row
+	fail     int
+	keys     []fieldKey
+	failKeys int
+}
+
+func (w *fakeWriter) writeKeys(_ context.Context, keys []fieldKey, _ time.Time) error {
+	if w.failKeys > 0 {
+		w.failKeys--
+		return errors.New("insert failed")
+	}
+	w.keys = append(w.keys, keys...)
+	return nil
+}
+
+// takeKeys flushes the keys of e and returns the keys written since the last
+// call, as sorted lines of metric, context, name and data type.
+func (w *fakeWriter) takeKeys(e *Writer) []string {
+	e.flushKeys()
+	out := make([]string, 0, len(w.keys))
+	for _, k := range w.keys {
+		out = append(out, strings.TrimSpace(k.metric+" "+k.ctx.String()+" "+k.name+" "+k.dataType))
+	}
+	w.keys = nil
+	sort.Strings(out)
+	return out
+}
+
+func (w *fakeWriter) write(_ context.Context, rows []row) error {
+	if w.fail > 0 {
+		w.fail--
+		return errors.New("insert failed")
+	}
+	w.rows = append(w.rows, rows...)
+	return nil
+}
+
+func (w *fakeWriter) take() []row {
+	rows := w.rows
+	w.rows = nil
+	return rows
+}
+
+func testConfig() Config {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Cache.MaxBytes = 1 << 20
+	return cfg
+}
+
+func newTestExporter(t *testing.T, cfg Config, signal pipeline.Signal) (*Writer, *fakeWriter) {
+	t.Helper()
+	return newTestExporterWith(t, cfg, Settings{Signal: signal}, &fakeWriter{})
+}
+
+func newTestExporterWith(t *testing.T, cfg Config, set Settings, w *fakeWriter) (*Writer, *fakeWriter) {
+	t.Helper()
+	set.Logger = zap.NewNop()
+	set.Telemetry = componenttest.NewNopTelemetrySettings()
+	tel, err := newTelemetry(componenttest.NewNopTelemetrySettings(), set.Signal.String(), cfg.Source)
+	require.NoError(t, err)
+	e := newWriter(cfg, set, w, tel)
+	require.NoError(t, e.allocate())
+	t.Cleanup(func() { _ = e.Shutdown() })
+	now := testDay
+	e.now = func() time.Time { return now }
+	return e, w
+}
+
+// addLogs adds logs to a batch, as WriteLogs does under the lock.
+func addLogs(b *batch, ld plog.Logs) {
+	in := getRecordsInput()
+	defer putRecordsInput(in)
+	in.addLogs(ld, nil)
+	b.addRecords(in)
+}
+
+func setNow(e *Writer, now time.Time) {
+	e.now = func() time.Time { return now }
+}
+
+// at gives a timestamp on testDay.
+func at(clock string) pcommon.Timestamp {
+	t, err := time.Parse("15:04", clock)
+	if err != nil {
+		panic(err)
+	}
+	day := testDay
+	return pcommon.NewTimestampFromTime(time.Date(day.Year(), day.Month(), day.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC))
+}
+
+type logRecord struct {
+	clock string
+	attrs map[string]any
+}
+
+func logsOf(resource map[string]any, records ...logRecord) plog.Logs {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	require.NoError(nil, rl.Resource().Attributes().FromRaw(resource))
+	sl := rl.ScopeLogs().AppendEmpty()
+	for _, r := range records {
+		lr := sl.LogRecords().AppendEmpty()
+		lr.SetTimestamp(at(r.clock))
+		_ = lr.Attributes().FromRaw(r.attrs)
+	}
+	return ld
+}
+
+func describe(p pair) string {
+	if p.typ == typeNumber {
+		return fmt.Sprintf("%s=%g", p.name, p.num)
+	}
+	return fmt.Sprintf("%s=%s", p.name, p.str)
+}
+
+// sets groups the rows of record sets by attrs_hash. Pairs in the hash are
+// shown as "name=value", pairs outside the hash with a trailing "*".
+func sets(rows []row) map[uint64][]string {
+	out := make(map[uint64][]string)
+	for _, r := range rows {
+		if r.attrsHash == resourceAttrsHash {
+			continue
+		}
+		s := describe(r.p)
+		if !r.inHash {
+			s += "*"
+		}
+		out[r.attrsHash] = append(out[r.attrsHash], s)
+	}
+	for k := range out {
+		sort.Strings(out[k])
+	}
+	return out
+}
+
+func setList(rows []row) []string {
+	var out []string
+	for _, pairs := range sets(rows) {
+		out = append(out, "{"+strings.Join(pairs, ", ")+"}")
+	}
+	sort.Strings(out)
+	return out
+}
+
+func resourceRows(rows []row) []string {
+	var out []string
+	for _, r := range rows {
+		if r.attrsHash != resourceAttrsHash {
+			continue
+		}
+		s := describe(r.p)
+		if !r.inHash {
+			s += "*"
+		}
+		if r.metricName != "" {
+			s = r.metricName + ":" + s
+		}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}

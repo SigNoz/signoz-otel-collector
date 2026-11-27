@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/fieldvalues"
 	"github.com/SigNoz/signoz-otel-collector/exporter/metadataexporter/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,7 +81,12 @@ func TestLoadConfig(t *testing.T) {
 					MaxArrayElementsAllowed: to.Ptr(defaultJSONMaxArrayElementsAllowed),
 					MaxKeysAtLevel:          to.Ptr(100),
 				},
+				FieldValues: fieldvalues.DefaultConfig(),
 			},
+		},
+		{
+			id:       component.NewIDWithName(metadata.Type, "field_values"),
+			expected: fieldValuesExpectedConfig(),
 		},
 	}
 
@@ -97,4 +103,29 @@ func TestLoadConfig(t *testing.T) {
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
+}
+
+func fieldValuesExpectedConfig() *Config {
+	cfg := createDefaultConfig().(*Config)
+	cfg.Enabled = true
+	cfg.Cache.Provider = CacheProviderRedis
+	cfg.Cache.Redis.Addr = "localhost:6379"
+	cfg.FieldValues.Enabled = true
+	cfg.FieldValues.Source = "meter"
+	cfg.FieldValues.Limits.MaxRecordFieldValues = 1000
+	cfg.FieldValues.Cache.Provider = fieldvalues.CacheProviderRedis
+	cfg.FieldValues.Cache.MaxBytes = 512 << 20
+	cfg.FieldValues.Classification.RefreshInterval = 5 * time.Minute
+	cfg.FieldValues.AlwaysInclude = []string{"service.name"}
+	return cfg
+}
+
+func TestFieldValuesConfigValidate(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.FieldValues.Cache.Provider = "memcached"
+	cfg.FieldValues.Limits.MaxSetsPerResource = 1
+	err := xconfmap.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provider must be in_memory or redis")
+	assert.Contains(t, err.Error(), "max_sets_per_resource")
 }

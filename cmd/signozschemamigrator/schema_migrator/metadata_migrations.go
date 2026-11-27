@@ -165,4 +165,157 @@ var MetadataMigrations = []SchemaMigrationRecord{
 		},
 		DownItems: []Operation{},
 	},
+	{
+		MigrationID: 1003,
+		UpItems: []Operation{
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_values_sets",
+				Columns:  fieldValuesSetsColumns,
+				Projections: []Projection{
+					{
+						Name: "p_field_values",
+						Query: `SELECT signal, source, field_name, field_context, field_data_type, metric_name, string_value, number_value, toDate(last_seen, 'UTC'), max(last_seen), count()
+GROUP BY signal, source, field_name, field_context, field_data_type, metric_name, string_value, number_value, toDate(last_seen, 'UTC')`,
+					},
+				},
+				Engine: AggregatingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toMonday(last_seen)",
+						OrderBy:     "(signal, source, metric_name, field_name, field_context, field_data_type, string_value, number_value, resource_hash, attrs_hash)",
+						TTL:         "last_seen + toIntervalDay(30)",
+						Settings: TableSettings{
+							{Name: "allow_nullable_key", Value: "1"},
+							{Name: "ttl_only_drop_parts", Value: "1"},
+							// An AggregatingMergeTree table refuses a projection with the default mode.
+							{Name: "deduplicate_merge_projection_mode", Value: "'rebuild'"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_values_sets",
+				Columns:  fieldValuesSetsColumns,
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "field_values_sets",
+					ShardingKey: "cityHash64(signal, resource_hash)",
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_days_over_limit",
+				Columns:  fieldDaysOverLimitColumns,
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						PartitionBy: "toMonday(day)",
+						OrderBy:     "(signal, source, metric_name, field_context, field_name, day)",
+						TTL:         "day + toIntervalDay(30)",
+						Settings: TableSettings{
+							{Name: "ttl_only_drop_parts", Value: "1"},
+						},
+					},
+				},
+			},
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_days_over_limit",
+				Columns:  fieldDaysOverLimitColumns,
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "field_days_over_limit",
+					ShardingKey: "rand()",
+				},
+			},
+			// No partition: a key is written again each day, and
+			// ReplacingMergeTree makes one row for each key only inside a
+			// partition.
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_v2",
+				Columns:  fieldKeysColumns,
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy: "(signal, source, metric_name, field_context, field_name, field_data_type)",
+						TTL:     "last_seen + toIntervalDay(90)",
+					},
+					Version: "last_seen",
+				},
+			},
+			// The sharding key puts all rows of a key on one shard.
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_v2",
+				Columns:  fieldKeysColumns,
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "field_keys_v2",
+					ShardingKey: "cityHash64(signal, source, metric_name, field_name)",
+				},
+			},
+		},
+		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_v2",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_v2",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_days_over_limit",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_days_over_limit",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_values_sets",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_values_sets",
+			},
+		},
+	},
+}
+
+var fieldValuesSetsColumns = []Column{
+	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_data_type", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "string_value", Type: ColumnTypeString},
+	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
+	{Name: "resource_hash", Type: ColumnTypeUInt64, Codec: "ZSTD(1)"},
+	{Name: "attrs_hash", Type: ColumnTypeUInt64},
+	{Name: "in_hash", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{ColumnTypeBool}}},
+	{Name: "first_seen", Type: SimpleAggregateFunction{FunctionName: "min", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+	{Name: "last_seen", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+	{Name: "inserted_at", Type: SimpleAggregateFunction{FunctionName: "max", Arguments: []ColumnType{DateTimeColumnType{}}}, Codec: "ZSTD(1)"},
+}
+
+var fieldDaysOverLimitColumns = []Column{
+	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "day", Type: ColumnTypeDate},
+}
+
+var fieldKeysColumns = []Column{
+	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_data_type", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "last_seen", Type: DateTimeColumnType{}, Codec: "ZSTD(1)"},
 }
