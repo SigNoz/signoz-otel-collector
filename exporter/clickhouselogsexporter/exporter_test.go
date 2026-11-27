@@ -224,6 +224,8 @@ func TestExporterPushLogsDataBilledSize(t *testing.T) {
 		// attributes {"v":null} (10)
 		{name: "NaNAttribute_BilledAsNull", attributes: map[string]any{"v": math.NaN()}, expectedBytes: 25 + 10 + 25},
 		{name: "InternalAttribute_NotBilled", attributes: map[string]any{"signoz.__internal__.other": "x"}, expectedBytes: 25 + 2 + 25},
+		// attributes {"k":"v"} (9)
+		{name: "WorkspaceAttribute_NotBilled", attributes: map[string]any{"signoz.workspace.a": "x", "k": "v"}, expectedBytes: 25 + 9 + 25},
 	}
 
 	for _, testCase := range testCases {

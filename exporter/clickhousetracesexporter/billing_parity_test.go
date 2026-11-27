@@ -52,11 +52,20 @@ func TestBilledSpanSizeMatchesMeter(t *testing.T) {
 			require.NoError(t, sp.Attributes().PutEmptyMap("signoz.gen_ai").FromRaw(map[string]any{"cost": 1.25, "model": "m"}))
 		}},
 		{name: "AttrGenAIString", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.Attributes().PutStr("signoz.gen_ai.model", "gpt") }},
-		{name: "AttrWorkspace", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) { sp.Attributes().PutStr("signoz.workspace.x", "y") }},
+		{name: "AttrWorkspace", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) {
+			sp.Attributes().PutStr("signoz.workspace.s", "y")
+			sp.Attributes().PutInt("signoz.workspace.n", 1)
+			sp.Attributes().PutBool("signoz.workspace.b", true)
+		}},
+		{name: "AttrMapWithWorkspaceKey", mutate: func(_ ptrace.ResourceSpans, sp ptrace.Span) {
+			require.NoError(t, sp.Attributes().PutEmptyMap("signoz").FromRaw(map[string]any{"workspace": map[string]any{"id": "x"}, "other": "y"}))
+		}},
 		{name: "ResourceWorkspace", mutate: func(rs ptrace.ResourceSpans, _ ptrace.Span) {
 			rs.Resource().Attributes().PutStr("signoz.workspace.key.id", "abc")
 		}},
-		{name: "ResourceGenAI", mutate: func(rs ptrace.ResourceSpans, _ ptrace.Span) { rs.Resource().Attributes().PutStr("signoz.gen_ai.x", "abc") }},
+		{name: "ResourceGenAI", mutate: func(rs ptrace.ResourceSpans, _ ptrace.Span) {
+			rs.Resource().Attributes().PutStr("signoz.gen_ai.x", "abc")
+		}},
 		{name: "ResourceMapAndNaN", mutate: func(rs ptrace.ResourceSpans, _ ptrace.Span) {
 			require.NoError(t, rs.Resource().Attributes().PutEmptyMap("rm").FromRaw(map[string]any{"a": 1, "b": map[string]any{"c": "d"}}))
 			rs.Resource().Attributes().PutDouble("rn", math.NaN())

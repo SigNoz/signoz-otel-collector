@@ -256,12 +256,22 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-// billableNumberAttributes returns attrs without LLM pricing costs. Most spans
-// carry none, so the input map is returned as is and only copied when a cost key is present.
-func billableNumberAttributes(attrs map[string]float64) map[string]float64 {
+// isBillableAttribute must agree with the exclude patterns of the traces meter in pkg/metering/v1.
+func isBillableAttribute(key string) bool {
+	// Every exclude pattern starts with "signoz"; skip the regexes for all other keys.
+	if !strings.HasPrefix(key, "signoz") {
+		return true
+	}
+	return !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(key) &&
+		!metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(key)
+}
+
+// billableAttributes returns attrs without non-billable keys. Most spans
+// carry none, so the input map is returned as is and only copied when one is present.
+func billableAttributes[V any](attrs map[string]V) map[string]V {
 	hasExcluded := false
 	for k := range attrs {
-		if metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(k) {
+		if !isBillableAttribute(k) {
 			hasExcluded = true
 			break
 		}
@@ -269,9 +279,9 @@ func billableNumberAttributes(attrs map[string]float64) map[string]float64 {
 	if !hasExcluded {
 		return attrs
 	}
-	billable := make(map[string]float64, len(attrs))
+	billable := make(map[string]V, len(attrs))
 	for k, v := range attrs {
-		if !metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(k) {
+		if isBillableAttribute(k) {
 			billable[k] = v
 		}
 	}
@@ -307,7 +317,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	})
 
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		isBillable := !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k)
+		isBillable := isBillableAttribute(k)
 		if v.Type() == pcommon.ValueTypeMap {
 			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
 			for tempKey, tempVal := range result {
@@ -354,8 +364,6 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	utils.SanitizeJSON(attrsRaw)
 	attributesJSON := getAttributesJSON(attrsRaw, otelSpan.TraceID(), otelSpan.SpanID())
 
-	billableNumberAttrs := billableNumberAttributes(attrMap.NumberMap)
-
 	span := &SpanV3{
 		TsBucketStart: bucketStart,
 		FingerPrint:   fingerprint,
@@ -380,9 +388,11 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 		StatusCodeString: otelSpan.Status().Code().String(),
 
 		AttributeString:          attrMap.StringMap,
+		BillableAttributeString:  billableAttributes(attrMap.StringMap),
 		AttributesNumber:         attrMap.NumberMap,
-		BillableAttributesNumber: billableNumberAttrs,
+		BillableAttributesNumber: billableAttributes(attrMap.NumberMap),
 		AttributesBool:           attrMap.BoolMap,
+		BillableAttributesBool:   billableAttributes(attrMap.BoolMap),
 		Attributes:               attributesJSON,
 		AttributesPromoted:       getAttributesJSON(utils.BuildPromotedPaths(attrsRaw, promotedPaths), otelSpan.TraceID(), otelSpan.SpanID()),
 

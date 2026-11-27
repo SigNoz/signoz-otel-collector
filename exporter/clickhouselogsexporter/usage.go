@@ -2,6 +2,7 @@ package clickhouselogsexporter
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/SigNoz/signoz-otel-collector/pkg/metering"
@@ -97,10 +98,44 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 	return data, nil
 }
 
+// isBillableAttribute must agree with the exclude patterns of the logs meter in pkg/metering/v1.
+func isBillableAttribute(key string) bool {
+	// Every exclude pattern starts with "signoz"; skip the regexes for all other keys.
+	if !strings.HasPrefix(key, "signoz") {
+		return true
+	}
+	return !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(key) && !isInternalAttr(key)
+}
+
+// billableAttributesSize returns the billed size of attrs, whose stored JSON is attributesJSON.
+func billableAttributesSize(attrs map[string]any, attributesJSON string) int {
+	var billable map[string]any
+	for k := range attrs {
+		if isBillableAttribute(k) {
+			continue
+		}
+		if billable == nil {
+			billable = maps.Clone(attrs)
+		}
+		delete(billable, k)
+	}
+	if billable == nil {
+		return len(attributesJSON)
+	}
+	if len(billable) == 0 {
+		return len("{}")
+	}
+	b, err := json.Marshal(billable)
+	if err != nil {
+		return len(attributesJSON)
+	}
+	return len(b)
+}
+
 func getResourceAttributesByte(resource pcommon.Resource) ([]byte, error) {
 	filteredResources := map[string]any{}
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		if !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(k) {
+		if isBillableAttribute(k) {
 			filteredResources[k] = v.AsRaw()
 		}
 		return true

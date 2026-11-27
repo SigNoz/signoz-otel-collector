@@ -11,20 +11,17 @@ import (
 )
 
 type traces struct {
-	Logger        *zap.Logger
-	Sizer         metering.Sizer
-	ResourceSizer metering.Sizer
-	KeySizes      map[string]int
+	Logger   *zap.Logger
+	Sizer    metering.Sizer
+	KeySizes map[string]int
 }
 
 func NewTraces(logger *zap.Logger) metering.Traces {
 	return &traces{
 		Logger: logger,
 		Sizer: metering.NewJSONSizer(logger,
-			metering.WithNumberExcludePattern(metering.ExcludeSigNozLLMPricingSpanAttrs),
-		),
-		ResourceSizer: metering.NewJSONSizer(logger,
 			metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs),
+			metering.WithExcludePattern(metering.ExcludeSigNozLLMPricingSpanAttrs),
 		),
 		KeySizes: map[string]int{
 			"resources_string":  len("\"resources_string\""),
@@ -60,7 +57,7 @@ func (meter *traces) Size(td ptrace.Traces) int {
 
 func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 	total := 0
-	resourceAttributesSize := meter.ResourceSizer.SizeOfFlatPcommonMapInMapStringString(rtd.Resource().Attributes())
+	resourceAttributesSize := meter.Sizer.SizeOfFlatPcommonMapInMapStringString(rtd.Resource().Attributes())
 
 	for j := 0; j < rtd.ScopeSpans().Len(); j++ {
 		scopeSpans := rtd.ScopeSpans().At(j)

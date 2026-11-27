@@ -165,11 +165,13 @@ type SpanV3 struct {
 	StatusMessage    string `json:"-"`
 	StatusCodeString string `json:"-"`
 
-	AttributeString  map[string]string  `json:"attributes_string,omitempty"`
+	AttributeString  map[string]string  `json:"-"`
 	AttributesNumber map[string]float64 `json:"-"`
-	// AttributesNumber without LLM pricing costs; keeps the attributes_number key so billing size is unchanged for other spans
+	AttributesBool   map[string]bool    `json:"-"`
+	// Billable* drop non-billable keys and keep the original JSON keys so billing size is unchanged for other spans
+	BillableAttributeString  map[string]string  `json:"attributes_string,omitempty"`
 	BillableAttributesNumber map[string]float64 `json:"attributes_number,omitempty"`
-	AttributesBool           map[string]bool    `json:"attributes_bool,omitempty"`
+	BillableAttributesBool   map[string]bool    `json:"attributes_bool,omitempty"`
 
 	// Attributes is stringified JSON, clickhouse will parse it since the driver needs typed values and any is not allowed
 	Attributes         string `json:"-"`

@@ -8,19 +8,16 @@ import (
 )
 
 type logs struct {
-	Logger        *zap.Logger
-	Sizer         metering.Sizer
-	ResourceSizer metering.Sizer
+	Logger *zap.Logger
+	Sizer  metering.Sizer
 }
 
 func NewLogs(logger *zap.Logger) metering.Logs {
 	return &logs{
 		Logger: logger,
 		Sizer: metering.NewJSONSizer(logger,
-			metering.WithExcludePattern(metering.ExcludeSigNozInternalAttrPrefix),
-		),
-		ResourceSizer: metering.NewJSONSizer(logger,
 			metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs),
+			metering.WithExcludePattern(metering.ExcludeSigNozInternalAttrPrefix),
 		),
 	}
 }
@@ -37,7 +34,7 @@ func (meter *logs) Size(ld plog.Logs) int {
 
 func (meter *logs) SizePerResource(rld plog.ResourceLogs) int {
 	total := 0
-	resourceAttributesSize := meter.ResourceSizer.SizeOfMapStringAny(rld.Resource().Attributes().AsRaw())
+	resourceAttributesSize := meter.Sizer.SizeOfMapStringAny(rld.Resource().Attributes().AsRaw())
 
 	for j := 0; j < rld.ScopeLogs().Len(); j++ {
 		scopeLogs := rld.ScopeLogs().At(j)

@@ -17,14 +17,12 @@ import (
 )
 
 type jsonSizer struct {
-	Logger                *zap.Logger
-	ExcludePatterns       []*regexp.Regexp
-	NumberExcludePatterns []*regexp.Regexp
+	Logger          *zap.Logger
+	ExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOptions struct {
-	ExcludePatterns       []*regexp.Regexp
-	NumberExcludePatterns []*regexp.Regexp
+	ExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOption func(*jsonSizerOptions)
@@ -36,25 +34,16 @@ func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
 	}
 }
 
-// WithNumberExcludePattern drops number keys matching pattern in SizeOfFlatPcommonMapInNumberStringBool; may be given more than once.
-func WithNumberExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
-	return func(opts *jsonSizerOptions) {
-		opts.NumberExcludePatterns = append(opts.NumberExcludePatterns, pattern)
-	}
-}
-
 func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
 	opts := &jsonSizerOptions{}
 	for _, opt := range options {
 		opt(opts)
 	}
 	return &jsonSizer{
-		Logger:                logger,
-		ExcludePatterns:       opts.ExcludePatterns,
-		NumberExcludePatterns: opts.NumberExcludePatterns,
+		Logger:          logger,
+		ExcludePatterns: opts.ExcludePatterns,
 	}
 }
-
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
 	output := map[string]any{}
 
@@ -118,23 +107,24 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 		}
 		switch v.Type() {
 		case pcommon.ValueTypeDouble:
-			if utils.IsValidFloat(v.Double()) && !sizer.numberExcluded(k) {
+			if utils.IsValidFloat(v.Double()) {
 				n[k] = v.Double()
 			}
 		case pcommon.ValueTypeInt:
-			if !sizer.numberExcluded(k) {
-				n[k] = float64(v.Int())
-			}
+			n[k] = float64(v.Int())
 		case pcommon.ValueTypeBool:
 			b[k] = v.Bool()
 		case pcommon.ValueTypeMap:
 			flattened := flatten.FlattenJSON(v.Map().AsRaw(), k)
 			for kf, vf := range flattened {
+				if sizer.excluded(kf) {
+					continue
+				}
 				switch tvf := vf.(type) {
 				case string:
 					s[kf] = tvf
 				case float64:
-					if utils.IsValidFloat(tvf) && !sizer.numberExcluded(kf) {
+					if utils.IsValidFloat(tvf) {
 						n[kf] = tvf
 					}
 				case bool:
@@ -253,15 +243,7 @@ func (size *jsonSizer) TotalSizeIfKeyExistsAndValueIsMapOrSlice(key int, value i
 }
 
 func (sizer *jsonSizer) excluded(key string) bool {
-	return matchesAny(sizer.ExcludePatterns, key)
-}
-
-func (sizer *jsonSizer) numberExcluded(key string) bool {
-	return matchesAny(sizer.NumberExcludePatterns, key)
-}
-
-func matchesAny(patterns []*regexp.Regexp, key string) bool {
-	for _, pattern := range patterns {
+	for _, pattern := range sizer.ExcludePatterns {
 		if pattern.MatchString(key) {
 			return true
 		}
