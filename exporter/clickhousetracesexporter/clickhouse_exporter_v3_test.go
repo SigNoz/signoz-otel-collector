@@ -1047,16 +1047,16 @@ func Test_goccyErrorsOnNonFiniteFloats(t *testing.T) {
 	}
 }
 
-func Test_billableAttributes(t *testing.T) {
+func Test_billableNumberAttributes(t *testing.T) {
 	testCases := []struct {
 		name  string
 		attrs map[string]float64
 		want  map[string]float64
 	}{
 		{
-			name:  "NoExcludedAttrs_ReturnedUnchanged",
-			attrs: map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200, "signoz.other": 1},
-			want:  map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200, "signoz.other": 1},
+			name:  "NoPricingAttrs_ReturnedUnchanged",
+			attrs: map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200},
+			want:  map[string]float64{"http.status_code": 200, "gen_ai.usage.input_tokens": 1200},
 		},
 		{
 			name: "PricingAttrs_Dropped",
@@ -1071,19 +1071,14 @@ func Test_billableAttributes(t *testing.T) {
 			want: map[string]float64{"gen_ai.usage.output_tokens": 340},
 		},
 		{
-			name:  "WorkspaceAttrs_Dropped",
-			attrs: map[string]float64{"signoz.workspace.key.id": 1, "http.status_code": 200},
-			want:  map[string]float64{"http.status_code": 200},
-		},
-		{
-			name:  "OnlyExcludedAttrs_Empty",
+			name:  "OnlyPricingAttrs_Empty",
 			attrs: map[string]float64{"signoz.gen_ai.usage.tokens.cost": 0.25},
 			want:  map[string]float64{},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, billableAttributes(testCase.attrs))
+			assert.Equal(t, testCase.want, billableNumberAttributes(testCase.attrs))
 		})
 	}
 }

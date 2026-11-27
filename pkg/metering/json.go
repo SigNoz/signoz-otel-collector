@@ -26,10 +26,10 @@ type jsonSizerOptions struct {
 
 type jsonSizerOption func(*jsonSizerOptions)
 
-// WithExcludePattern drops keys matching any of patterns from every sized map; may be given more than once.
-func WithExcludePattern(patterns ...*regexp.Regexp) jsonSizerOption {
+// WithExcludePattern drops keys matching pattern from every sized map; may be given more than once.
+func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
 	return func(opts *jsonSizerOptions) {
-		opts.ExcludePatterns = append(opts.ExcludePatterns, patterns...)
+		opts.ExcludePatterns = append(opts.ExcludePatterns, pattern)
 	}
 }
 
@@ -116,9 +116,6 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 		case pcommon.ValueTypeMap:
 			flattened := flatten.FlattenJSON(v.Map().AsRaw(), k)
 			for kf, vf := range flattened {
-				if sizer.excluded(kf) {
-					continue
-				}
 				switch tvf := vf.(type) {
 				case string:
 					s[kf] = tvf
