@@ -89,15 +89,15 @@ func flattenJSONToStringMap(data map[string]any) map[string]string {
 	return res
 }
 
-func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings) (*metadataExporter, error) {
-	opts, err := clickhouse.ParseDSN(cfg.DSN)
+func openClickHouseConn(dsn string) (driver.Conn, error) {
+	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := clickhouse.Open(opts)
-	if err != nil {
-		return nil, err
-	}
+	return clickhouse.Open(opts)
+}
+
+func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings, conn driver.Conn) (*metadataExporter, error) {
 
 	set.Logger.Info("cache provider", zap.String("provider", string(cfg.Cache.Provider)))
 	var keyCache kash.KeyCache
@@ -573,10 +573,17 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 	exceeds, err := e.keyCache.CardinalityLimitExceededMulti(ctx, resourceFps, ds)
 	if err != nil {
 		e.set.Logger.Debug("failed to check cardinality limit exceeded", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		return 0, err
 	}
 	for i, exceeds := range exceeds {
 		exceedsCardinality[resourceFps[i]] = exceeds
 	}
+
+	type pendingResourceAttrs struct {
+		resourceFp uint64
+		attrFps    []uint64
+	}
+	pendingAttrs := make([]pendingResourceAttrs, 0, len(recordGroups))
 
 	// For each resource, check which attrFps exist
 	for resourceFp, attrFps := range recordGroups {
@@ -590,7 +597,7 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		existence, err := e.keyCache.AttrsExistForResource(ctx, resourceFp, attrFps, ds)
 		if err != nil {
 			e.set.Logger.Debug("failed to check attrs existence", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-			continue
+			return 0, err
 		}
 		existsCheckDuration += time.Since(existenceStart)
 
@@ -608,37 +615,34 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		}
 
 		for _, nr := range newRecords {
-			// TODO: handle error
-			_ = stmt.Append(
+			if err := stmt.Append(
 				nr.roundedSixHrsUnixMilli,
 				ds,
 				nr.resourceFingerprint,
 				nr.fprint,
 				flattenJSONToStringMap(nr.rAttrs),
 				flattenJSONToStringMap(nr.attrs),
-			)
+			); err != nil {
+				return 0, err
+			}
 		}
 
 		// We'll accumulate how many new records we wrote
 		totalWrites += len(newRecords)
 
-		// Add these new attrFps to the cache
 		if len(newAttrFps) > 0 {
-			addAttrsStart := time.Now()
-			err := e.keyCache.AddAttrsToResource(ctx, resourceFp, newAttrFps, ds)
-			if err != nil {
-				e.set.Logger.Debug("failed to add to keyCache", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-			}
-			addAttrsDuration += time.Since(addAttrsStart)
+			pendingAttrs = append(pendingAttrs, pendingResourceAttrs{
+				resourceFp: resourceFp,
+				attrFps:    newAttrFps,
+			})
 		}
 	}
 
 	e.set.Logger.Debug("existsCheckDuration", zap.Int64("duration", existsCheckDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
-	e.set.Logger.Debug("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	stmtStart := time.Now()
 	if err := stmt.Send(); err != nil {
-		return totalWrites, err
+		return 0, err
 	}
 	stmtDuration := time.Since(stmtStart)
 	e.set.Logger.Debug("stmtDuration",
@@ -646,6 +650,15 @@ func (e *metadataExporter) writeToStatementBatch(ctx context.Context, stmt drive
 		zap.String("datasource", ds.String()),
 		zap.Int("records", len(records)),
 	)
+
+	addAttrsStart := time.Now()
+	for _, pending := range pendingAttrs {
+		if err := e.keyCache.AddAttrsToResource(ctx, pending.resourceFp, pending.attrFps, ds); err != nil {
+			e.set.Logger.Debug("failed to add to keyCache", zap.Error(err), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
+		}
+	}
+	addAttrsDuration = time.Since(addAttrsStart)
+	e.set.Logger.Debug("addAttrsDuration", zap.Int64("duration", addAttrsDuration.Milliseconds()), zap.String("datasource", ds.String()), zap.Int("records", len(records)))
 
 	return totalWrites, nil
 }
@@ -690,7 +703,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
-		return nil
+		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
@@ -749,6 +762,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalTraces)
 	if err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
+		return err
 	}
 	skipped := totalSpans - written
 	e.set.Logger.Debug("pushed traces attributes", zap.Int("total_spans", totalSpans), zap.Int("skipped_spans", skipped))
@@ -762,7 +776,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
-		return nil
+		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
@@ -847,6 +861,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	written, err := e.writeToStatementBatch(ctx, stmt, records, pipeline.SignalMetrics)
 	if err != nil {
 		e.set.Logger.Error("failed to send stmt", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
+		return err
 	}
 	skipped := totalDps - written
 	e.set.Logger.Debug("pushed metrics attributes", zap.Int("total_dps", totalDps), zap.Int("skipped_dps", skipped))
@@ -863,6 +878,7 @@ func (e *metadataExporter) PushLogs(ctx context.Context, ld plog.Logs) error {
 	}
 	if err := g.Wait(); err != nil {
 		e.set.Logger.Error("logs processor error", zap.Error(err))
+		return err
 	}
 	return nil
 }
