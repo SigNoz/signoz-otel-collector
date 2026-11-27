@@ -12,7 +12,7 @@ func (in *recordsInput) addTraces(td ptrace.Traces) {
 		rs := rss.At(i)
 		res := len(in.resources)
 		lo := len(in.pairs)
-		in.pairs = appendAttrPairs(in.pairs, contextResource, rs.Resource().Attributes(), "")
+		in.pairs = appendAttrPairs(in.pairs, contextResource, rs.Resource().Attributes(), "", false)
 		in.resources = append(in.resources, pairRange{lo: lo, hi: len(in.pairs)})
 		sss := rs.ScopeSpans()
 		for j := 0; j < sss.Len(); j++ {
@@ -28,18 +28,18 @@ func (in *recordsInput) addTraces(td ptrace.Traces) {
 				in.pairs = append(in.pairs,
 					stringPair(contextSpan, "name", span.Name()),
 					stringPair(contextSpan, "kind_string", span.Kind().String()),
-					numberPair(contextSpan, "kind", float64(span.Kind())),
+					intPair(contextSpan, "kind", int64(span.Kind())),
 					stringPair(contextSpan, "status_code_string", span.Status().Code().String()),
-					numberPair(contextSpan, "status_code", float64(span.Status().Code())),
+					intPair(contextSpan, "status_code", int64(span.Status().Code())),
 				)
 				in.pairs = appendCalculatedPairs(in.pairs, span)
-				in.pairs = appendAttrPairs(in.pairs, contextAttribute, span.Attributes(), "")
+				in.pairs = appendAttrPairs(in.pairs, contextAttribute, span.Attributes(), "", true)
 				mid := len(in.pairs)
 				events := span.Events()
 				for e := 0; e < events.Len(); e++ {
 					ev := events.At(e)
 					in.pairs = append(in.pairs, stringPair(contextEvent, "name", ev.Name()))
-					in.pairs = appendAttrPairs(in.pairs, contextEvent, ev.Attributes(), "")
+					in.pairs = appendAttrPairs(in.pairs, contextEvent, ev.Attributes(), "", false)
 				}
 				in.records = append(in.records, preparedRecord{
 					resource: res,
@@ -61,7 +61,7 @@ func appendSpanScopePairs(dst []pair, ss ptrace.ScopeSpans) []pair {
 	if version := ss.Scope().Version(); version != "" {
 		dst = append(dst, stringPair(contextScope, "scope.version", version))
 	}
-	return appendAttrPairs(dst, contextScope, ss.Scope().Attributes(), "")
+	return appendAttrPairs(dst, contextScope, ss.Scope().Attributes(), "", false)
 }
 
 // appendCalculatedPairs adds the span fields that the traces exporter derives

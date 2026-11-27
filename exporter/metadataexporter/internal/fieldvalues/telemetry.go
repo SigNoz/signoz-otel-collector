@@ -24,6 +24,12 @@ type telemetry struct {
 	rowsSkippedShared   metric.Int64Counter
 	sharedCacheErrors   metric.Int64Counter
 	resourcesUntracked  metric.Int64Counter
+	keysWritten         metric.Int64Counter
+	keyInsertErrors     metric.Int64Counter
+	keysNotQueued       metric.Int64Counter
+	// keysKnown and keysPending are read by the gauge.
+	keysKnown   atomic.Int64
+	keysPending atomic.Int64
 
 	// cacheUsed, cacheCapacity, trackerUsed and trackerCapacity are read by
 	// the gauges.
@@ -52,6 +58,9 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 		{&t.rowsSkippedShared, "signoz_metadata_exporter_field_values_rows_skipped_shared", "Rows not written because the shared cache shows that another collector wrote them in the window."},
 		{&t.classifierErrors, "signoz_metadata_exporter_field_values_classifier_errors", "Failed reads or writes of the fields over the limit. The writer keeps the classification of the last refresh."},
 		{&t.sharedCacheErrors, "signoz_metadata_exporter_field_values_shared_cache_errors", "Failed reads or writes of the shared cache. The rows are written anyway."},
+		{&t.keysWritten, "signoz_metadata_exporter_field_keys_written", "Rows written to field_keys_v2. Each key is written once a day."},
+		{&t.keyInsertErrors, "signoz_metadata_exporter_field_keys_insert_errors", "Failed inserts of keys. The keys wait and are inserted again."},
+		{&t.keysNotQueued, "signoz_metadata_exporter_field_keys_not_queued", "Keys seen while the list of waiting keys was full. Such a key has no row until its next record."},
 		{&t.resourcesUntracked, "signoz_metadata_exporter_field_values_resources_untracked", "Resources of a batch without a state, because the memory of the tracker is full. Their records write into the overflow set."},
 	}
 	for _, c := range counters {
@@ -100,7 +109,17 @@ func newTelemetry(set component.TelemetrySettings, signal, source string) (*tele
 			return nil, err
 		}
 	}
-	_, err := meter.Int64ObservableGauge("signoz_metadata_exporter_field_values_classification_time",
+	_, err := meter.Int64ObservableGauge("signoz_metadata_exporter_field_keys",
+		metric.WithDescription("Keys in memory, by state: written (a row of today) and waiting (no insert that passed yet)."),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(t.keysKnown.Load(), metric.WithAttributes(t.signal, t.source, attribute.String("state", "written")))
+			o.Observe(t.keysPending.Load(), metric.WithAttributes(t.signal, t.source, attribute.String("state", "waiting")))
+			return nil
+		}))
+	if err != nil {
+		return nil, err
+	}
+	_, err = meter.Int64ObservableGauge("signoz_metadata_exporter_field_values_classification_time",
 		metric.WithDescription("Unix time of the last read of the fields over the limit that passed, or 0 when none passed since the start. Without a read, the fields over the limit start each day inside the sets."),
 		metric.WithUnit("s"),
 		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {

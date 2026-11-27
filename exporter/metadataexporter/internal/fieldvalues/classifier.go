@@ -54,10 +54,10 @@ FROM signoz_metadata.distributed_field_days_over_limit
 WHERE signal = ? AND source = ? AND day >= ?
 GROUP BY metric_name, field_context, field_name`
 
-// rowsOfValues leaves out the rows that are not values of a field: the link
-// rows of metrics, and the key rows of the resource fields of a metric.
+// rowsOfValues leaves out the link rows of metrics, which are not values of
+// a field.
 const rowsOfValues = `signal = ? AND source = ? AND toDate(last_seen, 'UTC') >= ?
-      AND field_name != '` + linkField + `' AND NOT (metric_name != '' AND field_context = 'resource')`
+      AND field_name != '` + linkField + `'`
 
 // The inner statement has the shape of the projection p_field_values, one
 // row for each value, so that ClickHouse can read the projection in place of

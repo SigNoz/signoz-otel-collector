@@ -35,8 +35,32 @@ var (
 )
 
 type fakeWriter struct {
-	rows []row
-	fail int
+	rows     []row
+	fail     int
+	keys     []fieldKey
+	failKeys int
+}
+
+func (w *fakeWriter) writeKeys(_ context.Context, keys []fieldKey, _ time.Time) error {
+	if w.failKeys > 0 {
+		w.failKeys--
+		return errors.New("insert failed")
+	}
+	w.keys = append(w.keys, keys...)
+	return nil
+}
+
+// takeKeys flushes the keys of e and returns the keys written since the last
+// call, as sorted lines of metric, context, name and data type.
+func (w *fakeWriter) takeKeys(e *Writer) []string {
+	e.flushKeys()
+	out := make([]string, 0, len(w.keys))
+	for _, k := range w.keys {
+		out = append(out, strings.TrimSpace(k.metric+" "+k.ctx.String()+" "+k.name+" "+k.dataType))
+	}
+	w.keys = nil
+	sort.Strings(out)
+	return out
 }
 
 func (w *fakeWriter) write(_ context.Context, rows []row) error {

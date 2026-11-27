@@ -11,8 +11,12 @@ import (
 
 const insertQuery = "INSERT INTO signoz_metadata.distributed_field_values_sets (signal, source, metric_name, field_context, field_name, field_data_type, string_value, number_value, resource_hash, attrs_hash, in_hash, first_seen, last_seen, inserted_at)"
 
+const keysInsertQuery = "INSERT INTO signoz_metadata.distributed_field_keys_v2 (signal, source, metric_name, field_context, field_name, field_data_type, last_seen)"
+
 type rowWriter interface {
 	write(ctx context.Context, rows []row) error
+	// writeKeys returns only after the server has the keys, or with an error.
+	writeKeys(ctx context.Context, keys []fieldKey, seen time.Time) error
 }
 
 type clickhouseWriter struct {
@@ -81,6 +85,29 @@ func (w *clickhouseWriter) write(ctx context.Context, rows []row) error {
 			int64(r.seenMillis/1000),
 			now,
 		); err != nil {
+			return err
+		}
+	}
+	return stmt.Send()
+}
+
+// writeKeys inserts the keys and waits for the flush of the async insert, so
+// that a nil error means the keys are in the table of a shard.
+func (w *clickhouseWriter) writeKeys(ctx context.Context, keys []fieldKey, seen time.Time) error {
+	settings := clickhouse.Settings{"insert_distributed_sync": 1}
+	for name, value := range w.insertSettings() {
+		settings[name] = value
+	}
+	if w.asyncTimeout > 0 {
+		settings["wait_for_async_insert"] = 1
+	}
+	stmt, err := w.conn.PrepareBatch(clickhouse.Context(ctx, clickhouse.WithSettings(settings)), keysInsertQuery)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+	for _, k := range keys {
+		if err := stmt.Append(w.signal, w.source, k.metric, k.ctx.String(), k.name, k.dataType, seen); err != nil {
 			return err
 		}
 	}

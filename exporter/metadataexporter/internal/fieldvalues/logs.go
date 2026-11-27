@@ -12,7 +12,7 @@ func (in *recordsInput) addLogs(ld plog.Logs, body *BodyJSONLimits) {
 		rl := rls.At(i)
 		res := len(in.resources)
 		lo := len(in.pairs)
-		in.pairs = appendAttrPairs(in.pairs, contextResource, rl.Resource().Attributes(), "")
+		in.pairs = appendAttrPairs(in.pairs, contextResource, rl.Resource().Attributes(), "", false)
 		in.resources = append(in.resources, pairRange{lo: lo, hi: len(in.pairs)})
 		sls := rl.ScopeLogs()
 		for j := 0; j < sls.Len(); j++ {
@@ -29,9 +29,9 @@ func (in *recordsInput) addLogs(ld plog.Logs, body *BodyJSONLimits) {
 					in.pairs = append(in.pairs, stringPair(contextLog, "severity_text", lr.SeverityText()))
 				}
 				if lr.SeverityNumber() != plog.SeverityNumberUnspecified {
-					in.pairs = append(in.pairs, numberPair(contextLog, "severity_number", float64(lr.SeverityNumber())))
+					in.pairs = append(in.pairs, intPair(contextLog, "severity_number", int64(lr.SeverityNumber())))
 				}
-				in.pairs = appendAttrPairs(in.pairs, contextAttribute, lr.Attributes(), constants.OriginalBodyAttributeKey)
+				in.pairs = appendAttrPairs(in.pairs, contextAttribute, lr.Attributes(), constants.OriginalBodyAttributeKey, false)
 				if body != nil {
 					in.pairs = bodyPairs(in.pairs, lr.Body(), *body)
 				}
@@ -55,5 +55,5 @@ func appendLogScopePairs(dst []pair, sl plog.ScopeLogs) []pair {
 	if version := sl.Scope().Version(); version != "" {
 		dst = append(dst, stringPair(contextScope, "scope_version", version))
 	}
-	return appendAttrPairs(dst, contextScope, sl.Scope().Attributes(), "")
+	return appendAttrPairs(dst, contextScope, sl.Scope().Attributes(), "", false)
 }

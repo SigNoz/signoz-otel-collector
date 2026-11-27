@@ -1,8 +1,15 @@
 # Field values writer
 
 The field values writer is part of the metadata exporter. It writes the field
-values store, from which the query service reads plain values and related
-values:
+keys and the field values store, from which the query service reads the keys
+of a signal, plain values and related values:
+
+- `signoz_metadata.field_keys_v2`: one row for each field key (signal,
+  source, metric name, field context, field name, field data type). The key
+  list must be complete, so the keys do not come from the rows of the values:
+  see "Keys" below. The table has no partition: a key is written again each
+  day, and ReplacingMergeTree makes one row for each key only inside a
+  partition. A key is deleted 90 days after its last record.
 
 - `signoz_metadata.field_values_sets`: one row for each pair of each set (a
   set is the `field = value` pairs of a record, apart from its resource; for
@@ -124,10 +131,53 @@ exporters:
     Such series are not cached, so a label with a value per point cannot fill
     the cache. The rows of a resource are written once, with no metric name. A
     link row (no metric name, the field `__name__`, the metric name as value)
-    ties each metric to each of its resources, and
-    a key row (the metric name, a resource field, no value) gives each metric
-    its resource keys. Each metric label gets at least one row per day, so the
-    keys of a metric are complete.
+    ties each metric to each of its resources. A label that leaves the sets
+    with no sample has no row here; it is a key of its metric in
+    `field_keys_v2`.
+- **Keys.** The key of a pair is recorded before any rule above, so an empty
+  value, a long value, a field with no place, a full sample, a full tracker
+  and a full key cache cannot leave a key out. NaN and the infinities have a
+  key and no value.
+  - A key has the name under which the exporter of the signal stores the
+    field. The logs exporter stores a map attribute as one JSON string, so
+    its key is the name of the attribute. The traces exporter stores a map
+    attribute of a span as one attribute for each leaf, so the keys have
+    dotted names.
+  - Data types: `string`, `bool`, `int64` or `float64` for the attributes of
+    a log record or a span, and `string` for resource, scope and event
+    fields, which the exporters store as strings. The exporters store `int64`
+    and `float64` in one number column, and their own key tables have
+    `float64` for both.
+  - The fields that the writer makes from columns (`severity_text`,
+    `kind_string`, `scope.name` and so on) are keys too, with the context
+    `log`, `span` or `scope`.
+  - The labels and scope fields of a metric are keys with the metric name.
+    They are recorded when a series is written, which is once a day. The
+    resource fields of a metric are recorded when the link of the metric to a
+    resource is written. The resource fields are also keys with no metric
+    name.
+  - `source` separates the spaces of a signal: `audit` for audit logs and
+    `meter` for meter metrics.
+  - Keys that have no row of today wait in memory. A loop inserts them each
+    15 seconds, async and **with** wait, and for the shards in the same call.
+    A key counts as written only when that insert passes. After a failed
+    insert, the keys wait for the next flush. The loop is not on the path of a
+    push.
+  - Each key is written again once per UTC day, which moves its `last_seen`.
+  - The writer remembers about one million keys with a row of today. Past
+    that, a key is written again in each flush in which it is seen, and no
+    key is left out.
+  - About four million keys can wait for an insert. A flush starts early when
+    many keys wait, so only inserts that fail for a long time fill the list.
+    A key that finds the list full is counted
+    (`signoz_metadata_exporter_field_keys_not_queued`) and waits for its next
+    record. For a label of a metric, that is the next day.
+  - The last flush at the stop of the collector has 5 seconds.
+  - Not the same as the key tables of the exporters: the logs exporter leaves
+    out keys that look random (`keycheck.IsRandomKey`), and the traces
+    exporter leaves out a span attribute that is NaN. Both are keys here.
+  - The keys of JSON bodies are not written here. They stay in
+    `signoz_metadata.field_keys`, which has their array types.
 - **Inserts.** One insert per push, async by default: the server joins the
   inserts of `async_insert_busy_timeout` into one part per table and shard,
   and the shards join the inserts that the distributed table sends them. The
@@ -162,8 +212,12 @@ exporters:
   projection does not have. With a metric name, ClickHouse can read the rows
   of the metric in place of the projection when they are fewer, so such a
   read must not set `force_optimize_projection`.
-- The rows of the field `__name__` are links, not values: a read of values or
-  of keys leaves them out.
+- The rows of the field `__name__` are links, not values: a read of values
+  leaves them out.
+- Keys: `GROUP BY` the key columns of `field_keys_v2`. A read that checks if
+  a key is there must not filter on `last_seen`. The keys of one metric are
+  the rows with its metric name. The values table has `number` where a key
+  has `int64` or `float64`.
 - A read must start at least one day before the time it asks for. In the
   first `pre_write_window` of a UTC day, most sets of the day before have no
   row of the new day yet, and a set that stops in that time gets none.
@@ -216,6 +270,10 @@ are written anyway.
 | `signoz_metadata_exporter_field_values_left_out` | pairs not written, by `reason`: `value_length`, `field_places`, `sample_budget` (every pair of a field after its sample is full), `cache_full`, `tracker_full` |
 | `signoz_metadata_exporter_field_values_resources_overflowed` | resources that started to use their overflow set in the window |
 | `signoz_metadata_exporter_field_values_resources_untracked` | resources of a batch without a state, because the tracker memory is full |
+| `signoz_metadata_exporter_field_keys_written` | rows written to `field_keys_v2` |
+| `signoz_metadata_exporter_field_keys_insert_errors` | failed inserts of keys; the keys wait and are inserted again |
+| `signoz_metadata_exporter_field_keys_not_queued` | keys seen while the list of waiting keys was full |
+| `signoz_metadata_exporter_field_keys` | keys in memory, by `state`: `written` (a row of today), `waiting` |
 | `signoz_metadata_exporter_field_values_insert_errors` | failed inserts. A failed flush of an async insert is not counted: it shows only as `FlushError` in `system.asynchronous_insert_log` |
 | `signoz_metadata_exporter_field_values_classifier_errors` | failed reads or writes of the fields over the limit |
 | `signoz_metadata_exporter_field_values_classification_time` | Unix time of the last read of the fields over the limit that passed, or 0 |

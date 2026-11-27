@@ -6,7 +6,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
-// fieldContext values match the Enum8 of the field_context column.
+// fieldContext is the part of a record that holds a field.
 type fieldContext uint8
 
 const (
@@ -48,7 +48,7 @@ func parseFieldContext(s string) (fieldContext, bool) {
 	return 0, false
 }
 
-// dataType values match the Enum8 of the field_data_type column.
+// dataType is the data type of a value.
 type dataType uint8
 
 const (
@@ -80,8 +80,11 @@ func fieldIDOf(ctx fieldContext, name string) fieldID {
 // "true" or "false". The hashes are computed once, when the pair is made:
 // field identifies the field, vh the value, and h the pair.
 type pair struct {
-	ctx   fieldContext
-	typ   dataType
+	ctx fieldContext
+	typ dataType
+	// isInt marks a number that the record has as an integer. Only the key
+	// of the pair uses it.
+	isInt bool
 	name  string
 	str   string
 	num   float64
@@ -114,6 +117,12 @@ func stringPair(ctx fieldContext, name, value string) pair {
 
 func numberPair(ctx fieldContext, name string, value float64) pair {
 	return newPair(ctx, name, typeNumber, "", value)
+}
+
+func intPair(ctx fieldContext, name string, value int64) pair {
+	p := newPair(ctx, name, typeNumber, "", float64(value))
+	p.isInt = true
+	return p
 }
 
 func boolPair(ctx fieldContext, name string, value bool) pair {
@@ -163,7 +172,7 @@ func pairKey(resourceHash, attrsHash uint64, p *pair) uint64 {
 	return mix64(mix64(resourceHash*0x9e3779b97f4a7c15^attrsHash^'P') ^ p.h)
 }
 
-// nameHash hashes a metric name for resourceKey, linkKey and labelKey. Logs,
+// nameHash hashes a metric name for resourceKey, linkKey and the keys. Logs,
 // traces and the resource rows of metrics use the hash of the empty name.
 func nameHash(metricName string) uint64 {
 	return xxhash.Sum64String(metricName)
@@ -188,10 +197,6 @@ func limitField(metricNameHash uint64, f fieldID) fieldID {
 		return f
 	}
 	return fieldID(mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(f) ^ 'V'))
-}
-
-func labelKey(metricNameHash uint64, f fieldID) uint64 {
-	return mix64(metricNameHash*0x9e3779b97f4a7c15 ^ uint64(f) ^ 'K')
 }
 
 // mix64 is the splitmix64 finalizer. It spreads the bits of its input, so

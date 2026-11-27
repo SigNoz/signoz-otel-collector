@@ -253,14 +253,18 @@ func TestIntegrationMetricKeysAndSource(t *testing.T) {
 	e := newIntegrationExporter(t, conn, cfg, pipeline.SignalMetrics)
 	setNow(e, testDay)
 	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
+	e.flushKeys()
 	flush(t, conn)
+	if os.Getenv(replicatedEnv) != "" {
+		require.NoError(t, conn.Exec(context.Background(), "SYSTEM SYNC REPLICA ON CLUSTER "+integrationCluster()+" signoz_metadata.field_keys_v2"))
+	}
 
 	keys := queryStrings(t, conn, `SELECT concat(field_context, ':', field_name)
-FROM signoz_metadata.distributed_field_values_sets
+FROM signoz_metadata.distributed_field_keys_v2
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = 'http_requests'
 GROUP BY field_context, field_name`)
 	assert.Equal(t, []string{"attribute:code", "attribute:method", "resource:k8s.pod.name", "resource:service.name", "scope:library.lang"}, keys,
-		"the rows of a metric have its keys, its resource keys from the key rows")
+		"the keys of a metric")
 
 	podValues := queryStrings(t, conn, `SELECT string_value FROM signoz_metadata.distributed_field_values_sets AS v
 WHERE signal = 'metrics' AND source = 'meter' AND metric_name = '' AND field_name = 'k8s.pod.name' AND field_context = 'resource'
@@ -540,4 +544,66 @@ func TestIntegrationClassifierFindsMetricLabelsOverTheLimit(t *testing.T) {
 	assert.False(t, class.isOver(limitField(nameHash("http_errors"), pid)), "the same label of a metric with few values")
 	assert.False(t, class.isOver(limitField(nameHash("http_requests"), fieldIDOf(contextAttribute, "method"))))
 	assert.Equal(t, []string{"metrics http_requests attribute pid " + noon.Format(time.DateOnly)}, overLimitRows(t, conn))
+}
+
+// The keys are in the table when the flush returns, with no flush of a queue
+// by the test: the writer marks a key as written only then. A key has one row
+// however many days wrote it.
+func TestIntegrationKeysAreInTheTableWhenTheFlushReturns(t *testing.T) {
+	conn := integrationConn(t)
+	ctx := context.Background()
+	logs := newIntegrationExporter(t, conn, testConfig(), pipeline.SignalLogs)
+	meterConfig := testConfig()
+	meterConfig.Source = "meter"
+	meter := newIntegrationExporter(t, conn, meterConfig, pipeline.SignalMetrics)
+	read := func() []string {
+		if os.Getenv(replicatedEnv) != "" {
+			require.NoError(t, conn.Exec(ctx, "SYSTEM SYNC REPLICA ON CLUSTER "+integrationCluster()+" signoz_metadata.field_keys_v2"))
+		}
+		return queryStrings(t, conn, `SELECT concat(signal, ' ', source, ' ', metric_name, ' ', field_context, ' ', field_name, ' ', field_data_type, ' ', toString(toDate(max(last_seen), 'UTC')), ' ', toString(count()))
+FROM signoz_metadata.distributed_field_keys_v2
+GROUP BY signal, source, metric_name, field_context, field_name, field_data_type`)
+	}
+	want := func(date, rows string) []string {
+		keys := []string{
+			"logs   attribute http.method string",
+			"logs   attribute http.status int64",
+			"logs   resource service.name string",
+			"metrics meter  resource k8s.pod.name string",
+			"metrics meter  resource service.name string",
+			"metrics meter http_requests attribute code string",
+			"metrics meter http_requests attribute method string",
+			"metrics meter http_requests resource k8s.pod.name string",
+			"metrics meter http_requests resource service.name string",
+			"metrics meter http_requests scope library.lang string",
+			"metrics meter latency.count attribute route string",
+			"metrics meter latency.count resource k8s.pod.name string",
+			"metrics meter latency.count resource service.name string",
+			"metrics meter latency.count scope library.lang string",
+		}
+		for i := range keys {
+			keys[i] += " " + date + " " + rows
+		}
+		return keys
+	}
+	push := func(at time.Time) {
+		setNow(logs, at)
+		setNow(meter, at)
+		require.NoError(t, logs.WriteLogs(ctx, logsAt(at, map[string]any{"service.name": "checkout"}, map[string]any{"http.method": "GET", "http.status": int64(200)})))
+		md := testMetrics()
+		setTimestamps(md, at)
+		require.NoError(t, meter.WriteMetrics(ctx, md))
+		logs.flushKeys()
+		meter.flushKeys()
+	}
+
+	push(testDay)
+	assert.Equal(t, want(testDate, "1"), read())
+
+	push(testDay.Add(time.Hour))
+	assert.Equal(t, want(testDate, "1"), read(), "a key is written once a day")
+
+	push(testDay.Add(24 * time.Hour))
+	require.NoError(t, conn.Exec(ctx, "OPTIMIZE TABLE signoz_metadata.field_keys_v2 ON CLUSTER "+integrationCluster()+" FINAL"))
+	assert.Equal(t, want(testNextDate, "1"), read(), "the row of the next day replaces the row of the day before")
 }

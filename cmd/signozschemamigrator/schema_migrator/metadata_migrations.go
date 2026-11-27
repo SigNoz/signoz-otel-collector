@@ -228,8 +228,42 @@ GROUP BY signal, source, field_name, field_context, field_data_type, metric_name
 					ShardingKey: "rand()",
 				},
 			},
+			// No partition: a key is written again each day, and
+			// ReplacingMergeTree makes one row for each key only inside a
+			// partition.
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_v2",
+				Columns:  fieldKeysColumns,
+				Engine: ReplacingMergeTree{
+					MergeTree: MergeTree{
+						OrderBy: "(signal, source, metric_name, field_context, field_name, field_data_type)",
+						TTL:     "last_seen + toIntervalDay(90)",
+					},
+					Version: "last_seen",
+				},
+			},
+			// The sharding key puts all rows of a key on one shard.
+			CreateTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_v2",
+				Columns:  fieldKeysColumns,
+				Engine: Distributed{
+					Database:    "signoz_metadata",
+					Table:       "field_keys_v2",
+					ShardingKey: "cityHash64(signal, source, metric_name, field_name)",
+				},
+			},
 		},
 		DownItems: []Operation{
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "distributed_field_keys_v2",
+			},
+			DropTableOperation{
+				Database: "signoz_metadata",
+				Table:    "field_keys_v2",
+			},
 			DropTableOperation{
 				Database: "signoz_metadata",
 				Table:    "distributed_field_days_over_limit",
@@ -250,23 +284,13 @@ GROUP BY signal, source, field_name, field_context, field_data_type, metric_name
 	},
 }
 
-var fieldContextColumnType = EnumerationColumnType{
-	Values: []string{"'resource' = 1", "'attribute' = 2", "'scope' = 3", "'span' = 4", "'log' = 5", "'event' = 6", "'body' = 7"},
-	Size:   8,
-}
-
-var fieldDataTypeColumnType = EnumerationColumnType{
-	Values: []string{"'string' = 1", "'number' = 2", "'bool' = 3"},
-	Size:   8,
-}
-
 var fieldValuesSetsColumns = []Column{
 	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_context", Type: fieldContextColumnType},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_data_type", Type: fieldDataTypeColumnType},
+	{Name: "field_data_type", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "string_value", Type: ColumnTypeString},
 	{Name: "number_value", Type: NullableColumnType{ColumnTypeFloat64}},
 	{Name: "resource_hash", Type: ColumnTypeUInt64, Codec: "ZSTD(1)"},
@@ -281,7 +305,17 @@ var fieldDaysOverLimitColumns = []Column{
 	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
-	{Name: "field_context", Type: fieldContextColumnType},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
 	{Name: "day", Type: ColumnTypeDate},
+}
+
+var fieldKeysColumns = []Column{
+	{Name: "signal", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "source", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "metric_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_context", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_name", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "field_data_type", Type: LowCardinalityColumnType{ColumnTypeString}},
+	{Name: "last_seen", Type: DateTimeColumnType{}, Codec: "ZSTD(1)"},
 }

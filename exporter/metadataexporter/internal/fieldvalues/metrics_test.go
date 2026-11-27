@@ -66,11 +66,9 @@ func TestMetricsSetIsTheSeries(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"__name__=http_requests*", "__name__=latency.count*",
-		"http_requests:k8s.pod.name=*", "http_requests:service.name=*",
 		"k8s.pod.name=p1",
-		"latency.count:k8s.pod.name=*", "latency.count:service.name=*",
 		"service.name=checkout",
-	}, resourceRows(rows), "the resource once with no metric, a link row per metric, and a key row per metric and resource field")
+	}, resourceRows(rows), "the resource once with no metric, and a link row per metric")
 
 	require.NoError(t, e.WriteMetrics(context.Background(), testMetrics()))
 	assert.Empty(t, w.take())
@@ -78,9 +76,9 @@ func TestMetricsSetIsTheSeries(t *testing.T) {
 
 func TestMetricsKeysSurviveAFullCache(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
-	// Room for metric a: its series, its label code, the resource and the link
-	// of a. Nothing more fits in the exact part.
-	e.state.cache.limit = [2]int{4, 10}
+	// Room for metric a: its series, the resource and the link of a. Nothing
+	// more fits in the exact part.
+	e.state.cache.limit = [2]int{3, 10}
 
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
@@ -99,17 +97,25 @@ func TestMetricsKeysSurviveAFullCache(t *testing.T) {
 	addSum("b", map[string]any{"code": "500", "region": "us"})
 	require.NoError(t, e.WriteMetrics(context.Background(), md))
 
-	keys := map[string][]string{}
+	series := map[string]bool{}
 	for _, r := range w.take() {
-		keys[r.metricName] = append(keys[r.metricName], r.p.ctx.String()+":"+r.p.name)
+		if r.attrsHash != resourceAttrsHash {
+			series[r.metricName] = true
+		}
 	}
-	assert.ElementsMatch(t, []string{"attribute:code", "resource:service.name"}, keys["a"])
-	assert.ElementsMatch(t, []string{"attribute:code", "attribute:region", "resource:service.name"}, keys["b"],
-		"the series of b do not fit, but each label of b still gets one row, so its keys are complete")
+	assert.Equal(t, map[string]bool{"a": true}, series, "the series of b do not fit")
+	assert.Equal(t, []string{
+		"a attribute code string",
+		"a resource service.name string",
+		"b attribute code string",
+		"b attribute region string",
+		"b resource service.name string",
+		"resource service.name string",
+	}, w.takeKeys(e), "the keys of b are complete")
 }
 
 // A resource of many metrics writes its rows once. Each metric adds one link
-// row, and key rows only for fields it has no row for in the window.
+// row.
 func TestMetricsResourceRowsOnceAcrossMetrics(t *testing.T) {
 	e, w := newTestExporter(t, testConfig(), pipeline.SignalMetrics)
 	ctx := context.Background()
@@ -130,17 +136,14 @@ func TestMetricsResourceRowsOnceAcrossMetrics(t *testing.T) {
 	require.NoError(t, e.WriteMetrics(ctx, pod("p1", "cpu", "memory", "disk")))
 	assert.Equal(t, []string{
 		"__name__=cpu*", "__name__=disk*", "__name__=memory*",
-		"cpu:k8s.namespace.name=*", "cpu:k8s.pod.name=*",
-		"disk:k8s.namespace.name=*", "disk:k8s.pod.name=*",
 		"k8s.namespace.name=shop", "k8s.pod.name=p1",
-		"memory:k8s.namespace.name=*", "memory:k8s.pod.name=*",
 	}, resourceRows(w.take()))
 
 	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
 	assert.Equal(t, []string{
 		"__name__=cpu*", "__name__=memory*",
 		"k8s.namespace.name=shop", "k8s.pod.name=p2",
-	}, resourceRows(w.take()), "a new pod writes its rows and links; the keys of its metrics are known")
+	}, resourceRows(w.take()), "a new pod writes its rows and links")
 
 	require.NoError(t, e.WriteMetrics(ctx, pod("p2", "cpu", "memory")))
 	assert.Empty(t, w.take())
@@ -173,8 +176,8 @@ func TestMetricsLabelOverTheLimitLeavesTheSet(t *testing.T) {
 		"{request_id=r03, route=/cart}",
 		"{request_id=r04*, route=/cart}",
 	}, setList(w.take()), "3 series in full; r04 passes the limit into the set of /cart; r05 on are past the sample budget")
-	assert.Equal(t, 9, e.state.cache.used[classExact],
-		"3 series, 1 coarse set, the resource, its link, its key row, and the keys of route and request_id; the series past the limit are not cached")
+	assert.Equal(t, 6, e.state.cache.used[classExact],
+		"3 series, 1 coarse set, the resource and its link; the series past the limit are not cached")
 
 	require.NoError(t, e.WriteMetrics(context.Background(), md))
 	assert.Empty(t, w.take())
@@ -315,5 +318,9 @@ func TestMetricLabelWithNoStateFollowsTheClassifier(t *testing.T) {
 			inHash[r.metricName] = r.inHash
 		}
 	}
-	assert.Equal(t, map[string]bool{"system.network.io": false, "system.disk.io": true}, inHash)
+	assert.Equal(t, map[string]bool{"system.disk.io": true}, inHash, "the label over the limit has no row")
+	assert.Subset(t, w.takeKeys(e), []string{
+		"system.disk.io attribute device string",
+		"system.network.io attribute device string",
+	}, "and it is a key of both metrics")
 }

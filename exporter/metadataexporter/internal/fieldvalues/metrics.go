@@ -166,7 +166,7 @@ func (in *metricsInput) addPoint(name string, extras map[string]string, attrs pc
 // from the attributes of its fingerprint. Labels that the exporter adds
 // itself, such as __temporality__, are part of the series id but write no
 // rows. The pairs have no hashes: the series id identifies the set, and only
-// labelKey needs the field, for new series.
+// a new series needs them.
 func appendLabelPairs(dst []pair, ctx fieldContext, attrs fingerprint.Attributes) []pair {
 	for _, a := range attrs {
 		if strings.HasPrefix(a.Key, "__") && strings.HasSuffix(a.Key, "__") {
@@ -233,8 +233,8 @@ func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, re
 		} else {
 			b.leaveOut(reasonCacheFull, 1)
 		}
+		b.resourceKeys(s, res, resourcePairs)
 	}
-	b.resourceKeys(s, res, resourcePairs, rh, seen)
 }
 
 // newSeries writes a series that the window does not know. Its labels follow
@@ -243,7 +243,7 @@ func (b *batch) series(s *preparedSeries, labels []pair, res *metricResource, re
 // stay, and the series is not cached: a label with a value per point would
 // fill the cache with series.
 func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64) {
-	in, samples, out := b.in[:0], b.sampled[:0], b.out[:0]
+	in, samples := b.in[:0], b.sampled[:0]
 	for i := range labels {
 		p := &labels[i]
 		if p.field == 0 {
@@ -254,13 +254,9 @@ func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64)
 			in = append(in, *p)
 		case modeSample:
 			samples = append(samples, *p)
-		default:
-			if len(p.str) <= b.limits.MaxValueBytes {
-				out = append(out, *p)
-			}
 		}
 	}
-	b.in, b.sampled, b.out = in, samples, out
+	b.in, b.sampled = in, samples
 	if len(in) == len(labels) {
 		b.seriesSet(s, in, rh, sk, s.id, seen)
 		return
@@ -276,8 +272,6 @@ func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64)
 	for i := range samples {
 		b.emit(0, s.name, &samples[i], rh, ah, false, seen)
 	}
-	b.rememberLabels(s.nameHash, samples)
-	b.keepLabels(s, out, rh, ah, false, seen)
 }
 
 // seriesSet writes the rows of a new set of a metric: the series, or the
@@ -285,67 +279,25 @@ func (b *batch) newSeries(s *preparedSeries, labels []pair, rh, sk, seen uint64)
 func (b *batch) seriesSet(s *preparedSeries, in []pair, rh, k, ah, seen uint64) {
 	if !b.room(classExact) {
 		b.leaveOut(reasonCacheFull, 1)
-		b.keepLabels(s, in, rh, ah, true, seen)
 		return
 	}
 	for i := range in {
 		b.emit(k, s.name, &in[i], rh, ah, true, seen)
 	}
 	b.remember(k, classExact)
-	b.rememberLabels(s.nameHash, in)
 }
 
-// resourceKeys writes a key row for each resource field of a metric that has
-// none in the window. A key row has the metric name, the field and no value.
-// It is checked once per batch for a metric and the field names of a
-// resource, as most resources of a metric have the same fields.
-func (b *batch) resourceKeys(s *preparedSeries, res *metricResource, resourcePairs []pair, rh, seen uint64) {
+// resourceKeys records the resource fields of a metric as keys of the metric,
+// when the link of the metric to a resource is new. It runs once per batch
+// for a metric and the field names of a resource, as most resources of a
+// metric have the same fields.
+func (b *batch) resourceKeys(s *preparedSeries, res *metricResource, resourcePairs []pair) {
 	checked := mix64(s.nameHash ^ res.keys)
 	if _, ok := b.keysChecked[checked]; ok {
 		return
 	}
 	b.keysChecked[checked] = struct{}{}
 	for i := range resourcePairs {
-		k := labelKey(s.nameHash, resourcePairs[i].field)
-		key := pair{ctx: contextResource, typ: typeString, name: resourcePairs[i].name}
-		if !b.lookup(k) {
-			if class, ok := b.classFor(); ok {
-				b.emit(k, s.name, &key, rh, resourceAttrsHash, false, seen)
-				b.remember(k, class)
-			} else {
-				b.leaveOut(reasonCacheFull, 1)
-			}
-		}
-	}
-}
-
-// The keys of a metric are the field names in its rows, so each (metric,
-// label) needs at least one row per window. rememberLabels marks the labels
-// of a written series; keepLabels writes, from the reserve, one row for each
-// label of a series that does not fit, if the label has no row in the window.
-func (b *batch) rememberLabels(metricNameHash uint64, labels []pair) {
-	for i := range labels {
-		k := labelKey(metricNameHash, fieldIDOf(labels[i].ctx, labels[i].name))
-		if b.lookup(k) {
-			continue
-		}
-		if class, ok := b.classFor(); ok {
-			b.remember(k, class)
-		}
-	}
-}
-
-func (b *batch) keepLabels(s *preparedSeries, labels []pair, resourceHash, attrsHash uint64, inHash bool, seen uint64) {
-	for i := range labels {
-		k := labelKey(s.nameHash, fieldIDOf(labels[i].ctx, labels[i].name))
-		if b.lookup(k) {
-			continue
-		}
-		if !b.room(classReserve) {
-			b.leaveOut(reasonCacheFull, 1)
-			continue
-		}
-		b.emit(k, s.name, &labels[i], resourceHash, attrsHash, inHash, seen)
-		b.remember(k, classReserve)
+		b.state.keys.see(&resourcePairs[i], s.nameHash, s.name)
 	}
 }

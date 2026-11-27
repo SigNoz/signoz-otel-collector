@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	midnight = testDay.Truncate(24 * time.Hour).Add(24 * time.Hour)
+	midnight        = testDay.Truncate(24 * time.Hour).Add(24 * time.Hour)
 	lastMillisecond = midnight.Add(-time.Millisecond)
 )
 

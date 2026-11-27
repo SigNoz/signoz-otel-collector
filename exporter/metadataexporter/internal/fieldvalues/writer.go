@@ -27,6 +27,13 @@ const (
 	maxMemoryBytes     = 1 << 30
 	defaultMemoryBytes = 256 << 20
 	refreshTimeout     = 30 * time.Second
+	// keysFlushInterval is the longest time from the first record of a new
+	// key to its insert.
+	keysFlushInterval = 15 * time.Second
+	keysFlushTimeout  = 30 * time.Second
+	// keysStopTimeout bounds the last insert of keys, so a slow server does
+	// not hold up the stop of the collector.
+	keysStopTimeout = 5 * time.Second
 	// startRefreshTimeout bounds the first read of the classifier, which
 	// Start waits for.
 	startRefreshTimeout = 5 * time.Second
@@ -79,6 +86,7 @@ type signalState struct {
 	// overFlags holds the fields that this collector saw over their limit by
 	// its own count, until the refresh writes their rows.
 	overFlags map[fieldID]overField
+	keys      *fieldKeys
 }
 
 // Writer writes the field values of one signal.
@@ -105,6 +113,7 @@ type Writer struct {
 	batches sync.Pool
 
 	refreshNow chan struct{}
+	keysNow    chan struct{}
 	stop       chan struct{}
 	stopOnce   sync.Once
 	wg         sync.WaitGroup
@@ -139,7 +148,7 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 	for _, name := range cfg.AlwaysInclude {
 		alwaysInclude[name] = struct{}{}
 	}
-	state := &signalState{overFlags: make(map[fieldID]overField)}
+	state := &signalState{overFlags: make(map[fieldID]overField), keys: newFieldKeys()}
 	places := cfg.Limits.MaxFieldsPerSignal
 	if set.Signal == pipeline.SignalMetrics {
 		// A metric label has a state for each metric, so the count of the
@@ -164,6 +173,7 @@ func newWriter(cfg Config, set Settings, rows rowWriter, tel *telemetry) *Writer
 		spreadMillis:  uint64(cfg.Cache.PreWriteWindow.Milliseconds()),
 		state:         state,
 		refreshNow:    make(chan struct{}, 1),
+		keysNow:       make(chan struct{}, 1),
 		stop:          make(chan struct{}),
 	}
 	w.batches.New = func() any { return newBatchBuffers() }
@@ -242,12 +252,72 @@ func (w *Writer) allocate() error {
 // each such field makes new sets up to its limit on each start of a
 // collector.
 func (w *Writer) Start() {
+	w.wg.Add(1)
+	go w.keysLoop()
 	if w.classifier == nil {
 		return
 	}
 	w.refresh(startRefreshTimeout)
 	w.wg.Add(1)
 	go w.refreshLoop()
+}
+
+// keysLoop inserts the keys that wait: at each interval, when many wait, and
+// at the stop. It is not on the path of a push: the insert waits for the
+// server.
+func (w *Writer) keysLoop() {
+	defer w.wg.Done()
+	ticker := time.NewTicker(keysFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-w.stop:
+			w.flushKeysWithin(keysStopTimeout)
+			return
+		case <-ticker.C:
+		case <-w.keysNow:
+		}
+		w.flushKeys()
+	}
+}
+
+func (w *Writer) flushKeys() {
+	w.flushKeysWithin(keysFlushTimeout)
+}
+
+// flushKeysWithin inserts the keys that wait. A key counts as written only
+// when its insert passes; after a failed insert it waits for the next flush.
+func (w *Writer) flushKeysWithin(timeout time.Duration) {
+	w.mu.Lock()
+	now := w.now()
+	day := utcDay(now)
+	w.state.keys.rotate(day)
+	ids, keys := w.state.keys.take()
+	notQueued := w.state.keys.notQueued
+	w.state.keys.notQueued = 0
+	w.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if notQueued > 0 {
+		w.tel.keysNotQueued.Add(ctx, int64(notQueued), w.tel.attrs)
+	}
+	for len(keys) > 0 {
+		n := min(len(keys), keysInsertRows)
+		if err := w.rows.writeKeys(ctx, keys[:n], now); err != nil {
+			w.tel.keyInsertErrors.Add(ctx, 1, w.tel.attrs)
+			w.warn("failed to insert field keys", zap.Int("keys", len(keys)), zap.Error(err))
+			break
+		}
+		w.tel.keysWritten.Add(ctx, int64(n), w.tel.attrs)
+		w.mu.Lock()
+		w.state.keys.confirm(ids[:n], day)
+		w.mu.Unlock()
+		ids, keys = ids[n:], keys[n:]
+	}
+	w.mu.Lock()
+	w.tel.keysKnown.Store(int64(len(w.state.keys.known)))
+	w.tel.keysPending.Store(int64(len(w.state.keys.pending)))
+	w.mu.Unlock()
 }
 
 func (w *Writer) Shutdown() error {
@@ -384,7 +454,14 @@ func (w *Writer) push(ctx context.Context, fill func(*batch)) error {
 	st := w.state
 	st.inflight[classExact] += b.pendingCount[classExact]
 	st.inflight[classReserve] += b.pendingCount[classReserve]
+	manyKeys := len(st.keys.pending) >= keysFlushAt
 	w.mu.Unlock()
+	if manyKeys {
+		select {
+		case w.keysNow <- struct{}{}:
+		default:
+		}
+	}
 	defer w.release(b)
 	w.tel.recordBatch(ctx, b.stats)
 
@@ -502,6 +579,7 @@ func (w *Writer) newBatch() *batch {
 		st.resources.reset()
 		if day := now / dayMillis; day != st.day {
 			st.day = day
+			st.keys.rotate(day)
 			var known []fieldID
 			if class := w.class.Load(); class != nil {
 				known = class.known

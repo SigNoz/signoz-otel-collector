@@ -36,13 +36,16 @@ func (c *metricRowCounter) write(ctx context.Context, rows []row) error {
 			c.today.series++
 		case r.p.name == linkField:
 			c.today.link++
-		case r.metricName != "":
-			c.today.key++
 		default:
 			c.today.resource++
 		}
 	}
 	return c.next.write(ctx, rows)
+}
+
+func (c *metricRowCounter) writeKeys(ctx context.Context, keys []fieldKey, seen time.Time) error {
+	c.today.key += len(keys)
+	return c.next.writeKeys(ctx, keys, seen)
 }
 
 func (c *metricRowCounter) endDay() {
@@ -147,6 +150,8 @@ AS SELECT * FROM signoz_metadata.field_values_sets`,
 		for _, md := range cluster.Metrics(day.Add(11*time.Hour), 1000) {
 			require.NoError(t, metrics.WriteMetrics(ctx, md))
 		}
+		logs.flushKeys()
+		metrics.flushKeys()
 		counter.endDay()
 	}
 	flush(t, conn)
@@ -282,8 +287,8 @@ WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = '
   AND resource_hash IN (SELECT resource_hash FROM signoz_metadata.field_values_sets
       WHERE signal = 'metrics' AND source = '' AND metric_name = '' AND field_name = 'service.name' AND string_value = 'deploy-001')
 GROUP BY string_value LIMIT 1001`, []any{from}},
-		{"keys of k8s.* (issue 13042)", `SELECT field_name, field_context FROM signoz_metadata.field_values_sets
-WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND toDate(last_seen, 'UTC') >= toDate(fromUnixTimestamp($1), 'UTC')
+		{"keys of k8s.* (issue 13042)", `SELECT field_name, field_context FROM signoz_metadata.field_keys_v2
+WHERE signal = 'metrics' AND source = '' AND metric_name LIKE 'k8s.%' AND last_seen >= fromUnixTimestamp($1)
 GROUP BY field_name, field_context LIMIT 1001`, []any{from}},
 	} {
 		comment := fmt.Sprintf("churn-metric-%s-%s", q.name, run)

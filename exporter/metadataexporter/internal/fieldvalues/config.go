@@ -48,8 +48,7 @@ type CacheConfig struct {
 	// memory limit, between 64 MiB and 1 GiB, or 256 MiB without a limit, and
 	// share their key caches above a floor each.
 	MaxBytes uint64 `mapstructure:"max_bytes"`
-	// ReserveShare is the share of the local cache kept for overflow sets and
-	// metric labels.
+	// ReserveShare is the share of the local cache kept for overflow sets.
 	ReserveShare float64 `mapstructure:"reserve_share"`
 	// Window is the time in which each set, pair and resource is written once
 	// per collector. It must divide a UTC day.

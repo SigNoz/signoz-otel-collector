@@ -25,6 +25,10 @@ type countingWriter struct {
 	rows int
 }
 
+func (w *countingWriter) writeKeys(context.Context, []fieldKey, time.Time) error {
+	return nil
+}
+
 func (w *countingWriter) write(_ context.Context, rows []row) error {
 	w.mu.Lock()
 	w.rows += len(rows)
@@ -58,11 +62,17 @@ func BenchmarkWriteLogsSteadyState(b *testing.B) {
 	for _, ld := range batches {
 		_ = w.WriteLogs(context.Background(), ld)
 	}
+	// The keys loop of a running writer inserts the keys that wait.
+	w.flushKeys()
 	cw.rows = 0
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = w.WriteLogs(context.Background(), batches[i%len(batches)])
+		// The keys loop of a running writer inserts the keys that wait.
+		if i%64 == 0 {
+			w.flushKeys()
+		}
 	}
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*benchBatch), "ns/record")
 	b.ReportMetric(float64(cw.rows)/float64(b.N*benchBatch), "rows/record")
@@ -80,6 +90,10 @@ func BenchmarkWriteLogsNewData(b *testing.B) {
 		ld := gen.Logs(benchBatch)
 		b.StartTimer()
 		_ = w.WriteLogs(context.Background(), ld)
+		// The keys loop of a running writer inserts the keys that wait.
+		if i%64 == 0 {
+			w.flushKeys()
+		}
 	}
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*benchBatch), "ns/record")
 	b.ReportMetric(float64(cw.rows)/float64(b.N*benchBatch), "rows/record")
@@ -95,6 +109,10 @@ func BenchmarkWriteTracesNewData(b *testing.B) {
 		td := gen.Traces(benchBatch)
 		b.StartTimer()
 		_ = w.WriteTraces(context.Background(), td)
+		// The keys loop of a running writer inserts the keys that wait.
+		if i%64 == 0 {
+			w.flushKeys()
+		}
 	}
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*benchBatch), "ns/span")
 	b.ReportMetric(float64(cw.rows)/float64(b.N*benchBatch), "rows/span")

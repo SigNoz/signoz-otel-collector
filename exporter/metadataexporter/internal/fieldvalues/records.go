@@ -1,7 +1,7 @@
 package fieldvalues
 
 import (
-	"math"
+	"strconv"
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -70,14 +70,26 @@ func (b *batch) addRecords(in *recordsInput) {
 	}
 }
 
-// appendAttrPairs converts attributes to pairs. Nested maps become dotted
-// names; slices are kept as their JSON string. A top-level key equal to skip
-// is left out. Resource and scope attributes are strings, whatever their
-// type in the data: the logs and traces exporters store them as strings, and
-// a reader asks for the values of a field with the data type of its key.
-func appendAttrPairs(dst []pair, ctx fieldContext, m pcommon.Map, skip string) []pair {
+// appendAttrPairs converts attributes to pairs, with the names and the types
+// under which the exporter of the signal stores them. A reader asks for a
+// field by the name and the data type of its key, so they must be the same
+// here. A top-level key equal to skip is left out.
+//
+//   - Resource, scope and event attributes are strings, whatever their type.
+//   - The attributes of a log record or a span keep numbers and bools. All
+//     other types are strings.
+//   - flattenMaps is for spans: the traces exporter stores a map attribute as
+//     one attribute for each leaf, with a dotted name. The logs exporter
+//     stores a map as one JSON string.
+func appendAttrPairs(dst []pair, ctx fieldContext, m pcommon.Map, skip string, flattenMaps bool) []pair {
 	m.Range(func(k string, v pcommon.Value) bool {
-		if skip == "" || k != skip {
+		switch {
+		case skip != "" && k == skip:
+		case ctx != contextAttribute:
+			dst = append(dst, stringPair(ctx, k, v.AsString()))
+		case flattenMaps && v.Type() == pcommon.ValueTypeMap:
+			dst = appendFlatPairs(dst, ctx, k, v)
+		default:
 			dst = appendAttrPair(dst, ctx, k, v)
 		}
 		return true
@@ -86,27 +98,34 @@ func appendAttrPairs(dst []pair, ctx fieldContext, m pcommon.Map, skip string) [
 }
 
 func appendAttrPair(dst []pair, ctx fieldContext, name string, v pcommon.Value) []pair {
-	if t := v.Type(); (ctx == contextResource || ctx == contextScope) && t != pcommon.ValueTypeMap && t != pcommon.ValueTypeEmpty {
-		return append(dst, stringPair(ctx, name, v.AsString()))
-	}
 	switch v.Type() {
-	case pcommon.ValueTypeStr:
-		dst = append(dst, stringPair(ctx, name, v.Str()))
 	case pcommon.ValueTypeInt:
-		dst = append(dst, numberPair(ctx, name, float64(v.Int())))
+		return append(dst, intPair(ctx, name, v.Int()))
 	case pcommon.ValueTypeDouble:
-		if f := v.Double(); !math.IsNaN(f) && !math.IsInf(f, 0) {
-			dst = append(dst, numberPair(ctx, name, f))
-		}
+		return append(dst, numberPair(ctx, name, v.Double()))
 	case pcommon.ValueTypeBool:
-		dst = append(dst, boolPair(ctx, name, v.Bool()))
+		return append(dst, boolPair(ctx, name, v.Bool()))
+	}
+	return append(dst, stringPair(ctx, name, v.AsString()))
+}
+
+// appendFlatPairs gives the leaves of a map attribute of a span, as
+// utils/flatten names them: a dot between the levels, and the index for the
+// items of a slice.
+func appendFlatPairs(dst []pair, ctx fieldContext, name string, v pcommon.Value) []pair {
+	switch v.Type() {
 	case pcommon.ValueTypeMap:
 		v.Map().Range(func(k string, child pcommon.Value) bool {
-			dst = appendAttrPair(dst, ctx, name+"."+k, child)
+			dst = appendFlatPairs(dst, ctx, name+"."+k, child)
 			return true
 		})
+		return dst
 	case pcommon.ValueTypeSlice:
-		dst = append(dst, stringPair(ctx, name, v.AsString()))
+		items := v.Slice()
+		for i := 0; i < items.Len(); i++ {
+			dst = appendFlatPairs(dst, ctx, name+"."+strconv.Itoa(i), items.At(i))
+		}
+		return dst
 	}
-	return dst
+	return appendAttrPair(dst, ctx, name, v)
 }
