@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/goccy/go-json"
 
@@ -27,10 +26,10 @@ type jsonSizerOptions struct {
 
 type jsonSizerOption func(*jsonSizerOptions)
 
-// WithExcludePattern drops keys matching pattern from every sized map; may be given more than once.
-func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
+// WithExcludePattern drops keys matching any of patterns from every sized map; may be given more than once.
+func WithExcludePattern(patterns ...*regexp.Regexp) jsonSizerOption {
 	return func(opts *jsonSizerOptions) {
-		opts.ExcludePatterns = append(opts.ExcludePatterns, pattern)
+		opts.ExcludePatterns = append(opts.ExcludePatterns, patterns...)
 	}
 }
 
@@ -157,22 +156,6 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 	}
 
 	return len(nbytes), len(sbytes), len(bbytes)
-}
-
-// SizeOfString returns the length of input JSON-encoded, without the surrounding quotes.
-func (sizer *jsonSizer) SizeOfString(input string) int {
-	for i := 0; i < len(input); i++ {
-		c := input[i]
-		if c < 0x20 || c >= utf8.RuneSelf || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
-			bytes, err := json.Marshal(input)
-			if err != nil {
-				sizer.Logger.Error("cannot marshal object, setting size to 0", zap.Error(err), zap.String("obj", input))
-				return 0
-			}
-			return len(bytes) - 2
-		}
-	}
-	return len(input)
 }
 
 func (sizer *jsonSizer) SizeOfInt(input int) int {

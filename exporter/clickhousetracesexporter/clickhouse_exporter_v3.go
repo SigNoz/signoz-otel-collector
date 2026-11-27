@@ -256,22 +256,12 @@ func (attrMap *attributesData) add(key string, value pcommon.Value) {
 	attrMap.SpanAttributes = append(attrMap.SpanAttributes, spanAttribute)
 }
 
-// isBillableAttribute must agree with the exclude patterns of the traces meter in pkg/metering/v1.
-func isBillableAttribute(key string) bool {
-	// Every exclude pattern starts with "signoz"; skip the regexes for all other keys.
-	if !strings.HasPrefix(key, "signoz") {
-		return true
-	}
-	return !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(key) &&
-		!metering.ExcludeSigNozLLMPricingSpanAttrs.MatchString(key)
-}
-
 // billableAttributes returns attrs without non-billable keys. Most spans
 // carry none, so the input map is returned as is and only copied when one is present.
 func billableAttributes[V any](attrs map[string]V) map[string]V {
 	hasExcluded := false
 	for k := range attrs {
-		if !isBillableAttribute(k) {
+		if !metering.IsBillableSpanAttribute(k) {
 			hasExcluded = true
 			break
 		}
@@ -281,7 +271,7 @@ func billableAttributes[V any](attrs map[string]V) map[string]V {
 	}
 	billable := make(map[string]V, len(attrs))
 	for k, v := range attrs {
-		if isBillableAttribute(k) {
+		if metering.IsBillableSpanAttribute(k) {
 			billable[k] = v
 		}
 	}
@@ -317,7 +307,7 @@ func newStructuredSpanV3(bucketStart uint64, fingerprint string, otelSpan ptrace
 	})
 
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		isBillable := isBillableAttribute(k)
+		isBillable := metering.IsBillableSpanAttribute(k)
 		if v.Type() == pcommon.ValueTypeMap {
 			result := flatten.FlattenJSON(v.Map().AsRaw(), k)
 			for tempKey, tempVal := range result {

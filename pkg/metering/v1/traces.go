@@ -19,10 +19,7 @@ type traces struct {
 func NewTraces(logger *zap.Logger) metering.Traces {
 	return &traces{
 		Logger: logger,
-		Sizer: metering.NewJSONSizer(logger,
-			metering.WithExcludePattern(metering.ExcludeSigNozWorkspaceResourceAttrs),
-			metering.WithExcludePattern(metering.ExcludeSigNozLLMPricingSpanAttrs),
-		),
+		Sizer:  metering.NewJSONSizer(logger, metering.WithExcludePattern(metering.TracesExcludePatterns...)),
 		KeySizes: map[string]int{
 			"resources_string":  len("\"resources_string\""),
 			"startTimeUnixNano": len("\"startTimeUnixNano\""),
@@ -114,10 +111,10 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["startTimeUnixNano"], sizeOfStartTime, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanId"], meter.Sizer.SizeOfSpanID(span.SpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceId"], meter.Sizer.SizeOfTraceID(span.TraceID()), 4) + //:"",
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceState"], meter.Sizer.SizeOfString(span.TraceState().AsRaw()), 4) + //:"",
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceState"], meter.sizeOfJSONString(span.TraceState().AsRaw()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["parentSpanId"], meter.Sizer.SizeOfSpanID(span.ParentSpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["flags"], sizeOfFlags, 2) + //:,
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["name"], meter.Sizer.SizeOfString(span.Name()), 4) + //:"",
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["name"], meter.sizeOfJSONString(span.Name()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["kind"], sizeOfKind, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanKind"], len(span.Kind().String()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExistsAndValueIsMapOrSlice(meter.KeySizes["attributes_string"], sizeOfStringAttributes, 2) + //:,
@@ -132,6 +129,16 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 	}
 
 	return total
+}
+
+// sizeOfJSONString returns the length of s JSON-encoded, without the surrounding quotes.
+func (meter *traces) sizeOfJSONString(s string) int {
+	b, err := json.Marshal(s)
+	if err != nil {
+		meter.Logger.Error("cannot marshal string", zap.Error(err), zap.String("val", s))
+		return 0
+	}
+	return len(b) - 2
 }
 
 func (*traces) Count(td ptrace.Traces) int {

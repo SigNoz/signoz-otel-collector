@@ -23,7 +23,6 @@ type Meter[T ptrace.Traces | pmetric.Metrics | plog.Logs, V ptrace.ResourceSpans
 type Sizer interface {
 	SizeOfMapStringAny(map[string]any) int
 	SizeOfFlatPcommonMapInMapStringString(pcommon.Map) int
-	SizeOfString(string) int
 	SizeOfInt(int) int
 	SizeOfFloat64(float64) int
 	SizeOfTraceID(pcommon.TraceID) int

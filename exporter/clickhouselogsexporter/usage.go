@@ -98,20 +98,11 @@ func UsageExporter(metrics []*metricdata.Metric, id uuid.UUID) (map[string]usage
 	return data, nil
 }
 
-// isBillableAttribute must agree with the exclude patterns of the logs meter in pkg/metering/v1.
-func isBillableAttribute(key string) bool {
-	// Every exclude pattern starts with "signoz"; skip the regexes for all other keys.
-	if !strings.HasPrefix(key, "signoz") {
-		return true
-	}
-	return !metering.ExcludeSigNozWorkspaceResourceAttrs.MatchString(key) && !isInternalAttr(key)
-}
-
 // billableAttributesSize returns the billed size of attrs, whose stored JSON is attributesJSON.
 func billableAttributesSize(attrs map[string]any, attributesJSON string) int {
 	var billable map[string]any
 	for k := range attrs {
-		if isBillableAttribute(k) {
+		if metering.IsBillableLogAttribute(k) {
 			continue
 		}
 		if billable == nil {
@@ -135,7 +126,7 @@ func billableAttributesSize(attrs map[string]any, attributesJSON string) int {
 func getResourceAttributesByte(resource pcommon.Resource) ([]byte, error) {
 	filteredResources := map[string]any{}
 	resource.Attributes().Range(func(k string, v pcommon.Value) bool {
-		if isBillableAttribute(k) {
+		if metering.IsBillableLogAttribute(k) {
 			filteredResources[k] = v.AsRaw()
 		}
 		return true
