@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/goccy/go-json"
 
@@ -16,12 +17,14 @@ import (
 )
 
 type jsonSizer struct {
-	Logger          *zap.Logger
-	ExcludePatterns []*regexp.Regexp
+	Logger                *zap.Logger
+	ExcludePatterns       []*regexp.Regexp
+	NumberExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOptions struct {
-	ExcludePatterns []*regexp.Regexp
+	ExcludePatterns       []*regexp.Regexp
+	NumberExcludePatterns []*regexp.Regexp
 }
 
 type jsonSizerOption func(*jsonSizerOptions)
@@ -33,16 +36,25 @@ func WithExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
 	}
 }
 
+// WithNumberExcludePattern drops number keys matching pattern in SizeOfFlatPcommonMapInNumberStringBool; may be given more than once.
+func WithNumberExcludePattern(pattern *regexp.Regexp) jsonSizerOption {
+	return func(opts *jsonSizerOptions) {
+		opts.NumberExcludePatterns = append(opts.NumberExcludePatterns, pattern)
+	}
+}
+
 func NewJSONSizer(logger *zap.Logger, options ...jsonSizerOption) Sizer {
 	opts := &jsonSizerOptions{}
 	for _, opt := range options {
 		opt(opts)
 	}
 	return &jsonSizer{
-		Logger:          logger,
-		ExcludePatterns: opts.ExcludePatterns,
+		Logger:                logger,
+		ExcludePatterns:       opts.ExcludePatterns,
+		NumberExcludePatterns: opts.NumberExcludePatterns,
 	}
 }
+
 func (sizer *jsonSizer) SizeOfMapStringAny(input map[string]any) int {
 	output := map[string]any{}
 
@@ -106,11 +118,13 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 		}
 		switch v.Type() {
 		case pcommon.ValueTypeDouble:
-			if utils.IsValidFloat(v.Double()) {
+			if utils.IsValidFloat(v.Double()) && !sizer.numberExcluded(k) {
 				n[k] = v.Double()
 			}
 		case pcommon.ValueTypeInt:
-			n[k] = float64(v.Int())
+			if !sizer.numberExcluded(k) {
+				n[k] = float64(v.Int())
+			}
 		case pcommon.ValueTypeBool:
 			b[k] = v.Bool()
 		case pcommon.ValueTypeMap:
@@ -120,7 +134,9 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 				case string:
 					s[kf] = tvf
 				case float64:
-					n[kf] = tvf
+					if utils.IsValidFloat(tvf) && !sizer.numberExcluded(kf) {
+						n[kf] = tvf
+					}
 				case bool:
 					b[kf] = tvf
 				}
@@ -151,6 +167,22 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 	}
 
 	return len(nbytes), len(sbytes), len(bbytes)
+}
+
+// SizeOfString returns the length of input JSON-encoded, without the surrounding quotes.
+func (sizer *jsonSizer) SizeOfString(input string) int {
+	for i := 0; i < len(input); i++ {
+		c := input[i]
+		if c < 0x20 || c >= utf8.RuneSelf || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
+			bytes, err := json.Marshal(input)
+			if err != nil {
+				sizer.Logger.Error("cannot marshal object, setting size to 0", zap.Error(err), zap.String("obj", input))
+				return 0
+			}
+			return len(bytes) - 2
+		}
+	}
+	return len(input)
 }
 
 func (sizer *jsonSizer) SizeOfInt(input int) int {
@@ -221,7 +253,15 @@ func (size *jsonSizer) TotalSizeIfKeyExistsAndValueIsMapOrSlice(key int, value i
 }
 
 func (sizer *jsonSizer) excluded(key string) bool {
-	for _, pattern := range sizer.ExcludePatterns {
+	return matchesAny(sizer.ExcludePatterns, key)
+}
+
+func (sizer *jsonSizer) numberExcluded(key string) bool {
+	return matchesAny(sizer.NumberExcludePatterns, key)
+}
+
+func matchesAny(patterns []*regexp.Regexp, key string) bool {
+	for _, pattern := range patterns {
 		if pattern.MatchString(key) {
 			return true
 		}
