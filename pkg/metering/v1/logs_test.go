@@ -118,6 +118,24 @@ func TestLogsSizeWithNonFiniteAttrs(t *testing.T) {
 	assert.Equal(t, 2+31, meter.Size(logs))
 }
 
+func TestLogsSizeExcludesSigNozAttrsFromResourceAndAttributes(t *testing.T) {
+	logs := plogsgen.Generate(
+		plogsgen.WithLogRecordCount(1),
+		plogsgen.WithResourceAttributeCount(0),
+		plogsgen.WithBody(""),
+	)
+	resourceLogs := logs.ResourceLogs().At(0)
+	resourceLogs.Resource().Attributes().PutStr("signoz.workspace.key.id", "x")
+	resourceLogs.Resource().Attributes().PutStr("signoz.__internal__.r", "x")
+	attrs := resourceLogs.ScopeLogs().At(0).LogRecords().At(0).Attributes()
+	attrs.PutStr("signoz.__internal__.a", "x")
+	attrs.PutStr("signoz.workspace.a", "x")
+
+	meter := NewLogs(zap.NewNop())
+	// resource {} (2) + attributes {} (2)
+	assert.Equal(t, 2+2, meter.Size(logs))
+}
+
 func benchmarkLogsSize(b *testing.B, expectedSize int, options ...plogsgen.GenerationOption) {
 	b.Helper()
 

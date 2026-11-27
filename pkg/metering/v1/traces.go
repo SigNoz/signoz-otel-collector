@@ -97,18 +97,28 @@ func (meter *traces) SizePerResource(rtd ptrace.ResourceSpans) int {
 				sizeOfFlags = meter.Sizer.SizeOfInt(int(span.Flags()))
 			}
 
+			// Zero-valued fields are omitted, matching omitempty on the exporter's SpanV3.
+			sizeOfStartTime := 0
+			if span.StartTimestamp() != 0 {
+				sizeOfStartTime = meter.Sizer.SizeOfInt(int(span.StartTimestamp()))
+			}
+			sizeOfKind := 0
+			if span.Kind() != ptrace.SpanKindUnspecified {
+				sizeOfKind = meter.Sizer.SizeOfInt(int(span.Kind()))
+			}
+
 			// Let's start making the json object
 			// 2({})
 			total += 2 +
 				meter.Sizer.TotalSizeIfKeyExistsAndValueIsMapOrSlice(meter.KeySizes["resources_string"], resourceAttributesSize, 2) + //:,
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["startTimeUnixNano"], meter.Sizer.SizeOfInt(int(span.StartTimestamp())), 2) + //:,
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["startTimeUnixNano"], sizeOfStartTime, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanId"], meter.Sizer.SizeOfSpanID(span.SpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceId"], meter.Sizer.SizeOfTraceID(span.TraceID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["traceState"], len(span.TraceState().AsRaw()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["parentSpanId"], meter.Sizer.SizeOfSpanID(span.ParentSpanID()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["flags"], sizeOfFlags, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["name"], len(span.Name()), 4) + //:"",
-				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["kind"], meter.Sizer.SizeOfInt(int(span.Kind())), 2) + //:,
+				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["kind"], sizeOfKind, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExists(meter.KeySizes["spanKind"], len(span.Kind().String()), 4) + //:"",
 				meter.Sizer.TotalSizeIfKeyExistsAndValueIsMapOrSlice(meter.KeySizes["attributes_string"], sizeOfStringAttributes, 2) + //:,
 				meter.Sizer.TotalSizeIfKeyExistsAndValueIsMapOrSlice(meter.KeySizes["attributes_bool"], sizeOfBoolAttributes, 2) + //:,

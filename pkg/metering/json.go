@@ -120,7 +120,9 @@ func (sizer *jsonSizer) SizeOfFlatPcommonMapInNumberStringBool(input pcommon.Map
 				case string:
 					s[kf] = tvf
 				case float64:
-					n[kf] = tvf
+					if utils.IsValidFloat(tvf) {
+						n[kf] = tvf
+					}
 				case bool:
 					b[kf] = tvf
 				}
